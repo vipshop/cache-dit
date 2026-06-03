@@ -8,7 +8,7 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_int4)_r(\d+)(_dq)?$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("v1", "v2")
 _SVDQ_QUANTIZE_DEVICES = ("auto", "cpu", "cuda")
@@ -119,9 +119,15 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
 def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
   match = _SVDQ_QUANT_TYPE_PATTERN.fullmatch(quant_type)
   if match is None:
-    raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}` or "
-                     f"`svdq_int4_r{{rank}}_dq`, got {quant_type!r}.")
+    raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
+                     "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, or `svdq_nvfp4_r{rank}_dq`, "
+                     f"got {quant_type!r}.")
   return match.group(1), int(match.group(2)), match.group(3) == "_dq"
+
+
+def _get_svdq_precision(quant_type: str) -> str:
+  base_name, _, _ = _parse_svdq_quant_type(quant_type)
+  return base_name.removeprefix("svdq_")
 
 
 def _resolve_svdq_bool_kwarg(key: str, value: Any) -> bool:
@@ -436,6 +442,9 @@ class QuantizeConfig:
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
+      if (_get_svdq_precision(self.quant_type) == "nvfp4"
+          and self.svdq_kwargs["runtime_kernel"] == "v2"):
+        raise ValueError("SVDQ NVFP4 currently only supports svdq_kwargs['runtime_kernel'] = 'v1'.")
       if self.is_svdq_dq():
         if self.calibrate_fn is not None:
           raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")
@@ -525,6 +534,14 @@ class QuantizeConfig:
 
     _, rank, _ = _parse_svdq_quant_type(self.quant_type)
     return rank
+
+  def get_svdq_precision(self) -> str:
+    """Extract the precision encoded in an SVDQ quant type.
+
+    :returns: The packed weight precision encoded in `quant_type`.
+    """
+
+    return _get_svdq_precision(self.quant_type)
 
   def get_svdq_kwargs(self) -> Dict[str, Any]:
     """Return validated SVDQ-specific kwargs or an empty dict for non-SVDQ configs.

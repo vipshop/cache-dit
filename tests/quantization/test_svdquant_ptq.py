@@ -1488,6 +1488,56 @@ def test_svdq_ptq_load_roundtrip_restores_quantized_module(
   assert isinstance(loaded_model.block.to_out, SVDQW4A4Linear)
 
 
+def test_svdq_ptq_nvfp4_roundtrip_preserves_precision_metadata(tmp_path: Path) -> None:
+  dtype = runtime_dtype()
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=117,
+    device="cuda",
+    dtype=dtype,
+  )
+  calibration_samples = make_token_samples(
+    num_samples=2,
+    batch_size=1,
+    seq_len=16,
+    width=128,
+    seed=119,
+    device="cuda",
+    dtype=dtype,
+  )
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r32",
+    calibrate_fn=_make_calibrate_fn(calibration_samples),
+    serialize_to=str(tmp_path / "nvfp4_roundtrip"),
+    svdq_kwargs=dict(_DEFAULT_SVDQ_KWARGS),
+  )
+
+  quantized_model = cache_dit.quantize(model, config)
+  metadata = svdq_ptq._load_serialized_checkpoint(config.serialize_to)[1]
+  quant_config_snapshot = _load_quant_config_snapshot(config.serialize_to)
+  assert metadata["precision"] == "nvfp4"
+  assert quant_config_snapshot["quant_type"] == config.quant_type
+
+  fresh_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=117,
+    device="cuda",
+    dtype=dtype,
+  )
+  loaded_model = cache_dit.load(fresh_model,
+                                str(_resolve_quant_checkpoint_dir(config.serialize_to)))
+
+  assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
+  assert isinstance(loaded_model.block.to_q, SVDQW4A4Linear)
+  assert quantized_model.block.to_q.precision == "nvfp4"
+  assert loaded_model.block.to_q.precision == "nvfp4"
+  assert loaded_model.block.to_k.precision == "nvfp4"
+  assert loaded_model.block.to_v.precision == "nvfp4"
+  assert loaded_model.block.to_out.precision == "nvfp4"
+
+
 def test_svdq_ptq_directory_load_requires_quant_config_json(tmp_path: Path) -> None:
   empty_checkpoint_dir = tmp_path / "missing_quant_config"
   empty_checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -1667,6 +1717,21 @@ def test_svdq_ptq_load_rejects_invalid_or_incomplete_metadata(tmp_path: Path) ->
     cache_dit.load(
       make_toy_model(embed_dim=128, num_heads=4, seed=73, device="cuda", dtype=runtime_dtype()),
       str(incomplete_metadata_path),
+    )
+
+  precision_mismatch_path = tmp_path / "precision_mismatch_metadata.safetensors"
+  save_file(
+    {"dummy": torch.zeros(1)},
+    str(precision_mismatch_path),
+    metadata={
+      _SVDQ_METADATA_KEY_NAME:
+      '{"format":"cache_dit_svdq_ptq","version":2,"quant_type":"svdq_nvfp4_r32","rank":32,"precision":"int4","quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"calibrate_precision":"medium","runtime_kernel":"v1"}}'
+    },
+  )
+  with pytest.raises(ValueError, match="expected 'nvfp4'"):
+    cache_dit.load(
+      make_toy_model(embed_dim=128, num_heads=4, seed=73, device="cuda", dtype=runtime_dtype()),
+      str(precision_mismatch_path),
     )
 
 

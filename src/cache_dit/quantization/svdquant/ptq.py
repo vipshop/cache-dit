@@ -18,6 +18,7 @@ from ...offload import get_layerwise_offload_handles
 from ...logger import init_logger
 from ...utils import check_quantized
 from ..config import QuantizeConfig
+from ..config import _get_svdq_precision
 from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
 from .linear import SVDQW4A4Linear
@@ -518,6 +519,7 @@ class SVDQPTQContext:
       root_module=root_module,
       quantize_config=quantize_config,
       rank=quantize_config.get_svdq_rank(),
+      precision=quantize_config.get_svdq_precision(),
       regional_quantize=regional_quantize,
       repeated_blocks=list(repeated_blocks) if repeated_blocks is not None else None,
       exclude_layers=list(quantize_config.exclude_layers or []),
@@ -953,6 +955,7 @@ def _build_serialized_metadata(
   *,
   quant_type: str,
   rank: int,
+  precision: str,
   quantized_layer_names: list[str],
   svdq_kwargs: dict[str, Any],
 ) -> dict[str, str]:
@@ -961,7 +964,7 @@ def _build_serialized_metadata(
     "version": _SVDQ_FORMAT_VERSION,
     "quant_type": quant_type,
     "rank": rank,
-    "precision": "int4",
+    "precision": precision,
     "quantized_layer_names": [_serialize_layer_name(name) for name in quantized_layer_names],
     "svdq_kwargs": svdq_kwargs,
   }
@@ -1010,6 +1013,7 @@ def _save_quantized_module(
   serialize_to: str,
   quant_type: str,
   rank: int,
+  precision: str,
   quantized_layer_names: list[str],
   svdq_kwargs: dict[str, Any],
 ) -> None:
@@ -1030,6 +1034,7 @@ def _save_quantized_module(
     metadata=_build_serialized_metadata(
       quant_type=quant_type,
       rank=rank,
+      precision=precision,
       quantized_layer_names=quantized_layer_names,
       svdq_kwargs=svdq_kwargs,
     ),
@@ -1046,6 +1051,7 @@ def _validate_quant_config_snapshot(path: str, payload: dict[str, Any]) -> dict[
   if not isinstance(quant_type, str):
     raise ValueError(f"SVDQ quant_config at {path} is missing a valid quant_type.")
   _parse_svdq_quant_type(quant_type)
+  payload["precision"] = _get_svdq_precision(quant_type)
 
   rank = payload.get("rank")
   if not isinstance(rank, int):
@@ -1153,6 +1159,16 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   if not isinstance(quant_type, str):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid quant_type.")
   _parse_svdq_quant_type(quant_type)
+  precision = payload.get("precision", _get_svdq_precision(quant_type))
+  if not isinstance(precision, str):
+    raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid precision.")
+  precision = precision.lower()
+  expected_precision = _get_svdq_precision(quant_type)
+  if precision != expected_precision:
+    raise ValueError(
+      f"SVDQ PTQ checkpoint at {path} has precision {precision!r}, expected {expected_precision!r} "
+      f"for quant_type {quant_type!r}.")
+  payload["precision"] = precision
 
   rank = payload.get("rank")
   if not isinstance(rank, int):
@@ -1410,6 +1426,7 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     serialize_to=quantize_config.serialize_to,
     quant_type=quantize_config.quant_type,
     rank=context.rank,
+    precision=context.precision,
     quantized_layer_names=quantized_layer_names,
     svdq_kwargs=context.svdq_kwargs,
   )
@@ -1511,6 +1528,7 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
       serialize_to=quantize_config.serialize_to,
       quant_type=quantize_config.quant_type,
       rank=context.rank,
+      precision=context.precision,
       quantized_layer_names=quantized_layer_names,
       svdq_kwargs=context.svdq_kwargs,
     )
@@ -1562,6 +1580,7 @@ def load_svdq(
   tensors, payload = _load_serialized_checkpoint(checkpoint_path)
   quant_type = payload["quant_type"]
   rank = int(payload["rank"])
+  precision = str(payload["precision"])
   quantized_layer_names = [
     _deserialize_layer_name(name) for name in payload.get("quantized_layer_names", [])
   ]
@@ -1602,7 +1621,7 @@ def load_svdq(
     quantized_module = SVDQW4A4Linear.from_linear(
       float_module,
       rank=rank,
-      precision="int4",
+      precision=precision,
       runtime_kernel=svdq_kwargs["runtime_kernel"],
       torch_dtype=torch_dtype,
       device=load_device,

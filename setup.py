@@ -17,6 +17,10 @@ ROOT_DIR = Path(__file__).resolve().parent
 SVDQUANT_BUILD_FLAG = "CACHE_DIT_BUILD_SVDQUANT"
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
+# Blackwell sm100 is not has been fully tested, so we don't include it in the
+# default target list.Users with sm100 devices can specify it explicitly with
+# `CACHE_DIT_CUDA_ARCH_LIST=100` or `TORCH_CUDA_ARCH_LIST=100` when building
+# the SVDQuant extension.
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -108,6 +112,7 @@ def _required_svdquant_sources() -> list[str]:
     "csrc/kernels/svdq/torch.cpp",
     "csrc/kernels/svdq/gemm_w4a4_v2.cu",
     *_svdquant_v2_launch_sources(),
+    # Build both INT4 and NVFP4 kernels
     "csrc/kernels/svdq/gemm_w4a4.cu",
     "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4.cu",
     "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
@@ -166,13 +171,13 @@ def _get_sm_targets() -> list[str]:
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
-  install_mode = os.getenv("CACHE_DIT_INSTALL_MODE", "FAST").upper()
-  if install_mode not in {"FAST", "ALL"}:
+  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "FAST").upper()
+  if build_mode not in {"FAST", "ALL"}:
     raise RuntimeError(
-      f"Unsupported CACHE_DIT_INSTALL_MODE={install_mode!r}. Expected 'FAST' or 'ALL'.")
+      f"Unsupported CACHE_DIT_SVDQUANT_BUILD_MODE={build_mode!r}. Expected 'FAST' or 'ALL'.")
 
   sm_targets: list[str] = []
-  if install_mode == "FAST" and torch.cuda.is_available() and torch.cuda.device_count() > 0:
+  if build_mode == "FAST" and torch.cuda.is_available() and torch.cuda.device_count() > 0:
     for device_index in range(torch.cuda.device_count()):
       capability = torch.cuda.get_device_capability(device_index)
       sm = f"{capability[0]}{capability[1]}"

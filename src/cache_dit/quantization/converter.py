@@ -1,4 +1,4 @@
-"""Convert a diffusion model to SVDQ int4 quantized format.
+"""Convert a diffusion model to SVDQ quantized format.
 
 Usage::
 
@@ -6,6 +6,11 @@ Usage::
         --model-path /path/to/FLUX.1-dev \
         --save-dir ./FLUX.1-dev-svdq \
         --quant-type svdq-int4-r128-dq
+
+      python3 -m cache_dit.quantization.converter \
+        --model-path /path/to/FLUX.1-dev \
+        --save-dir ./FLUX.1-dev-svdq-nvfp4 \
+        --quant-type svdq-nvfp4-r128-dq
 
 Only SVDQ dynamic quantization (``_dq`` quant types) is currently supported.
 """
@@ -24,7 +29,7 @@ logger = init_logger(__name__)
 
 def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
   parser = argparse.ArgumentParser(
-    description="Convert a diffusion model to SVDQ int4 quantized format.",
+    description="Convert a diffusion model to SVDQ quantized format.",
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
   )
   parser.add_argument(
@@ -43,8 +48,9 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     "--quant-type",
     type=str,
     required=True,
-    help="SVDQ quant type, e.g. 'svdq-int4-r128-dq' or 'svdq_int4_r128_dq'. "
-    "Currently only DQ types (ending with '_dq') are supported.",
+    help="SVDQ quant type, e.g. 'svdq-int4-r128-dq', 'svdq_int4_r128_dq', "
+    "'svdq-nvfp4-r128-dq', or 'svdq_nvfp4_r128_dq'. Currently only DQ types "
+    "(ending with '_dq') are supported.",
   )
   parser.add_argument(
     "--torch-dtype",

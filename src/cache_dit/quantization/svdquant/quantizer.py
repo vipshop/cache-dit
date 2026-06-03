@@ -33,6 +33,30 @@ _FEW_SHOT_STABLE_AUTO_BUCKETS = 8
 _FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
 
 
+def _normalize_svdq_precision(precision: str) -> str:
+  if not isinstance(precision, str):
+    raise TypeError(f"precision must be a str, got {type(precision)}.")
+  normalized = precision.lower()
+  if normalized not in {"int4", "nvfp4"}:
+    raise ValueError(f"precision must be 'int4' or 'nvfp4', got {precision!r}.")
+  return normalized
+
+
+def _resolve_svdq_group_size(precision: str) -> int:
+  normalized = _normalize_svdq_precision(precision)
+  if normalized == "nvfp4":
+    return 16
+  return 64
+
+
+def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str) -> None:
+  precision = _normalize_svdq_precision(precision)
+  if runtime_kernel not in {"v1", "v2"}:
+    raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
+  if precision == "nvfp4" and runtime_kernel == "v2":
+    raise ValueError("SVDQ NVFP4 currently only supports runtime_kernel='v1'.")
+
+
 def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
   if quant_type is None:
     return "ptq"
@@ -61,10 +85,12 @@ def validate_svdq_linear_geometry(
     packer/runtime contract.
   """
 
-  if precision != "int4":
-    raise NotImplementedError("The minimal SVDQuant quantizer currently supports INT4 only.")
-  if in_features % 64 != 0:
-    raise ValueError(f"INT4 SVDQuant requires in_features divisible by 64, got {in_features}.")
+  precision = _normalize_svdq_precision(precision)
+  group_size = _resolve_svdq_group_size(precision)
+  if in_features % group_size != 0:
+    raise ValueError(
+      f"{precision.upper()} SVDQuant requires in_features divisible by {group_size}, got {in_features}."
+    )
   if in_features % 128 != 0:
     raise ValueError(
       f"The migrated W4A4 packer/runtime requires in_features divisible by 128, got {in_features}.")
@@ -606,7 +632,7 @@ def _compute_group_scales(
   math_dtype: torch.dtype = torch.float32,
   output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-  """Compute per-group INT4 scales from the residual weight matrix.
+  """Compute per-group weight scales from the residual weight matrix.
 
   :param weight: Residual weight matrix with shape `[out_features, in_features]`.
   :param group_size: Number of input channels covered by each scale value.
@@ -625,6 +651,30 @@ def _compute_group_scales(
   if output_dtype is not None:
     scales = scales.to(dtype=output_dtype)
   return scales
+
+
+@torch.inference_mode()
+def _compute_nvfp4_channel_and_group_scales(
+  weight: torch.Tensor,
+  *,
+  math_dtype: torch.dtype = torch.float32,
+  output_dtype: torch.dtype | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  out_features, in_features = weight.shape
+  group_size = _resolve_svdq_group_size("nvfp4")
+  if in_features % group_size != 0:
+    raise ValueError(f"Expected in_features divisible by {group_size}, got {in_features}.")
+
+  weight = weight.to(dtype=math_dtype).view(out_features, 1, in_features // group_size, group_size)
+  group_absmax = weight.abs().amax(dim=-1, keepdim=True)
+  channel_scales = group_absmax.amax(dim=2, keepdim=True).div_(448.0 * 6.0)
+  channel_scales = _repair_invalid_scale(channel_scales)
+  group_scales = group_absmax.div(channel_scales).div_(6.0)
+  group_scales = _repair_invalid_scale(group_scales)
+  if output_dtype is not None:
+    group_scales = group_scales.to(dtype=output_dtype)
+    channel_scales = channel_scales.to(dtype=output_dtype)
+  return channel_scales, group_scales
 
 
 @torch.inference_mode()
@@ -888,6 +938,7 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
   torch_dtype = _normalize_dtype(torch_dtype, device)
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
+  _validate_svdq_runtime_kernel(precision, runtime_kernel)
   validate_svdq_linear_geometry(
     linear.in_features,
     linear.out_features,
@@ -917,29 +968,42 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
     output_dtype=torch_dtype,
     svd_precision=calibrate_precision,
   )
-  scales = _compute_group_scales(
-    residual,
-    group_size=64,
-    math_dtype=math_dtype,
-    output_dtype=torch_dtype,
-  )
+  scale_kwargs = {
+    "math_dtype": math_dtype,
+    "output_dtype": torch_dtype,
+  }
+  group_scales: torch.Tensor
+  channel_scales: torch.Tensor | None = None
+  if _normalize_svdq_precision(precision) == "nvfp4":
+    channel_scales, group_scales = _compute_nvfp4_channel_and_group_scales(
+      residual,
+      **scale_kwargs,
+    )
+  else:
+    group_scales = _compute_group_scales(
+      residual,
+      group_size=_resolve_svdq_group_size(precision),
+      **scale_kwargs,
+    )
 
   bias = (None
           if linear.bias is None else linear.bias.detach().to(device=device, dtype=torch_dtype))
   raw_state_dict = export_raw_svdq_w4a4_state_dict(
     residual,
-    scale=scales,
+    scale=channel_scales if channel_scales is not None else group_scales,
     bias=bias,
     smooth=smooth_scale,
     smooth_orig=smooth_scale_orig,
     lora=None if rank == 0 else (lowrank_down, lowrank_up),
-    float_point=False,
+    float_point=_normalize_svdq_precision(precision) == "nvfp4",
+    subscale=group_scales if channel_scales is not None else None,
   )
   module_state_dict = adapt_svdq_module_state_dict(
     raw_state_dict,
     in_features=linear.in_features,
     out_features=linear.out_features,
     rank=rank,
+    precision=_normalize_svdq_precision(precision),
     torch_dtype=torch_dtype,
     device=device,
     has_bias=linear.bias is not None,
@@ -947,7 +1011,7 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
 
   del raw_state_dict
   del weight, smooth_scale, smooth_scale_orig, smoothed_weight
-  del lowrank_down, lowrank_up, residual, scales, bias
+  del lowrank_down, lowrank_up, residual, group_scales, channel_scales, bias
 
   if return_state_dict:
     return module_state_dict
@@ -1092,8 +1156,8 @@ def quantize_linear_svdq_w4a4(
     dimension matches `linear.in_features`.
   :param rank: Rank of the low-rank residual correction.
   :param alpha: SmoothQuant interpolation factor used to derive `smooth_factor`.
-  :param precision: Weight format requested by the quantizer. The current minimal
-    implementation supports `int4` only.
+  :param precision: Weight format requested by the quantizer. Supported values are
+    `int4` and `nvfp4`.
   :param act_unsigned: Whether the runtime activation quantizer should emit unsigned
     4-bit activations.
   :param torch_dtype: Floating-point dtype used for the packed runtime tensors.

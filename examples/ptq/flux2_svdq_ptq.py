@@ -22,13 +22,13 @@ if str(SRC_ROOT) not in sys.path:
 
 import cache_dit
 from cache_dit.kernels import svdq_extension_is_available
-from cache_dit.metrics.metrics import compute_psnr_file
 from cache_dit.quantization import QuantizeConfig
 
 DEFAULT_MODEL_SOURCE = os.getenv("FLUX_2_KLEIN_4B_DIR", "black-forest-labs/FLUX.2-klein-4B")
 DEFAULT_PROMPTS_PATH = Path(__file__).resolve().parents[1] / "data" / "prompts" / "DrawBench200.txt"
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "FLUX.2-klein-4B-svdq"
 DEFAULT_BENCHMARK_RUNS = 5
+DEFAULT_WARMUP_RUNS = 1
 DEFAULT_HEIGHT = 1024
 DEFAULT_WIDTH = 1024
 DEFAULT_INFERENCE_STEPS = 4
@@ -40,6 +40,8 @@ DEFAULT_SVDQ_KWARGS = {
   "activation_buffer_flush_cpu_bytes": None,
 }
 _CALIBRATE_PRECISION_CHOICES = ("low", "medium", "high")
+_SVDQ_PRECISION_CHOICES = ("int4", "nvfp4")
+_SVDQ_RUNTIME_KERNEL_CHOICES = ("v1", "v2")
 
 
 @dataclass(frozen=True)
@@ -70,7 +72,7 @@ def parse_args() -> argparse.Namespace:
 
   parser = argparse.ArgumentParser(
     description=("Run an end-to-end SVDQ PTQ example for FLUX.2-klein-4B with DrawBench200 "
-                 "calibration prompts, baseline/quantized/loaded/compiled comparisons, "
+                 "calibration prompts, INT4/NVFP4 baseline/quantized/loaded/compiled comparisons, "
                  "and Markdown reporting."))
   parser.add_argument("--model-source",
                       default=DEFAULT_MODEL_SOURCE,
@@ -124,10 +126,28 @@ def parse_args() -> argparse.Namespace:
     help="Repeated runs used to average latency per stage.",
   )
   parser.add_argument(
+    "--warmup-runs",
+    type=int,
+    default=DEFAULT_WARMUP_RUNS,
+    help="Unmeasured warmup runs executed before each stage benchmark.",
+  )
+  parser.add_argument(
     "--rank",
     type=int,
     default=128,
     help="Low-rank SVDQ rank. Higher ranks for distillation models.",
+  )
+  parser.add_argument(
+    "--precision",
+    choices=_SVDQ_PRECISION_CHOICES,
+    default="int4",
+    help="SVDQ weight/activation format used for PTQ serialization and load.",
+  )
+  parser.add_argument(
+    "--runtime-kernel",
+    choices=_SVDQ_RUNTIME_KERNEL_CHOICES,
+    default="v1",
+    help="Runtime kernel passed through svdq_kwargs. NVFP4 currently supports only v1.",
   )
   parser.add_argument(
     "--calibrate-precision",
@@ -154,6 +174,12 @@ def parse_args() -> argparse.Namespace:
     help="Optional list of transformer layer names to exclude from quantization. ",
   )
   args = parser.parse_args()
+  if args.warmup_runs < 0:
+    parser.error("--warmup-runs must be non-negative.")
+  if args.precision == "nvfp4" and args.runtime_kernel != "v1":
+    parser.error("--precision nvfp4 currently only supports --runtime-kernel v1.")
+  if args.output_dir == str(DEFAULT_OUTPUT_DIR) and args.precision == "nvfp4":
+    args.output_dir = str(DEFAULT_OUTPUT_DIR.with_name(f"{DEFAULT_OUTPUT_DIR.name}-nvfp4"))
   return args
 
 
@@ -302,6 +328,7 @@ def benchmark_stage(
   width: int,
   num_inference_steps: int,
   benchmark_runs: int,
+  warmup_runs: int,
   seed: int,
   image_path: Path,
 ) -> StageResult:
@@ -309,6 +336,20 @@ def benchmark_stage(
 
   if benchmark_runs < 1:
     raise ValueError(f"benchmark_runs must be positive, got {benchmark_runs}.")
+  if warmup_runs < 0:
+    raise ValueError(f"warmup_runs must be non-negative, got {warmup_runs}.")
+
+  warmup_latencies: list[float] = []
+  for _ in range(warmup_runs):
+    _warmup_image, warmup_latency_s, _warmup_peak_memory_gb = run_single_inference(
+      pipe,
+      prompt=prompt,
+      height=height,
+      width=width,
+      num_inference_steps=num_inference_steps,
+      seed=seed,
+    )
+    warmup_latencies.append(warmup_latency_s)
 
   latencies: list[float] = []
   peak_memory_gb = 0.0
@@ -338,7 +379,15 @@ def benchmark_stage(
     peak_memory_gb=peak_memory_gb,
     transformer_weight_cuda_gb=compute_module_cuda_tensor_bytes(pipe.transformer) / (1024 ** 3),
   )
-  return StageResult(stage=stage, benchmark=benchmark, image_path=image_path)
+  average_warmup_latency_s = None
+  if warmup_latencies:
+    average_warmup_latency_s = sum(warmup_latencies) / len(warmup_latencies)
+  return StageResult(
+    stage=stage,
+    benchmark=benchmark,
+    image_path=image_path,
+    warmup_latency_s=average_warmup_latency_s,
+  )
 
 
 def make_calibrate_fn(
@@ -378,7 +427,11 @@ def compare_images(reference_path: Path, candidate_path: Path) -> tuple[float, i
   if image_a is None or image_b is None:
     raise FileNotFoundError(f"Missing comparison image pair: {reference_path}, {candidate_path}")
   abs_diff = cv2.absdiff(image_a, image_b)
-  psnr = float(compute_psnr_file(str(reference_path), str(candidate_path)))
+  mse = float(np.mean((image_a.astype(np.float32) - image_b.astype(np.float32)) ** 2))
+  if mse == 0.0:
+    psnr = float("inf")
+  else:
+    psnr = 20.0 * math.log10(255.0) - 10.0 * math.log10(mse)
   return psnr, int(abs_diff.max()), float(abs_diff.mean())
 
 
@@ -521,6 +574,7 @@ def persist_report(
       "## Stage metrics",
       (
         "stage",
+        "warmup_latency_s",
         "run_count",
         "avg_latency_s",
         "total_latency_s",
@@ -642,7 +696,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
   calibration_width = args.calibration_width or args.width
   calibration_steps = args.calibration_steps or args.num_inference_steps
   torch_dtype = resolve_torch_dtype()
-  quant_type = f"svdq_int4_r{args.rank}"
+  quant_type = f"svdq_{args.precision}_r{args.rank}"
 
   stage_results: dict[str, StageResult] = {}
   checkpoint_path: Optional[Path] = None
@@ -662,6 +716,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       width=args.width,
       num_inference_steps=args.num_inference_steps,
       benchmark_runs=args.benchmark_runs,
+      warmup_runs=args.warmup_runs,
       seed=args.seed,
       image_path=images_dir / "baseline.png",
     )
@@ -683,6 +738,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       svdq_kwargs={
         **DEFAULT_SVDQ_KWARGS,
         "calibrate_precision": args.calibrate_precision,
+        "runtime_kernel": args.runtime_kernel,
       },
     )
 
@@ -707,6 +763,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       width=args.width,
       num_inference_steps=args.num_inference_steps,
       benchmark_runs=args.benchmark_runs,
+      warmup_runs=args.warmup_runs,
       seed=args.seed,
       image_path=images_dir / "memory_quantized.png",
     )
@@ -726,6 +783,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
       width=args.width,
       num_inference_steps=args.num_inference_steps,
       benchmark_runs=args.benchmark_runs,
+      warmup_runs=args.warmup_runs,
       seed=args.seed,
       image_path=images_dir / "loaded_quantized.png",
     )
@@ -746,14 +804,6 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
         # a more apples-to-apples comparison in the future (to get more accurate quantized
         # model with compilation-aware optimizations)
         loaded_pipe = compile_pipe(loaded_pipe)
-        _compiled_warmup_image, warmup_latency_s, _warmup_peak_memory_gb = run_single_inference(
-          loaded_pipe,
-          prompt=validation_prompt,
-          height=args.height,
-          width=args.width,
-          num_inference_steps=args.num_inference_steps,
-          seed=args.seed,
-        )
         compiled_result = benchmark_stage(
           loaded_pipe,
           stage="compiled_quantized",
@@ -762,11 +812,10 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
           width=args.width,
           num_inference_steps=args.num_inference_steps,
           benchmark_runs=args.benchmark_runs,
+          warmup_runs=max(args.warmup_runs, 1),
           seed=args.seed,
           image_path=images_dir / "compiled_quantized.png",
         )
-        compiled_result.warmup_latency_s = warmup_latency_s
-        compiled_result.status = f"ok (warmup_latency_s={warmup_latency_s:.4f})"
         stage_results["compiled_quantized"] = compiled_result
       except Exception as exc:
         stage_results["compiled_quantized"] = StageResult(
@@ -812,6 +861,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     benchmark = result.benchmark
     stage_rows.append((
       result.stage,
+      format_float(result.warmup_latency_s),
       benchmark.run_count if benchmark is not None else 0,
       format_float(benchmark.avg_latency_s if benchmark is not None else None),
       format_float(benchmark.total_latency_s if benchmark is not None else None),
@@ -828,6 +878,8 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     ("model_source", args.model_source),
     ("output_dir", str(output_dir)),
     ("quant_type", quant_type),
+    ("precision", args.precision),
+    ("runtime_kernel", args.runtime_kernel),
     ("calibrate_precision", args.calibrate_precision),
     ("torch_dtype", str(torch_dtype).replace("torch.", "")),
     ("prompts_path", str(prompts_path)),
@@ -840,6 +892,7 @@ def run_example(args: argparse.Namespace) -> dict[str, Path | str | None]:
     ("calibration_width", calibration_width),
     ("calibration_steps", calibration_steps),
     ("benchmark_runs", args.benchmark_runs),
+    ("warmup_runs", args.warmup_runs),
     ("seed", args.seed),
     ("seed_policy", "fixed seed shared by calibration and validation/testing"),
     ("quantization_time_s", format_float(quantization_time_s)),

@@ -533,6 +533,38 @@ def test_svdq_dq_load_roundtrip_restores_quantized_outputs(tmp_path: Path) -> No
   torch.testing.assert_close(loaded_output2, quantized_output, rtol=1e-4, atol=1e-4)
 
 
+def test_svdq_dq_nvfp4_roundtrip_preserves_precision_metadata(tmp_path: Path) -> None:
+  dtype = runtime_dtype()
+  float_model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=143,
+    device="cuda",
+    dtype=dtype,
+  )
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r32_dq",
+    serialize_to=str(tmp_path / "checkpoints"),
+  )
+
+  quantized_model = cache_dit.quantize(copy.deepcopy(float_model), config)
+  metadata = svdq_ptq._load_serialized_checkpoint(config.serialize_to)[1]
+  quant_config_snapshot = svdq_ptq._load_quant_config_snapshot(
+    os.path.join(os.path.dirname(config.serialize_to), "quant_config.json"))
+  assert metadata["precision"] == "nvfp4"
+  assert quant_config_snapshot["quant_type"] == config.quant_type
+
+  loaded_model = cache_dit.load(copy.deepcopy(float_model), os.path.dirname(config.serialize_to))
+
+  assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
+  assert isinstance(loaded_model.block.to_q, SVDQW4A4Linear)
+  assert quantized_model.block.to_q.precision == "nvfp4"
+  assert loaded_model.block.to_q.precision == "nvfp4"
+  assert loaded_model.block.to_k.precision == "nvfp4"
+  assert loaded_model.block.to_v.precision == "nvfp4"
+  assert loaded_model.block.to_out.precision == "nvfp4"
+
+
 def test_svdq_dq_few_shot_quantize_and_serialize(tmp_path: Path) -> None:
   dtype = runtime_dtype()
   float_model = make_toy_model(
@@ -635,9 +667,25 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.quantize_type == "svdq_int4_r128_dq"
   assert args.svdq_smooth_strategy == "identity"
 
+  args = maybe_postprocess_args(parser.parse_args(["--svdq-nvfp4-r32-dq"]))
+  assert args.quantize
+  assert args.quantize_type == "svdq_nvfp4_r32_dq"
+  assert args.svdq_smooth_strategy == "identity"
+  assert args.svdq_calibrate_precision == "low"
+  assert args.svdq_runtime == "v1"
+
+  args = maybe_postprocess_args(parser.parse_args(["--svdq-nvfp4-r128-dq"]))
+  assert args.quantize
+  assert args.quantize_type == "svdq_nvfp4_r128_dq"
+  assert args.svdq_smooth_strategy == "identity"
+
   args = maybe_postprocess_args(parser.parse_args(["--quantize-type", "svdq_int4_r32_dq"]))
   assert args.quantize
   assert args.quantize_type == "svdq_int4_r32_dq"
+
+  args = maybe_postprocess_args(parser.parse_args(["--quantize-type", "svdq_nvfp4_r32_dq"]))
+  assert args.quantize
+  assert args.quantize_type == "svdq_nvfp4_r32_dq"
 
   args = maybe_postprocess_args(
     parser.parse_args([
