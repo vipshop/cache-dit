@@ -32,27 +32,7 @@ prepare_release_workspace() {
 }
 
 resolve_release_version() {
-  conda run -n "$BASE_ENV" python - <<PY
-import os
-
-import setuptools_scm
-from setuptools_scm.version import get_local_dirty_tag
-
-
-def my_local_scheme(version):
-  local_version = os.getenv("CACHE_DIT_BUILD_LOCAL_VERSION")
-  if local_version is None:
-    return get_local_dirty_tag(version)
-  return f"+{local_version}"
-
-
-print(
-  setuptools_scm.get_version(
-    root=r"$REPO_DIR",
-    version_scheme="python-simplified-semver",
-    local_scheme=my_local_scheme,
-  ))
-PY
+  conda run -n "$BASE_ENV" python -c "import os; import setuptools_scm; from setuptools_scm.version import get_local_dirty_tag; local_version = os.getenv('CACHE_DIT_BUILD_LOCAL_VERSION'); local_scheme = (lambda version: get_local_dirty_tag(version) if local_version is None else f'+{local_version}'); print(setuptools_scm.get_version(root=r'$REPO_DIR', version_scheme='python-simplified-semver', local_scheme=local_scheme))"
 }
 
 expected_python_for_env() {
