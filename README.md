@@ -66,7 +66,7 @@ First, install Cache-DiT with SVDQuant support (Experimental):
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+.
 uv pip install -U cache-dit-cu13 # PyPI, stable release.
-# Or, build Cache-DiT with SVDQuant support from source.
+# Or, just build Cache-DiT with SVDQuant support from source.
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]"
 ```
 
@@ -78,7 +78,7 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 >>> # Apply quantization with `cache_dit.quantize(...)` API.
 >>> pipe.transformer = cache_dit.quantize(
 ...   pipe.transformer, quant_config=QuantizeConfig(
-...   quant_type="svdq_{int4|nvfp4}_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
+...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
