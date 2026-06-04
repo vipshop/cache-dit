@@ -23,16 +23,23 @@ uv pip install --pre torchao --index-url https://download.pytorch.org/whl/cu130
 uv pip install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
 ```
 
-Then, you can install the stable release of <span style="color:#c77dff;">cache-dit</span> from PyPI:
+Then, you can install <span style="color:#c77dff;">Cache-DiT</span> from PyPI:
 
 ```bash
-uv pip install -U cache-dit # or, pip3 install -U "cache-dit[all]" for all features
+uv pip install -U cache-dit # PyPI, stable release.
+uv pip install git+https://github.com/vipshop/cache-dit.git # latest
 ```
-Or you can install the latest develop version from GitHub:
+
+Or, install Cache-DiT with <span style="color:#c77dff;">SVDQuant</span> support (Experimental):
 
 ```bash
-uv pip install git+https://github.com/vipshop/cache-dit.git
+uv pip install -U cache-dit-cu13 # CUDA 13.0+, PyTorch 2.11+.
+# Or, just build Cache-DiT with SVDQuant support from source.
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
+git submodule update --init --recursive --force # init submodules 
+CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
 ```
+
 Please also install the <span style="color:#c77dff;">latest</span> main branch of <span style="color:#c77dff;">diffusers</span> for context parallelism:  
 ```bash
 uv pip install git+https://github.com/huggingface/diffusers.git # or >= 0.37.0

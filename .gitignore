@@ -197,5 +197,4 @@ CLAUDE.local.md
 *.tmp
 /.tmp/
 .vscode
-tools
 .claude
