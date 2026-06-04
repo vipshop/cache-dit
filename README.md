@@ -35,7 +35,7 @@ First, you can install the cache-dit from PyPI or install from source:
 
 ```bash
 uv pip install -U cache-dit # PyPI, stable release.
-uv pip install git+https://github.com/vipshop/cache-dit.git # nightly
+uv pip install git+https://github.com/vipshop/cache-dit.git # latest
 ```
 
 Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
