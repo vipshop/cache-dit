@@ -35,6 +35,11 @@ resolve_release_version() {
   conda run -n "$BASE_ENV" python -c "import os; import setuptools_scm; from setuptools_scm.version import get_local_dirty_tag; local_version = os.getenv('CACHE_DIT_BUILD_LOCAL_VERSION'); local_scheme = (lambda version: get_local_dirty_tag(version) if local_version is None else f'+{local_version}'); print(setuptools_scm.get_version(root=r'$REPO_DIR', version_scheme='python-simplified-semver', local_scheme=local_scheme))"
 }
 
+repair_wheel_tag() {
+  local wheel_path="$1"
+  conda run -n "$BASE_ENV" python "$REPO_DIR/tools/repair_wheel_platform_tag.py" --retag "$wheel_path"
+}
+
 expected_python_for_env() {
   case "$1" in
     py310) echo "3.10" ;;
@@ -42,6 +47,17 @@ expected_python_for_env() {
     py312) echo "3.12" ;;
     py313) echo "3.13" ;;
     py314) echo "3.14" ;;
+    *) fail "unsupported release env: $1" ;;
+  esac
+}
+
+wheel_python_tag_for_env() {
+  case "$1" in
+    py310) echo "cp310" ;;
+    py311) echo "cp311" ;;
+    py312) echo "cp312" ;;
+    py313) echo "cp313" ;;
+    py314) echo "cp314" ;;
     *) fail "unsupported release env: $1" ;;
   esac
 }
@@ -88,6 +104,8 @@ build_base_wheel() {
 
 build_cu13_wheel() {
   local env_name="$1"
+  local python_tag
+  python_tag="$(wheel_python_tag_for_env "$env_name")"
 
   echo "[build_releases] Building cache-dit-cu13 wheel in $env_name with CACHE_DIT_SVDQUANT_BUILD_MODE=ALL and cleared CUDA arch overrides"
   (
@@ -98,6 +116,7 @@ build_cu13_wheel() {
       CACHE_DIT_BUILD_SVDQUANT=1 \
       CACHE_DIT_BUILD_WHEELS=1 \
       CACHE_DIT_SVDQUANT_BUILD_MODE=ALL \
+      CACHE_DIT_WHEEL_PLATFORM_TAG=linux_x86_64 \
       CACHE_DIT_CUDA_ARCH_LIST= \
       TORCH_CUDA_ARCH_LIST= \
       CACHE_DIT_REQUIRE_CCACHE=1 \
@@ -106,6 +125,14 @@ build_cu13_wheel() {
       MAX_JOBS=32 \
       bash tools/build_fast.sh wheel . --no-build-isolation --no-deps -w "$DIST_DIR"
   )
+
+  local wheel_pattern="$DIST_DIR/cache_dit_cu13-*-${python_tag}-${python_tag}-*.whl"
+  local built_wheels
+  shopt -s nullglob
+  built_wheels=($wheel_pattern)
+  shopt -u nullglob
+  [[ ${#built_wheels[@]} -eq 1 ]] || fail "expected exactly one fresh cu13 wheel for $env_name before retagging"
+  repair_wheel_tag "${built_wheels[0]}"
 }
 
 verify_artifacts() {
@@ -114,8 +141,15 @@ verify_artifacts() {
   [[ ${#base_wheels[@]} -eq 1 ]] || fail "expected exactly one base wheel in $DIST_DIR"
 
   for tag in cp310 cp311 cp312 cp313 cp314; do
-    local wheels=("$DIST_DIR"/cache_dit_cu13-*-${tag}-${tag}-manylinux_2_34_x86_64.whl)
+    local wheels=("$DIST_DIR"/cache_dit_cu13-*-${tag}-${tag}-*.whl)
     [[ ${#wheels[@]} -eq 1 ]] || fail "expected exactly one cu13 wheel for ${tag} in $DIST_DIR"
+    local repair_output
+    repair_output="$(conda run -n "$BASE_ENV" python "$REPO_DIR/tools/repair_wheel_platform_tag.py" "${wheels[0]}")"
+    local detected_wheel detected_tag wheel_name
+    detected_wheel="${repair_output%%$'\t'*}"
+    detected_tag="${repair_output#*$'\t'}"
+    wheel_name="$(basename "$detected_wheel")"
+    [[ "$wheel_name" == *"-${detected_tag}.whl" ]] || fail "wheel ${wheel_name} advertises the wrong platform tag; detected ${detected_tag}"
   done
   shopt -u nullglob
 }

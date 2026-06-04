@@ -21,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 RELEASE_FLAVOR_ENV = "CACHE_DIT_RELEASE_FLAVOR"
 VERSION_WRITE_TO_ENV = "CACHE_DIT_VERSION_WRITE_TO"
 SVDQUANT_BUILD_FLAG = "CACHE_DIT_BUILD_SVDQUANT"
+WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # Distribution name is intentionally not managed via a PACKAGE_NAME env var in
 # setup.py. Under PEP 621, setuptools reads the project name from the active
 # workspace's pyproject.toml. Default builds therefore use the repository root
@@ -74,6 +75,14 @@ def _get_release_flavor() -> str:
 
 RELEASE_FLAVOR = _get_release_flavor()
 IS_CU13_RELEASE = RELEASE_FLAVOR == "cu13"
+
+
+def _get_release_platform_tag() -> str:
+  if not IS_CU13_RELEASE:
+    return ""
+
+  platform_tag = os.getenv(WHEEL_PLATFORM_TAG_ENV, "").strip()
+  return platform_tag or "linux_x86_64"
 
 
 def _should_build_svdquant() -> bool:
@@ -221,7 +230,7 @@ def _get_cmdclass() -> dict[str, object]:
     def get_tag(self):
       python_tag, abi_tag, platform_tag = super().get_tag()
       if IS_CU13_RELEASE:
-        return python_tag, abi_tag, "manylinux_2_34_x86_64"
+        return python_tag, abi_tag, _get_release_platform_tag()
       return python_tag, abi_tag, platform_tag
 
   cmdclass["bdist_wheel"] = CacheDiTBdistWheel
