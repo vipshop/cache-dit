@@ -12,9 +12,21 @@ from pathlib import Path
 from setuptools import find_packages, setup
 from setuptools_scm.version import get_local_dirty_tag
 
-PACKAGE_NAME = "cache-dit"
+try:
+  from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+except ImportError:
+  _bdist_wheel = None
+
 ROOT_DIR = Path(__file__).resolve().parent
+RELEASE_FLAVOR_ENV = "CACHE_DIT_RELEASE_FLAVOR"
+VERSION_WRITE_TO_ENV = "CACHE_DIT_VERSION_WRITE_TO"
 SVDQUANT_BUILD_FLAG = "CACHE_DIT_BUILD_SVDQUANT"
+# Distribution name is intentionally not managed via a PACKAGE_NAME env var in
+# setup.py. Under PEP 621, setuptools reads the project name from the active
+# workspace's pyproject.toml. Default builds therefore use the repository root
+# pyproject.toml, while release builds obtain cache-dit-cu13 by preparing a
+# temporary workspace whose pyproject.toml is rewritten by
+# tools/release_workspace.py.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
 # Blackwell sm100 is not has been fully tested, so we don't include it in the
@@ -34,6 +46,17 @@ CUDA_ARCH_ALIASES = {
 
 def _env_flag(name: str) -> bool:
   return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_release_flavor() -> str:
+  flavor = os.getenv(RELEASE_FLAVOR_ENV, "base").strip().lower()
+  if flavor not in {"base", "cu13"}:
+    raise RuntimeError(f"Unsupported {RELEASE_FLAVOR_ENV}={flavor!r}. Expected 'base' or 'cu13'.")
+  return flavor
+
+
+RELEASE_FLAVOR = _get_release_flavor()
+IS_CU13_RELEASE = RELEASE_FLAVOR == "cu13"
 
 
 def _should_build_svdquant() -> bool:
@@ -158,6 +181,49 @@ def _get_svdquant_nvcc_threads() -> int:
   return threads
 
 
+def _get_version_write_to() -> str | None:
+  if VERSION_WRITE_TO_ENV not in os.environ:
+    return path.join("src", "cache_dit", "_version.py")
+
+  raw_value = os.getenv(VERSION_WRITE_TO_ENV, "").strip()
+  return raw_value or None
+
+
+def _get_cmdclass() -> dict[str, object]:
+  cmdclass = dict(CMDCLASS)
+  if _bdist_wheel is None:
+    return cmdclass
+
+  class CacheDiTBdistWheel(_bdist_wheel):
+
+    def finalize_options(self):
+      super().finalize_options()
+      if IS_CU13_RELEASE:
+        self.root_is_pure = False
+
+    def get_tag(self):
+      python_tag, abi_tag, platform_tag = super().get_tag()
+      if IS_CU13_RELEASE:
+        return python_tag, abi_tag, "manylinux_2_34_x86_64"
+      return python_tag, abi_tag, platform_tag
+
+  cmdclass["bdist_wheel"] = CacheDiTBdistWheel
+  return cmdclass
+
+
+def _validate_release_configuration() -> None:
+  if not IS_CU13_RELEASE:
+    return
+
+  if not _should_build_svdquant():
+    raise RuntimeError("The cache-dit-cu13 release flavor requires CACHE_DIT_BUILD_SVDQUANT=1.")
+
+  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "").strip().upper()
+  if build_mode != "ALL":
+    raise RuntimeError(
+      "The cache-dit-cu13 release flavor requires CACHE_DIT_SVDQUANT_BUILD_MODE=ALL.")
+
+
 def _get_sm_targets() -> list[str]:
   assert packaging_version is not None
   assert CUDA_HOME is not None
@@ -200,11 +266,23 @@ def _get_sm_targets() -> list[str]:
   return sm_targets
 
 
+def _require_min_cuda_for_cu13_release() -> None:
+  if not IS_CU13_RELEASE:
+    return
+
+  assert packaging_version is not None
+  nvcc_version = _get_nvcc_version(CUDA_HOME)
+  if packaging_version.parse(nvcc_version) < packaging_version.parse("13.0"):
+    raise RuntimeError("The cache-dit-cu13 release flavor requires CUDA 13.0+ for compilation, "
+                       f"but nvcc reports {nvcc_version}.")
+
+
 def _get_svdquant_extension():
   if not _should_build_svdquant():
     return [], {}
 
   _ensure_spdlog_submodule()
+  _require_min_cuda_for_cu13_release()
 
   missing_sources = _missing_svdquant_sources()
   if missing_sources:
@@ -316,27 +394,25 @@ def my_local_scheme(version):
   return f"+{local_version}"
 
 
+_validate_release_configuration()
 EXT_MODULES, CMDCLASS = _get_svdquant_extension()
+USE_SCM_VERSION = {
+  "version_scheme": "python-simplified-semver",
+  "local_scheme": my_local_scheme,
+}
+VERSION_WRITE_TO = _get_version_write_to()
+if VERSION_WRITE_TO is not None:
+  USE_SCM_VERSION["write_to"] = VERSION_WRITE_TO
 
 setup(
-  name=PACKAGE_NAME,
   description=
   "Cache-DiT: Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism and Quantization for Diffusion Transformers.",
   author="DefTruth, vipshop.com",
-  use_scm_version={
-    "write_to": path.join("src", "cache_dit", "_version.py"),
-    "local_scheme": my_local_scheme,
-  },
+  use_scm_version=USE_SCM_VERSION,
   package_dir={"": "src"},
   packages=find_packages(where="src"),
   include_package_data=True,
   python_requires=">=3.10",
   ext_modules=EXT_MODULES,
-  cmdclass=CMDCLASS,
-  entry_points={
-    "console_scripts": [
-      "cache-dit-metrics = cache_dit.metrics:main",  # metric entrypoint
-      "cache-dit-generate = cache_dit.generate:main",  # example entrypoint
-    ],
-  },
+  cmdclass=_get_cmdclass(),
 )
