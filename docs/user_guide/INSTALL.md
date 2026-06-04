@@ -16,11 +16,9 @@ Firstly, install the required dependencies, including PyTorch, Diffusers, and To
 
 ```bash
 pip install -U uv # use uv for faster installation
-# recommend: install latest pytorch for better compile compatiblity.
-uv pip install torch==2.11.0 torchvision torchaudio triton --upgrade
-# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
-uv pip install --pre torchao --index-url https://download.pytorch.org/whl/cu130
-uv pip install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
+uv pip install torch==2.11.0 torchvision torchaudio triton \
+  transformers diffusers accelerate torchao opencv-python-headless \
+  einops imageio-ffmpeg ftfy numpy
 ```
 
 Then, you can install <span style="color:#c77dff;">Cache-DiT</span> from PyPI:
@@ -33,16 +31,12 @@ uv pip install git+https://github.com/vipshop/cache-dit.git # latest
 Or, install Cache-DiT with <span style="color:#c77dff;">SVDQuant</span> support (Experimental):
 
 ```bash
-uv pip install -U cache-dit-cu13 # CUDA 13.0+, PyTorch 2.11+.
-# Or, just build Cache-DiT with SVDQuant support from source.
+# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+ (GLIBC 2.32+).
+uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
+# Optional: just build Cache-DiT with SVDQuant support from source.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 git submodule update --init --recursive --force # init submodules 
 CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
-```
-
-Please also install the <span style="color:#c77dff;">latest</span> main branch of <span style="color:#c77dff;">diffusers</span> for context parallelism:  
-```bash
-uv pip install git+https://github.com/huggingface/diffusers.git # or >= 0.37.0
 ```
 
 ## Installation with Ascend NPU

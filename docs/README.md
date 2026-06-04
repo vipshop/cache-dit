@@ -71,7 +71,8 @@ First, build Cache-DiT from source with SVDQuant support (Experimental):
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+ (GLIBC 2.32+).
 uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
-CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest
+# Optional: just build Cache-DiT with SVDQuant support from source.
+CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]"
 ```
 
 Then, try to quantize your model with just **♥️a few lines♥️** of codes ~
