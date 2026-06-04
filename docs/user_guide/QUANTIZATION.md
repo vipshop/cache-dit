@@ -307,8 +307,9 @@ With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to t
 For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs, while the NVFP4 path is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and requires <span style="color:#c77dff;">svdq_kwargs={"runtime_kernel": "v1"}</span>. Setting <span style="color:#c77dff;">runtime_kernel="v2"</span> with NVFP4 is rejected intentionally at config-validation time.
 
 ```bash
-uv pip install -U cache-dit-cu13 # CUDA 13.0+, PyTorch 2.11+.
-# Or, just build Cache-DiT with SVDQuant support from source.
+# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+ (GLIBC 2.32+).
+uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
+# Optional: just build Cache-DiT with SVDQuant support from source.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 git submodule update --init --recursive --force # init submodules 
 CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"

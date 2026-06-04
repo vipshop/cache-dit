@@ -25,14 +25,10 @@
 
 ```bash
 pip install -U uv # use uv for faster installation
-# recommend: install latest pytorch for better compile compatiblity.
-uv pip install torch==2.11.0 torchvision torchaudio triton --upgrade
-# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
-uv pip install --pre torchao --index-url https://download.pytorch.org/whl/cu130
-uv pip install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
-uv pip install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
-uv pip install git+https://github.com/vipshop/cache-dit.git # latest
-git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples
+uv pip install torch==2.11.0 torchvision torchaudio triton \
+  transformers diffusers accelerate torchao opencv-python-headless \
+  einops imageio-ffmpeg ftfy numpy
+uv pip install -U cache-dit # stable release from PyPI.
 ```
 
 ## Available Examples
