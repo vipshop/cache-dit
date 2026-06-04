@@ -83,7 +83,7 @@ build_base_wheel() {
 build_cu13_wheel() {
   local env_name="$1"
 
-  echo "[build_releases] Building cache-dit-cu13 wheel in $env_name with CACHE_DIT_SVDQUANT_BUILD_MODE=ALL"
+  echo "[build_releases] Building cache-dit-cu13 wheel in $env_name with CACHE_DIT_SVDQUANT_BUILD_MODE=ALL and cleared CUDA arch overrides"
   (
     cd "$CU13_WORKSPACE"
     conda run -n "$env_name" env \
@@ -91,6 +91,8 @@ build_cu13_wheel() {
       CACHE_DIT_BUILD_SVDQUANT=1 \
       CACHE_DIT_BUILD_WHEELS=1 \
       CACHE_DIT_SVDQUANT_BUILD_MODE=ALL \
+      CACHE_DIT_CUDA_ARCH_LIST= \
+      TORCH_CUDA_ARCH_LIST= \
       CACHE_DIT_REQUIRE_CCACHE=1 \
       CACHE_DIT_CLEAN=1 \
       CACHE_DIT_VERSION_WRITE_TO= \

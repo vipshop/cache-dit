@@ -44,6 +44,23 @@ CUDA_ARCH_ALIASES = {
 }
 
 
+def _normalize_svdquant_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -> str:
+  if sm == "120" and support_sm120:
+    return "120a"
+  if sm == "121" and support_sm121:
+    return "121a"
+  return sm
+
+
+def _is_supported_svdquant_sm_target(sm: str) -> bool:
+  normalized = sm.removesuffix("a")
+  if not normalized.isdigit():
+    return False
+
+  capability = int(normalized)
+  return capability >= 80 and capability != 90
+
+
 def _env_flag(name: str) -> bool:
   return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -229,36 +246,50 @@ def _get_sm_targets() -> list[str]:
   assert CUDA_HOME is not None
   assert torch is not None
 
-  explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
-  if explicit_arch_list:
-    return _parse_arch_list(explicit_arch_list)
-
   nvcc_version = _get_nvcc_version(CUDA_HOME)
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
+
+  explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
+  if explicit_arch_list:
+    sm_targets = [
+      _normalize_svdquant_sm_target(
+        sm,
+        support_sm120=support_sm120,
+        support_sm121=support_sm121,
+      ) for sm in _parse_arch_list(explicit_arch_list)
+    ]
+  else:
+    sm_targets = []
 
   build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "FAST").upper()
   if build_mode not in {"FAST", "ALL"}:
     raise RuntimeError(
       f"Unsupported CACHE_DIT_SVDQUANT_BUILD_MODE={build_mode!r}. Expected 'FAST' or 'ALL'.")
 
-  sm_targets: list[str] = []
-  if build_mode == "FAST" and torch.cuda.is_available() and torch.cuda.device_count() > 0:
+  if not sm_targets and build_mode == "FAST" and torch.cuda.is_available(
+  ) and torch.cuda.device_count() > 0:
     for device_index in range(torch.cuda.device_count()):
       capability = torch.cuda.get_device_capability(device_index)
-      sm = f"{capability[0]}{capability[1]}"
-      if sm == "120" and support_sm120:
-        sm = "120a"
-      if sm == "121" and support_sm121:
-        sm = "121a"
+      sm = _normalize_svdquant_sm_target(
+        f"{capability[0]}{capability[1]}",
+        support_sm120=support_sm120,
+        support_sm121=support_sm121,
+      )
       if sm not in sm_targets:
         sm_targets.append(sm)
-  else:
-    sm_targets = ["75", "80", "86", "89"]
+  elif not sm_targets:
+    sm_targets = ["80", "86", "89"]
     if support_sm120:
       sm_targets.append("120a")
     if support_sm121:
       sm_targets.append("121a")
+
+  unsupported_targets = [sm for sm in sm_targets if not _is_supported_svdquant_sm_target(sm)]
+  if unsupported_targets:
+    raise RuntimeError("SVDQuant INT4 kernels require >=sm80 and exclude Hopper (sm90). "
+                       "Unsupported CUDA SM targets: "
+                       f"{', '.join(unsupported_targets)}")
 
   if not sm_targets:
     raise RuntimeError("No CUDA SM targets were resolved for the SVDQuant extension build.")
