@@ -71,7 +71,6 @@ First, build Cache-DiT from source with SVDQuant support (Experimental):
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 24.04 (GLIBC 2.38+).
 uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
-# Or, just build Cache-DiT with SVDQuant support from source.
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest
 ```
 
