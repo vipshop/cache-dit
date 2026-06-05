@@ -82,8 +82,8 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 >>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
 >>> pipe.transformer = cache_dit.quantize(
 ...   pipe.transformer, quant_config=QuantizeConfig(
-...   # ✅NO calibration needed for SVDQ DQ in Cache-DiT!
-...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|...}_dq",
+...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
+...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
