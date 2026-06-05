@@ -228,10 +228,44 @@ Then, apply the quantization config from yaml.
 >>> import cache_dit
 >>> cache_dit.enable_cache(pipe, **cache_dit.load_configs("quantize.yaml"))
 ```
+
 Please also enable torch.compile for better performance if you are using quantization.
 ```python
 cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
+```  
+
+For <span style="color:#c77dff;">SVDQuant W4A4 DQ</span> workflow, you can define a yaml file `quantize_svdquant.yaml` that contains:
+
+```yaml
+# Please install Cache-DiT with SVDQuant support (Experimental) before using the 
+# SVDQuant quantization config. Installation instructions:
+# `uv pip install -U cache-dit-cu13` or `CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]"`
+quantize_config: 
+  quant_type: "svdq_int4_r128_dq" # or "svdq_nvfp4_r128_dq" for blackwell (sm120, sm121, etc.)
+  svdq_kwargs:
+    smooth_strategy: "few_shot"
+    few_shot_steps: 2
+    few_shot_auto_compile: true
+    # Device used for SVD decomposition and W4A4 packing math.
+    # - "cuda": force CUDA-side SVD + packing, even when float weights are on CPU.
+    # - "cpu":  force CPU-side SVD + packing (slow, for low-memory GPUs).
+    # - "auto": follow the module's current device (may resolve to CPU if the
+    #   pipeline has not been moved to CUDA yet, e.g. when loaded via config).
+    #
+    # IMPORTANT: `few_shot_auto_compile: true` REQUIRES `quantize_device: "cuda"`.
+    # Using "auto" or "cpu" together with `few_shot_auto_compile` is currently
+    # NOT supported: when SVD runs on CPU the newly materialised W4A4 weights
+    # stay on CPU, and while cache-dit attempts to move them to CUDA before
+    # compiling, the forward-pass inputs may still be on CPU, causing the SVDQ
+    # W4A4 CUDA kernel to assert.  If you need CPU-side SVD for low-memory
+    # scenarios, set `few_shot_auto_compile: false`, then compile manually after
+    # moving the pipeline to CUDA.
+    quantize_device: "cuda"
+  exclude_layers:  
+    - "embedder"
+    - "embed"
+  verbose: false
 ```
 
 - <span style="color:#c77dff;">fine-grained quantization</span>
