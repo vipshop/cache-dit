@@ -46,6 +46,7 @@ from .caching import TaylorSeerCalibratorConfig
 from .caching import FoCaCalibratorConfig
 from .caching import supported_pipelines
 from .caching import get_adapter
+from .caching import BlockAdapterRegister
 from .distributed import ParallelismBackend
 from .distributed import ParallelismConfig
 from .compile import set_compile_configs

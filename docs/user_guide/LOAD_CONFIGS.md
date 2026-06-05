@@ -235,7 +235,7 @@ cache_dit.set_compile_configs()
 pipe.transformer = torch.compile(pipe.transformer)
 ```  
 
-For <span style="color:#c77dff;">SVDQuant W4A4 DQ</span> workflow, you can define a yaml file `quantize_svdquant.yaml` that contains:
+For <span style="color:#c77dff;">SVDQuant W4A4 DQ</span> workflow, you can define a yaml file `quantize_svdq.yaml` that contains:
 
 ```yaml
 # Please install Cache-DiT with SVDQuant support (Experimental) before using the 
@@ -331,16 +331,16 @@ pipe.transformer = torch.compile(pipe.transformer)
 ## Quick Examples 
 
 ```bash
-# recommend: install latest pytorch for better compile compatiblity.
-pip3 install torch==2.11.0 torchvision torchaudio triton --upgrade
-# recommend: install latest torchao nightly due to issue: https://github.com/pytorch/ao/issues/3670
-pip3 install --pre torchao --index-url https://download.pytorch.org/whl/cu130
-pip3 install transformers accelerate opencv-python-headless einops imageio-ffmpeg ftfy 
-pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
-pip3 install git+https://github.com/vipshop/cache-dit.git # latest
-git clone https://github.com/vipshop/cache-dit.git && cd cache-dit/examples/configs
+pip install -U uv # use uv for faster installation
+uv pip install torch==2.11.0 torchvision torchaudio triton \
+  transformers diffusers accelerate torchao opencv-python-headless \
+  einops imageio-ffmpeg ftfy numpy
+uv pip install -U cache-dit # stable release from PyPI.
+git clone https://github.com/vipshop/cache-dit.git 
+cd cache-dit/examples/configs # Preset yaml configs for quick test.
 
 python3 -m cache_dit.generate flux --config cache.yaml
+python3 -m cache_dit.generate flux --config quantize.yaml --compile
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml
