@@ -64,12 +64,9 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
 First, install Cache-DiT with SVDQuant support (Experimental):
 
 ```bash
-# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+ (GLIBC 2.32+).
-uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
-# Optional: just build Cache-DiT with SVDQuant support from source.
-git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # init submodules 
-CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]"
+# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+.
+uv pip install -U cache-dit-cu13 # PyPI, stable release.
+CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```
 
 Then, try to quantize your model with just **♥️a few lines♥️** of codes ~
@@ -77,9 +74,10 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # Apply quantization with `cache_dit.quantize(...)` API.
+>>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
 >>> pipe.transformer = cache_dit.quantize(
 ...   pipe.transformer, quant_config=QuantizeConfig(
+...   # ✅NO calibration needed for SVDQ DQ in Cache-DiT!
 ...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
 >>> output = pipe(...) # Then, just call the pipe as normal.
