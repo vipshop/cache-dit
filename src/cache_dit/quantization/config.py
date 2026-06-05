@@ -112,6 +112,14 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   "few_shot_relax_strategy": "auto",
   # Only valid for the DQ few-shot smooth strategy. When enabled, helper flows may defer
   # transformer compilation until runtime quantization completes.
+  # WARNING:
+  # `few_shot_auto_compile` currently REQUIRES ``quantize_device: "cuda"``.
+  # Using ``"auto"`` or ``"cpu"`` together with this flag is not supported:
+  # CPU-side SVD leaves W4A4 weights on CPU, and while cache-dit moves them
+  # to CUDA before compiling, the forward-pass inputs may still be on CPU,
+  # causing the SVDQ W4A4 CUDA kernel to assert.  If low-memory CPU-side SVD
+  # is needed, set this to ``False`` and compile manually after moving the
+  # pipeline to CUDA.
   "few_shot_auto_compile": False,
 }
 
@@ -410,6 +418,10 @@ class QuantizeConfig:
   # calibration callback but also quantization math, serialization metadata,
   # and load compatibility, so they are grouped under a validated backend-
   # specific dict instead of being exposed as many top-level config fields.
+  #
+  # .. note::
+  #    `few_shot_auto_compile` currently requires ``quantize_device: "cuda"``
+  #    inside ``svdq_kwargs``.  See the comment on that key for details.
   svdq_kwargs: Optional[Dict[str, Any]] = None
   # Whether to print detailed quantization information, such as the quantization
   # type of each layer, the reason for skipping quantization, etc. This is useful
@@ -564,6 +576,8 @@ class QuantizeConfig:
       if hasattr(self, key):
         if value is not None:
           setattr(self, key, value)
+    if "backend" not in kwargs:
+      self.backend = QuantizeBackend.AUTO
     self.__post_init__()
     return self
 

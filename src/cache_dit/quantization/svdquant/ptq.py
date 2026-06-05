@@ -100,6 +100,18 @@ def _infer_module_execution_device(module: nn.Module) -> torch.device:
     if execution_device is not None:
       return torch.device(execution_device)
 
+  # Prioritise nn.Linear (pre-quantisation) and SVDQW4A4Linear (post-quantisation)
+  # parameters — they are the SVDQ target layers and may reside on a different
+  # device than the rest of the model after CPU-side materialisation.
+  for submodule in module.modules():
+    if isinstance(submodule, (nn.Linear, SVDQW4A4Linear)):
+      try:
+        parameter = next(submodule.parameters())
+        if parameter.device.type != "meta":
+          return parameter.device
+      except StopIteration:
+        pass
+
   try:
     parameter = next(module.parameters())
     if parameter.device.type != "meta":
@@ -343,6 +355,19 @@ def _run_post_quantize_callbacks(
   callbacks = _pop_post_quantize_callbacks(module)
   if not callbacks and few_shot_auto_compile:
     try:
+      from ...compile.utils import set_compile_configs
+
+      set_compile_configs()
+      torch.set_float32_matmul_precision("high")
+      compile_device = _infer_module_execution_device(module)
+      if compile_device.type != "cuda":
+        cuda_device = torch.device("cuda", torch.cuda.current_device())
+        logger.info(
+          "Moving quantized module from %s to %s before compile.",
+          compile_device,
+          cuda_device,
+        )
+        module.to(cuda_device)
       if hasattr(module, "compile_repeated_blocks") and callable(module.compile_repeated_blocks):
         logger.info("Few-shot runtime quantization completed; compiling repeated blocks in-place.")
         module.compile_repeated_blocks()
