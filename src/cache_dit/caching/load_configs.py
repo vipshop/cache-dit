@@ -339,7 +339,11 @@ def load_quantize_config(path_or_dict: str | dict, **kwargs) -> Optional[Quantiz
     raise ValueError("Input must be a file path (str) or a configuration dictionary (dict).")
   if "quantize_config" not in quantize_kwargs:
     return None
-  quantize_config = QuantizeConfig().update(**quantize_kwargs["quantize_config"])
+  _qc = quantize_kwargs["quantize_config"]
+  quantize_config = QuantizeConfig(**{
+    k: v
+    for k, v in _qc.items() if k in QuantizeConfig.__dataclass_fields__ and v is not None
+  })
   return quantize_config
 
 

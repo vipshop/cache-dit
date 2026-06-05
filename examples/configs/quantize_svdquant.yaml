@@ -1,0 +1,25 @@
+quantize_config: 
+  quant_type: "svdq_int4_r128_dq" 
+  svdq_kwargs:
+    smooth_strategy: "few_shot"
+    few_shot_steps: 2
+    few_shot_auto_compile: true
+    # Device used for SVD decomposition and W4A4 packing math.
+    # - "cuda": force CUDA-side SVD + packing, even when float weights are on CPU.
+    # - "cpu":  force CPU-side SVD + packing (slow, for low-memory GPUs).
+    # - "auto": follow the module's current device (may resolve to CPU if the
+    #   pipeline has not been moved to CUDA yet, e.g. when loaded via config).
+    #
+    # IMPORTANT: `few_shot_auto_compile: true` REQUIRES `quantize_device: "cuda"`.
+    # Using "auto" or "cpu" together with `few_shot_auto_compile` is currently
+    # NOT supported: when SVD runs on CPU the newly materialised W4A4 weights
+    # stay on CPU, and while cache-dit attempts to move them to CUDA before
+    # compiling, the forward-pass inputs may still be on CPU, causing the SVDQ
+    # W4A4 CUDA kernel to assert.  If you need CPU-side SVD for low-memory
+    # scenarios, set `few_shot_auto_compile: false`, then compile manually after
+    # moving the pipeline to CUDA.
+    quantize_device: "cuda"
+  exclude_layers:  
+    - "embedder"
+    - "embed"
+  verbose: false
