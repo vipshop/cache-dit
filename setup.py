@@ -30,10 +30,13 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # tools/release_workspace.py.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
-# Blackwell sm100 is not has been fully tested, so we don't include it in the
-# default target list.Users with sm100 devices can specify it explicitly with
-# `CACHE_DIT_CUDA_ARCH_LIST=100` or `TORCH_CUDA_ARCH_LIST=100` when building
-# the SVDQuant extension.
+# sm100 (Blackwell B100/B200, CC 10.0) is not included in the default
+# target list because the NVFP4 block-scaled MMA instruction used by the
+# SVDQuant FP4 kernel requires sm_120a or higher (PTX ISA, warp-level mma
+# Target ISA Notes: ".kind::mxf4nvf4 and .kind::mxf4 are supported on
+# sm_120a and sm_121a"). INT4 kernels work correctly on sm100. Users who
+# only need INT4 kernels can build for sm100 explicitly via
+# CACHE_DIT_CUDA_ARCH_LIST=100 or TORCH_CUDA_ARCH_LIST=100.
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -42,6 +45,7 @@ CUDA_ARCH_ALIASES = {
   "ampere": "80",
   "ada": "89",
   "hopper": "90",
+  "blackwell": "100",
 }
 
 
