@@ -92,7 +92,7 @@ Cache-DiT's offer a bucket-style layerwise offload tech that with nearly zero (*
 ```python
 >>> import cache_dit
 >>> cache_dit.layerwise_offload(
-...   pipe, # Any nn.Module: pipe, transformer, text_encoder, etc.
+...   pipe, # nn.Module: pipe, transformer, text_encoder, etc.
 ...   onload_device="cuda",
 ...   offload_device="cpu",
 ...   async_transfer=True,
