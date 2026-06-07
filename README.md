@@ -87,7 +87,7 @@ Then, try to quantize your model with just **♥️a few lines♥️** of code ~
   <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
 </div>
 
-Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (**<5%**) latency overhead. Quick start with **♥️a few lines♥️** of code ~
+Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (**<5%🎉**) latency overhead.
 
 ```python
 >>> import cache_dit
