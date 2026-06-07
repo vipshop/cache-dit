@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization for Diffusion Transformers
+        ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization and Layerwise Offload for DiTs
     </h2>
     <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=ABBREVIATION&left_color=GRAY&right_color=BLUE&left_text=downloads/pypi ></a>
     <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/github/release/vipshop/cache-dit.svg?color=GREEN ></a>
@@ -85,6 +85,28 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 ...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
 ...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
+>>> output = pipe(...) # Then, just call the pipe as normal.
+```
+
+<div align="center">
+  <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
+</div>
+
+Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (**<5%**) latency overhead. Quick start with **♥️a few lines♥️** of code ~
+
+```python
+>>> import cache_dit
+>>> cache_dit.layerwise_offload(
+...   pipe, # Any nn.Module: pipe, transformer, text_encoder, etc.
+...   onload_device="cuda",
+...   offload_device="cpu",
+...   async_transfer=True,
+...   transfer_buckets=4,
+...   persistent_buckets=64,
+...   persistent_bins=8,
+...   prefetch_limit=True,
+...   max_copy_streams=4,
+...   max_inflight_prefetch_bytes="8gib")
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 

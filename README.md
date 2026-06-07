@@ -2,7 +2,7 @@
   <p align="center">
     <h2 align="center">
       <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo-v2.png width=185px align="left">
-      ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization and Layerwise Offload for DiTs.<br>
+      ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization and Layerwise Offload for DiTs<br>
       <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=ABBREVIATION&left_color=GRAY&right_color=BLUE&left_text=downloads/pypi ></a>
       <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/github/release/vipshop/cache-dit.svg?color=GREEN ></a>
       <img src="https://img.shields.io/github/license/vipshop/cache-dit.svg?color=blue">
@@ -87,7 +87,7 @@ Then, try to quantize your model with just **♥️a few lines♥️** of code ~
   <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
 </div>
 
-Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (<5%) latency overhead. Quick start with **♥️a few lines♥️** of code ~
+Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (**<5%**) latency overhead. Quick start with **♥️a few lines♥️** of code ~
 
 ```python
 >>> import cache_dit
