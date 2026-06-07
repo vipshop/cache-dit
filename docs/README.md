@@ -1,7 +1,7 @@
 <div align="center">
   <p align="center">
     <h2 align="center">
-        ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization and Layerwise Offload for DiTs
+        ⚡️🎉A PyTorch-native Inference Engine with Cache, <br>Parallelism, Quantization and CPU Offload for DiTs
     </h2>
     <a href="https://pepy.tech/projects/cache-dit"><img src=https://static.pepy.tech/personalized-badge/cache-dit?period=total&units=ABBREVIATION&left_color=GRAY&right_color=BLUE&left_text=downloads/pypi ></a>
     <a href="https://pypi.org/project/cache-dit/"><img src=https://img.shields.io/github/release/vipshop/cache-dit.svg?color=GREEN ></a>
