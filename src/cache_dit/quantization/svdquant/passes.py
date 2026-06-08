@@ -138,6 +138,15 @@ class FusedGeluMlpPass(BasePass):
   ``svdq_gemm_w4a4_ext`` qout path to eliminate the intermediate fp16
   HBM write between the two GEMMs.
 
+  .. note::
+
+     This pass detects the **generic** ``FeedForward`` / ``GELU(proj=…)``
+     pattern defined by diffusers' ``attention.py`` (not any specific
+     model class).  It works automatically with most diffusers
+     transformer families — FLUX, SD3, PixArt, DiT, HunyuanVideo,
+     Wan, Cosmos, QwenImage, and many more — without per-model
+     configuration.
+
   .. rubric:: Supported models
 
   This pass targets diffusers transformers that use ``activation_fn``
@@ -293,13 +302,70 @@ class FusedGeluMlpPass(BasePass):
 class FusedGeluProjPass(BasePass):
   """Fuse fc1 + GELU in single-stream transformer blocks.
 
-  Targets non-``FeedForward`` blocks where a standalone ``nn.GELU``
-  sits between two ``SVDQW4A4Linear`` layers and the second linear
-  layer receives concatenated input (attention + MLP), making full
-  fc1+fc2 fusion impossible.
+  .. note::
 
-  This pass only fuses **fc1 GEMM + GELU** into one kernel via
-  ``fused_gelu_proj``.  The second linear layer is left unchanged.
+     Like ``FusedGeluMlpPass``, this pass uses **generic structural
+     detection** (``SVDQW4A4Linear`` + ``nn.GELU`` + concat-dimension
+     arithmetic) rather than class-name matching.  It automatically
+     covers all diffusers single-stream blocks that follow the
+     ``proj_mlp → GELU → concat → proj_out`` pattern — FLUX, Bria,
+     HunyuanVideo, HunyuanImage, Chroma, LongCat Image, Motif Video,
+     and any future model with the same structure.
+
+  .. rubric:: Why full fc1+fc2 fusion is impossible here
+
+  Standard double-stream blocks (handled by ``FusedGeluMlpPass``)
+  have a purely sequential MLP::
+
+      fc1(x) → GELU → fc2 → output
+
+  The ext kernel can fuse all three steps because fc2's only input
+  is the GELU output — the qout path writes quantized activations
+  directly from the first GEMM into the second GEMM, skipping HBM.
+
+  Single-stream blocks have a **concat** in the middle::
+
+      fc1(x) ──→ GELU ──→ mlp_out ──┐
+                                      ├─→ concat ──→ fc2 ──→ output
+      attn(x) ───────────────────────┘
+
+  fc2's input is ``concat(attn_output, mlp_output)``, not just the
+  GELU output.  fc2 needs the attention half to compute correctly,
+  so the kernel cannot simply chain fc1's GELU output into fc2's
+  GEMM — it would be missing half the features.
+
+  **What we CAN fuse**: ``fc1 + GELU`` into a single kernel via
+  ``fused_gelu_proj``.  This uses the ext kernel's GELU epilogue
+  to write fp16 GELU'd output directly, eliminating one GELU kernel
+  launch and one fp16 HBM roundtrip per single block.  The concat
+  and fc2 remain unchanged.
+
+  .. rubric:: Why not restructure the block (Nunchaku's approach)
+
+  Nunchaku's ``NunchakuFluxSingleTransformerBlock`` achieves **full**
+  fc1+GELU+fc2 fusion by *restructuring* the model at quantization
+  time: ``proj_out`` (which takes concatenated input) is split into
+  two independent ``SVDQW4A4Linear`` layers via
+  ``from_linear(proj_out, in_features=N)`` — one for the attention
+  half, one for the MLP half.  The forward then becomes::
+
+      mlp  = fused_gelu_mlp(x, proj_mlp, mlp_fc2)   # full fusion
+      attn = attn.to_out(attn_output)
+      output = mlp + attn                           # add, not concat
+
+  This is mathematically equivalent to the original but requires
+  the PTQ pipeline to split weights and LoRA components at
+  quantization time, which affects the serialized checkpoint format
+  and SVD decomposition granularity.
+
+  **cache-dit's choice**: ``FusedGeluProjPass`` deliberately does
+  **not** restructure the model.  It keeps ``proj_out`` intact and
+  only fuses fc1+GELU via monkey-patching.  This is compatible with
+  cache-dit's existing SVDQ PTQ / DQ / few-shot workflow without
+  any changes to quantization, serialization, or weight loading.
+  The trade-off — partial fusion instead of full — is accepted for
+  the sake of integration simplicity and zero checkpoint-format
+  impact.
 
   .. rubric:: Detection (generic, not class-name based)
 

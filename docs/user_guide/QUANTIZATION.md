@@ -896,3 +896,66 @@ Quick examples for enabling SVDQ runtime kernel from the generate CLI:
 python3 -m cache_dit.generate flux --svdq-int4-r64-dq --compile # v1, baseline
 python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime v2 --compile # v2
 ```
+
+## SVDQ with Fused MLP
+
+When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via ``svdq_gemm_w4a4_ext``, eliminating one kernel launch per block.
+
+The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automatically with most diffusers transformer families — no per-model configuration is needed.
+
+**Quick start (CLI)**
+
+```bash
+# Add --svdq-fused-mlp to any SVDQ generate command:
+python3 -m cache_dit.generate flux --svdq-int4-r32-dq --svdq-fused-mlp
+```
+
+**Quick start (Python API — dynamic quantization)**
+
+```python
+import torch
+import cache_dit
+from diffusers import FluxPipeline
+from cache_dit.quantization import QuantizeConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+
+quant_config = QuantizeConfig(
+    quant_type="svdq_int4_r32_dq",
+    svdq_kwargs={"fused_mlp": True},
+)
+pipe.transformer = cache_dit.load(pipe.transformer, quant_config)
+
+image = pipe("A cat holding a sign that says hello world").images[0]
+image.save("flux_fused_mlp.png")
+```
+
+**Quick start (Python API — PTQ with serialized checkpoint)**
+
+```python
+quant_config = QuantizeConfig(
+    quant_type="svdq_int4_r32",
+    serialize_to="./flux-svdq/",
+    svdq_kwargs={"fused_mlp": True},
+    calibrate_fn=my_calibrate_fn,
+)
+cache_dit.quantize(pipe.transformer, quant_config)
+
+# Later, at inference time:
+pipe.transformer = cache_dit.load(
+    pipe.transformer,
+    "./flux-svdq/svdq_int4_r32.safetensors",
+)
+```
+
+When ``fused_mlp`` is enabled, cache-dit applies two complementary passes:
+
+| Pass | Targets | Fusion |
+|---|---|---|
+| ``fused_gelu_mlp`` | Standard ``FeedForward`` double blocks | fc1 + GELU + fc2 (qout path, no fp16 HBM write) |
+| ``fused_gelu_proj`` | Single-stream blocks with concat MLP | fc1 + GELU only (fp16 output, concat unchanged) |
+
+Both passes use generic structural detection — they work with most diffusers transformers (FLUX, SD3, PixArt, HunyuanVideo, Wan, Cosmos, Bria, QwenImage, Chroma, Motif Video, and many more) without per-model code changes.
