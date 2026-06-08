@@ -126,8 +126,9 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # MLP blocks into a single kernel chain via ``svdq_gemm_w4a4_ext``.  The
   # intermediate fp16 activation is never written to HBM — the first GEMM
   # directly produces 4-bit quantized output consumed by the second GEMM.
-  # Requires the ``diffusers_gelu_feedforward`` pass to be active; has no
-  # effect on models that use GEGLU, SwiGLU, or custom FeedForward structures.
+  # Requires the ``fused_gelu_mlp`` and ``fused_gelu_proj`` passes to be
+  # active; has no effect on models that use GEGLU, SwiGLU, or custom
+  # FeedForward structures.
   "fused_mlp": False,
 }
 

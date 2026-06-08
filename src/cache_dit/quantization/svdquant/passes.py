@@ -11,14 +11,16 @@ Pass registry
 
 | Name                              | Scope                                                  |
 |-----------------------------------|--------------------------------------------------------|
-| ``diffusers_gelu_feedforward``    | Standard diffusers ``FeedForward`` GELU MLP (dual      |
+| ``fused_gelu_mlp``                | Standard diffusers ``FeedForward`` GELU MLP (dual      |
 |                                   | and single stream).                                    |
+| ``fused_gelu_proj``               | Single-stream blocks with standalone GELU between two  |
+|                                   | SVDQW4A4Linear layers (e.g. FLUX single blocks).       |
 
 Usage::
 
     from cache_dit.quantization.svdquant.passes import apply_passes
 
-    apply_passes(model, ["diffusers_gelu_feedforward"])
+    apply_passes(model, ["fused_gelu_mlp"])
 """
 
 from __future__ import annotations
@@ -116,13 +118,8 @@ def apply_passes(module: nn.Module, pass_names: list[str]) -> None:
       logger.debug("Pass %s found no targets.", name)
 
 
-# ---------------------------------------------------------------------------
-# DiffusersGeluFeedForwardPass
-# ---------------------------------------------------------------------------
-
-
 @register_pass
-class DiffusersGeluFeedForwardPass(BasePass):
+class FusedGeluMlpPass(BasePass):
   """Fuse standard diffusers ``FeedForward`` GELU MLP blocks.
 
   Detects modules that match the pattern::
@@ -211,7 +208,7 @@ class DiffusersGeluFeedForwardPass(BasePass):
   this pass.
   """
 
-  name = "diffusers_gelu_feedforward"
+  name = "fused_gelu_mlp"
 
   # Activation class names that use plain (non-gated) GELU.
   _PLAIN_GELU_NAMES = frozenset({"GELU"})
@@ -265,13 +262,7 @@ class DiffusersGeluFeedForwardPass(BasePass):
     return targets
 
   def apply(self, module: nn.Module, targets: list[dict[str, Any]]) -> None:
-    from .fused_mlp import fused_gelu_mlp
-
-    logger.info_once(
-      "DiffusersGeluFeedForwardPass is active — "
-      "%d FeedForward block(s) will be fused.",
-      len(targets),
-    )
+    from .fused import fused_gelu_mlp
 
     for target in targets:
       parent = target["parent"]
@@ -298,9 +289,139 @@ class DiffusersGeluFeedForwardPass(BasePass):
       )
 
 
+@register_pass
+class FusedGeluProjPass(BasePass):
+  """Fuse fc1 + GELU in single-stream transformer blocks.
+
+  Targets non-``FeedForward`` blocks where a standalone ``nn.GELU``
+  sits between two ``SVDQW4A4Linear`` layers and the second linear
+  layer receives concatenated input (attention + MLP), making full
+  fc1+fc2 fusion impossible.
+
+  This pass only fuses **fc1 GEMM + GELU** into one kernel via
+  ``fused_gelu_proj``.  The second linear layer is left unchanged.
+
+  .. rubric:: Detection (generic, not class-name based)
+
+  A parent module is targeted when:
+
+  1. It is **not** a ``FeedForward`` (already handled upstream).
+  2. It contains at least one ``nn.GELU`` submodule.
+  3. It contains at least two ``SVDQW4A4Linear`` submodules.
+  4. One ``SVDQW4A4Linear`` has ``out_features > in_features``
+     (expansion — fc1) and another has ``in_features >=
+     fc1.out_features`` with ``in_features > out_features``
+     (projection accepting concat — fc2).
+
+  The fusion is applied by monkey-patching ``fc1.forward`` to include
+  GELU and replacing ``gelu_mod.forward`` with an identity pass-through.
+  This works for **any** parent class without inspecting its forward
+  code.
+
+  .. rubric:: Supported models
+
+  Diffusers transformers whose single-stream blocks follow the
+  ``proj_mlp → act_mlp(GELU) → concat(attn, mlp) → proj_out``
+  pattern and satisfy ``fc2.in_features == fc1.in_features +
+  fc1.out_features``:
+
+  - **FLUX**: ``FluxSingleTransformerBlock``
+  - **Bria**: ``BriaSingleTransformerBlock``
+  - **Bria Fibo**: ``BriaFiboSingleTransformerBlock``
+  - **Chroma**: ``ChromaSingleTransformerBlock``
+  - **HunyuanVideo**: ``HunyuanVideoSingleTransformerBlock``,
+    ``HunyuanVideoTokenReplaceSingleTransformerBlock``
+  - **HunyuanImage**: ``HunyuanImageSingleTransformerBlock``
+  - **LongCat Image**: ``LongCatImageSingleTransformerBlock``
+  - **Motif Video**: ``MotifVideoSingleTransformerBlock``
+
+  Models whose single blocks use **gated** activations (e.g.
+  Flux2 with ``Flux2SwiGLU``), ``SiLU``, or standard sequential
+  ``FeedForward`` are **not** targeted by this pass.
+  """
+
+  name = "fused_gelu_proj"
+
+  def detect(self, module: nn.Module) -> list[dict[str, Any]]:
+    from .linear import SVDQW4A4Linear
+
+    targets: list[dict[str, Any]] = []
+    for parent_name, parent in module.named_modules():
+      if parent.__class__.__name__ == "FeedForward":
+        continue
+
+      gelu_mod: nn.Module | None = None
+      svdq_layers: list[tuple[str, SVDQW4A4Linear]] = []
+      for child_name, child in parent.named_children():
+        if isinstance(child, nn.GELU):
+          gelu_mod = child
+        if isinstance(child, SVDQW4A4Linear):
+          svdq_layers.append((child_name, child))
+
+      if gelu_mod is None or len(svdq_layers) < 2:
+        continue
+
+      # Heuristic: the single-block concat pattern implies
+      #   fc2.in_features == fc1.in_features + fc1.out_features
+      # where fc1.in_features is the attention stream dimension and
+      # fc1.out_features is the MLP hidden dimension.  fc1 must
+      # expand (out_features > in_features) and fc2 must project
+      # (in_features > out_features).
+      best_fc1: SVDQW4A4Linear | None = None
+      best_fc2: SVDQW4A4Linear | None = None
+      for _name_a, layer_a in svdq_layers:
+        for _name_b, layer_b in svdq_layers:
+          if layer_a is layer_b:
+            continue
+          if (layer_a.out_features > layer_a.in_features
+              and layer_b.in_features > layer_b.out_features
+              and layer_b.in_features == layer_a.in_features + layer_a.out_features):
+            if best_fc1 is None or layer_a.out_features > best_fc1.out_features:
+              best_fc1 = layer_a
+              best_fc2 = layer_b
+
+      if best_fc1 is None or best_fc2 is None:
+        continue
+
+      targets.append({
+        "parent": parent,
+        "fc1": best_fc1,
+        "fc2": best_fc2,
+        "gelu": gelu_mod,
+        "parent_name": parent_name,
+      })
+
+    return targets
+
+  def apply(self, module: nn.Module, targets: list[dict[str, Any]]) -> None:
+    from .fused import fused_gelu_proj
+
+    for target in targets:
+      fc1 = target["fc1"]
+      gelu_mod = target["gelu"]
+
+      fc1._saved_forward = fc1.forward
+
+      def _patched_fc1_forward(self, x, output=None):
+        return fused_gelu_proj(x, self)
+
+      fc1.forward = types.MethodType(_patched_fc1_forward, fc1)
+
+      gelu_mod._saved_forward = gelu_mod.forward
+      gelu_mod.forward = lambda x: x
+
+      logger.debug(
+        "Fused GELU proj patched: %s (fc1=%s, gelu=%s)",
+        target["parent_name"],
+        fc1.__class__.__name__,
+        gelu_mod.__class__.__name__,
+      )
+
+
 __all__ = [
   "BasePass",
-  "DiffusersGeluFeedForwardPass",
+  "FusedGeluMlpPass",
+  "FusedGeluProjPass",
   "apply_passes",
   "get_pass",
   "register_pass",
