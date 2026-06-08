@@ -36,6 +36,10 @@ logger = init_logger(__name__)
 
 _REGISTRY: dict[str, type[BasePass]] = {}
 
+# Default pass list applied when ``fused_mlp`` is enabled.  Callers that
+# need a custom subset can override via ``apply_passes(..., pass_names=...)``.
+DEFAULT_FUSED_MLP_PASSES: list[str] = ["fused_gelu_mlp", "fused_gelu_proj"]
+
 
 class BasePass:
   """Abstract base for a model pass.
@@ -95,12 +99,15 @@ def get_pass(name: str) -> type[BasePass]:
   return _REGISTRY[name]
 
 
-def apply_passes(module: nn.Module, pass_names: list[str]) -> None:
+def apply_passes(module: nn.Module, pass_names: list[str] | None = None) -> None:
   """Run every named pass on *module* in order.
 
   :param module: Root module to transform.
-  :param pass_names: List of registered pass names.
+  :param pass_names: List of registered pass names.  When ``None``
+      (the default), ``DEFAULT_FUSED_MLP_PASSES`` is used.
   """
+  if pass_names is None:
+    pass_names = DEFAULT_FUSED_MLP_PASSES
   if not pass_names:
     return
   for name in pass_names:
@@ -486,6 +493,7 @@ class FusedGeluProjPass(BasePass):
 
 __all__ = [
   "BasePass",
+  "DEFAULT_FUSED_MLP_PASSES",
   "FusedGeluMlpPass",
   "FusedGeluProjPass",
   "apply_passes",

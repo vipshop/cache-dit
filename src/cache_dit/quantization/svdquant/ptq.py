@@ -925,7 +925,7 @@ class SVDQFewShotRuntimeController:
 
     if self.context.svdq_kwargs.get("fused_mlp", False):
       from .passes import apply_passes
-      apply_passes(module, ["fused_gelu_mlp", "fused_gelu_proj"])
+      apply_passes(module)
 
     self.cleanup()
     _attach_quantization_metadata(
@@ -1443,7 +1443,7 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
 
   if context.svdq_kwargs.get("fused_mlp", False):
     from .passes import apply_passes
-    apply_passes(module, ["fused_gelu_mlp", "fused_gelu_proj"])
+    apply_passes(module)
 
   _attach_quantization_metadata(
     module,
@@ -1548,7 +1548,7 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
 
   if context.svdq_kwargs.get("fused_mlp", False):
     from .passes import apply_passes
-    apply_passes(module, ["fused_gelu_mlp", "fused_gelu_proj"])
+    apply_passes(module)
 
   _attach_quantization_metadata(
     module,
@@ -1678,7 +1678,7 @@ def load_svdq(
 
   if svdq_kwargs.get("fused_mlp", False):
     from .passes import apply_passes
-    apply_passes(module, ["fused_gelu_mlp", "fused_gelu_proj"])
+    apply_passes(module)
 
   _attach_quantization_metadata(
     module,

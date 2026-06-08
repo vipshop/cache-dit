@@ -45,6 +45,7 @@ from .fused import fused_gelu_proj
 from .linear import SVDQW4A4Linear
 from .passes import apply_passes
 from .passes import BasePass
+from .passes import DEFAULT_FUSED_MLP_PASSES
 from .passes import FusedGeluMlpPass
 from .passes import FusedGeluProjPass
 from .passes import get_pass
@@ -58,6 +59,7 @@ from .quantizer import validate_svdq_linear_geometry
 __all__ = [
   "apply_passes",
   "BasePass",
+  "DEFAULT_FUSED_MLP_PASSES",
   "FusedGeluMlpPass",
   "fused_gelu_mlp",
   "fused_gelu_proj",
