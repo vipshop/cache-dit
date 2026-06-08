@@ -121,6 +121,15 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # is needed, set this to ``False`` and compile manually after moving the
   # pipeline to CUDA.
   "few_shot_auto_compile": False,
+  # When enabled, SVDQ fuses the first quantized linear layer, GELU activation,
+  # and second quantized linear layer in standard diffusers ``FeedForward`` GELU
+  # MLP blocks into a single kernel chain via ``svdq_gemm_w4a4_ext``.  The
+  # intermediate fp16 activation is never written to HBM — the first GEMM
+  # directly produces 4-bit quantized output consumed by the second GEMM.
+  # Requires the ``fused_gelu_mlp`` and ``fused_gelu_proj`` passes to be
+  # active; has no effect on models that use GEGLU, SwiGLU, or custom
+  # FeedForward structures.
+  "fused_mlp": False,
 }
 
 
@@ -299,6 +308,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "few_shot_relax_top_ratio": _resolve_svdq_ratio,
     "few_shot_relax_strategy": _resolve_svdq_few_shot_relax_strategy,
     "few_shot_auto_compile": _resolve_svdq_bool_kwarg,
+    "fused_mlp": _resolve_svdq_bool_kwarg,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
@@ -589,15 +599,17 @@ class QuantizeConfig:
 
     def _stringify_quant_type(quant_type: str) -> str:
       quant_type = quant_type.lower()
-      if quant_type.startswith("svdq") and quant_type.endswith("_dq"):
+      if quant_type.startswith("svdq"):
         svdq_kwargs = self.get_svdq_kwargs()
-        smooth_strategy = svdq_kwargs.get("smooth_strategy", "identity")
-        if smooth_strategy != "identity":
-          quant_type = f"{quant_type}_{smooth_strategy}"
-          if smooth_strategy == "few_shot":
-            relax_strategy = svdq_kwargs.get("few_shot_relax_strategy", "auto")
-            quant_type = f"{quant_type}_{relax_strategy}"
-          return quant_type
+        if quant_type.endswith("_dq"):
+          smooth_strategy = svdq_kwargs.get("smooth_strategy", "identity")
+          if smooth_strategy != "identity":
+            quant_type = f"{quant_type}_{smooth_strategy}"
+            if smooth_strategy == "few_shot":
+              relax_strategy = svdq_kwargs.get("few_shot_relax_strategy", "auto")
+              quant_type = f"{quant_type}_{relax_strategy}"
+        if svdq_kwargs.get("fused_mlp", False):
+          quant_type = f"{quant_type}_fused_mlp"
       return quant_type
 
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):

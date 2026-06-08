@@ -674,6 +674,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Compile the transformer only after SVDQ few-shot runtime quantization completes.",
   )
+  parser.add_argument(
+    "--svdq-fused-mlp",
+    action="store_true",
+    default=False,
+    help=
+    "Fuse FeedForward GELU MLP blocks into a single fused kernel chain after SVDQ quantization.",
+  )
   # Parallelism settings
   parser.add_argument(
     "--parallel-type",
@@ -1749,6 +1756,7 @@ def maybe_quantize_transformer(
       "few_shot_relax_top_ratio": args.svdq_few_shot_relax_top_ratio,
       "few_shot_relax_strategy": args.svdq_few_shot_relax_strategy,
       "few_shot_auto_compile": few_shot_auto_compile,
+      "fused_mlp": bool(args.svdq_fused_mlp),
     }
 
   # Quantize transformer by default if quantization is enabled

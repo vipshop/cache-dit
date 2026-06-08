@@ -923,6 +923,10 @@ class SVDQFewShotRuntimeController:
         "SVDQuant few-shot dynamic quantization completed activation collection but no layers were "
         f"quantized. Skipped layers: {self.context.skipped_reasons}.")
 
+    if self.context.svdq_kwargs.get("fused_mlp", False):
+      from .passes import apply_passes
+      apply_passes(module)
+
     self.cleanup()
     _attach_quantization_metadata(
       module,
@@ -1437,6 +1441,10 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     raise RuntimeError("SVDQ PTQ completed calibration but no layers were quantized. "
                        f"Skipped layers: {context.skipped_reasons}.")
 
+  if context.svdq_kwargs.get("fused_mlp", False):
+    from .passes import apply_passes
+    apply_passes(module)
+
   _attach_quantization_metadata(
     module,
     quant_type=quantize_config.quant_type,
@@ -1537,6 +1545,10 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
   if not quantized_layer_names:
     raise RuntimeError("SVDQ dynamic quantization found no layers to quantize. "
                        f"Skipped layers: {context.skipped_reasons}.")
+
+  if context.svdq_kwargs.get("fused_mlp", False):
+    from .passes import apply_passes
+    apply_passes(module)
 
   _attach_quantization_metadata(
     module,
@@ -1663,6 +1675,10 @@ def load_svdq(
       parent, child_name = _get_parent_and_child(module, layer_name)
       setattr(parent, child_name, quantized_module)
     loaded_layer_names.append(layer_name)
+
+  if svdq_kwargs.get("fused_mlp", False):
+    from .passes import apply_passes
+    apply_passes(module)
 
   _attach_quantization_metadata(
     module,

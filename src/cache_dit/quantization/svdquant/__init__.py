@@ -40,7 +40,16 @@ Notes:
 
 from ...kernels import svdq_extension_is_available as svdq_is_available
 from ...kernels import svdq_get_load_error
+from .fused import fused_gelu_mlp
+from .fused import fused_gelu_proj
 from .linear import SVDQW4A4Linear
+from .passes import apply_passes
+from .passes import BasePass
+from .passes import DEFAULT_FUSED_MLP_PASSES
+from .passes import FusedGeluMlpPass
+from .passes import FusedGeluProjPass
+from .passes import get_pass
+from .passes import register_pass
 from .quantizer import CalibrationInputs
 from .quantizer import compute_smooth_scale
 from .quantizer import quantize_linear_svdq_w4a4
@@ -48,6 +57,15 @@ from .quantizer import standardize_calibration_activations
 from .quantizer import validate_svdq_linear_geometry
 
 __all__ = [
+  "apply_passes",
+  "BasePass",
+  "DEFAULT_FUSED_MLP_PASSES",
+  "FusedGeluMlpPass",
+  "fused_gelu_mlp",
+  "fused_gelu_proj",
+  "FusedGeluProjPass",
+  "get_pass",
+  "register_pass",
   "CalibrationInputs",
   "SVDQW4A4Linear",
   "compute_smooth_scale",
