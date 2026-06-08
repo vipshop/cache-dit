@@ -251,34 +251,63 @@ void GEMM_W4A4_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
   };
 
   if (qout.valid() && oscales.valid()) {
-    // dispatchBool(qout_unsigned, [&]<bool USE_UNSIGNED>() {
+    // Use signed INT4 (matching fc2.quantize output).
+    // No unsigned shift — the non-fused path never applies +0.171875
+    // before fc2.quantize, so we must match that behaviour exactly.
+    constexpr bool USE_UNSIGNED = false;
 
-    static constexpr float SHIFT_GELU = 0.171875f;
+    if (lora_act_out.valid()) {
+      // lora_act_out must be computed from post-GELU values (matching
+      // the non-fused path where fc2.quantize applies GELU before the
+      // LoRA down-projection).  Place EpilogueGelu as MidEpilogue
+      // so it runs *between* LoraUp and LoraDown, modifying fpsum
+      // in-place.  EpilogueQuantize then only quantizes (no GELU).
+      using EpilogueQuantize = typename GEMM::EpilogueQuantize<false, USE_UNSIGNED, USE_FP4>;
+      auto argsQuantize = typename EpilogueQuantize::Arguments{
+        .qout = qout.data_ptr<packed_act_t>(),
+        .oscales = oscales.data_ptr<typename EpilogueQuantize::oscales_t>(),
+        .shift_value = 0.0f,
+        .smooth_factor = smooth_factor.data_ptr<packed_wscale_t>()};
 
-    constexpr bool USE_UNSIGNED = !USE_FP4;
-    using EpilogueQuantize = typename GEMM::EpilogueQuantize<false, USE_UNSIGNED, USE_FP4>;
-    auto argsQuantize = typename EpilogueQuantize::Arguments{
-      .qout = qout.data_ptr<packed_act_t>(),
-      .oscales = oscales.data_ptr<typename EpilogueQuantize::oscales_t>(),
-      .shift_value = USE_FP4 ? 0.0f : SHIFT_GELU,
-      .smooth_factor = smooth_factor.data_ptr<packed_wscale_t>()};
-
-    // TODO: check if gelu is needed
-    if (out.valid()) {
-      launch_lora.template operator()<
-        typename GEMM::EpilogueCombination<typename GEMM::EpilogueDefault, EpilogueQuantize>,
-        typename Epilogues::EpilogueGelu>({typename GEMM::EpilogueDefault::Arguments{
-                                             .out = out.data_ptr<half_t>(),
-                                             .actualM = actualM,
-                                             .actualN = actualN,
-                                           },
-                                           argsQuantize},
-                                          {});
+      if (out.valid()) {
+        launch_lora.template operator()<
+          typename GEMM::EpilogueCombination<typename GEMM::EpilogueDefault, EpilogueQuantize>,
+          typename Epilogues::EpilogueGelu>(
+          {typename GEMM::EpilogueDefault::Arguments{
+             .out = out.data_ptr<half_t>(),
+             .actualM = actualM,
+             .actualN = actualN,
+           },
+           argsQuantize},
+          {});
+      } else {
+        launch_lora.template operator()<EpilogueQuantize, typename Epilogues::EpilogueGelu>(
+          argsQuantize, {});
+      }
     } else {
-      launch_lora.template operator()<EpilogueQuantize, typename Epilogues::EpilogueGelu>(
-        argsQuantize, {});
-    }
+      // No fc2 LoRA — GELU can be fused directly into EpilogueQuantize.
+      using EpilogueQuantize = typename GEMM::EpilogueQuantize<true, USE_UNSIGNED, USE_FP4>;
+      auto argsQuantize = typename EpilogueQuantize::Arguments{
+        .qout = qout.data_ptr<packed_act_t>(),
+        .oscales = oscales.data_ptr<typename EpilogueQuantize::oscales_t>(),
+        .shift_value = 0.0f,
+        .smooth_factor = smooth_factor.data_ptr<packed_wscale_t>()};
 
+      if (out.valid()) {
+        launch_lora.template operator()<
+          typename GEMM::EpilogueCombination<typename GEMM::EpilogueDefault, EpilogueQuantize>,
+          typename GEMM::EpilogueNop>({typename GEMM::EpilogueDefault::Arguments{
+                                         .out = out.data_ptr<half_t>(),
+                                         .actualM = actualM,
+                                         .actualN = actualN,
+                                       },
+                                       argsQuantize},
+                                      {});
+      } else {
+        launch_lora.template operator()<EpilogueQuantize, typename GEMM::EpilogueNop>(
+          argsQuantize, {});
+      }
+    }
   } else if (out_linearattn.valid()) {
     assert(out_vk.valid());
 

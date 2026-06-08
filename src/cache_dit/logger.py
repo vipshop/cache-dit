@@ -47,6 +47,7 @@ _default_handler = None
 _default_file_handler = None
 _inference_log_file_handler = {}
 _warning_once_messages: set[tuple[str, str]] = set()
+_info_once_messages: set[tuple[str, str]] = set()
 
 
 def _warning_once(self: logging.Logger, msg, *args, **kwargs) -> None:
@@ -66,7 +67,25 @@ def _warning_once(self: logging.Logger, msg, *args, **kwargs) -> None:
   self.warning(msg, *args, **kwargs)
 
 
+def _info_once(self: logging.Logger, msg, *args, **kwargs) -> None:
+  message = logging.LogRecord(
+    name=self.name,
+    level=logging.INFO,
+    pathname="",
+    lineno=0,
+    msg=msg,
+    args=args,
+    exc_info=None,
+  ).getMessage()
+  key = (self.name, message)
+  if key in _info_once_messages:
+    return
+  _info_once_messages.add(key)
+  self.info(msg, *args, **kwargs)
+
+
 logging.Logger.warning_once = _warning_once  # type: ignore[attr-defined]
+logging.Logger.info_once = _info_once  # type: ignore[attr-defined]
 
 
 def _setup_logger():
