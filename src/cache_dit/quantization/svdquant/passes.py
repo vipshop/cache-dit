@@ -116,7 +116,7 @@ def apply_passes(module: nn.Module, pass_names: list[str] | None = None) -> None
     targets = instance.detect(module)
     if targets:
       logger.info(
-        "Applying pass %s to %d target(s).",
+        "✅ Applying %s pass to %d target(s).",
         name,
         len(targets),
       )

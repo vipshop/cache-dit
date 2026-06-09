@@ -92,12 +92,12 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
   <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
 </div>
 
-Cache-DiT's offer a bucket-style layerwise offload technique that with nearly zero (**<5%**) latency overhead. Quick start with **♥️a few lines♥️** of code ~
+**Bucket-style** Layerwise Offload w/ nearly zero (**<5%🎉**) latency overhead ~
 
 ```python
 >>> import cache_dit
 >>> cache_dit.layerwise_offload(
-...   pipe, # Any nn.Module: pipe, transformer, text_encoder, etc.
+...   pipe, # nn.Module: pipe, transformer, text_encoder, etc.
 ...   onload_device="cuda",
 ...   offload_device="cpu",
 ...   async_transfer=True,
@@ -137,7 +137,7 @@ Special thanks to vipshop's Computer Vision AI Team for supporting testing and d
 
 ```BibTeX
 @misc{cache-dit@2025,
-  title={Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism and Quantization for Diffusion Transformers.},
+  title={Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism, Quantization and CPU Offload for DiTs.},
   url={https://github.com/vipshop/cache-dit.git},
   note={Open-source software available at https://github.com/vipshop/cache-dit.git},
   author={DefTruth, vipshop.com, etc.},
