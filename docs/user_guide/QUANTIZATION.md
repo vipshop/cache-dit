@@ -907,8 +907,27 @@ The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automaticall
 
 ```bash
 # Add --svdq-fused-mlp to any SVDQ generate command:
-python3 -m cache_dit.generate flux --svdq-int4-r32-dq --svdq-fused-mlp
+python -m cache_dit.generate longcat_image_edit --svdq-int4-r128-dq --svdq-fused-mlp
+
+[06-09 02:56:25] [Cache-DiT] No caching or parallelism is applied.
+[06-09 02:56:25] [Cache-DiT] Quantizing transformer module: LongCatImageTransformer2DModel to svdq_int4_r128_dq ...
+[06-09 02:57:24] [Cache-DiT] ✅ Applying pass fused_gelu_mlp to 20 target(s).
+[06-09 02:57:24] [Cache-DiT] ✅ Applying pass fused_gelu_proj to 20 target(s).
+[06-09 02:57:24] [Cache-DiT] --------------------------------------------------------------------------------------------
+[06-09 02:57:24] [Cache-DiT] SVDQuant    Region: ['LongCatImageTransformerBlock', 'LongCatImageSingleTransformerBlock']  |
+[06-09 02:57:24] [Cache-DiT] SVDQuant      Type: svdq_int4_r128_dq                                                       |
+[06-09 02:57:24] [Cache-DiT] SVDQuant      Rank: 128                                                                     |
+[06-09 02:57:24] [Cache-DiT] Quantized   Layers: 260 / 260                                                               |
+[06-09 02:57:24] [Cache-DiT] Skipped     Layers: 0                                                                       |
+[06-09 02:57:24] [Cache-DiT] Linear      Layers: 260                                                                     |
+[06-09 02:57:24] [Cache-DiT] --------------------------------------------------------------------------------------------
 ```
+
+|Baseline|SVDQ QD Rank=128 + Few-Shot | SVDQ QD Rank=128 + Few-Shot + Fused MLP|
+|:---:|:---:|:---:|
+|89s| 58s | 56s |
+|![](../assets/svdq_fused_mlp/longcat_image_edit.1024x1024.C1.png)|![](../assets/svdq_fused_mlp/longcat_image_edit.1024x1024.C1_svdq_int4_r128_dq_few_shot_auto.png)|![](../assets/svdq_fused_mlp/longcat_image_edit.1024x1024.C1_svdq_int4_r128_dq_few_shot_auto_fused_mlp.png)|
+
 
 **Quick start (Python API — dynamic quantization)**
 

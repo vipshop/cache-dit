@@ -450,7 +450,7 @@ if VERSION_WRITE_TO is not None:
 
 setup(
   description=
-  "Cache-DiT: Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism and Quantization for Diffusion Transformers.",
+  "Cache-DiT: Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism, Quantization and CPU Offload for DiTs.",
   author="DefTruth, vipshop.com",
   use_scm_version=USE_SCM_VERSION,
   package_dir={"": "src"},
