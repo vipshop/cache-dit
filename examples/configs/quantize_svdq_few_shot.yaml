@@ -4,6 +4,7 @@ quantize_config:
     smooth_strategy: "few_shot"
     few_shot_steps: 2
     few_shot_auto_compile: true
+    few_shot_relax_strategy: "fixed"
     # Device used for SVD decomposition and W4A4 packing math.
     # - "cuda": force CUDA-side SVD + packing, even when float weights are on CPU.
     # - "cpu":  force CPU-side SVD + packing (slow, for low-memory GPUs).
@@ -19,6 +20,8 @@ quantize_config:
     # scenarios, set `few_shot_auto_compile: false`, then compile manually after
     # moving the pipeline to CUDA.
     quantize_device: "cuda"
+    runtime_kernel: "v2"
+    fused_mlp: true
   exclude_layers:  
     - "embedder"
     - "embed"
