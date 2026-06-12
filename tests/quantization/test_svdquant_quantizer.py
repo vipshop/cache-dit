@@ -183,7 +183,7 @@ def test_svdquant_quantizer_rejects_nvfp4_v2_runtime_kernel() -> None:
   linear = _make_cpu_linear(128, 128)
 
   with pytest.raises(ValueError, match="NVFP4 currently only supports"):
-    svdq_quantizer._quantize_linear_svdq_w4a4_from_activation_span(
+    svdq_quantizer._quantize_from_activation_span(
       linear,
       torch.ones(128, dtype=torch.float32),
       rank=16,
@@ -404,7 +404,7 @@ def test_svdquant_quantizer_from_smooth_scale_preserves_runtime_and_original_vec
   smooth_runtime = smooth_orig.clone()
   smooth_runtime[-32:] = smooth_runtime[-32:] * 2.0
 
-  state_dict: dict[str, torch.Tensor] = svdq_quantizer._quantize_linear_svdq_w4a4_from_smooth_scale(
+  state_dict: dict[str, torch.Tensor] = svdq_quantizer._quantize_from_smooth_scale(
     linear,
     smooth_runtime,
     smooth_scale_orig=smooth_orig,

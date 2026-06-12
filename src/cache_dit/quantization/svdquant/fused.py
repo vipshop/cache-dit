@@ -5,17 +5,20 @@ Provides ``fused_gelu_mlp`` (full fc1+GELU+fc2 fusion via qout path) and
 in single-stream blocks where fc2 input is concatenated).
 """
 
+from __future__ import annotations
+
 import torch
 from torch import nn
 
 from ...kernels import svdq_gemm_w4a4_ext
+from .linear import SVDQW4A4Linear
 
 
 @torch.compiler.disable
 def fused_gelu_mlp(
   x: torch.Tensor,
-  fc1: nn.Module,
-  fc2: nn.Module,
+  fc1: nn.Module | SVDQW4A4Linear,
+  fc2: nn.Module | SVDQW4A4Linear,
   pad_size: int = 256,
 ) -> torch.Tensor:
   """Fused quantized MLP with GELU activation.
@@ -110,7 +113,7 @@ def fused_gelu_mlp(
 @torch.compiler.disable
 def fused_gelu_proj(
   x: torch.Tensor,
-  fc1: nn.Module,
+  fc1: nn.Module | SVDQW4A4Linear,
   pad_size: int = 256,
 ) -> torch.Tensor:
   """Fused fc1 GEMM + GELU in a single kernel.

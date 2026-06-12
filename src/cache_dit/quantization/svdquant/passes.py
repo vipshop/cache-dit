@@ -31,6 +31,7 @@ from typing import Any
 from torch import nn
 
 from ...logger import init_logger
+from .dtensor import SVDQW4A4ShardLinear
 
 logger = init_logger(__name__)
 
@@ -256,11 +257,21 @@ class FusedGeluMlpPass(BasePass):
       if not isinstance(fc1, SVDQW4A4Linear) or not isinstance(fc2, SVDQW4A4Linear):
         continue
 
+      # Fused MLP bypasses the TP collectives inside
+      # SVDQW4A4ShardLinear.forward, producing wrong results when
+      # tensor parallelism is active.  Skip TP-sharded modules.
+      if isinstance(fc1, SVDQW4A4ShardLinear) or isinstance(fc2, SVDQW4A4ShardLinear):
+        logger.warning_once(
+          "FeedForward %s uses TP-sharded SVDQ layers — skipping fused MLP.",
+          parent_name,
+        )
+        continue
+
       # Only plain GELU can be fused with the current CUDA kernel.
       # GEGLU (gate * GELU(up)), SwiGLU, etc. need kernel-level
       # support and are left as-is.
       if act_cls_name not in self._PLAIN_GELU_NAMES:
-        logger.debug(
+        logger.warning_once(
           "FeedForward %s uses %s activation — skipping fusion "
           "(only plain GELU is supported).",
           parent_name,
@@ -454,6 +465,15 @@ class FusedGeluProjPass(BasePass):
               best_fc2 = layer_b
 
       if best_fc1 is None or best_fc2 is None:
+        continue
+
+      # Fused GELU proj bypasses the TP collectives inside
+      # SVDQW4A4ShardLinear.forward — skip TP-sharded modules.
+      if isinstance(best_fc1, SVDQW4A4ShardLinear) or isinstance(best_fc2, SVDQW4A4ShardLinear):
+        logger.warning_once(
+          "Single-block %s uses TP-sharded SVDQ layers — skipping fused GELU proj.",
+          parent_name,
+        )
         continue
 
       targets.append({

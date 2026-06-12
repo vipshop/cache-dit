@@ -160,6 +160,11 @@ class SVDQW4A4Linear(nn.Module):
     :returns: The output activations with shape `[..., out_features]`.
     """
 
+    return self._forward_plain(x, output)
+
+  def _forward_plain(self, x: torch.Tensor, output: torch.Tensor | None = None) -> torch.Tensor:
+    """Original forward logic without DTensor awareness (used when TP is disabled)."""
+
     if x.ndim < 2:
       raise ValueError(f"input must have shape [..., in_features], got {tuple(x.shape)}.")
 
