@@ -26,10 +26,10 @@ from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
 from .quantizer import _apply_few_shot_relaxation
 from .quantizer import _normalize_dtype
-from .quantizer import _quantize_linear_svdq_w4a4_from_activation_span
-from .quantizer import _quantize_linear_svdq_w4a4_from_smooth_scale
+from .quantizer import _quantize_from_activation_span
+from .quantizer import _quantize_from_smooth_scale
 from .quantizer import _resolve_math_dtype
-from .quantizer import validate_svdq_linear_geometry
+from .quantizer import validate_linear_geometry
 
 logger = init_logger(__name__)
 
@@ -612,7 +612,7 @@ class SVDQPTQContext:
         continue
 
       try:
-        validate_svdq_linear_geometry(
+        validate_linear_geometry(
           submodule.in_features,
           submodule.out_features,
           rank=self.rank,
@@ -1360,7 +1360,7 @@ def _quantize_context_layers(
 
     if smooth_scales is not None:
       smooth_scale, smooth_scale_orig = smooth_scales
-      quantized_module = _quantize_linear_svdq_w4a4_from_smooth_scale(
+      quantized_module = _quantize_from_smooth_scale(
         float_module,
         smooth_scale,
         smooth_scale_orig=smooth_scale_orig,
@@ -1373,7 +1373,7 @@ def _quantize_context_layers(
         runtime_kernel=context.svdq_kwargs["runtime_kernel"],
       )
     else:
-      quantized_module = _quantize_linear_svdq_w4a4_from_activation_span(
+      quantized_module = _quantize_from_activation_span(
         float_module,
         activation_span,
         quant_type=context.quantize_config.quant_type,

@@ -55,7 +55,7 @@ from .quantizer import CalibrationInputs
 from .quantizer import compute_smooth_scale
 from .quantizer import quantize_linear_svdq_w4a4
 from .quantizer import standardize_calibration_activations
-from .quantizer import validate_svdq_linear_geometry
+from .quantizer import validate_linear_geometry
 
 __all__ = [
   "apply_passes",
@@ -75,5 +75,5 @@ __all__ = [
   "svdq_is_available",
   "quantize_linear_svdq_w4a4",
   "standardize_calibration_activations",
-  "validate_svdq_linear_geometry",
+  "validate_linear_geometry",
 ]

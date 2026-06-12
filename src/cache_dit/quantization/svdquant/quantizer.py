@@ -22,7 +22,7 @@ __all__ = [
   "compute_smooth_scale",
   "quantize_linear_svdq_w4a4",
   "standardize_calibration_activations",
-  "validate_svdq_linear_geometry",
+  "validate_linear_geometry",
 ]
 
 _CALIBRATE_PRECISIONS = ("low", "medium", "high")
@@ -67,7 +67,7 @@ def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
   return "dq" if quant_type.lower().endswith("_dq") else "ptq"
 
 
-def validate_svdq_linear_geometry(
+def validate_linear_geometry(
   in_features: int,
   out_features: int,
   *,
@@ -916,7 +916,7 @@ def _resolve_activation_smooth_scale(
 
 
 @torch.inference_mode()
-def _quantize_linear_svdq_w4a4_from_smooth_scale(
+def _quantize_from_smooth_scale(
   linear: nn.Linear,
   smooth_scale: torch.Tensor,
   *,
@@ -948,7 +948,7 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
   weight = local_weight.detach().to(device=device, dtype=torch_dtype)
   local_in_features = int(weight.shape[1])
   local_out_features = int(weight.shape[0])
-  validate_svdq_linear_geometry(
+  validate_linear_geometry(
     local_in_features,
     local_out_features,
     rank=rank,
@@ -1053,7 +1053,7 @@ def _quantize_linear_svdq_w4a4_from_smooth_scale(
 
 
 @torch.inference_mode()
-def _quantize_linear_svdq_w4a4_from_activation_span(
+def _quantize_from_activation_span(
   linear: nn.Linear,
   activation_span: torch.Tensor | None,
   *,
@@ -1117,7 +1117,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   local_weight, tp_info = SVDQW4A4ShardLinear.resolve_local(linear.weight)
   weight = local_weight.detach().to(device=device, dtype=torch_dtype)
-  validate_svdq_linear_geometry(
+  validate_linear_geometry(
     int(weight.shape[1]),
     int(weight.shape[0]),
     rank=rank,
@@ -1136,7 +1136,7 @@ def _quantize_linear_svdq_w4a4_from_activation_span(
     torch_dtype=torch_dtype,
     math_dtype=math_dtype,
   )
-  return _quantize_linear_svdq_w4a4_from_smooth_scale(
+  return _quantize_from_smooth_scale(
     linear,
     smooth_scale,
     smooth_scale_orig=smooth_scale,
@@ -1206,7 +1206,7 @@ def quantize_linear_svdq_w4a4(
   torch_dtype = _normalize_dtype(torch_dtype, device)
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
-  validate_svdq_linear_geometry(
+  validate_linear_geometry(
     linear.in_features,
     linear.out_features,
     rank=rank,
@@ -1239,7 +1239,7 @@ def quantize_linear_svdq_w4a4(
       math_dtype=math_dtype,
       streaming=False,
     )
-  return _quantize_linear_svdq_w4a4_from_activation_span(
+  return _quantize_from_activation_span(
     linear,
     activation_span,
     rank=rank,

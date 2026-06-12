@@ -103,7 +103,11 @@ class SVDQShardSpec:
 def _all_gather_tensor_objects(local_tensor: torch.Tensor,
                                shard_spec: SVDQShardSpec) -> list[torch.Tensor]:
   gathered: list[torch.Tensor | None] = [None] * shard_spec.tp_size
-  dist.all_gather_object(gathered, local_tensor.detach().cpu().contiguous(), group=shard_spec.group)
+  dist.all_gather_object(
+    gathered,
+    local_tensor.detach().cpu().contiguous(),
+    group=shard_spec.group,
+  )
   return [tp.cast(torch.Tensor, tensor) for tensor in gathered]
 
 

@@ -13,7 +13,7 @@ from torch.distributed.tensor.parallel import parallelize_module
 from cache_dit.quantization.svdquant.dtensor import SVDQW4A4ShardLinear
 from cache_dit.quantization.svdquant.ptq import _save_quantized_module
 from cache_dit.quantization.svdquant.ptq import load_svdq
-from cache_dit.quantization.svdquant.quantizer import _quantize_linear_svdq_w4a4_from_smooth_scale
+from cache_dit.quantization.svdquant.quantizer import _quantize_from_smooth_scale
 
 
 class ToyModule(nn.Module):
@@ -39,7 +39,7 @@ def main() -> None:
   parallelize_module(model, mesh, {"proj": ColwiseParallel()})
 
   smooth = torch.ones(256, device=device, dtype=dtype)
-  quantized = _quantize_linear_svdq_w4a4_from_smooth_scale(
+  quantized = _quantize_from_smooth_scale(
     model.proj,
     smooth,
     smooth_scale_orig=smooth,
