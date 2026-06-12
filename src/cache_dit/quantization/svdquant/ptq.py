@@ -21,6 +21,7 @@ from ..config import QuantizeConfig
 from ..config import _get_svdq_precision
 from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
+from .dtensor import SVDQW4A4ShardLinear
 from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
 from .quantizer import _apply_few_shot_relaxation
@@ -938,28 +939,30 @@ class SVDQFewShotRuntimeController:
       quantize_config=self.context.quantize_config,
     )
     if self.serialize_to is not None:
-      _save_quantized_module(
+      writer_rank = _save_quantized_module(
         module,
         serialize_to=self.serialize_to,
         quant_type=self.context.quantize_config.quant_type,
         rank=self.context.rank,
+        precision=self.context.precision,
         quantized_layer_names=quantized_layer_names,
         svdq_kwargs=self.context.svdq_kwargs,
       )
-      _save_quant_config_snapshot(
-        _build_quant_config_snapshot(
+      if writer_rank:
+        _save_quant_config_snapshot(
+          _build_quant_config_snapshot(
+            checkpoint_path=self.serialize_to,
+            quant_type=self.context.quantize_config.quant_type,
+            rank=self.context.rank,
+            exclude_layers=self.context.exclude_layers,
+            regional_quantize=self.context.regional_quantize,
+            repeated_blocks=self.context.repeated_blocks,
+            verbose=self.context.verbose,
+            svdq_kwargs=self.context.svdq_kwargs,
+            backend=self.context.quantize_config.backend,
+          ),
           checkpoint_path=self.serialize_to,
-          quant_type=self.context.quantize_config.quant_type,
-          rank=self.context.rank,
-          exclude_layers=self.context.exclude_layers,
-          regional_quantize=self.context.regional_quantize,
-          repeated_blocks=self.context.repeated_blocks,
-          verbose=self.context.verbose,
-          svdq_kwargs=self.context.svdq_kwargs,
-          backend=self.context.quantize_config.backend,
-        ),
-        checkpoint_path=self.serialize_to,
-      )
+        )
     _maybe_enable_layerwise_runtime_offload(
       module,
       quantized_layer_names=quantized_layer_names,
@@ -1045,17 +1048,30 @@ def _save_quantized_module(
   precision: str,
   quantized_layer_names: list[str],
   svdq_kwargs: dict[str, Any],
-) -> None:
+) -> bool:
   _, save_file = _import_safetensors()
   tensors: dict[str, torch.Tensor] = {}
+  should_write = True
   for layer_name in quantized_layer_names:
     submodule = _get_named_submodule(module, layer_name)
     if not isinstance(submodule, SVDQW4A4Linear):
       raise TypeError(
         f"Expected SVDQW4A4Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(submodule)}.")
     serialized_name = _serialize_layer_name(layer_name)
-    for key, tensor in submodule.state_dict().items():
-      tensors[f"{serialized_name}.{key}"] = tensor.detach().cpu().contiguous()
+    if isinstance(submodule, SVDQW4A4ShardLinear):
+      layer_state_dict, layer_should_write = submodule.gather_for_save()
+    else:
+      layer_state_dict = {
+        key: tensor.detach().cpu().contiguous()
+        for key, tensor in submodule.state_dict().items()
+      }
+      layer_should_write = True
+    should_write = should_write and layer_should_write
+    for key, tensor in layer_state_dict.items():
+      tensors[f"{serialized_name}.{key}"] = tensor
+
+  if not should_write:
+    return False
 
   save_file(
     tensors,
@@ -1068,6 +1084,7 @@ def _save_quantized_module(
       svdq_kwargs=svdq_kwargs,
     ),
   )
+  return True
 
 
 def _validate_quant_config_snapshot(path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1372,6 +1389,9 @@ def _quantize_context_layers(
     if quantized_layer_device != quantize_device:
       quantized_module = quantized_module.to(device=quantized_layer_device)
 
+    if ".norm" in layer_name and isinstance(quantized_module, SVDQW4A4ShardLinear):
+      quantized_module.mark_replicate()
+
     if layer_name == "":
       module = quantized_module
     else:
@@ -1454,7 +1474,7 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     checkpoint_path=quantize_config.serialize_to,
     quantize_config=quantize_config,
   )
-  _save_quantized_module(
+  writer_rank = _save_quantized_module(
     module,
     serialize_to=quantize_config.serialize_to,
     quant_type=quantize_config.quant_type,
@@ -1463,20 +1483,21 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     quantized_layer_names=quantized_layer_names,
     svdq_kwargs=context.svdq_kwargs,
   )
-  _save_quant_config_snapshot(
-    _build_quant_config_snapshot(
+  if writer_rank:
+    _save_quant_config_snapshot(
+      _build_quant_config_snapshot(
+        checkpoint_path=quantize_config.serialize_to,
+        quant_type=quantize_config.quant_type,
+        rank=context.rank,
+        exclude_layers=context.exclude_layers,
+        regional_quantize=context.regional_quantize,
+        repeated_blocks=context.repeated_blocks,
+        verbose=context.verbose,
+        svdq_kwargs=context.svdq_kwargs,
+        backend=quantize_config.backend,
+      ),
       checkpoint_path=quantize_config.serialize_to,
-      quant_type=quantize_config.quant_type,
-      rank=context.rank,
-      exclude_layers=context.exclude_layers,
-      regional_quantize=context.regional_quantize,
-      repeated_blocks=context.repeated_blocks,
-      verbose=context.verbose,
-      svdq_kwargs=context.svdq_kwargs,
-      backend=quantize_config.backend,
-    ),
-    checkpoint_path=quantize_config.serialize_to,
-  )
+    )
   module.train(was_training)
   _log_quantize_summary(
     context,
@@ -1560,7 +1581,7 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
     quantize_config=quantize_config,
   )
   if quantize_config.serialize_to is not None:
-    _save_quantized_module(
+    writer_rank = _save_quantized_module(
       module,
       serialize_to=quantize_config.serialize_to,
       quant_type=quantize_config.quant_type,
@@ -1569,20 +1590,21 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
       quantized_layer_names=quantized_layer_names,
       svdq_kwargs=context.svdq_kwargs,
     )
-    _save_quant_config_snapshot(
-      _build_quant_config_snapshot(
+    if writer_rank:
+      _save_quant_config_snapshot(
+        _build_quant_config_snapshot(
+          checkpoint_path=quantize_config.serialize_to,
+          quant_type=quantize_config.quant_type,
+          rank=context.rank,
+          exclude_layers=context.exclude_layers,
+          regional_quantize=context.regional_quantize,
+          repeated_blocks=context.repeated_blocks,
+          verbose=context.verbose,
+          svdq_kwargs=context.svdq_kwargs,
+          backend=quantize_config.backend,
+        ),
         checkpoint_path=quantize_config.serialize_to,
-        quant_type=quantize_config.quant_type,
-        rank=context.rank,
-        exclude_layers=context.exclude_layers,
-        regional_quantize=context.regional_quantize,
-        repeated_blocks=context.repeated_blocks,
-        verbose=context.verbose,
-        svdq_kwargs=context.svdq_kwargs,
-        backend=quantize_config.backend,
-      ),
-      checkpoint_path=quantize_config.serialize_to,
-    )
+      )
   _log_quantize_summary(
     context,
     quantized_layer_names=quantized_layer_names,
@@ -1655,15 +1677,32 @@ def load_svdq(
         f"got {type(float_module)}.")
 
     torch_dtype = layer_state_dict["smooth_factor"].dtype
-    quantized_module = SVDQW4A4Linear.from_linear(
-      float_module,
-      rank=rank,
-      precision=precision,
-      runtime_kernel=svdq_kwargs["runtime_kernel"],
-      torch_dtype=torch_dtype,
-      device=load_device,
-    )
-    incompatible = quantized_module.load_state_dict(layer_state_dict, strict=True)
+    local_weight, tp_spec = SVDQW4A4ShardLinear.resolve_local(float_module.weight)
+    local_layer_state_dict = SVDQW4A4ShardLinear.shard_for_load(layer_state_dict, tp_spec)
+    if tp_spec is None:
+      quantized_module = SVDQW4A4Linear.from_linear(
+        float_module,
+        rank=rank,
+        precision=precision,
+        runtime_kernel=svdq_kwargs["runtime_kernel"],
+        torch_dtype=torch_dtype,
+        device=load_device,
+      )
+    else:
+      quantized_module = SVDQW4A4ShardLinear(
+        in_features=int(local_weight.shape[1]),
+        out_features=int(local_weight.shape[0]),
+        rank=rank,
+        bias=float_module.bias is not None,
+        precision=precision,
+        runtime_kernel=svdq_kwargs["runtime_kernel"],
+        torch_dtype=torch_dtype,
+        device=load_device,
+        tp_spec=tp_spec,
+      )
+      if ".norm" in layer_name:
+        quantized_module.mark_replicate()
+    incompatible = quantized_module.load_state_dict(local_layer_state_dict, strict=True)
     if incompatible.missing_keys or incompatible.unexpected_keys:
       raise RuntimeError(
         f"Unexpected SVDQ PTQ state_dict mismatch for {layer_name!r}: "

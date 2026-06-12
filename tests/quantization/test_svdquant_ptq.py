@@ -6,6 +6,7 @@ import json
 import math
 import os
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,7 @@ _ENABLE_FLUX2_SLOW_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2", "0").lower() ==
 _ENABLE_FLUX2_COMPILE_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2_COMPILE", "0").lower() == "1"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REPO_TMP_DIR = _REPO_ROOT / ".tmp"
+_TORCHRUN_BIN = Path("/workspace/dev/miniconda3/envs/cdit/bin/torchrun")
 _FLUX2_MODEL_SOURCE_ENVVAR = "FLUX_2_KLEIN_4B_DIR"
 _FLUX2_DEFAULT_MODEL_SOURCE = "black-forest-labs/FLUX.2-klein-4B"
 _FLUX2_CPU_SEED = 0
@@ -52,6 +54,7 @@ _DEFAULT_SVDQ_KWARGS = {
   "max_inflight_prefetch_bytes": None,
   "persistent_bins": 1,
 }
+_TP_TEST_VISIBLE_DEVICES = os.getenv("CACHE_DIT_SVDQ_TP_TEST_CUDA_VISIBLE_DEVICES", "6,7")
 _FLUX2_NUM_INFERENCE_STEPS = 4
 _FLUX2_VISUAL_SAMPLE_COUNT = 3
 _FLUX2_REFERENCE_PSNR_THRESHOLD = 10.0
@@ -1166,6 +1169,42 @@ def test_svdq_ptq_quantize_toy_model_replaces_linear_layers_and_serializes(
   metrics = compute_accuracy_metrics(reference, candidate)
   assert metrics.rel_l2 < 0.1
   assert metrics.cosine > 0.99
+
+
+@pytest.mark.skipif(
+  not torch.cuda.is_available(),
+  reason="SVDQ TP save/load smoke test requires CUDA.",
+)
+def test_svdq_tp_save_load_roundtrip_two_ranks(tmp_path: Path) -> None:
+  visible_devices = [
+    device.strip() for device in _TP_TEST_VISIBLE_DEVICES.split(",") if device.strip()
+  ]
+  if len(visible_devices) < 2:
+    pytest.skip("SVDQ TP save/load smoke test requires two visible devices.")
+  if not _TORCHRUN_BIN.is_file():
+    pytest.skip("The configured cdit torchrun binary is unavailable.")
+
+  checkpoint_path = tmp_path / "svdq_tp_roundtrip.safetensors"
+  env = os.environ.copy()
+  env["PYTHONPATH"] = str(_REPO_ROOT / "src")
+  env["CUDA_VISIBLE_DEVICES"] = _TP_TEST_VISIBLE_DEVICES
+  env["CACHE_DIT_SVDQ_TP_SAVE_LOAD_PATH"] = str(checkpoint_path)
+
+  completed = subprocess.run(
+    [
+      str(_TORCHRUN_BIN),
+      "--nproc_per_node=2",
+      str(_REPO_ROOT / "tests" / "quantization" / "_svdq_tp_save_load_worker.py"),
+    ],
+    cwd=_REPO_ROOT,
+    env=env,
+    capture_output=True,
+    text=True,
+    check=True,
+  )
+
+  assert checkpoint_path.is_file()
+  assert completed.returncode == 0
 
 
 def test_svdq_ptq_cpu_root_calibration_uses_layerwise_cuda_offload(tmp_path: Path) -> None:

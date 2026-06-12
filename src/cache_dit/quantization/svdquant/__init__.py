@@ -40,6 +40,7 @@ Notes:
 
 from ...kernels import svdq_extension_is_available as svdq_is_available
 from ...kernels import svdq_get_load_error
+from .dtensor import SVDQW4A4ShardLinear
 from .fused import fused_gelu_mlp
 from .fused import fused_gelu_proj
 from .linear import SVDQW4A4Linear
@@ -67,6 +68,7 @@ __all__ = [
   "get_pass",
   "register_pass",
   "CalibrationInputs",
+  "SVDQW4A4ShardLinear",
   "SVDQW4A4Linear",
   "compute_smooth_scale",
   "svdq_get_load_error",

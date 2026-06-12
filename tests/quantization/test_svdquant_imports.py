@@ -5,6 +5,7 @@ import torch
 
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.kernels import svdq_get_load_error
+from cache_dit.quantization.svdquant.dtensor import SVDQShardSpec
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 
 
@@ -109,3 +110,47 @@ def test_svdq_w4a4_linear_forward_accepts_2d_input(monkeypatch: pytest.MonkeyPat
     rtol=0.0,
     atol=0.0,
   )
+
+
+class _FakeMesh:
+
+  def get_group(self):
+    return None
+
+
+class _FakePlacement:
+
+  def __init__(self, shard_dim: int) -> None:
+    self._shard_dim = shard_dim
+
+  def is_shard(self, dim: int) -> bool:
+    return self._shard_dim == dim
+
+
+def test_svdq_tp_state_dict_rules_cover_lowrank_and_nvfp4_cases() -> None:
+  colwise_spec = SVDQShardSpec(
+    mesh=_FakeMesh(),
+    placement=_FakePlacement(0),
+    tp_size=2,
+    tp_rank=0,
+  )
+  rowwise_spec = SVDQShardSpec(
+    mesh=_FakeMesh(),
+    placement=_FakePlacement(1),
+    tp_size=2,
+    tp_rank=0,
+  )
+
+  assert colwise_spec.state_dict_rule("qweight") == ("cat", 0)
+  assert colwise_spec.state_dict_rule("wscales") == ("cat", 1)
+  assert colwise_spec.state_dict_rule("proj_up") == ("cat", 0)
+  assert colwise_spec.state_dict_rule("proj_down") == ("stack", 0)
+  assert colwise_spec.state_dict_rule("wcscales") == ("cat", 0)
+  assert colwise_spec.state_dict_rule("wtscale") == ("replicate", None)
+
+  assert rowwise_spec.state_dict_rule("qweight") == ("cat", 1)
+  assert rowwise_spec.state_dict_rule("wscales") == ("cat", 0)
+  assert rowwise_spec.state_dict_rule("proj_down") == ("cat", 0)
+  assert rowwise_spec.state_dict_rule("proj_up") == ("stack", 0)
+  assert rowwise_spec.state_dict_rule("wcscales") == ("replicate", None)
+  assert rowwise_spec.state_dict_rule("wtscale") == ("replicate", None)
