@@ -5,14 +5,13 @@ Provides ``fused_gelu_mlp`` (full fc1+GELU+fc2 fusion via qout path) and
 in single-stream blocks where fc2 input is concatenated).
 """
 
+from __future__ import annotations
+
 import torch
 from torch import nn
-from typing import TYPE_CHECKING
 
 from ...kernels import svdq_gemm_w4a4_ext
-
-if TYPE_CHECKING:
-  from .linear import SVDQW4A4Linear
+from .linear import SVDQW4A4Linear
 
 
 @torch.compiler.disable
