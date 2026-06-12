@@ -31,11 +31,17 @@ from __future__ import annotations
 
 import dataclasses
 import typing as tp
+from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist
 
 from .linear import SVDQW4A4Linear
+
+if TYPE_CHECKING:
+  from torch.distributed import ProcessGroup
+  from torch.distributed._tensor import DeviceMesh
+  from torch.distributed._tensor import Placement
 
 
 @dataclasses.dataclass
@@ -47,14 +53,14 @@ class SVDQShardSpec:
   full-checkpoint save helpers.
   """
 
-  mesh: tp.Any
-  placement: tp.Any
+  mesh: DeviceMesh
+  placement: Placement
   tp_size: int
   tp_rank: int
   output_replicate: bool = False
 
   @property
-  def group(self):
+  def group(self) -> ProcessGroup:
     return self.mesh.get_group()
 
   @property
