@@ -265,13 +265,23 @@ def _get_sm_targets() -> list[str]:
 
   explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
   if explicit_arch_list:
-    sm_targets = [
+    raw_targets = [
       _normalize_svdquant_sm_target(
         sm,
         support_sm120=support_sm120,
         support_sm121=support_sm121,
       ) for sm in _parse_arch_list(explicit_arch_list)
     ]
+    # Filter out SM targets that SVDQuant doesn't support (e.g. sm75 too old,
+    # sm90 Hopper excluded).  TORCH_CUDA_ARCH_LIST often lists all archs that
+    # PyTorch was built for, which may be a superset of what SVDQuant needs.
+    sm_targets = [sm for sm in raw_targets if _is_supported_svdquant_sm_target(sm)]
+    skipped = [sm for sm in raw_targets if sm not in sm_targets]
+    if skipped:
+      print(
+        f"[cache-dit] SVDQuant: skipping unsupported SM targets from "
+        f"{'CACHE_DIT_CUDA_ARCH_LIST' if os.getenv('CACHE_DIT_CUDA_ARCH_LIST') else 'TORCH_CUDA_ARCH_LIST'}: "
+        f"{', '.join(skipped)}.  Use CACHE_DIT_CUDA_ARCH_LIST to override.")
   else:
     sm_targets = []
 

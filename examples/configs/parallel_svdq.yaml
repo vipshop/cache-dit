@@ -1,0 +1,13 @@
+parallelism_config:
+  ulysses_size: auto
+  attention_backend: native
+quantize_config: 
+  quant_type: "svdq_int4_r128_dq" 
+  svdq_kwargs:
+    quantize_device: "cuda"
+    runtime_kernel: "v2"
+    fused_mlp: true
+  exclude_layers:  
+    - "embedder"
+    - "embed"
+  verbose: false
