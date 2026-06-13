@@ -1,6 +1,7 @@
 from .base import CalibratorBase
 from .taylorseer import TaylorSeerCalibrator
 from .foca import FoCaCalibrator
+from .dmd import DMDCalibrator
 
 import dataclasses
 from typing import Any, Dict
@@ -154,6 +155,71 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 
 
 @dataclasses.dataclass
+class DMDCalibratorConfig(CalibratorConfig):
+  """Config for the Dynamic Mode Decomposition (Prony) forecasting calibrator.
+
+  An EXPONENTIAL-basis alternative to TaylorSeer's polynomial forecast: DMD
+  (Schmid 2010; the SVD-regularised generalisation of Prony's method) identifies
+  the linear propagator of the cached feature stream from recent compute-step
+  snapshots and extrapolates by eigenvalue powers — exact on the (locally)
+  exponential trajectories diffusion features follow, where a polynomial
+  diverges with the cache interval. NOT Distribution Matching Distillation.
+  """
+
+  # enable_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for hidden_states (or hidden_states redisual),
+  #     such as taylorseer, foca, dmd, and so on.
+  enable_calibrator: bool = True
+  # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+  #     redisual), such as taylorseer, foca, dmd, and so on.
+  enable_encoder_calibrator: bool = True
+  # calibrator_type (`str`, *required*,  defaults to 'dmd'):
+  #    The specific type for calibrator, taylorseer, foca or dmd, etc.
+  calibrator_type: str = "dmd"
+  # dmd_history (`int`, *required*, defaults to 6):
+  #    Number of recent compute-step snapshots retained per stream. >= 4 uniformly
+  #    spaced snapshots are needed before the exponential fit engages (one complex
+  #    pole costs two real degrees of freedom); below the floor the calibrator
+  #    falls back to the Taylor expansion automatically. 5-6 is the sweet spot —
+  #    the feature dynamics drift across timesteps, so longer windows hurt.
+  dmd_history: int = 6
+  # dmd_rank (`int`, *optional*, defaults to 0):
+  #    SVD truncation rank of the snapshot matrix; 0 selects it from the spectrum
+  #    (drop modes below 1e-4 of the leading singular value). The truncation is
+  #    what rejects the noise subspace.
+  dmd_rank: int = 0
+  # dmd_ridge (`float`, *optional*, defaults to 1e-8):
+  #    Tikhonov term added to the inverted singular values.
+  dmd_ridge: float = 1e-8
+
+  def strify(self, **kwargs) -> str:
+    """Return a compact tag that includes the snapshot-history length.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A compact DMD tag for logs, summaries, or filenames.
+    """
+
+    if kwargs.get("details", False):
+      return f"DMD_H({self.dmd_history})"
+    return f"DMDH{self.dmd_history}"
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `DMDCalibrator` init kwargs.
+
+    :returns: Keyword arguments expected by `DMDCalibrator`.
+    """
+
+    kwargs = self.calibrator_kwargs.copy()
+    kwargs["history"] = self.dmd_history
+    kwargs["rank"] = self.dmd_rank
+    kwargs["ridge"] = self.dmd_ridge
+    return kwargs
+
+
+@dataclasses.dataclass
 class FoCaCalibratorConfig(CalibratorConfig):
   """Config placeholder for the future FoCa calibrator backend."""
 
@@ -183,6 +249,7 @@ class Calibrator:
 
   _supported_calibrators = [
     "taylorseer",
+    "dmd",
     # TODO: FoCa
   ]
 
@@ -201,5 +268,7 @@ class Calibrator:
 
     if calibrator_config.calibrator_type.lower() == "taylorseer":
       return TaylorSeerCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_config.calibrator_type.lower() == "dmd":
+      return DMDCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
