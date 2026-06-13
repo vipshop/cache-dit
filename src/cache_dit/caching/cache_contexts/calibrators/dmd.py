@@ -21,56 +21,99 @@ from ....logger import init_logger
 logger = init_logger(__name__)
 
 
-def _dmd_forecast(
-  snapshots: List[torch.Tensor],
-  k: float,
+def _dmd_fit_one(
+  traj: torch.Tensor,
   rank: int = 0,
   ridge: float = 1e-8,
-) -> torch.Tensor:
-  """Forecast a feature ``k`` snapshot-spacings past the newest snapshot via
-  Dynamic Mode Decomposition (Prony).
+):
+  """Fit the DMD eigendecomposition for ONE ``[d, n]`` trajectory (a single batch item's snapshot
+  history, columns OLDEST..NEWEST).
 
   Identify the linear propagator ``A`` from the snapshot pairs
-  (``Y_{t+1} ~= A Y_t``) through one economy SVD, eigendecompose it once, and
-  advance by (possibly fractional) eigenvalue powers::
+  (``Y_{t+1} ~= A Y_t``) through one economy SVD and eigendecompose it once. The
+  fit is horizon-free, so the caller caches it and advances it cheaply (see
+  :func:`_dmd_eval`).
 
-      Y_{t+k} ~= Phi @ (lambda**k * b),   b = pinv(Phi) @ Y_t
-
-  :param snapshots: >= 3 same-shape tensors, OLDEST..NEWEST, the fully computed
-      features at recent compute steps (uniformly spaced).
-  :param k: Forecast horizon in snapshot-spacing units (fractional allowed).
   :param rank: SVD truncation rank; 0 selects it from the spectrum (drop modes
       below 1e-4 of the leading singular value — this is what rejects noise).
   :param ridge: Tikhonov term added to the inverted singular values.
-  :returns: Forecast tensor of the snapshot shape; falls back to last-value
-      reuse when the history is too short or the fit is degenerate.
+  :returns: ``(Phi, evals, b)`` or ``None`` on a degenerate fit (caller reuses
+      the last value).
   """
 
-  shp, dt = snapshots[-1].shape, snapshots[-1].dtype
-  if len(snapshots) < 3:
-    return snapshots[-1].clone()
-  V = torch.stack([s.reshape(-1) for s in snapshots], dim=1).to(torch.float64)
-  X, Xp = V[:, :-1], V[:, 1:]
+  X, Xp = traj[:, :-1], traj[:, 1:]
   try:
     U, S, Vh = torch.linalg.svd(X, full_matrices=False)
-  except Exception:  # noqa: BLE001 — degenerate fit: fall back to last-value reuse
-    return snapshots[-1].clone()
-  if rank <= 0:
-    rank = int((S > S[0] * 1e-4).sum().clamp(min=1).item())
-  rank = max(1, min(rank, S.numel()))
-  Ur, Sr, Vr = U[:, :rank], S[:rank], Vh[:rank].mH
+  except Exception:  # noqa: BLE001 — degenerate fit: caller falls back to reuse
+    return None
+  r = rank
+  if r <= 0:
+    r = int((S > S[0] * 1e-4).sum().clamp(min=1).item())
+  r = max(1, min(r, S.numel()))
+  Ur, Sr, Vr = U[:, :r], S[:r], Vh[:r].mH
   Sinv = (1.0 / (Sr + ridge)).to(torch.complex128)
   Atil = (Ur.mH @ Xp @ Vr).to(torch.complex128) * Sinv.unsqueeze(0)
   try:
     evals, W = torch.linalg.eig(Atil)
     Phi = ((Xp @ Vr).to(torch.complex128) * Sinv.unsqueeze(0)) @ W
-    b = torch.linalg.lstsq(Phi, V[:, -1].to(torch.complex128).unsqueeze(1)).solution.squeeze(1)
-  except Exception:  # noqa: BLE001 — degenerate fit: fall back to last-value reuse
-    return snapshots[-1].clone()
-  pred = (Phi @ (evals.pow(float(k)) * b)).real
-  if not torch.isfinite(pred).all():
-    return snapshots[-1].clone()
-  return pred.to(dt).reshape(shp)
+    b = torch.linalg.lstsq(Phi, traj[:, -1].to(torch.complex128).unsqueeze(1)).solution.squeeze(1)
+  except Exception:  # noqa: BLE001 — degenerate fit: caller falls back to reuse
+    return None
+  return (Phi, evals, b)
+
+
+def _dmd_fit(
+  snapshots: List[torch.Tensor],
+  rank: int = 0,
+  ridge: float = 1e-8,
+):
+  """Fit DMD once for a window of >= 4 same-shape snapshots, INDEPENDENTLY per batch item (axis 0).
+
+  Flattening the whole tensor into a single state (the pre-fix behaviour) folds
+  the batch dimension into one DMD fit, so one prompt's forecast would depend on
+  the other prompts in the same batch — unlike the elementwise Taylor path.
+  Fitting per batch item keeps them independent. The fit is horizon-free, so
+  :class:`DMDState` caches the returned object and reuses it for every skip step
+  until a new snapshot arrives (one SVD/eig per window, not per skipped step).
+
+  :returns: ``(per_item_fits, shape, dtype)``, or ``None`` when the window is
+      too short. ``per_item_fits[i]`` is ``None`` for a degenerate batch item.
+  """
+
+  if len(snapshots) < 4:
+    return None
+  newest = snapshots[-1]
+  shp, dt = newest.shape, newest.dtype
+  bsz = shp[0] if newest.dim() > 1 else 1
+  # (B, d, n): per-item trajectories; B == 1 reproduces the un-batched fit.
+  V = torch.stack([s.reshape(bsz, -1) for s in snapshots], dim=-1).to(torch.float64)
+  fits = [_dmd_fit_one(V[i], rank=rank, ridge=ridge) for i in range(bsz)]
+  return (fits, shp, dt)
+
+
+def _dmd_eval(fit, k: float):
+  """Advance a cached :func:`_dmd_fit` to (fractional) horizon ``k`` by eigenvalue powers —
+  ``Y_{t+k} ~= Phi @ (lambda**k * b)`` — one cheap evaluation per batch item, no re-decomposition.
+
+  :returns: The forecast tensor of the original snapshot shape, or ``None`` when
+      any batch item is degenerate, or when the result is non-finite AFTER the
+      output-dtype cast. The finite check is deliberately post-cast: a finite
+      float64 forecast can still overflow to ``inf`` in fp16, which the caller
+      must catch and fall back from rather than feed downstream.
+  """
+
+  fits, shp, dt = fit
+  rows = []
+  for f in fits:
+    if f is None:
+      return None
+    Phi, evals, b = f
+    rows.append((Phi @ (evals.pow(float(k)) * b)).real)
+  pred = torch.stack(rows, dim=0) if len(shp) > 1 else rows[0]
+  out = pred.to(dt).reshape(shp)
+  if not torch.isfinite(out).all():
+    return None
+  return out
 
 
 class DMDState:
@@ -102,6 +145,10 @@ class DMDState:
     self.current_step = -1
     self.last_non_approximated_step = -1
     self.snapshots: List[Tuple[int, torch.Tensor]] = []
+    # Cached horizon-free DMD fit + the window key it was fitted on, so skip
+    # steps reuse one SVD/eig instead of recomputing it every step.
+    self._fit = None
+    self._fit_key = None
     self.state: Dict[str, List[torch.Tensor]] = {
       "dY_prev": [None] * self.order,
       "dY_current": [None] * self.order,
@@ -113,6 +160,8 @@ class DMDState:
     self.current_step = -1
     self.last_non_approximated_step = -1
     self.snapshots = []
+    self._fit = None
+    self._fit_key = None
     self.state = {
       "dY_prev": [None] * self.order,
       "dY_current": [None] * self.order,
@@ -166,8 +215,10 @@ class DMDState:
     # silently overwrite the snapshot history in place.
     self.snapshots.append((self.current_step, Y.detach().clone()))
     if len(self.snapshots) > self.history:
-      del self.snapshots[: len(self.snapshots) - self.history]
+      del self.snapshots[:len(self.snapshots) - self.history]
     self.last_non_approximated_step = self.current_step
+    # A new snapshot changes the window, so the cached fit is stale.
+    self._fit_key = None
 
   def _uniform_tail(self) -> Tuple[List[torch.Tensor], int]:
     """Longest uniformly spaced suffix of the snapshot history.
@@ -203,13 +254,26 @@ class DMDState:
     pairs) it falls back to the Taylor expansion — DMD acts only where it is
     valid and the polynomial path covers warm-up.
 
+    The eigendecomposition depends only on the snapshot window, which cannot
+    change between two skip steps, so it is fitted once per window and cached;
+    each skip step only re-advances the cheap ``lambda**k`` horizon. A
+    degenerate fit or non-finite forecast reuses the newest snapshot.
+
     :returns: The forecast tensor for the current logical step.
     """
 
     vels, spacing = self._uniform_tail()
     if len(vels) >= 4:
       k = (self.current_step - self.snapshots[-1][0]) / spacing
-      return _dmd_forecast(vels, k, rank=self.rank, ridge=self.ridge)
+      key = (self.snapshots[-1][0], len(vels), spacing)
+      if self._fit_key != key:
+        self._fit = _dmd_fit(vels, rank=self.rank, ridge=self.ridge)
+        self._fit_key = key
+      if self._fit is not None:
+        pred = _dmd_eval(self._fit, k)
+        if pred is not None:
+          return pred
+      return self.snapshots[-1][1].clone()
     return self._approximate_taylor()
 
   def step(self, Y: torch.Tensor):
@@ -227,8 +291,8 @@ class DMDState:
 
 
 class DMDCalibrator(CalibratorBase):
-  """Calibrator that forecasts tensors with a Dynamic Mode Decomposition
-  (Prony) exponential basis — drop-in alternative to `TaylorSeerCalibrator`."""
+  """Calibrator that forecasts tensors with a Dynamic Mode Decomposition (Prony) exponential basis —
+  drop-in alternative to `TaylorSeerCalibrator`."""
 
   def __init__(
     self,

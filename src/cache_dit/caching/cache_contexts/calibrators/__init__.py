@@ -158,12 +158,11 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 class DMDCalibratorConfig(CalibratorConfig):
   """Config for the Dynamic Mode Decomposition (Prony) forecasting calibrator.
 
-  An EXPONENTIAL-basis alternative to TaylorSeer's polynomial forecast: DMD
-  (Schmid 2010; the SVD-regularised generalisation of Prony's method) identifies
-  the linear propagator of the cached feature stream from recent compute-step
-  snapshots and extrapolates by eigenvalue powers — exact on the (locally)
-  exponential trajectories diffusion features follow, where a polynomial
-  diverges with the cache interval. NOT Distribution Matching Distillation.
+  An EXPONENTIAL-basis alternative to TaylorSeer's polynomial forecast: DMD (Schmid 2010; the SVD-
+  regularised generalisation of Prony's method) identifies the linear propagator of the cached
+  feature stream from recent compute-step snapshots and extrapolates by eigenvalue powers — exact on
+  the (locally) exponential trajectories diffusion features follow, where a polynomial diverges with
+  the cache interval. NOT Distribution Matching Distillation.
   """
 
   # enable_calibrator (`bool`, *required*,  defaults to True):
