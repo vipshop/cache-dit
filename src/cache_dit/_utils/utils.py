@@ -18,6 +18,7 @@ from ..attention import set_attn_backend
 from ..caching import (
   BlockAdapter,
   DBCacheConfig,
+  DMDCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -308,6 +309,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=1,
     help="TaylorSeer order",
+  )
+  parser.add_argument(
+    "--dmd",
+    action="store_true",
+    default=False,
+    help="Enable DMD (Dynamic Mode Decomposition / Prony) exponential-basis calibrator for CacheDiT",
+  )
+  parser.add_argument(
+    "--dmd-history",
+    type=int,
+    default=6,
+    help="DMD snapshot-history window length",
   )
   parser.add_argument(
     "--steps-mask",
@@ -2282,8 +2295,9 @@ def maybe_apply_optimization(
           force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
           force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
         ) if cache_config is None and args.cache else cache_config),
-        calibrator_config=(TaylorSeerCalibratorConfig(taylorseer_order=args.taylorseer_order, )
-                           if args.taylorseer else None),
+        calibrator_config=(DMDCalibratorConfig(
+          dmd_history=args.dmd_history) if args.dmd else TaylorSeerCalibratorConfig(
+            taylorseer_order=args.taylorseer_order) if args.taylorseer else None),
         params_modifiers=kwargs.get("params_modifiers", None),
         parallelism_config=(ParallelismConfig(
           ulysses_size=ulysses_size,
