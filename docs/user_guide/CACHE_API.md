@@ -532,30 +532,28 @@ Below the 4-snapshot identifiability floor (one complex pole needs two real degr
   <p align="center">
   <b>DMD vs Vanilla (no cache)</b>, FLUX.1-dev, 50 steps, seed 42
   </p>
+  <img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_vanilla.png" width=460px>
 </div>
 
-|Without DMD Calibrator|With DMD Calibrator|
-|:---:|:---:|
-|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_vanilla.png" width=460px>||
 
 <div align="center">
   <p align="center">
   <b>DMD vs TaylorSeer Calibrator</b>, FLUX.1-dev, ~3.2x cache acceleration
   </p>
+  <img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_taylorseer.png" width=460px>
 </div>
 
-|TaylorSeer Calibrator|DMD Calibrator|
-|:---:|:---:|
-|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_taylorseer.png" width=460px>||
 
-<p align="center">
 Quantitative comparison on 12 DrawBench prompts (LPIPS/PSNR vs own uncached image, CLIP = prompt alignment):
-</p>
+
+<div align="center" markdown="1">
 
 | Calibrator | LPIPS ↓ | PSNR (dB) ↑ | CLIP ↑ |
 |:---|:---:|:---:|:---:|
 | TaylorSeer | 0.78 | 11.8 | 0.27 |
 | **DMD** | **0.38** | **19.8** | **0.32** |
+
+</div>
 
 ### Minimal Example
 
