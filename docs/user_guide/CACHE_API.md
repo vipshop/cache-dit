@@ -423,7 +423,7 @@ cache_dit.enable_cache(
 )
 ```
 
-## Hybrid TaylorSeer Calibrator
+## TaylorSeer Calibrator: Taylor Series Extrapolation
 
 <div id="taylorseer"></div>
 
@@ -468,6 +468,143 @@ Please note that if you have used TaylorSeer as the calibrator for approximate h
 |:---:|:---:|:---:|:---:|:---:|
 |24.85s|12.85s|12.86s|10.27s|8.48s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=130px>|
+
+## DMD Calibrator: Dynamic Mode Decomposition
+
+<div id="dmd"></div>
+
+**<span style="color:#c77dff;">DMD (Dynamic Mode Decomposition)</span>** is an **exponential-basis** forecasting calibrator, serving as a drop-in alternative to TaylorSeer's polynomial basis. DMD here refers to Dynamic Mode Decomposition (Schmid 2010; the SVD-regularised multivariate generalisation of Prony's method, 1795), **not** Distribution Matching Distillation.
+
+### Mathematical Principle
+
+**TaylorSeer (Polynomial Basis)** models the cached feature stream as a Taylor series expansion around the last compute step:
+
+$$Y(t) \approx Y(0) + \frac{dY}{dt}\bigg|_0 \cdot t + \frac{d^2Y}{dt^2}\bigg|_0 \cdot \frac{t^2}{2!} + \cdots + \frac{d^nY}{dt^n}\bigg|_0 \cdot \frac{t^n}{n!}$$
+
+where the derivatives are estimated via divided differences from recent compute-step snapshots. This is a **local polynomial approximation** — accurate near the anchor point but diverges as the extrapolation horizon $t$ grows, because $t^n$ grows without bound for $n \geq 1$.
+
+**DMD (Exponential Basis)** instead models the feature stream as the output of a linear dynamical system:
+
+$$Y_{t+1} \approx A \cdot Y_t$$
+
+where $A$ is the linear propagator identified from the snapshot history. The exact solution of a linear ODE $\dot{Y} = LY$ is a sum of exponentials:
+
+$$Y(t) = \sum_{j} c_j \cdot \phi_j \cdot e^{\lambda_j t} = \Phi \cdot \text{diag}(e^{\lambda_k t}) \cdot b$$
+
+where $\Phi$ are the DMD modes (eigenvectors), $\lambda_j$ are the eigenvalues, and $b = \Phi^+ Y_0$ are the mode amplitudes. The forecast at horizon $k$ is:
+
+$$Y_{t+k} \approx \Phi \cdot (\lambda^k \odot b)$$
+
+The key insight: **a polynomial is only a local truncation of the exponential solution class, and diverges under extrapolation; the exponential basis is exact on that class.**
+
+### Fitting Procedure
+
+At each full-compute step, DMD records the computed tensor as a snapshot. At an approximation step:
+
+1. **Uniform tail extraction**: Takes the longest uniformly spaced suffix of the snapshot history (mixed spacings would corrupt the fit since the propagator advances exactly one snapshot-spacing per application).
+2. **Propagator identification**: Identifies the linear propagator $A$ via one economy SVD of the $[d, n]$ snapshot matrix with spectrum-based rank truncation (this rejects noise). Given snapshots $X = [Y_0, \ldots, Y_{n-1}]$ and $X' = [Y_1, \ldots, Y_n]$:
+   - Compute SVD: $X = U \Sigma V^H$
+   - Truncate to rank $r$: $\tilde{A} = U_r^H X' V_r \Sigma_r^{-1}$
+3. **Eigendecomposition** (cached per window): $\tilde{A} = W \Lambda W^{-1}$, then $\Phi = X' V_r \Sigma_r^{-1} W$, $b = \Phi^+ Y_n$.
+4. **Forecast**: $Y_{t+k} = \Phi \cdot (\Lambda^k \odot b)$ — advancing the horizon by eigenvalue powers is cheap (no re-decomposition).
+
+Below the 4-snapshot identifiability floor (one complex pole needs two real degrees of freedom, so one oscillatory mode requires 3 snapshot pairs), DMD transparently falls back to the Taylor expansion it also maintains internally.
+
+### TaylorSeer vs DMD: When to Use Which
+
+| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) |
+|:---|:---|:---|
+| **Basis** | Polynomial: $Y(t) \approx \sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $Y(t) \approx \Phi \cdot \text{diag}(\lambda^t) \cdot b$ |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $|\lambda| \leq 1$ (damped modes) |
+| **Per-step cost** | O(1) — just multiply-add | O(1) per skip step (cached fit); one SVD+eig per compute window |
+| **Snapshot requirement** | 2+ (for 1st-order) | ≥ 4 uniformly spaced (falls back to Taylor below floor) |
+| **Best for** | DiT-class denoising (DDPM schedules) | Flow-matching generators (near-linear feature dynamics) |
+| **Avoid when** | Large cache intervals on flow-matching models | DiT-class denoising (exponential basis drifts more) |
+| **Noise sensitivity** | Low (divided differences are local) | Moderate (SVD truncation rejects noise; ridge regularizes) |
+
+**Empirical guidance** (from [PR #1053](https://github.com/vipshop/cache-dit/pull/1053)):
+- **Flow-matching 3D generators** (Hunyuan3D, SAM3D): DMD wins clearly, and the lead grows with cache interval. On Hunyuan3D-2.1 at interval 6, DMD holds F-score 0.62 vs TaylorSeer's 0.38.
+- **DiT-class denoising** (DiT-XL/2 ImageNet-256, DDPM): TaylorSeer wins. FID drift 2.27 (TaylorSeer) vs 18.02 (DMD) at interval 3.81x. **Do not use DMD as default for DiT workloads.**
+
+### Visual Comparison
+
+<div align="center">
+  <p align="center">
+  <b>DMD vs Vanilla (no cache)</b>, FLUX.1-dev, 50 steps, seed 42
+  </p>
+</div>
+
+|Without DMD Calibrator|With DMD Calibrator|
+|:---:|:---:|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_vanilla.png" width=460px>||
+
+<div align="center">
+  <p align="center">
+  <b>DMD vs TaylorSeer Calibrator</b>, FLUX.1-dev, ~3.2x cache acceleration
+  </p>
+</div>
+
+|TaylorSeer Calibrator|DMD Calibrator|
+|:---:|:---:|
+|<img src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/dmd/dmd_vs_taylorseer.png" width=460px>||
+
+<p align="center">
+Quantitative comparison on 12 DrawBench prompts (LPIPS/PSNR vs own uncached image, CLIP = prompt alignment):
+</p>
+
+| Calibrator | LPIPS ↓ | PSNR (dB) ↑ | CLIP ↑ |
+|:---|:---:|:---:|:---:|
+| TaylorSeer | 0.78 | 11.8 | 0.27 |
+| **DMD** | **0.38** | **19.8** | **0.32** |
+
+### Minimal Example
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, DMDCalibratorConfig
+
+# DBCache + DMD Calibrator for flow-matching models
+cache_dit.enable_cache(
+  pipe,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=8,
+    Bn_compute_blocks=0,  # Bn=0 since DMD replaces Bn calibrator
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=DMDCalibratorConfig(
+    dmd_history=6,  # snapshot window length (5-6 typical)
+    dmd_rank=0,     # 0 = automatic SVD rank selection
+    dmd_ridge=1e-8, # Tikhonov regularisation
+  ),
+)
+```
+
+Or via the CLI:
+
+```bash
+# DBCache + DMD
+python -m cache_dit.generate flux --cache --dmd
+
+# With custom history
+python -m cache_dit.generate flux --cache --dmd --dmd-history 6
+```
+
+**Important**: The `dmd_history` parameter controls how many recent compute-step snapshots are retained. A longer history does not always help — the feature dynamics drift across timesteps (the propagator is non-autonomous), so a window of 5–6 is typically the sweet spot. Below 4 uniformly spaced snapshots, DMD automatically falls back to TaylorSeer.
+
+<details>
+<summary>📖 DMD Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `dmd_history` | `int` | 6 | Snapshot window length per stream. ≥ 4 uniformly spaced snapshots needed before exponential fit engages. |
+| `dmd_rank` | `int` | 0 | SVD truncation rank. 0 = automatic (drop modes below 1e-4 of leading singular value). |
+| `dmd_ridge` | `float` | 1e-8 | Tikhonov regularisation term added to inverted singular values. |
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Whether to enable the calibrator for encoder hidden states. |
+
+</details>
 
 ## SCM: Steps Computation Masking
 
