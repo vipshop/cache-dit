@@ -193,17 +193,24 @@ class DMDCalibratorConfig(CalibratorConfig):
   # dmd_ridge (`float`, *optional*, defaults to 1e-8):
   #    Tikhonov term added to the inverted singular values.
   dmd_ridge: float = 1e-8
+  # dmd_svd_precision (`str`, *optional*, defaults to 'medium'):
+  #    SVD precision mode for the DMD snapshot matrix. ``"medium"`` uses default
+  #    ``torch.linalg.svd`` (gesdd, balanced), ``"low"`` uses randomised
+  #    ``torch.svd_lowrank`` (niter=1, deterministic seed), ``"high"`` uses
+  #    ``driver="gesvd"``.
+  dmd_svd_precision: str = "medium"
 
   def strify(self, **kwargs) -> str:
-    """Return a compact tag that includes the snapshot-history length.
+    """Return a compact tag that includes the snapshot-history length and SVD precision.
 
     :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
     :returns: A compact DMD tag for logs, summaries, or filenames.
     """
 
+    prec = self.dmd_svd_precision[0]
     if kwargs.get("details", False):
-      return f"DMD_H({self.dmd_history})"
-    return f"DMDH{self.dmd_history}"
+      return f"DMD_H({self.dmd_history}, {self.dmd_svd_precision})"
+    return f"DMDH{self.dmd_history}{prec}" if prec != "m" else f"DMDH{self.dmd_history}"
 
   def to_kwargs(self) -> Dict:
     """Translate config fields into `DMDCalibrator` init kwargs.
@@ -215,6 +222,7 @@ class DMDCalibratorConfig(CalibratorConfig):
     kwargs["history"] = self.dmd_history
     kwargs["rank"] = self.dmd_rank
     kwargs["ridge"] = self.dmd_ridge
+    kwargs["svd_precision"] = self.dmd_svd_precision
     return kwargs
 
 
