@@ -323,6 +323,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="DMD snapshot-history window length",
   )
   parser.add_argument(
+    "--dmd-svd-precision",
+    "--dmd-svd",
+    type=str,
+    default="low",
+    choices=["low", "medium", "high"],
+    help="DMD SVD precision mode: low (fastest), medium (balanced), high (accurate)",
+  )
+  parser.add_argument(
     "--steps-mask",
     action="store_true",
     default=False,
@@ -2295,9 +2303,10 @@ def maybe_apply_optimization(
           force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
           force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
         ) if cache_config is None and args.cache else cache_config),
-        calibrator_config=(DMDCalibratorConfig(
-          dmd_history=args.dmd_history) if args.dmd else TaylorSeerCalibratorConfig(
-            taylorseer_order=args.taylorseer_order) if args.taylorseer else None),
+        calibrator_config=(DMDCalibratorConfig(dmd_history=args.dmd_history,
+                                               dmd_svd_precision=args.dmd_svd_precision)
+                           if args.dmd else TaylorSeerCalibratorConfig(
+                             taylorseer_order=args.taylorseer_order) if args.taylorseer else None),
         params_modifiers=kwargs.get("params_modifiers", None),
         parallelism_config=(ParallelismConfig(
           ulysses_size=ulysses_size,
