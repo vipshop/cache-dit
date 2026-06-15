@@ -312,7 +312,7 @@ def _summary(
     quantize_config: QuantizeConfig = module._quantize_config
     cache_stats.quantize_config = quantize_config
     if logging:
-      logger.info(f"\n⚡️Quantization Config: {cls_name}\n\n{quantize_config.strify()}")
+      logger.info(f"\n⚡️Quantization Config: {cls_name}: {quantize_config.strify()}")
   else:
     if logging:
       logger.warning(f"Can't find Quantization Config for: {cls_name}")
