@@ -591,7 +591,7 @@ python -m cache_dit.generate flux --cache --dmd --dmd-history 6
 
 **Important**: The `dmd_history` parameter controls how many recent compute-step snapshots are retained. A longer history does not always help — the feature dynamics drift across timesteps (the propagator is non-autonomous), so a window of 5–6 is typically the sweet spot. Below 4 uniformly spaced snapshots, DMD automatically falls back to TaylorSeer.
 
-<details>
+<details markdown="1">
 <summary>📖 DMD Config Parameters</summary>
 
 | Parameter | Type | Default | Description |
