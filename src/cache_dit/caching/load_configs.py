@@ -4,6 +4,7 @@ from typing import Tuple, Optional, Union, Dict
 from .cache_contexts import (
   DBCacheConfig,
   TaylorSeerCalibratorConfig,
+  DMDCalibratorConfig,
   DBPruneConfig,
   CalibratorConfig,
 )
@@ -33,7 +34,15 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     # deep copy to avoid modifying original kwargs
     kwargs: dict = copy.deepcopy(cache_kwargs)
     cache_context_kwargs = {}
-    if kwargs.get("enable_taylorseer", False):
+
+    # TaylorSeer and DMD are mutually exclusive.
+    enable_taylorseer = kwargs.get("enable_taylorseer", False)
+    enable_dmd = kwargs.get("enable_dmd", False)
+    if enable_taylorseer and enable_dmd:
+      raise ValueError("`enable_taylorseer` and `enable_dmd` are mutually exclusive. "
+                       "Please set only one of them to true.")
+
+    if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
         enable_calibrator=kwargs.get("enable_taylorseer"),
         enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
@@ -44,6 +53,24 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         enable_encoder_calibrator=kwargs.get("enable_encoder_taylorseer", False),
         calibrator_cache_type=kwargs.get("taylorseer_cache_type", "residual"),
         taylorseer_order=kwargs.get("taylorseer_order", 1),
+      ))
+    elif enable_dmd:
+      cache_context_kwargs["calibrator_config"] = (DMDCalibratorConfig(
+        enable_calibrator=kwargs.get("enable_dmd"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_dmd", kwargs.get("enable_dmd")),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        dmd_history=kwargs.get("dmd_history", 6),
+        dmd_rank=kwargs.get("dmd_rank", 0),
+        dmd_ridge=kwargs.get("dmd_ridge", 1e-8),
+        dmd_svd_precision=kwargs.get("dmd_svd_precision", "medium"),
+      ) if not reset else DMDCalibratorConfig().reset(
+        enable_calibrator=kwargs.get("enable_dmd"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_dmd", kwargs.get("enable_dmd")),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        dmd_history=kwargs.get("dmd_history", 6),
+        dmd_rank=kwargs.get("dmd_rank", 0),
+        dmd_ridge=kwargs.get("dmd_ridge", 1e-8),
+        dmd_svd_precision=kwargs.get("dmd_svd_precision", "medium"),
       ))
 
     if "cache_type" not in kwargs:
