@@ -326,9 +326,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--dmd-svd-precision",
     "--dmd-svd",
     type=str,
-    default="low",
+    default="medium",
     choices=["low", "medium", "high"],
-    help="DMD SVD precision mode: low (fastest), medium (balanced), high (accurate)",
+    help="DMD SVD precision mode: medium (default, balanced), low (randomised), high (accurate)",
   )
   parser.add_argument(
     "--steps-mask",

@@ -21,7 +21,7 @@ from ....logger import init_logger
 logger = init_logger(__name__)
 
 _SVD_PRECISIONS = ("low", "medium", "high")
-_SVD_LOWRANK_NITER = 4
+_SVD_LOWRANK_NITER = 1
 _SVD_LOWRANK_SEED = 0
 
 
@@ -41,7 +41,7 @@ def _dmd_svd(
   """Economy SVD for a tall-skinny ``[d, n]`` snapshot matrix.
 
   Three precision levels:
-  - ``"low"``: randomised ``torch.svd_lowrank`` (fastest, niter=4, deterministic seed).
+  - ``"low"``: randomised ``torch.svd_lowrank`` (fastest, niter=1, deterministic seed).
   - ``"medium"``: standard ``torch.linalg.svd`` with default ``gesdd``.
   - ``"high"``: ``torch.linalg.svd`` with ``driver="gesvd"`` for maximum accuracy.
 
@@ -70,7 +70,7 @@ def _dmd_fit_one(
   traj: torch.Tensor,
   rank: int = 0,
   ridge: float = 1e-8,
-  svd_precision: str = "low",
+  svd_precision: str = "medium",
 ):
   """Fit the DMD eigendecomposition for ONE ``[d, n]`` trajectory (a single batch item's snapshot
   history, columns OLDEST..NEWEST).
@@ -115,7 +115,7 @@ def _dmd_fit(
   snapshots: List[torch.Tensor],
   rank: int = 0,
   ridge: float = 1e-8,
-  svd_precision: str = "low",
+  svd_precision: str = "medium",
 ):
   """Fit DMD once for a window of >= 4 same-shape snapshots, INDEPENDENTLY per batch item (axis 0).
 
@@ -177,7 +177,7 @@ class DMDState:
     rank: int = 0,
     ridge: float = 1e-8,
     n_derivatives: int = 1,
-    svd_precision: str = "low",
+    svd_precision: str = "medium",
   ):
     """Initialize snapshot buffers and the polynomial-fallback ladder.
 
@@ -360,7 +360,7 @@ class DMDCalibrator(CalibratorBase):
     rank: int = 0,
     ridge: float = 1e-8,
     n_derivatives: int = 1,
-    svd_precision: str = "low",
+    svd_precision: str = "medium",
     **kwargs,
   ):
     """Create a calibrator whose states are keyed by logical tensor names.
