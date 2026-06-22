@@ -172,7 +172,9 @@ class FoCaState:
 
     Anchors the prediction to the most recent full-compute step F_full and advances by
     ``elapsed`` steps using the average of the anchor derivative and the local derivative.
-    Falls back to reusing F_full when insufficient data is available.
+    For large cache gaps (elapsed > 3), the extrapolation is damped toward the anchor to
+    prevent divergence on non-linear feature trajectories.  Falls back to reusing F_full
+    when insufficient data is available.
 
     :returns: The forecast tensor for the current logical step.
     """
@@ -185,7 +187,18 @@ class FoCaState:
     elapsed = float(self.current_step - self.last_full_step)
     deriv_full = self.F_full - self.F_full_prev
     deriv_curr = self.F_k - self.F_km1
-    F_pred = self.F_full + (elapsed / 2.0) * (deriv_full + deriv_curr)
+    # Heun trapezoidal rule anchored to the most recent full-compute step.
+    # Clamp the effective horizon to at most 3 steps — beyond that the linear
+    # assumption breaks down on real denoising trajectories and the prediction
+    # is damped toward the anchor to suppress overshoot / blur.
+    max_horizon = 3.0
+    if elapsed <= max_horizon:
+      F_pred = self.F_full + (elapsed / 2.0) * (deriv_full + deriv_curr)
+    else:
+      # Blend: Heun-at-horizon-3 weighted toward F_full for longer gaps.
+      w = max_horizon / elapsed
+      F_heun3 = self.F_full + (max_horizon / 2.0) * (deriv_full + deriv_curr)
+      F_pred = w * F_heun3 + (1.0 - w) * self.F_full
 
     self.F_km1 = self.F_k
     self.F_k = F_pred.detach().clone()
