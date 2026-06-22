@@ -508,25 +508,29 @@ At each full-compute step, DMD records the computed tensor as a snapshot. At an 
 3. **Eigendecomposition** (cached per window): $\tilde{A} = W \Lambda W^{-1}$, then $\Phi = X' V_r \Sigma_r^{-1} W$, $b = \Phi^+ Y_n$.
 4. **Forecast**: $Y_{t+k} = \Phi \cdot (\Lambda^k \odot b)$ — advancing the horizon by eigenvalue powers is cheap (no re-decomposition).
 
-Below the 4-snapshot identifiability floor (one complex pole needs two real degrees of freedom, so one oscillatory mode requires 3 snapshot pairs), DMD transparently falls back to the Taylor expansion it also maintains internally.
+Below the 4-snapshot identifiability floor (one complex pole needs two real degrees of freedom, so one oscillatory mode requires 3 snapshot pairs), DMD transparently falls back to the Taylor expansion it also maintains internally. For example:
 
-### TaylorSeer vs DMD: When to Use Which
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, DMDCalibratorConfig
 
-| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) |
-|:---|:---|:---|
-| **Basis** | Polynomial: $Y(t) \approx \sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $Y(t) \approx \Phi \cdot \text{diag}(\lambda^t) \cdot b$ |
-| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $|\lambda| \leq 1$ (damped modes) |
-| **Per-step cost** | O(1) — just multiply-add | O(1) per skip step (cached fit); one SVD+eig per compute window |
-| **Snapshot requirement** | 2+ (for 1st-order) | ≥ 4 uniformly spaced (falls back to Taylor below floor) |
-| **Best for** | DiT-class denoising (DDPM schedules) | Flow-matching generators (near-linear feature dynamics) |
-| **Avoid when** | Large cache intervals on flow-matching models | DiT-class denoising (exponential basis drifts more) |
-| **Noise sensitivity** | Low (divided differences are local) | Moderate (SVD truncation rejects noise; ridge regularizes) |
-
-**Empirical guidance** (from [PR #1053](https://github.com/vipshop/cache-dit/pull/1053)):
-- **Flow-matching 3D generators** (Hunyuan3D, SAM3D): DMD wins clearly, and the lead grows with cache interval. On Hunyuan3D-2.1 at interval 6, DMD holds F-score 0.62 vs TaylorSeer's 0.38.
-- **DiT-class denoising** (DiT-XL/2 ImageNet-256, DDPM): TaylorSeer wins. FID drift 2.27 (TaylorSeer) vs 18.02 (DMD) at interval 3.81x. **Do not use DMD as default for DiT workloads.**
-
-### Visual Comparison
+# DBCache + DMD Calibrator for flow-matching models
+cache_dit.enable_cache(
+  pipe,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=8,
+    Bn_compute_blocks=0,  # Bn=0 since DMD replaces Bn calibrator
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=DMDCalibratorConfig(
+    dmd_history=6,  # snapshot window length (5-6 typical)
+    dmd_rank=0,     # 0 = automatic SVD rank selection
+    dmd_ridge=1e-8, # Tikhonov regularisation
+  ),
+)
+```
 
 <div align="center">
   <p align="center">
@@ -555,40 +559,6 @@ Quantitative comparison on 12 DrawBench prompts (LPIPS/PSNR vs own uncached imag
 
 </div>
 
-### Minimal Example
-
-```python
-import cache_dit
-from cache_dit import DBCacheConfig, DMDCalibratorConfig
-
-# DBCache + DMD Calibrator for flow-matching models
-cache_dit.enable_cache(
-  pipe,
-  cache_config=DBCacheConfig(
-    max_warmup_steps=8,
-    max_cached_steps=-1,
-    Fn_compute_blocks=8,
-    Bn_compute_blocks=0,  # Bn=0 since DMD replaces Bn calibrator
-    residual_diff_threshold=0.12,
-  ),
-  calibrator_config=DMDCalibratorConfig(
-    dmd_history=6,  # snapshot window length (5-6 typical)
-    dmd_rank=0,     # 0 = automatic SVD rank selection
-    dmd_ridge=1e-8, # Tikhonov regularisation
-  ),
-)
-```
-
-Or via the CLI:
-
-```bash
-# DBCache + DMD
-python -m cache_dit.generate flux --cache --dmd
-
-# With custom history
-python -m cache_dit.generate flux --cache --dmd --dmd-history 6
-```
-
 **Important**: The `dmd_history` parameter controls how many recent compute-step snapshots are retained. A longer history does not always help — the feature dynamics drift across timesteps (the propagator is non-autonomous), so a window of 5–6 is typically the sweet spot. Below 4 uniformly spaced snapshots, DMD automatically falls back to TaylorSeer.
 
 <details markdown="1">
@@ -601,6 +571,77 @@ python -m cache_dit.generate flux --cache --dmd --dmd-history 6
 | `dmd_ridge` | `float` | 1e-8 | Tikhonov regularisation term added to inverted singular values. |
 | `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
 | `enable_encoder_calibrator` | `bool` | True | Whether to enable the calibrator for encoder hidden states. |
+
+</details>
+
+## FoCa Calibrator: Forecast then Calibrate
+
+<div id="foca"></div>
+
+**<span style="color:#c77dff;">FoCa (Forecast then Calibrate)</span>** is an **ODE-based** forecasting calibrator, serving as a drop-in alternative to TaylorSeer's polynomial basis and DMD's exponential basis. FoCa treats feature caching as an ODE integration problem — it pairs a BDF2 predictor with a Heun corrector to achieve stable long-skip prediction without training. [arXiv:2508.16211](https://arxiv.org/abs/2508.16211)
+
+### Mathematical Principle
+
+FoCa models the hidden feature evolution across denoising steps as a near-linear ODE:
+
+$$\frac{d}{dt}\mathcal{F}(x_t^l) = g_\theta(\mathcal{F}(x_t^l), t)$$
+
+While $g_\theta$ is not directly solvable, classical linear multi-step integration methods — which only depend on cached historical values — can integrate this ODE stably. FoCa's prediction at the current step is computed via the **Heun trapezoidal rule** anchored to the most recent full-compute step:
+
+$$F_{pred} = F_{full} + \frac{\text{elapsed}}{2} \cdot \big( \text{deriv}_{full} + \text{deriv}_{curr} \big)$$
+
+where:
+- $F_{full}$ is the feature tensor at the most recent full-compute step
+- $\text{elapsed}$ is the number of steps since that full-compute anchor
+- $\text{deriv}_{full} = F_{full} - F_{full\_prev}$ is the reliable derivative at the anchor
+- $\text{deriv}_{curr} = F_k - F_{km1}$ is the local derivative from the two most recent values
+
+The Heun trapezoidal rule takes the **average** of the anchor derivative and the local derivative. When the feature evolution is near-linear, the average equals either derivative and FoCa matches linear extrapolation. When the local derivative deviates (cache drift), the anchor derivative pulls the prediction back toward the reliable trend — suppressing overshoot that would otherwise accumulate in recursive prediction. For example:
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, FoCaCalibratorConfig
+
+# DBCache + FoCa Calibrator (zero-config)
+cache_dit.enable_cache(
+  pipe,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,  # Bn=0 since FoCa replaces Bn calibrator
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=FoCaCalibratorConfig(),
+)
+```
+
+## TaylorSeer vs DMD vs FoCa: When to Use Which
+
+<div align="center" markdown="1">
+
+| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) | FoCa (ODE Heun) |
+|:---|:---|:---|:---|
+| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule |
+| **Anchor** | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot |
+| **Per-step cost** | O(1) | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops |
+| **Hyper-parameters** | `taylorseer_order` (default 1) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive |
+| **Best for** | DiT DDPM | Flow-matching | General-purpose; simpler than DMD |
+| **Memory** | 2× tensors (derivative ladder) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) |
+
+</div>
+
+<details markdown="1">
+<summary>📖 FoCa Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | False | Whether to enable the calibrator for encoder hidden states. |
+| `calibrator_cache_type` | `str` | `"residual"` | Cache type: `"residual"` or `"hidden_states"`. |
+
+FoCA has no algorithm-specific hyper-parameters — the prediction formula adapts automatically to the step intervals.
 
 </details>
 
