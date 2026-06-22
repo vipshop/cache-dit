@@ -651,7 +651,7 @@ Here is an example of the comparison among DBCache only, DBCache + TaylorSeer, D
 |Baseline| DBCache Only | + TaylorSeer | + FoCa | + DMD |
 |:--:|:--:|:--:|:--:|:--:|
 |28 steps| cached 17 steps| cached 17 steps| cached 17 steps| cached 17 steps|
-|<img src=../assets/cache_compare/flux.1024x1024.C0.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T0O0_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T1O1_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_FoCa_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_DMDH6_S17.png width=150px />|
+|<img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/cache_compare/flux.1024x1024.C0.png width=150px />|<img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T0O0_S17.png width=150px />|<img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T1O1_S17.png width=150px />|<img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_FoCa_S17.png width=150px />|<img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_DMDH6_S17.png width=150px />|
 
 </div>
 
