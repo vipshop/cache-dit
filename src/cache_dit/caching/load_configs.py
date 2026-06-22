@@ -5,6 +5,7 @@ from .cache_contexts import (
   DBCacheConfig,
   TaylorSeerCalibratorConfig,
   DMDCalibratorConfig,
+  FoCaCalibratorConfig,
   DBPruneConfig,
   CalibratorConfig,
 )
@@ -35,12 +36,13 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     kwargs: dict = copy.deepcopy(cache_kwargs)
     cache_context_kwargs = {}
 
-    # TaylorSeer and DMD are mutually exclusive.
+    # TaylorSeer, DMD, and FoCa are mutually exclusive.
     enable_taylorseer = kwargs.get("enable_taylorseer", False)
     enable_dmd = kwargs.get("enable_dmd", False)
-    if enable_taylorseer and enable_dmd:
-      raise ValueError("`enable_taylorseer` and `enable_dmd` are mutually exclusive. "
-                       "Please set only one of them to true.")
+    enable_foca = kwargs.get("enable_foca", False)
+    if sum([enable_taylorseer, enable_dmd, enable_foca]) > 1:
+      raise ValueError("`enable_taylorseer`, `enable_dmd`, and `enable_foca` are mutually "
+                       "exclusive. Please set only one of them to true.")
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -71,6 +73,16 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         dmd_rank=kwargs.get("dmd_rank", 0),
         dmd_ridge=kwargs.get("dmd_ridge", 1e-8),
         dmd_svd_precision=kwargs.get("dmd_svd_precision", "medium"),
+      ))
+    elif enable_foca:
+      cache_context_kwargs["calibrator_config"] = (FoCaCalibratorConfig(
+        enable_calibrator=kwargs.get("enable_foca"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_foca", False),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+      ) if not reset else FoCaCalibratorConfig().reset(
+        enable_calibrator=kwargs.get("enable_foca"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_foca", False),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
       ))
 
     if "cache_type" not in kwargs:

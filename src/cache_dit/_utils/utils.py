@@ -19,6 +19,7 @@ from ..caching import (
   BlockAdapter,
   DBCacheConfig,
   DMDCalibratorConfig,
+  FoCaCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -329,6 +330,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default="medium",
     choices=["low", "medium", "high"],
     help="DMD SVD precision mode: medium (default, balanced), low (randomised), high (accurate)",
+  )
+  parser.add_argument(
+    "--foca",
+    action="store_true",
+    default=False,
+    help="Enable FoCa (Forecast then Calibrate) ODE-based calibrator for CacheDiT",
   )
   parser.add_argument(
     "--steps-mask",
@@ -2303,8 +2310,8 @@ def maybe_apply_optimization(
           force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
           force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
         ) if cache_config is None and args.cache else cache_config),
-        calibrator_config=(DMDCalibratorConfig(dmd_history=args.dmd_history,
-                                               dmd_svd_precision=args.dmd_svd_precision)
+        calibrator_config=(FoCaCalibratorConfig() if args.foca else DMDCalibratorConfig(
+          dmd_history=args.dmd_history, dmd_svd_precision=args.dmd_svd_precision)
                            if args.dmd else TaylorSeerCalibratorConfig(
                              taylorseer_order=args.taylorseer_order) if args.taylorseer else None),
         params_modifiers=kwargs.get("params_modifiers", None),
