@@ -615,6 +615,18 @@ cache_dit.enable_cache(
   calibrator_config=FoCaCalibratorConfig(),
 )
 ```
+<details markdown="1">
+<summary>📖 FoCa Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | False | Whether to enable the calibrator for encoder hidden states. |
+| `calibrator_cache_type` | `str` | `"residual"` | Cache type: `"residual"` or `"hidden_states"`. |
+
+FoCA has no algorithm-specific hyper-parameters — the prediction formula adapts automatically to the step intervals.
+
+</details>
 
 ## TaylorSeer vs DMD vs FoCa: When to Use Which
 
@@ -632,18 +644,16 @@ cache_dit.enable_cache(
 
 </div>
 
-<details markdown="1">
-<summary>📖 FoCa Config Parameters</summary>
+Here is an example of the comparison among DBCache only, DBCache + TaylorSeer, DBCache + FoCa, and DBCache + DMD. In this case, DMD shows better performance than TaylorSeer and FoCa in terms of both image quality and prompt alignment. However, the best choice of calibrator may vary across models and use cases, so we recommend users to try out different calibrators to find the best fit for their specific scenario. (NVIDIA L20, FLUX.1-dev, 28 steps, residual_diff_threshold=0.5, max_continuous_cached_steps=6)
 
-| Parameter | Type | Default | Description |
-|:---|:---|:---|:---|
-| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
-| `enable_encoder_calibrator` | `bool` | False | Whether to enable the calibrator for encoder hidden states. |
-| `calibrator_cache_type` | `str` | `"residual"` | Cache type: `"residual"` or `"hidden_states"`. |
+<div align="center" markdown="1">
 
-FoCA has no algorithm-specific hyper-parameters — the prediction formula adapts automatically to the step intervals.
+|Baseline| DBCache Only | + TaylorSeer | + FoCa | + DMD |
+|:--:|:--:|:--:|:--:|:--:|
+|28 steps| cached 17 steps| cached 17 steps| cached 17 steps| cached 17 steps|
+|<img src=../assets/cache_compare/flux.1024x1024.C0.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T0O0_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_T1O1_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_FoCa_S17.png width=150px />|<img src=../assets/cache_compare/flux.1024x1024.C0_DBCache_F1B0_W8I1M0MC6_R0.5_CFG0_DMDH6_S17.png width=150px />|
 
-</details>
+</div>
 
 ## SCM: Steps Computation Masking
 
