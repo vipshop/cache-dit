@@ -11,14 +11,19 @@
 # so it keeps quality at larger cache intervals.
 #
 # Relationship with DBCache — a drop-in forecast layer, NOT an algorithm change:
-#   DBCache's residual formula is fixed:
-#       hidden_states = cached_residual + current_residual   (apply_cache)
-#   Without a calibrator, `cached_residual` is the stale value from the last
+#   DBCache's residual fusion formula is fixed (apply_cache):
+#       hidden_states = Bn_residual(t) + Fn_output(t+1)
+#   The calibrator only forecasts the LEFT operand (Bn_residual from step t).
+#   The RIGHT operand, Fn_output(t+1), is ALWAYS freshly computed by the Fn
+#   blocks at the current denoising step — this is how current-step information
+#   is injected, so the calibrator does not need to model the full hidden-state
+#   dynamics, only the relatively small residual correction.
+#   Without a calibrator, Bn_residual(t) is the stale value from the last
 #   full-compute step. With DMDCalibrator, it is replaced by the DMD forecast
-#   of what the residual should be at the CURRENT step — same formula, smarter
-#   operand. The calibrator does not touch DBCache's threshold logic, diff
-#   tracking, or accumulation guards; it only provides a better `hidden_states_prev`
-#   via get_Bn_buffer() → calibrator.approximate().
+#   of what the Bn residual should be at the CURRENT step — same formula,
+#   smarter operand. The calibrator does not touch DBCache's threshold logic,
+#   diff tracking, or accumulation guards; it only provides a better
+#   `hidden_states_prev` via get_Bn_buffer() → calibrator.approximate().
 #
 # Core mechanism — eigenvalues are NOT static; they are recomputed on every
 # sliding-window change via lazy re-fitting:
