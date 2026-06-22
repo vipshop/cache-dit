@@ -63,15 +63,18 @@
 #     F_bdf2 = 2 * F_k - F_km1
 #     (linear extrapolation from the last two values)
 #
-#   Heun corrector (drift-suppression term):
-#     deriv_full = F_full - F_full_prev   # reliable derivative at full-compute anchor
+#   Heun corrector (anchored to most recent full-compute step):
+#     elapsed = current_step - last_full_step
+#     deriv_full = F_full - F_full_prev  # reliable derivative at full-compute anchor
 #     deriv_curr = F_k - F_km1           # local derivative (may contain cache drift)
-#     F_heun = F_bdf2 + 0.5 * (deriv_full - deriv_curr)
+#     F_heun = F_full + (elapsed / 2) * (deriv_full + deriv_curr)
 #
-#   When the cached predictions follow the same trend as the full-compute
-#   anchors (deriv_curr ≈ deriv_full), the correction term is zero and
-#   Heun ≡ BDF2. When cache drift causes deriv_curr to deviate, the Heun
-#   term non-zero pulls the prediction back toward the anchor's trajectory.
+#   The Heun formula is the trapezoidal rule: start from the full-compute
+#   anchor F_full, advance by elapsed steps, using the average of (a) the
+#   reliable derivative at the anchor, and (b) the local derivative estimated
+#   from the two most recent values.  This is fundamentally different from
+#   TaylorSeer which multiplies deriv_full by elapsed directly — the Heun
+#   average suppresses overshoot when the local derivative is noisy.
 #
 #   After approximate() returns, F_k/F_km1 are advanced with the predicted
 #   value, enabling recursive prediction on the next cache step.
@@ -105,10 +108,11 @@ logger = init_logger(__name__)
 
 
 class FoCaState:
-  """Per-stream BDF2+Heun forecast state for one named calibration stream.
+  """Per-stream Heun forecast state for one named calibration stream.
 
-  Stores the two most recent feature values (full-compute or cached) for the recursive BDF2
-  predictor and the two most recent full-compute anchors for the Heun drift corrector.
+  Stores the two most recent feature values (full-compute or cached) for local derivative estimation
+  and the two most recent full-compute anchors for the reliable anchor derivative. Predicts via the
+  Heun trapezoidal rule anchored to the most recent full-compute step.
   """
 
   def __init__(self):
@@ -164,31 +168,28 @@ class FoCaState:
     self.F_k = Y.detach().clone()
 
   def approximate(self) -> torch.Tensor:
-    """Forecast the tensor for the current step using BDF2 + Heun.
+    """Forecast the tensor for the current step using the Heun trapezoidal rule.
 
-    When fewer than two rolling-window values are available the method falls back to reusing the
-    most recent value.  After the forecast the rolling window is advanced so that the next cache
-    step can recurse.
+    Anchors the prediction to the most recent full-compute step F_full and advances by
+    ``elapsed`` steps using the average of the anchor derivative and the local derivative.
+    Falls back to reusing F_full when insufficient data is available.
 
     :returns: The forecast tensor for the current logical step.
     """
 
     if self.F_k is None:
       raise RuntimeError("FoCaState.approximate() called before any update().")
-    if self.F_km1 is None:
-      return self.F_k.clone()
+    if self.F_km1 is None or self.F_full_prev is None:
+      return self.F_full.clone() if self.F_full is not None else self.F_k.clone()
 
-    F_bdf2 = 2.0 * self.F_k - self.F_km1
-    if self.F_full_prev is not None:
-      deriv_full = self.F_full - self.F_full_prev
-      deriv_curr = self.F_k - self.F_km1
-      F_heun = F_bdf2 + 0.5 * (deriv_full - deriv_curr)
-    else:
-      F_heun = F_bdf2
+    elapsed = float(self.current_step - self.last_full_step)
+    deriv_full = self.F_full - self.F_full_prev
+    deriv_curr = self.F_k - self.F_km1
+    F_pred = self.F_full + (elapsed / 2.0) * (deriv_full + deriv_curr)
 
     self.F_km1 = self.F_k
-    self.F_k = F_heun.detach().clone()
-    return F_heun
+    self.F_k = F_pred.detach().clone()
+    return F_pred
 
   def step(self, Y: torch.Tensor) -> torch.Tensor:
     """Advance one step and return either the true tensor or its forecast.
