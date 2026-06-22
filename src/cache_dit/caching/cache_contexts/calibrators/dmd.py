@@ -9,6 +9,47 @@
 # A polynomial (Taylor) forecast is only a local truncation of that class and
 # diverges as the skip horizon grows; the exponential basis is exact on the class,
 # so it keeps quality at larger cache intervals.
+#
+# Core mechanism — eigenvalues are NOT static; they are recomputed on every
+# sliding-window change via lazy re-fitting:
+#
+#   Prediction formula:
+#       Y_{t+k} = Φ · (λ^k ⊙ b) = Σ_i φ_i · λ_i^k · b_i
+#
+#   Two-level variation:
+#     1. Intra-window (skip steps between two full-compute steps):
+#        λ is fixed, but the horizon k increases with each skip step.
+#        λ^k evolves (damped / oscillatory / growing), producing a different
+#        forecast at each skip step — this is how the prediction "moves" even
+#        though the eigenvalues haven't changed.
+#
+#     2. Inter-window (across the denoising trajectory):
+#        Every full-compute step calls DMDState.update(), which appends the
+#        new snapshot, evicts the oldest (sliding window of `history` frames),
+#        and sets _fit_key = None. On the next approximate() call, the guard
+#        `if self._fit_key != key` triggers a fresh SVD + eigendecomposition
+#        on the updated snapshot window. The eigenvalues λ are thus re-
+#        estimated continuously, tracking the slowly-drifting denoising
+#        dynamics. The window is deliberately short (5–6) because the
+#        underlying propagator A(t) is non-autonomous — a long window would
+#        average over changing dynamics and hurt accuracy.
+#
+#   Calling chain:
+#       cache_manager.get_Bn_buffer()           # cache hit → need forecast
+#         → DMDCalibrator.approximate()
+#           → DMDState.approximate()
+#             → _uniform_tail()                 # extract uniformly-spaced tail
+#             → if _fit_key != key:             # window changed since last fit?
+#                 → _dmd_fit(vels)              # ★ re-fit: SVD + eig (once per window)
+#                   → _dmd_fit_one()            #     economy SVD → A_tilde → eig(λ)
+#             → _dmd_eval(self._fit, k)         # cheap: Φ @ (λ^k * b)
+#
+#       cache_manager.set_Bn_buffer()           # full-compute step → store truth
+#         → DMDCalibrator.update()
+#           → DMDState.update()
+#             → snapshots.append(Y)             # slide window
+#             → del snapshots[:oldest]          # evict oldest
+#             → _fit_key = None                 # invalidate cached fit
 import math
 from typing import Dict, List, Tuple
 
