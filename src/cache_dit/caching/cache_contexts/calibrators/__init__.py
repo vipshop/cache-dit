@@ -250,6 +250,16 @@ class FoCaCalibratorConfig(CalibratorConfig):
   def strify(self, **kwargs) -> str:
     return "FoCa"
 
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `FoCaCalibrator` init kwargs.
+
+    FoCA has no hyper-parameters, so this returns an empty dict.
+
+    :returns: Empty keyword arguments dict for `FoCaCalibrator`.
+    """
+
+    return {}
+
 
 class Calibrator:
   """Factory that instantiates supported calibrator implementations."""
@@ -257,7 +267,7 @@ class Calibrator:
   _supported_calibrators = [
     "taylorseer",
     "dmd",
-    # TODO: FoCa
+    "foca",
   ]
 
   def __new__(
@@ -277,5 +287,7 @@ class Calibrator:
       return TaylorSeerCalibrator(**calibrator_config.to_kwargs())
     elif calibrator_config.calibrator_type.lower() == "dmd":
       return DMDCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_config.calibrator_type.lower() == "foca":
+      return FoCaCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
