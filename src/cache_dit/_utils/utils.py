@@ -1,3 +1,4 @@
+import ast
 import torch
 import argparse
 import torch.distributed as dist
@@ -80,6 +81,31 @@ def GiB():
     return int(total_memory_gib)
   except Exception:
     return 0
+
+
+def parse_extra_input_kwargs(s: str) -> Optional[Dict[str, Any]]:
+  """Parse a Python dict literal string into a dict.
+
+  Supports int, float, bool, None, list, dict, tuple, str values.
+  Uses :func:`ast.literal_eval` for safe evaluation.
+
+  :param s: A Python dict literal string, e.g. ``"{'key': 123, 'arr': [1,2]}"``.
+  :returns: The parsed dict, or None if the input is empty.
+  :raises argparse.ArgumentTypeError: If the string is not a valid Python dict literal.
+  """
+  if s is None or s.strip() == "":
+    return None
+  try:
+    result = ast.literal_eval(s)
+  except (ValueError, SyntaxError) as e:
+    raise argparse.ArgumentTypeError(
+      f"Invalid Python dict literal for --extra-input-kwargs: {e}\n"
+      f"Expected format: \"{{'key1': value1, 'key2': value2, ...}}\"")
+  if not isinstance(result, dict):
+    raise argparse.ArgumentTypeError(
+      f"--extra-input-kwargs expects a dict literal, got {type(result).__name__}. "
+      f"Expected format: \"{{'key1': value1, 'key2': value2, ...}}\"")
+  return result
 
 
 def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespace:
@@ -220,6 +246,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=None,
     help="Random seed for reproducibility",
+  )
+  parser.add_argument(
+    "--extra-input-kwargs",
+    type=parse_extra_input_kwargs,
+    default=None,
+    help=(
+      "Extra input kwargs passed to the pipeline as a Python dict literal. "
+      "Keys override both default and programmatic extra_input_kwargs. "
+      "Example: --extra-input-kwargs \"{'cfg_normalization': False, 'max_sequence_length': 1536}\""
+    ),
   )
   parser.add_argument(
     "--num-frames",

@@ -88,6 +88,9 @@ class ExampleInputData:
     extra_data = {k: v for k, v in extra_args.items() if v is not None}
     input_data = {k: v for k, v in data.items() if v is not None}
     input_data.update(extra_data)
+    # Override with CLI-provided extra_input_kwargs (takes precedence over programmatic extras)
+    if getattr(args, "extra_input_kwargs", None):
+      input_data.update(args.extra_input_kwargs)
     # Override with args if provided
     if args.prompt is not None:
       input_data["prompt"] = args.prompt
