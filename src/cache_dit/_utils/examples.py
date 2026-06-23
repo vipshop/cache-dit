@@ -93,6 +93,7 @@ _env_path_mapping = {
   "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
+FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
 
 
 def _path(
@@ -316,11 +317,11 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
   width = 1024 if args.width is None else args.width
   image1 = load_image(
     "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
-  # image2 = load_image(
-  #   "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
+  image2 = load_image(
+    "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
   # resize images to desired size
   image1 = image1.resize((width, height))
-  # image2 = image2.resize((width, height))
+  image2 = image2.resize((width, height))
 
   params_modifiers = _flux2_params_modifiers(args)
   return Example(
@@ -342,9 +343,7 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       width=width,
       num_inference_steps=num_inference_steps,
       guidance_scale=guidance_scale,
-      # image=[image1, image2],
-      image=[image1],
-    ),
+      image=[image1] if FLUX2_SKIP_INPUT_IMAGE2 else [image1, image2]),
   )
 
 
@@ -383,7 +382,7 @@ def flux2_klein_kv_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       height=height,
       width=width,
       num_inference_steps=4,
-      image=[image1, image2],
+      image=[image1] if FLUX2_SKIP_INPUT_IMAGE2 else [image1, image2],
     ),
   )
 
