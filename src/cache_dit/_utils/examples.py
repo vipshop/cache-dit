@@ -343,7 +343,8 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       width=width,
       num_inference_steps=num_inference_steps,
       guidance_scale=guidance_scale,
-      image=[image1] if FLUX2_SKIP_INPUT_IMAGE2 else [image1, image2]),
+      image=[image1] if FLUX2_SKIP_INPUT_IMAGE2 else [image1, image2],
+    ),
   )
 
 
