@@ -316,11 +316,11 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
   width = 1024 if args.width is None else args.width
   image1 = load_image(
     "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
-  image2 = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
+  # image2 = load_image(
+  #   "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
   # resize images to desired size
   image1 = image1.resize((width, height))
-  image2 = image2.resize((width, height))
+  # image2 = image2.resize((width, height))
 
   params_modifiers = _flux2_params_modifiers(args)
   return Example(
@@ -342,7 +342,8 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       width=width,
       num_inference_steps=num_inference_steps,
       guidance_scale=guidance_scale,
-      image=[image1, image2],
+      # image=[image1, image2],
+      image=[image1],
     ),
   )
 
