@@ -19,6 +19,7 @@ quantize_config:
     # scenarios, set `few_shot_auto_compile: false`, then compile manually after
     # moving the pipeline to CUDA.
     quantize_device: "cuda"
+    fused_mlp: true
   exclude_layers:  
     - "embedder"
     - "embed"
