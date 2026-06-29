@@ -362,6 +362,8 @@ class ExampleInitConfig:
   post_init_hook: Optional[Callable[[DiffusionPipeline], None]] = None
   # For DBCache, Parallelism optimization.
   extra_optimize_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  # For third-party models that require trust_remote_code
+  trust_remote_code: bool = False
 
   def __post_init__(self):
     if not self.bnb_4bit_components:
@@ -382,6 +384,7 @@ class ExampleInitConfig:
       torch_dtype=self.torch_dtype,
       quantization_config=pipeline_quantization_config,
       device_map="balanced" if args.device_map_balance else None,
+      trust_remote_code=self.trust_remote_code,
       **self._custom_components_kwargs(),
     )  # type: LoraBaseMixin
     if self.post_init_hook is not None:

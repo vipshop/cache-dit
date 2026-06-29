@@ -32,6 +32,7 @@ class BlockAdapterRegister:
     "ChronoEdit",
     "HunyuanVideo15",
     "OvisImage",
+    "BooguImage",
   ]
 
   @classmethod

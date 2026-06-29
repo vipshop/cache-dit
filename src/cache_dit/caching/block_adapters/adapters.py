@@ -914,3 +914,31 @@ def helios_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,  # default, guidance_scale > 1
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("BooguImage")
+def boogu_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for Boogu-Image (third-party, non-diffusers model).
+
+  Boogu-Image uses a dual-stream architecture similar to HiDream:
+  - double_stream_layers: joint image+instruction processing (Pattern_0)
+  - single_stream_layers: fused single-stream processing (Pattern_3)
+
+  Block forward signatures are non-standard, so check_forward_pattern is disabled.
+  The existing apply_cache_dit_caching() in boogu-image already validates this approach.
+  """
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.double_stream_layers,
+      pipe.transformer.single_stream_layers,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_0,
+      ForwardPattern.Pattern_3,
+    ],
+    check_forward_pattern=False,
+    has_separate_cfg=True,
+    **kwargs,
+  )

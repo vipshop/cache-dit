@@ -47,6 +47,7 @@ __all__ = [
   "helios_t2v_example",
   "helios_t2v_distill_example",
   "flux2_klein_kv_edit_example",
+  "boogu_image_edit_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -91,6 +92,7 @@ _env_path_mapping = {
   "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
   "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
   "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
+  "BOOGU_IMAGE_EDIT_DIR": "BOOGU-IMAGE/Boogu-Image-0.1-Edit",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1473,6 +1475,56 @@ def helios_t2v_distill_example(args: argparse.Namespace, **kwargs) -> Example:
       extra_input_kwargs={
         "pyramid_num_inference_steps_list": [2, 2, 2],
         "is_amplify_first_chunk": True,
+      },
+    ),
+  )
+
+
+def _boogu_post_init_hook(pipe):
+  """Wrap pipe.__call__ to translate standard cache-dit param names to BooguImagePipeline names.
+
+  BooguImagePipeline uses ``instruction`` instead of ``prompt`` and ``input_images``
+  instead of ``image``. This hook makes the pipeline compatible with cache-dit's
+  standard ExampleInputData interface.
+  """
+  _original_call = pipe.__class__.__call__
+
+  def _wrapped_call(self, **kwargs):
+    if "prompt" in kwargs:
+      kwargs["instruction"] = kwargs.pop("prompt")
+    if "negative_prompt" in kwargs:
+      kwargs["negative_instruction"] = kwargs.pop("negative_prompt")
+    if "image" in kwargs:
+      kwargs["input_images"] = kwargs.pop("image")
+    return _original_call(self, **kwargs)
+
+  pipe.__class__.__call__ = _wrapped_call
+
+
+@ExampleRegister.register("boogu_image_edit", default="BOOGU-IMAGE/Boogu-Image-0.1-Edit")
+def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from boogu.pipelines.boogu.pipeline_boogu import BooguImagePipeline
+
+  if args.image_path is not None:
+    image = load_image(args.image_path).convert("RGB")
+  else:
+    image = load_image("examples/data/boogu_01.png").convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,
+      model_name_or_path=_path("BOOGU-IMAGE/Boogu-Image-0.1-Edit"),
+      pipeline_class=BooguImagePipeline,
+      trust_remote_code=True,
+      post_init_hook=_boogu_post_init_hook,
+    ),
+    input_data=ExampleInputData(
+      prompt="Turn the cat into a golden statue",
+      num_inference_steps=50,
+      image=[image],
+      extra_input_kwargs={
+        "text_guidance_scale": 4.0,
       },
     ),
   )
