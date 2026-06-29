@@ -1,6 +1,6 @@
 """Boogu-Image distributed parallelism planners (TP and CP)."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -25,6 +25,19 @@ from .register import (
   TensorParallelismPlannerRegister,
 )
 
+try:
+  from boogu.models.attention_processor import (
+    Attention,
+    BooguImageAttnProcessor,
+    BooguImageAttnProcessorFlash2Varlen,
+  )
+  from boogu.models.transformers import BooguImageTransformer2DModel
+  BOOGU_IMAGE_AVAILABLE = True
+except ImportError:
+  # boogu-image not available
+  BooguImageTransformer2DModel = nn.Module  # type: ignore
+  BOOGU_IMAGE_AVAILABLE = False
+
 logger = init_logger(__name__)
 
 
@@ -41,13 +54,9 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
   repeat, Q/K/V have 28 heads each — divisible by 2, giving a clean 14:14 ratio
   per GPU.  We then pass ``enable_gqa=False`` since heads already match.
   """
-  try:
-    from boogu.models.attention_processor import (
-      BooguImageAttnProcessor,
-      BooguImageAttnProcessorFlash2Varlen,
-    )
-  except ImportError:
-    return  # boogu-image not available
+  if not BOOGU_IMAGE_AVAILABLE:
+    logger.warning("Boogu-Image not available; skipping attention processor patch.")
+    return
 
   from ...attention import _dispatch_attention_fn
 
@@ -55,24 +64,31 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
   _original_sdpa_call = BooguImageAttnProcessor.__call__
 
   def _patched_sdpa_call(
-    self,
-    attn,
-    hidden_states,
-    encoder_hidden_states,
-    attention_mask=None,
-    image_rotary_emb=None,
-    base_sequence_length=None,
-  ):
+    self: BooguImageAttnProcessor,
+    attn: Attention,
+    hidden_states: torch.Tensor,
+    encoder_hidden_states: torch.Tensor,
+    attention_mask: Optional[torch.Tensor] = None,
+    image_rotary_emb: Optional[torch.Tensor] = None,
+    base_sequence_length: Optional[int] = None,
+  ) -> torch.Tensor:
     cp_config = getattr(self, '_cp_config', None)
     if cp_config is None:
-      return _original_sdpa_call(self, attn, hidden_states, encoder_hidden_states, attention_mask,
-                                 image_rotary_emb, base_sequence_length)
+      return _original_sdpa_call(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states,
+        attention_mask,
+        image_rotary_emb,
+        base_sequence_length,
+      )
 
     # ---- Q/K/V projection + reshape (same as original) ----
     batch_size, sequence_length, _ = hidden_states.shape
-    query = attn.to_q(hidden_states)
-    key = attn.to_k(encoder_hidden_states)
-    value = attn.to_v(encoder_hidden_states)
+    query = attn.to_q(hidden_states)  # type: torch.Tensor
+    key = attn.to_k(encoder_hidden_states)  # type: torch.Tensor
+    value = attn.to_v(encoder_hidden_states)  # type: torch.Tensor
     query_dim = query.shape[-1]
     inner_dim = key.shape[-1]
     head_dim = query_dim // attn.heads
@@ -127,14 +143,14 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
     _original_varlen_call = BooguImageAttnProcessorFlash2Varlen.__call__
 
     def _patched_varlen_call(
-      self,
-      attn,
-      hidden_states,
-      encoder_hidden_states,
-      attention_mask=None,
-      image_rotary_emb=None,
-      base_sequence_length=None,
-    ):
+      self: BooguImageAttnProcessorFlash2Varlen,
+      attn: Attention,
+      hidden_states: torch.Tensor,
+      encoder_hidden_states: torch.Tensor,
+      attention_mask: Optional[torch.Tensor] = None,
+      image_rotary_emb: Optional[torch.Tensor] = None,
+      base_sequence_length: Optional[int] = None,
+    ) -> torch.Tensor:
       cp_config = getattr(self, '_cp_config', None)
       if cp_config is None:
         return _original_varlen_call(self, attn, hidden_states, encoder_hidden_states,
@@ -143,9 +159,9 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       from boogu.models.embeddings import apply_rotary_emb as _boogu_apply_rotary_emb
 
       batch_size, sequence_length, _ = hidden_states.shape
-      query = attn.to_q(hidden_states)
-      key = attn.to_k(encoder_hidden_states)
-      value = attn.to_v(encoder_hidden_states)
+      query = attn.to_q(hidden_states)  # type: torch.Tensor
+      key = attn.to_k(encoder_hidden_states)  # type: torch.Tensor
+      value = attn.to_v(encoder_hidden_states)  # type: torch.Tensor
       query_dim = query.shape[-1]
       inner_dim = key.shape[-1]
       head_dim = query_dim // attn.heads
@@ -161,7 +177,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
         key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
-      # GQA repeat before UAA (same rationale as sdpa variant).
+      # NOTE: GQA repeat before UAA (same rationale as sdpa variant).
       if kv_heads < attn.heads:
         repeat_factor = attn.heads // kv_heads
         key = key.repeat_interleave(repeat_factor, dim=2)
@@ -188,7 +204,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
     BooguImageAttnProcessorFlash2Varlen.__call__ = _patched_varlen_call
 
 
-def _patch_transformer_forward_for_cp(transformer: nn.Module) -> None:
+def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel) -> None:
   """Monkey-patch ``transformer.forward`` for context parallelism.
 
   Boogu-Image does internal patching (flat_and_pad_to_seq) inside its forward,
@@ -209,15 +225,17 @@ def _patch_transformer_forward_for_cp(transformer: nn.Module) -> None:
   """
   _original_forward = transformer.forward
 
-  def _cp_forward(self,
-                  hidden_states,
-                  timestep,
-                  instruction_hidden_states,
-                  freqs_cis,
-                  instruction_attention_mask,
-                  ref_image_hidden_states=None,
-                  attention_kwargs=None,
-                  return_dict=False):
+  def _cp_forward(
+    self: BooguImageTransformer2DModel,
+    hidden_states: Union[torch.Tensor, List[torch.Tensor]],
+    timestep: torch.Tensor,
+    instruction_hidden_states: torch.Tensor,
+    freqs_cis: torch.Tensor,
+    instruction_attention_mask: torch.Tensor,
+    ref_image_hidden_states: Optional[List[List[torch.Tensor]]] = None,
+    attention_kwargs: Optional[Dict[str, Any]] = None,
+    return_dict: bool = False,
+  ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
     cp_config = getattr(self, '_cp_config', None)
     if cp_config is None:
       # No CP active — delegate to original forward.
@@ -239,8 +257,11 @@ def _patch_transformer_forward_for_cp(transformer: nn.Module) -> None:
     # ---- Preprocessing (full sequence on every GPU) ----
     instruction_hidden_states = self.preprocess_instruction_hidden_states(
       instruction_hidden_states, self.instruction_feature_configs)
-    temb, instruction_hidden_states = self.time_caption_embed(timestep, instruction_hidden_states,
-                                                              hidden_states[0].dtype)
+    temb, instruction_hidden_states = self.time_caption_embed(
+      timestep,
+      instruction_hidden_states,
+      hidden_states[0].dtype,
+    )
 
     batch_size = len(hidden_states)
     is_tensor = isinstance(hidden_states, torch.Tensor)
@@ -358,6 +379,9 @@ class BooguImageContextParallelismPlanner(ContextParallelismPlanner):
     parallelism_config: Optional[ParallelismConfig] = None,
     **kwargs,
   ) -> _ContextParallelModelPlan:
+    if not BOOGU_IMAGE_AVAILABLE:
+      return {}
+
     # Boogu-Image receives image-format input with internal patching.
     # We patch both the forward (sequence split/gather) and the attention
     # processor (UAA all-to-all).  Use --ulysses-anything for UAA.
