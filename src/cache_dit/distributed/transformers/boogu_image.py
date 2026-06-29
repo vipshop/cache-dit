@@ -411,14 +411,24 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
   def _single_stream_layer_plan(block: nn.Module, tp_mesh: DeviceMesh) -> Dict[str, ParallelStyle]:
     """TP plan for single-stream blocks (single_stream_layers, refiner blocks).
 
-    NOTE: Attention Q/K/V sharding is skipped for Boogu-Image because
-    ``num_kv_heads=7`` is not divisible by common tp_size values.
-    Only FFN and modulation layers are sharded.
+    Attention TP strategy for GQA models (``num_kv_heads=7`` indivisible by tp_size=2):
+
+    * ``attn.to_q``: ColwiseParallel with ``output_layouts=Replicate()``.
+      Each GPU computes half the Q features, then all-gather so the attention
+      processor always sees a full (non-DTensor) Q tensor.  This avoids
+      DTensor placement issues inside ``.view()`` / ``.transpose()``.
+    * ``attn.to_k`` / ``attn.to_v``: **replicated** (no sharding).
+    * ``attn.to_out.0``: RowwiseParallel with ``input_layouts=Replicate()``.
+      Since the attention output is a regular (replicated) tensor, we tell
+      RowwiseParallel to wrap it as Replicate, then redistribute to
+      ``Shard(-1)`` for the partial output computation + all-reduce.
+
+    ``attn.heads`` is NOT modified (stays at 28) because the attention
+    processor sees the full Q dimension.
     """
-    tp_size = tp_mesh.size()  # noqa: F841
-    # Only shard heads attr if divisible (for metadata, not actual weight sharding)
-    heads = getattr(block.attn, "heads", 1)  # noqa: F841
     layer_plan: Dict[str, ParallelStyle] = {
+      "attn.to_q": ColwiseParallel(output_layouts=Replicate()),
+      "attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
       "feed_forward.linear_1": ColwiseParallel(),
       "feed_forward.linear_3": ColwiseParallel(),
       "feed_forward.linear_2": RowwiseParallel(),
