@@ -14,6 +14,13 @@ namespace {
 // CTA, 4096-row image projections prefer 128 up to the 9K-width band before switching to 64 for
 // the widest MLP projections, and the longer mixed-token rows split around the 12K-width band
 // between 256 and 128.
+// On Blackwell (sm120+) we experimented with NUM_STAGES 1–3 and discovered that varying
+// the pipeline depth yields no speed-up for NVFP4 GEMM: the register savings from fewer
+// stages never translate into higher occupancy (the CTA is already register-bound at 256
+// threads × 172+ regs), and the compiler schedules the hard-coded 2-stage compat path
+// more efficiently than the direct path with variable stages.  Therefore we do NOT expose
+// an NVFP4 v2 kernel variant — the v1 FP4 path (which is the same fused GEMM) is used
+// for all NVFP4 workloads on Blackwell, keeping the codebase simpler.
 static int get_v2_auto_block_m(int M, int N) {
   auto *prop = getCurrentDeviceProperties();
   if (prop->major != 8 || prop->minor != 9) {
