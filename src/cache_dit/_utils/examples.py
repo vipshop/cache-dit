@@ -1508,7 +1508,8 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
   else:
-    image = load_image("examples/data/boogu_01.png").convert("RGB")
+    image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/boogu_01.png").convert("RGB")
 
   return Example(
     args=args,
