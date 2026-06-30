@@ -35,7 +35,6 @@ try:
   BOOGU_IMAGE_AVAILABLE = True
 except ImportError:
   # boogu-image not available
-  BooguImageTransformer2DModel = nn.Module  # type: ignore
   BOOGU_IMAGE_AVAILABLE = False
 
 logger = init_logger(__name__)
@@ -439,14 +438,31 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
 
   @staticmethod
   def _double_stream_layer_plan(block: nn.Module, tp_mesh: DeviceMesh) -> Dict[str, ParallelStyle]:
-    """TP plan for double-stream blocks (FFN + modulation only, no attention sharding).
+    """TP plan for double-stream blocks.
 
-    NOTE: Attention Q/K/V sharding is skipped because Boogu-Image's
-    ``num_kv_heads=7`` is not divisible by common tp_size values.
-    The joint cross-attention Q/K/V projections in the processor are also
-    not sharded.
+    Two attention modules in each double-stream block:
+
+    * ``img_instruct_attn``: joint cross-attention.  Q/K/V projections live
+      in ``processor`` (``img_to_q``, ``instruct_to_q``, etc.).  Only the
+      final ``to_out.0`` remains on the ``Attention`` module (``to_q`` /
+      ``to_k`` / ``to_v`` are deleted at init).
+    * ``img_self_attn``: standard self-attention within the image stream.
+
+    Both use GQA (28:7), same strategy as single-stream: Q projections are
+    ColwiseParallel with ``output_layouts=Replicate()``; K/V replicated;
+    final out-proj uses RowwiseParallel with ``input_layouts=Replicate()``.
+    Intermediate output projections (``img_out``, ``instruct_out``) are
+    kept unsharded to avoid chained all-reduces.
     """
     layer_plan: Dict[str, ParallelStyle] = {
+      # joint cross-attention: Q projections (in processor)
+      "img_instruct_attn.processor.img_to_q": ColwiseParallel(output_layouts=Replicate()),
+      "img_instruct_attn.processor.instruct_to_q": ColwiseParallel(output_layouts=Replicate()),
+      # joint cross-attention: final output projection
+      "img_instruct_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
+      # image self-attention
+      "img_self_attn.to_q": ColwiseParallel(output_layouts=Replicate()),
+      "img_self_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
       # image FFN
       "img_feed_forward.linear_1": ColwiseParallel(),
       "img_feed_forward.linear_3": ColwiseParallel(),
