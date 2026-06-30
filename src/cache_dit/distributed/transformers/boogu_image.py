@@ -317,7 +317,7 @@ def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel)
         return_dict,
       )
 
-    mesh = cp_config._flattened_mesh
+    mesh: DeviceMesh = cp_config._flattened_mesh
     tp_size = mesh.size()
     rank = dist.get_rank(mesh.get_group())
 
@@ -478,24 +478,19 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
   def _single_stream_layer_plan(block: nn.Module, tp_mesh: DeviceMesh) -> Dict[str, ParallelStyle]:
     """TP plan for single-stream blocks (single_stream_layers, refiner blocks).
 
-    Attention TP strategy for GQA models (``num_kv_heads=7`` indivisible by tp_size=2):
+    Only FFN and modulation layers are sharded.  Attention Q/K/V/out are
+    kept **replicated** (not parallelized) because:
 
-    * ``attn.to_q``: ColwiseParallel with ``output_layouts=Replicate()``.
-      Each GPU computes half the Q features, then all-gather so the attention
-      processor always sees a full (non-DTensor) Q tensor.  This avoids
-      DTensor placement issues inside ``.view()`` / ``.transpose()``.
-    * ``attn.to_k`` / ``attn.to_v``: **replicated** (no sharding).
-    * ``attn.to_out.0``: RowwiseParallel with ``input_layouts=Replicate()``.
-      Since the attention output is a regular (replicated) tensor, we tell
-      RowwiseParallel to wrap it as Replicate, then redistribute to
-      ``Shard(-1)`` for the partial output computation + all-reduce.
-
-    ``attn.heads`` is NOT modified (stays at 28) because the attention
-    processor sees the full Q dimension.
+    1. ``num_kv_heads=7`` is not divisible by ``tp_size=2``.
+    2. Even with the ``Replicate`` workaround, the all-gather cost on a
+       long joint sequence (~262K tokens × 3360 dim × 2 bytes = 1.76 GB
+       per layer) overwhelms any compute savings — FFN-only TP is
+       empirically faster (108.9s vs 115.7s inference) and more accurate
+       (PSNR 50.2 vs 49.9).
     """
     layer_plan: Dict[str, ParallelStyle] = {
-      "attn.to_q": ColwiseParallel(output_layouts=Replicate()),
-      "attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
+      # "attn.to_q": ColwiseParallel(output_layouts=Replicate()),
+      # "attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
       "feed_forward.linear_1": ColwiseParallel(),
       "feed_forward.linear_3": ColwiseParallel(),
       "feed_forward.linear_2": RowwiseParallel(),
@@ -506,31 +501,20 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
 
   @staticmethod
   def _double_stream_layer_plan(block: nn.Module, tp_mesh: DeviceMesh) -> Dict[str, ParallelStyle]:
-    """TP plan for double-stream blocks.
+    """TP plan for double-stream blocks (FFN + modulation only, no attention sharding).
 
-    Two attention modules in each double-stream block:
-
-    * ``img_instruct_attn``: joint cross-attention.  Q/K/V projections live
-      in ``processor`` (``img_to_q``, ``instruct_to_q``, etc.).  Only the
-      final ``to_out.0`` remains on the ``Attention`` module (``to_q`` /
-      ``to_k`` / ``to_v`` are deleted at init).
-    * ``img_self_attn``: standard self-attention within the image stream.
-
-    Both use GQA (28:7), same strategy as single-stream: Q projections are
-    ColwiseParallel with ``output_layouts=Replicate()``; K/V replicated;
-    final out-proj uses RowwiseParallel with ``input_layouts=Replicate()``.
-    Intermediate output projections (``img_out``, ``instruct_out``) are
-    kept unsharded to avoid chained all-reduces.
+    Attention Q/K/V/out projections are NOT sharded — see
+    ``_single_stream_layer_plan`` docstring for rationale.
     """
     layer_plan: Dict[str, ParallelStyle] = {
       # joint cross-attention: Q projections (in processor)
-      "img_instruct_attn.processor.img_to_q": ColwiseParallel(output_layouts=Replicate()),
-      "img_instruct_attn.processor.instruct_to_q": ColwiseParallel(output_layouts=Replicate()),
-      # joint cross-attention: final output projection
-      "img_instruct_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
-      # image self-attention
-      "img_self_attn.to_q": ColwiseParallel(output_layouts=Replicate()),
-      "img_self_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
+      # NOTE: attention Q/out TP removed — all-gather on Q dominates communication
+      # and makes TP slower than single GPU.  Only FFN + modulation are sharded.
+      # "img_instruct_attn.processor.img_to_q": ColwiseParallel(output_layouts=Replicate()),
+      # "img_instruct_attn.processor.instruct_to_q": ColwiseParallel(output_layouts=Replicate()),
+      # "img_instruct_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
+      # "img_self_attn.to_q": ColwiseParallel(output_layouts=Replicate()),
+      # "img_self_attn.to_out.0": RowwiseParallel(input_layouts=Replicate()),
       # image FFN
       "img_feed_forward.linear_1": ColwiseParallel(),
       "img_feed_forward.linear_3": ColwiseParallel(),
