@@ -48,6 +48,8 @@ __all__ = [
   "helios_t2v_distill_example",
   "flux2_klein_kv_edit_example",
   "boogu_image_edit_example",
+  "ernie_image_example",
+  "ernie_image_turbo_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -93,6 +95,8 @@ _env_path_mapping = {
   "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
   "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
   "BOOGU_IMAGE_EDIT_DIR": "BOOGU-IMAGE/Boogu-Image-0.1-Edit",
+  "ERNIE_IMAGE_DIR": "baidu/ERNIE-Image",
+  "ERNIE_IMAGE_TURBO_DIR": "baidu/ERNIE-Image-Turbo",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1532,6 +1536,54 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       image=image,
       extra_input_kwargs={
         "text_guidance_scale": 4.0,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("ernie_image", default="baidu/ERNIE-Image")
+def ernie_image_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import ErnieImagePipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("baidu/ERNIE-Image"),
+      pipeline_class=ErnieImagePipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt="一只黑白相间的中华田园犬",
+      height=1024,
+      width=1024,
+      num_inference_steps=50,
+      guidance_scale=4.0,
+      extra_input_kwargs={
+        "use_pe": False,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("ernie_image_turbo", default="baidu/ERNIE-Image-Turbo")
+def ernie_image_turbo_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import ErnieImagePipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("baidu/ERNIE-Image-Turbo"),
+      pipeline_class=ErnieImagePipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt="一只黑白相间的中华田园犬",
+      height=1024,
+      width=1024,
+      num_inference_steps=8,
+      guidance_scale=1.0,
+      extra_input_kwargs={
+        "use_pe": False,
       },
     ),
   )

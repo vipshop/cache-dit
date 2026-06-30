@@ -40,3 +40,4 @@ LTX2PatchFunctor = _safe_import(".functor_ltx2", "LTX2PatchFunctor")
 ZImageControlNetPatchFunctor = _safe_import(".functor_zimage_controlnet",
                                             "ZImageControlNetPatchFunctor")
 GlmImagePatchFunctor = _safe_import(".functor_glm_image", "GlmImagePatchFunctor")
+ErnieImagePatchFunctor = _safe_import(".functor_ernie_image", "ErnieImagePatchFunctor")
