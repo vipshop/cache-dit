@@ -1511,6 +1511,10 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     image = load_image(
       "https://github.com/vipshop/cache-dit/raw/main/examples/data/boogu_01.png").convert("RGB")
 
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  image = image.resize((width, height))
+
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -1522,6 +1526,8 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
     ),
     input_data=ExampleInputData(
       prompt="Turn the cat into a golden statue",
+      height=height,
+      width=width,
       num_inference_steps=50,
       image=[image],
       extra_input_kwargs={
