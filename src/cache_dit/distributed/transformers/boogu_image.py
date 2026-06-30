@@ -40,6 +40,37 @@ except ImportError:
 logger = init_logger(__name__)
 
 
+def _dtensor_safe_swiglu(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+  """Pure-PyTorch SwiGLU that is safe with DTensor sharded inputs.
+
+  flash_attn's fused ``swiglu`` CUDA kernel does not understand DTensor
+  shard placements and will crash with ``cudaErrorIllegalAddress`` when
+  fed DTensor inputs from ColwiseParallel linear layers.
+
+  This PyTorch-native implementation uses only ``F.silu`` and
+  element-wise multiply, which are DTensor-compatible.
+  """
+  return torch.nn.functional.silu(x.float()).to(x.dtype) * y
+
+
+def _patch_swiglu_for_tp(block: nn.Module) -> None:
+  """Replace flash_attn fused swiglu with DTensor-safe PyTorch swiglu when TP is active.
+
+  Only patches the FFN if it is currently using flash_attn's fused CUDA kernel. PyTorch-native
+  swiglu is already DTensor-compatible and is left untouched.
+  """
+  for ffn_name in ("feed_forward", "img_feed_forward", "instruct_feed_forward"):
+    ffn = getattr(block, ffn_name, None)
+    if ffn is None:
+      continue
+    swiglu_fn = getattr(ffn, "swiglu", None)
+    if swiglu_fn is None:
+      continue
+    # Only replace flash_attn fused kernel; PyTorch-native swiglu is safe.
+    if hasattr(swiglu_fn, "__module__") and "flash_attn" in swiglu_fn.__module__:
+      ffn.swiglu = _dtensor_safe_swiglu
+
+
 def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
   """Monkey-patch attention processors to use ``_dispatch_attention_fn`` with UAA.
 
@@ -495,18 +526,21 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
       if block_list is None:
         continue
       for _, block in block_list.named_children():
+        _patch_swiglu_for_tp(block)
         layer_plan = self._single_stream_layer_plan(block, tp_mesh)
         parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
         layer_plans.append(layer_plan)
 
     # double-stream layers (partial TP: img_self_attn + FFN + modulation)
     for _, block in transformer.double_stream_layers.named_children():
+      _patch_swiglu_for_tp(block)
       layer_plan = self._double_stream_layer_plan(block, tp_mesh)
       parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
       layer_plans.append(layer_plan)
 
     # single-stream layers (full TP)
     for _, block in transformer.single_stream_layers.named_children():
+      _patch_swiglu_for_tp(block)
       layer_plan = self._single_stream_layer_plan(block, tp_mesh)
       parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
       layer_plans.append(layer_plan)
