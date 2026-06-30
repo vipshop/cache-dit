@@ -103,6 +103,8 @@ def _activate_cp_planners():
     ".longcat_image", "LongCatImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   HeliosContextParallelismPlanner = _safe_import(  # noqa: F841
     ".helios", "HeliosContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  BooguImageContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".boogu_image", "BooguImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -159,3 +161,5 @@ def _activate_tp_planners():
     ".glm_image", "GlmImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   HeliosTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".helios", "HeliosTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  BooguImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".boogu_image", "BooguImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

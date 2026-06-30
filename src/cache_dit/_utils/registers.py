@@ -112,35 +112,36 @@ class ExampleInputData:
           if len(input_data["image"]) > 1:
             logger.warning("Overriding multiple input images with a single image "
                            "from args.image_path.")
+      # Determine resize target: explicit --input-height/--input-width first,
+      # then fall back to output height/width.
+      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
+      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
       if isinstance(input_data["image"], list):
         input_data["image"] = [load_image(args.image_path).convert("RGB")]
-        if args.input_height is not None and args.input_width is not None:
-          height = args.input_height
-          width = args.input_width
-          input_data["image"] = [img.resize((width, height)) for img in input_data["image"]]
+        if resize_h is not None and resize_w is not None:
+          input_data["image"] = [img.resize((resize_w, resize_h)) for img in input_data["image"]]
       else:
         input_data["image"] = load_image(args.image_path).convert("RGB")
-        if args.input_height is not None and args.input_width is not None:
-          input_data["image"] = input_data["image"].resize((args.input_width, args.input_height))
+        if resize_h is not None and resize_w is not None:
+          input_data["image"] = input_data["image"].resize((resize_w, resize_h))
     if args.mask_image_path is not None:
       if "mask_image" in input_data:
         if isinstance(input_data["mask_image"], list):
           if len(input_data["mask_image"]) > 1:
             logger.warning("Overriding multiple input mask images with a single mask "
                            "image from args.mask_image_path.")
+      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
+      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
       if isinstance(input_data["mask_image"], list):
         input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
-        if args.input_height is not None and args.input_width is not None:
-          height = args.input_height
-          width = args.input_width
+        if resize_h is not None and resize_w is not None:
           input_data["mask_image"] = [
-            img.resize((width, height)) for img in input_data["mask_image"]
+            img.resize((resize_w, resize_h)) for img in input_data["mask_image"]
           ]
       else:
         input_data["mask_image"] = load_image(args.mask_image_path).convert("RGB")
-        if args.input_height is not None and args.input_width is not None:
-          input_data["mask_image"] = input_data["mask_image"].resize(
-            (args.input_width, args.input_height))
+        if resize_h is not None and resize_w is not None:
+          input_data["mask_image"] = input_data["mask_image"].resize((resize_w, resize_h))
     # Set generator with seed from input data or args
     if args.generator_device is not None:
       self.gen_device = args.generator_device
@@ -362,6 +363,8 @@ class ExampleInitConfig:
   post_init_hook: Optional[Callable[[DiffusionPipeline], None]] = None
   # For DBCache, Parallelism optimization.
   extra_optimize_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  # For third-party models that require trust_remote_code
+  trust_remote_code: bool = False
 
   def __post_init__(self):
     if not self.bnb_4bit_components:
@@ -382,6 +385,7 @@ class ExampleInitConfig:
       torch_dtype=self.torch_dtype,
       quantization_config=pipeline_quantization_config,
       device_map="balanced" if args.device_map_balance else None,
+      trust_remote_code=self.trust_remote_code,
       **self._custom_components_kwargs(),
     )  # type: LoraBaseMixin
     if self.post_init_hook is not None:
