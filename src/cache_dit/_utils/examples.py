@@ -1529,7 +1529,7 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       height=height,
       width=width,
       num_inference_steps=50,
-      image=[image],
+      image=image,
       extra_input_kwargs={
         "text_guidance_scale": 4.0,
       },
