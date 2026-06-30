@@ -53,12 +53,14 @@ def _dtensor_safe_swiglu(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
   return torch.nn.functional.silu(x.float()).to(x.dtype) * y
 
 
-def _patch_swiglu_for_tp(block: nn.Module) -> None:
-  """Replace flash_attn fused swiglu with DTensor-safe PyTorch swiglu when TP is active.
+def _patch_dtensor_unsafe_modules(block: nn.Module) -> None:
+  """Replace flash_attn/triton fused kernels with DTensor-safe PyTorch versions when TP is active.
 
-  Only patches the FFN if it is currently using flash_attn's fused CUDA kernel. PyTorch-native
-  swiglu is already DTensor-compatible and is left untouched.
+  Patches two categories:
+  1. ``LuminaFeedForward.swiglu`` — flash_attn fused SwiGLU CUDA kernel.
+  2. ``RMSNorm`` — triton fused layer norm (``boogu.ops.triton.layer_norm.RMSNorm``).
   """
+  # 1. SwiGLU: replace flash_attn fused kernel with DTensor-safe PyTorch version.
   for ffn_name in ("feed_forward", "img_feed_forward", "instruct_feed_forward"):
     ffn = getattr(block, ffn_name, None)
     if ffn is None:
@@ -66,9 +68,44 @@ def _patch_swiglu_for_tp(block: nn.Module) -> None:
     swiglu_fn = getattr(ffn, "swiglu", None)
     if swiglu_fn is None:
       continue
-    # Only replace flash_attn fused kernel; PyTorch-native swiglu is safe.
-    if hasattr(swiglu_fn, "__module__") and "flash_attn" in swiglu_fn.__module__:
+    # flash_attn swiglu is a bound method (Function.apply); its __self__ is the
+    # Function subclass whose __module__ starts with "flash_attn".
+    fn_cls = getattr(swiglu_fn, "__self__", None)
+    if fn_cls is not None and getattr(fn_cls, "__module__", "").startswith("flash_attn"):
       ffn.swiglu = _dtensor_safe_swiglu
+      logger.debug("[TP] Patched %s.swiglu: flash_attn → DTensor-safe PyTorch.", ffn_name)
+
+  # 2. RMSNorm: replace triton fused RMSNorm with torch.nn.RMSNorm.
+  _triton_rmsnorm_cls = None
+  try:
+    from boogu.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
+    _triton_rmsnorm_cls = TritonRMSNorm
+  except ImportError:
+    pass
+
+  if _triton_rmsnorm_cls is not None:
+    for name, module in list(block.named_modules()):
+      if isinstance(module, _triton_rmsnorm_cls):
+        weight = module.weight
+        new_norm = torch.nn.RMSNorm(
+          weight.shape[0],
+          eps=getattr(module, "eps", 1e-5),
+          elementwise_affine=weight is not None,
+          device=weight.device,
+          dtype=weight.dtype,
+        )
+        # Copy the learned weight (triton RMSNorm always has affine weight).
+        if weight is not None:
+          new_norm.weight.data.copy_(weight.data)
+        # Navigate to parent module via dotted path
+        parts = name.rsplit(".", 1)
+        if len(parts) == 2:
+          parent_path, leaf = parts
+          parent = block.get_submodule(parent_path)
+        else:
+          parent, leaf = block, name
+        setattr(parent, leaf, new_norm)
+        logger.debug("[TP] Patched %s.RMSNorm: triton → torch.nn.RMSNorm.", name)
 
 
 def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
@@ -526,21 +563,21 @@ class BooguImageTensorParallelismPlanner(TensorParallelismPlanner):
       if block_list is None:
         continue
       for _, block in block_list.named_children():
-        _patch_swiglu_for_tp(block)
+        _patch_dtensor_unsafe_modules(block)
         layer_plan = self._single_stream_layer_plan(block, tp_mesh)
         parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
         layer_plans.append(layer_plan)
 
     # double-stream layers (partial TP: img_self_attn + FFN + modulation)
     for _, block in transformer.double_stream_layers.named_children():
-      _patch_swiglu_for_tp(block)
+      _patch_dtensor_unsafe_modules(block)
       layer_plan = self._double_stream_layer_plan(block, tp_mesh)
       parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
       layer_plans.append(layer_plan)
 
     # single-stream layers (full TP)
     for _, block in transformer.single_stream_layers.named_children():
-      _patch_swiglu_for_tp(block)
+      _patch_dtensor_unsafe_modules(block)
       layer_plan = self._single_stream_layer_plan(block, tp_mesh)
       parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
       layer_plans.append(layer_plan)
