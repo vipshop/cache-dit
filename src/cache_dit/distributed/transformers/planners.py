@@ -107,6 +107,8 @@ def _activate_cp_planners():
     ".boogu_image", "BooguImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   ErnieImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".ernie_image", "ErnieImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  Krea2ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".krea2", "Krea2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -167,3 +169,5 @@ def _activate_tp_planners():
     ".boogu_image", "BooguImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   ErnieImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".ernie_image", "ErnieImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  Krea2TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".krea2", "Krea2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

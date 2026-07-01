@@ -50,6 +50,7 @@ __all__ = [
   "boogu_image_edit_example",
   "ernie_image_example",
   "ernie_image_turbo_example",
+  "krea2_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -97,6 +98,7 @@ _env_path_mapping = {
   "BOOGU_IMAGE_EDIT_DIR": "BOOGU-IMAGE/Boogu-Image-0.1-Edit",
   "ERNIE_IMAGE_DIR": "baidu/ERNIE-Image",
   "ERNIE_IMAGE_TURBO_DIR": "baidu/ERNIE-Image-Turbo",
+  "KREA2_DIR": "krea/Krea-2-Turbo",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1585,5 +1587,26 @@ def ernie_image_turbo_example(args: argparse.Namespace, **kwargs) -> Example:
       extra_input_kwargs={
         "use_pe": False,
       },
+    ),
+  )
+
+
+@ExampleRegister.register("krea2", default="krea/Krea-2-Turbo")
+def krea2_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import Krea2Pipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("krea/Krea-2-Turbo"),
+      pipeline_class=Krea2Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt="A fox in the snow, detailed, vibrant colors",
+      height=1024,
+      width=1024,
+      num_inference_steps=8,
+      guidance_scale=0.0,
     ),
   )

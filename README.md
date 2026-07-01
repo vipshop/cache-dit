@@ -29,7 +29,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 
 ## 📋Supported DiT Models
 
-Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 <div align="center">
 
@@ -42,6 +42,7 @@ Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffus
 | Image | Qwen-Image | [`QwenImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 9+ | ✔️/✔️/✔️/✔️ |
 | Image | Z-Image | [`ZImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✔️/✔️/✔️/✔️ |
 | Image | Boogu-Image| [`BooguImageTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Krea-2 | [`Krea2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | GLM-Image | [`GlmImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | LongCat-Image | [`LongCatImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Ovis-Image | [`OvisImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
