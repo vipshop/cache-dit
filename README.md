@@ -109,61 +109,61 @@ For more advanced features, please refer to our online documentation at 📘[cac
 
 ## 📋Supported DiT Models
 
-Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers via `BlockAdapterRegister`, covering the vast majority of transformer-based pipelines. See the full support matrix at 📘[cache-dit.io/supported_matrix](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/).
+Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering the vast majority of transformer-based pipelines. See the full support matrix at 📘[cache-dit.io/supported_matrix](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/).
 
 <div align="center">
 
-| Modality | Pipeline Series | Transformer | Variants |
-|----------|----------------|-------------|----------|
-| **Image** | FLUX | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 10+ |
-| Image | FLUX.2 | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | FLUX.2 Klein | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 |
-| Image | SD3 | [`SD3Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 |
-| Image | PixArt-Alpha | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | PixArt-Sigma | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | Sana (image) | [`SanaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 |
-| Image | DiT (original) | [`DiTTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | HunyuanDiT | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | HunyuanDiT-PAG | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | AuraFlow | [`AuraFlowTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | CogView4 | [`CogView4Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | CogView3Plus | [`CogView3PlusTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | HunyuanImage | [`HunyuanImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | HiDream | [`HiDreamImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | Bria | [`BriaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | Chroma | [`ChromaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 |
-| Image | PRX | [`PRXTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | QwenImage | [`QwenImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 9+ |
-| Image | Z-Image | [`ZImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 |
-| Image | OmniGen | [`OmniGenTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | GLM-Image | [`GlmImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | ErnieImage | [`ErnieImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | LongCatImage | [`LongCatImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | OvisImage | [`OvisImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Image | Lumina | [`LuminaNextDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | Lumina 2 | [`Lumina2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Image | VisualCloze | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) (reused) | 2 |
-| Image | Amused | [`UVit2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| **Video** | CogVideoX | [`CogVideoXTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 |
-| Video | Wan (T2V/I2V) | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 |
-| Video | Wan-VACE | [`WanVACETransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Video | HunyuanVideo | [`HunyuanVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 |
-| Video | HunyuanVideo 1.5 | [`HunyuanVideo15Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Video | Mochi | [`MochiTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Video | Allegro | [`AllegroTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Video | EasyAnimate | [`EasyAnimateTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 |
-| Video | ConsisID | [`ConsisIDTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Video | Cosmos | [`CosmosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 7+ |
-| Video | LTX | [`LTXVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 |
-| Video | LTX2 | [`LTX2VideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 |
-| Video | Helios | [`HeliosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 |
-| Video | ChronoEdit | [`ChronoEditTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Video | SkyReelsV2 | [`SkyReelsV2Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 |
-| Video | Kandinsky5 (T2V/I2V) | [`Kandinsky5Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 |
-| **Audio** | StableAudio | [`StableAudioDiTModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Other | BooguImage| [`BooguImageTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 |
-| Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) (reused) | 1 |
+| Modality | Pipeline Series | Transformer | Variants | Cache/Parallel |
+|----------|----------------|-------------|----------|----------------|
+| **Image** | FLUX | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 10+ | ✅/✅ |
+| Image | FLUX.2 | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | FLUX.2 Klein | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✅/✅ |
+| Image | SD3 | [`SD3Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✅/✖️ |
+| Image | PixArt-Alpha | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | PixArt-Sigma | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | Sana (image) | [`SanaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✅/✖️ |
+| Image | DiT (original) | [`DiTTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | HunyuanDiT | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | HunyuanDiT-PAG | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | AuraFlow | [`AuraFlowTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Image | CogView4 | [`CogView4Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✅ |
+| Image | CogView3Plus | [`CogView3PlusTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | HunyuanImage | [`HunyuanImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✅ |
+| Image | HiDream | [`HiDreamImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Image | Bria | [`BriaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Image | Chroma | [`ChromaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✅/✅ |
+| Image | PRX | [`PRXTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✖️ |
+| Image | QwenImage | [`QwenImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 9+ | ✅/✅ |
+| Image | Z-Image | [`ZImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✅/✅ |
+| Image | OmniGen | [`OmniGenTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Image | GLM-Image | [`GlmImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | ErnieImage | [`ErnieImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | LongCatImage | [`LongCatImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✅ |
+| Image | OvisImage | [`OvisImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Image | Lumina | [`LuminaNextDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✖️ |
+| Image | Lumina 2 | [`Lumina2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✖️ |
+| Image | VisualCloze | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 2 | ✅/✅ |
+| Image | Amused | [`UVit2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| **Video** | CogVideoX | [`CogVideoXTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✅/✅ |
+| Video | Wan (T2V/I2V) | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✅/✅ |
+| Video | Wan-VACE | [`WanVACETransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Video | HunyuanVideo | [`HunyuanVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✅/✅ |
+| Video | HunyuanVideo 1.5 | [`HunyuanVideo15Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✖️ |
+| Video | Mochi | [`MochiTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Video | Allegro | [`AllegroTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Video | EasyAnimate | [`EasyAnimateTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✅/✖️ |
+| Video | ConsisID | [`ConsisIDTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Video | Cosmos | [`CosmosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 7+ | ✅/✖️ |
+| Video | LTX | [`LTXVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 | ✅/✅ |
+| Video | LTX2 | [`LTX2VideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✅/✅ |
+| Video | Helios | [`HeliosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✅/✅ |
+| Video | ChronoEdit | [`ChronoEditTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Video | SkyReelsV2 | [`SkyReelsV2Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 | ✅/✅ |
+| Video | Kandinsky5 (T2V/I2V) | [`Kandinsky5Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✅/✅ |
+| **Audio** | StableAudio | [`StableAudioDiTModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✖️ |
+| Other | BooguImage| [`BooguImageTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✅/✅ |
+| Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✅/✅ |
 
 </div>
 
