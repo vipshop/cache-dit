@@ -33,7 +33,7 @@ Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering th
 
 <div align="center">
 
-| Modality | Pipeline Series | Transformer | Variants | C/P/Q/F |
+| Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
 | **Image** | FLUX | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 10+ | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.2 | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
@@ -85,7 +85,7 @@ Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering th
 | **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
 | Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✔️/✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>F</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
 
 </div>
 
