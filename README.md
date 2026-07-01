@@ -91,13 +91,15 @@ Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffus
 
 ## 🤖Agentic Workflows  
 
-Cache-DiT provides a [cache-dit-model-integration skill](./.copilot/skills/cache-dit-model-integration/SKILL.md) to help users integrate new DiT pipelines into Cache-DiT. The skill can automatically integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it via Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). Please note that Quantization and Offload in Cache-DiT are generally supported for **nn.Module**, thus no special integration is needed for new DiT pipelines.
+Cache-DiT provides a [cache-dit-model-integration skill](./.copilot/skills/cache-dit-model-integration/SKILL.md) to help users integrate new DiT pipelines into Cache-DiT. The skill can automatically integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it via Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
 <div align="center">
 
 <img src=docs/assets/agent.png width=800px>
 
 </div>
+
+> [Note!] Please note that Quantization and Offload in Cache-DiT are generally supported for **nn.Module**, thus no special integration is needed for new DiT pipelines.
 
 ## 🌐Community Integration
 
