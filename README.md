@@ -85,7 +85,7 @@ Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering th
 | **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️ |
 | Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Hybrid Parallelism <br>(Ulysses/Ring/USP/TP/TE-P/VAE-P/2D/3D); <b>Q</b>: Quantization (FP8 W8A8, INT4/NVFP4 W4A4) </i>
+<i> <b>C</b>: Hybrid Cache Acceleration (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Massive Parallelism <br>(Ulysses/Ring/USP/TP/TE-P/VAE-P/2D/3D); <b>Q</b>: Low-Bits Quantization (FP8 W8A8, INT4/NVFP4 W4A4, PTQ/DQ) </i>
 
 </div>
 
