@@ -1,11 +1,17 @@
-"""Ernie-Image distributed parallelism planners (CP)."""
+"""Ernie-Image distributed parallelism planners (CP + TP)."""
 
 import functools
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 from torch.distributed import DeviceMesh
+from torch.distributed.tensor.parallel import (
+  ColwiseParallel,
+  ParallelStyle,
+  RowwiseParallel,
+  parallelize_module,
+)
 
 from diffusers.models.transformers.transformer_ernie_image import (
   ErnieImageTransformer2DModel,
@@ -15,9 +21,12 @@ from diffusers.models.transformers.transformer_ernie_image import (
 from ...distributed.core import _ContextParallelModelPlan
 from ...logger import init_logger
 from ..config import ParallelismConfig
+from ..utils import shard_div_attr
 from .register import (
   ContextParallelismPlanner,
   ContextParallelismPlannerRegister,
+  TensorParallelismPlanner,
+  TensorParallelismPlannerRegister,
 )
 
 logger = init_logger(__name__)
@@ -200,3 +209,78 @@ class ErnieImageContextParallelismPlanner(ContextParallelismPlanner):
     if transformer is not None:
       _patch_transformer_forward_for_cp(transformer)
     return {}
+
+
+@TensorParallelismPlannerRegister.register("ErnieImage")
+class ErnieImageTensorParallelismPlanner(TensorParallelismPlanner):
+  """Tensor-parallel planner for Ernie-Image.
+
+  **Attention: standard Shard TP (MHA, same pattern as Flux2).**
+
+  ErnieImage is MHA (``num_attention_heads=24``, ``head_dim=128``) with
+  separate ``to_q/to_k/to_v`` projections, so heads divide evenly by
+  ``tp_size``.  ``ColwiseParallel`` defaults to ``use_local_output=True``, so
+  ``attn.to_q(x)`` returns a **plain local tensor** ``[B, S, inner_dim/tp]``
+  (not a DTensor).  Calling ``shard_div_attr(self_attention, "heads", tp)``
+  divides ``attn.heads`` (24 -> 12), so the processor's
+  ``query.unflatten(-1, (attn.heads, -1))`` keeps ``head_dim = 128``
+  intact.  ``apply_rotary_emb`` then slices ``x_in[..., :rot_dim]`` with
+  ``rot_dim = freqs_cis.shape[-1] = 128``, an exact (non-clamped) slice, and
+  the full ``freqs_cis`` is shared across all heads.  ``to_out.0`` uses
+  ``RowwiseParallel`` which all-reduces the per-rank partial outputs.
+
+  Only ``heads`` needs sharding (unlike Flux2's single block, which also
+  shards ``inner_dim`` / ``mlp_hidden_dim``): ErnieImage has no fused
+  QKV+MLP projection and its processor references only ``attn.heads``.
+
+  **FFN: standard Shard TP.**
+
+  ``mlp.gate_proj`` / ``mlp.up_proj`` use ``ColwiseParallel()`` (Shard(-1)),
+  the elementwise ``up * gelu(gate)`` stays sharded, and ``mlp.linear_fc2``
+  uses ``RowwiseParallel()`` which all-reduces back to the full hidden size.
+  All ops are pointwise / diffusers ``RMSNorm`` — DTensor-safe, so no
+  fused-kernel patching is needed (unlike BooguImage).
+
+  The transformer-level shared AdaLN modulation is computed once outside the
+  blocks and applied elementwise on the full hidden size, so it is left
+  unparallelized.
+  """
+
+  def _apply(
+    self,
+    transformer: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+    **kwargs,
+  ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    tp_mesh = self.mesh(parallelism_config=parallelism_config)
+    transformer, layer_plans = self.parallelize_transformer(
+      transformer=transformer,
+      tp_mesh=tp_mesh,
+    )
+    return transformer, layer_plans
+
+  def parallelize_transformer(
+    self,
+    transformer: torch.nn.Module,
+    tp_mesh: DeviceMesh,
+  ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    tp_size = tp_mesh.size()
+    layer_plans: List[Dict[str, ParallelStyle]] = []
+    for _, block in transformer.layers.named_children():
+      shard_div_attr(block.self_attention, "heads", tp_size)
+      layer_plan: Dict[str, ParallelStyle] = {
+        "self_attention.to_q": ColwiseParallel(),
+        "self_attention.to_k": ColwiseParallel(),
+        "self_attention.to_v": ColwiseParallel(),
+        "self_attention.to_out.0": RowwiseParallel(),
+        "mlp.gate_proj": ColwiseParallel(),
+        "mlp.up_proj": ColwiseParallel(),
+        "mlp.linear_fc2": RowwiseParallel(),
+      }
+      parallelize_module(
+        module=block,
+        device_mesh=tp_mesh,
+        parallelize_plan=layer_plan,
+      )
+      layer_plans.append(layer_plan)
+    return transformer, layer_plans

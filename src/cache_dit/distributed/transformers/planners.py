@@ -165,3 +165,5 @@ def _activate_tp_planners():
     ".helios", "HeliosTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   BooguImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".boogu_image", "BooguImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  ErnieImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".ernie_image", "ErnieImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
