@@ -29,7 +29,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 
 ## 📋Supported DiT Models
 
-Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering the vast majority of transformer-based pipelines. For full support matrix and detailed usage, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffusers, covering the vast majority of transformer-based pipelines. For full support matrix and detailed usage, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 <div align="center">
 
@@ -49,7 +49,7 @@ Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering th
 | Image | PixArt-Alpha | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | PixArt-Sigma | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Sana (image) | [`SanaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✔️/✖️/✔️/✔️ |
-| Image | DiT (original) | [`DiTTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | DiT | [`DiTTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | HunyuanDiT | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | HunyuanDiT-PAG | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | AuraFlow | [`AuraFlowTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
@@ -88,7 +88,6 @@ Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers, covering th
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
 
 </div>
-
 
 
 ## 🌐Community Integration
