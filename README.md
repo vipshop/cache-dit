@@ -100,7 +100,7 @@ Cache-DiT provides a [cache-dit-model-integration skill](./.copilot/skills/cache
 </div>
 
 > [!NOTE]
-> Please note that Quantization and Offload in Cache-DiT are generally supported for **nn.Module**, thus no special integration is needed for new DiT pipelines.
+> Please note that Quantization and Offload in Cache-DiT are generally supported for **nn.Module**, thus no special integration is needed for new DiT pipelines. Once the new DiT pipeline is integrated into Cache-DiT, it will automatically support Quantization and Offload.
 
 ## 🌐Community Integration
 
