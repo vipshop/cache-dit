@@ -105,6 +105,8 @@ def _activate_cp_planners():
     ".helios", "HeliosContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   BooguImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".boogu_image", "BooguImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  ErnieImageContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".ernie_image", "ErnieImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
