@@ -1135,7 +1135,7 @@ python3 -m cache_dit.generate flux --model-path /workspace/dev/vipdev/hf_models/
 ### 7.2 Installation
 
 ```bash
-conda activate cdit
+conda activate cdit # if has cdit conda env, otherwise use the default python3 env
 
 # Python-only changes (no C++ compilation needed):
 pip install -e "." --no-build-isolation
