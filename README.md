@@ -29,7 +29,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 
 ## 📋Supported DiT Models
 
-Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 <div align="center">
 
