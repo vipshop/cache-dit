@@ -10,10 +10,18 @@ user-invocable: true
 Before writing any code, confirm the following:
 
 ```
+STOP — Has the user provided BOTH of the following?
+  1. A local model path (e.g., /workspace/dev/vipdev/hf_models/Krea-2-Turbo)
+  2. The model's pipeline/transformer code info:
+     - Pipeline class name (e.g., Krea2Pipeline, or third-party like BooguImagePipeline)
+     - Transformer class name (e.g., Krea2Transformer2DModel)
+     - File paths to the pipeline and transformer source code (diffusers or third-party)
+  NO  → **MUST ask the user to specify these before proceeding.**
+         Do NOT guess, search blindly, or assume defaults.
+  YES → Continue.
+
 STOP — Have you identified the new model's transformer architecture?
   NO  → Read the model's diffusers source code. Identify:
-         - The Pipeline class name (e.g., FluxPipeline)
-         - The Transformer class name (e.g., FluxTransformer2DModel)
          - The ModuleList name(s) containing transformer blocks (e.g., transformer_blocks)
          - The block forward() signature (inputs and outputs)
   YES → Proceed to Chapter 1 (Cache) and Chapter 6 (CLI) in parallel.
@@ -21,6 +29,8 @@ STOP — Have you identified the new model's transformer architecture?
 
 **Hard rules:**
 
+- **⚠️ MANDATORY: Local model path and code info.** If the user has not explicitly provided (a) the local model path and (b) the pipeline/transformer class names with source file paths (diffusers or third-party), you **MUST** ask the user to specify them via ``vscode_askQuestions`` before any code changes.  Do NOT search the codebase or assume default paths — the user knows their setup best.
+- **⚠️ MANDATORY: Plan before code.** Before writing ANY implementation code, you **MUST**: (1) thoroughly analyze the model's pipeline and transformer source code, (2) create a detailed integration plan following this skill's chapter structure (Cache → CP → TP → TE-P → VAE-P → CLI → Testing), (3) present the plan to the user for review and approval.  **Do NOT start implementing until the user explicitly approves the plan.**  This prevents wasted effort from incorrect assumptions about the model architecture.
 - ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow.
 - ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (乱码).
 - For Python-only changes, `pip install -e "." --no-build-isolation` is sufficient; SVDQuant C++ compilation is NOT required.
