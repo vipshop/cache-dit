@@ -916,6 +916,24 @@ def helios_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("ErnieImage")
+def ernie_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import ErnieImageTransformer2DModel
+  from cache_dit.caching.patch_functors import ErnieImagePatchFunctor
+
+  _relaxed_assert(pipe.transformer, ErnieImageTransformer2DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.layers,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=False,
+    has_separate_cfg=False,
+    patch_functor=ErnieImagePatchFunctor(),
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("BooguImage")
 def boogu_image_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for Boogu-Image (third-party, non-diffusers model).

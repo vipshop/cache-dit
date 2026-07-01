@@ -54,3 +54,5 @@ firered_image_edit_example = _safe_import(".examples", "firered_image_edit_examp
 helios_t2v_example = _safe_import(".examples", "helios_t2v_example")
 helios_t2v_distill_example = _safe_import(".examples", "helios_t2v_distill_example")
 boogu_image_edit_example = _safe_import(".examples", "boogu_image_edit_example")
+ernie_image_example = _safe_import(".examples", "ernie_image_example")
+ernie_image_turbo_example = _safe_import(".examples", "ernie_image_turbo_example")

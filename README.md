@@ -27,85 +27,68 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
-<div align="center">
-  <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
-</div>
+## 📋Supported DiT Models
 
-First, you can install the cache-dit from PyPI or install from source: 
-
-```bash
-uv pip install -U cache-dit # PyPI, stable release.
-uv pip install git+https://github.com/vipshop/cache-dit.git # latest.
-```
-
-Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
-
-```python
->>> import cache_dit
->>> from diffusers import DiffusionPipeline
->>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> cache_dit.enable_cache(pipe) # Cache Acceleration with One-line code.
->>> from cache_dit import DBCacheConfig, ParallelismConfig
->>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + Parallelism.
-...   pipe, cache_config=DBCacheConfig(), # w/ default
-...   parallelism_config=ParallelismConfig(ulysses_size=2))
->>> from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
->>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
-...   pipe, cache_config=DBCacheConfig(), # w/ default
-...   parallelism_config=ParallelismConfig(ulysses_size=2),
-...   quantize_config=QuantizeConfig(quant_type=...))
->>> output = pipe(...) # Then, just call the pipe as normal.
-```
+Cache-DiT supports **40+ DiT pipeline families (121+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 <div align="center">
-  <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
+
+| Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
+|:----------|:----------------|:-------------|:----------|:-------|
+| **Image** | FLUX | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 10+ | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 Klein | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | ERNIE-Image | [`ErnieImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image | [`QwenImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 9+ | ✔️/✔️/✔️/✔️ |
+| Image | Z-Image | [`ZImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✔️/✔️/✔️/✔️ |
+| Image | Boogu-Image| [`BooguImageTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | GLM-Image | [`GlmImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | LongCat-Image | [`LongCatImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ovis-Image | [`OvisImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | SD3 | [`SD3Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✖️/✔️/✔️ |
+| Image | PixArt-Alpha | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | PixArt-Sigma | [`PixArtTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Sana (image) | [`SanaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✔️/✖️/✔️/✔️ |
+| Image | DiT | [`DiTTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT-PAG | [`HunyuanDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | AuraFlow | [`AuraFlowTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | CogView4 | [`CogView4Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | CogView3Plus | [`CogView3PlusTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Hunyuan-Image | [`HunyuanImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream | [`HiDreamImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Bria | [`BriaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Chroma | [`ChromaTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | PRX | [`PRXTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✖️/✔️/✔️ |
+| Image | OmniGen | [`OmniGenTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina | [`LuminaNextDiT2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina 2 | [`Lumina2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✖️/✔️/✔️ |
+| Image | VisualCloze | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Amused | [`UVit2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| **Video** | CogVideoX | [`CogVideoXTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Wan (T2V/I2V) | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | Wan-VACE | [`WanVACETransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo | [`HunyuanVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo 1.5 | [`HunyuanVideo15Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Mochi | [`MochiTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Allegro | [`AllegroTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Video | EasyAnimate | [`EasyAnimateTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✖️/✔️/✔️ |
+| Video | ConsisID | [`ConsisIDTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Cosmos | [`CosmosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 7+ | ✔️/✖️/✔️/✔️ |
+| Video | LTX | [`LTXVideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2 | [`LTX2VideoTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Helios | [`HeliosTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | ChronoEdit | [`ChronoEditTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | SkyReelsV2 | [`SkyReelsV2Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 5 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky5 (T2V/I2V) | [`Kandinsky5Transformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 4 | ✔️/✔️/✔️/✔️ |
+| **Audio** | StableAudio | [`StableAudioDiTModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
+| Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✔️/✔️/✔️/✔️ |
+
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
+
 </div>
 
-First, install Cache-DiT with SVDQuant support (Experimental):
-
-```bash
-# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+.
-uv pip install -U cache-dit-cu13 # PyPI, stable release.
-CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
-```
-
-Then, try to quantize your model with just **♥️a few lines♥️** of code ~
-
-```python
->>> from cache_dit import QuantizeConfig
->>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
->>> pipe.transformer = cache_dit.quantize(
-...   pipe.transformer, quant_config=QuantizeConfig(
-...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
-...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
-...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
->>> output = pipe(...) # Then, just call the pipe as normal.
-```
-
-<div align="center">
-  <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
-</div>
-
-**Bucket-style** Layerwise Offload w/ nearly zero (**<5%🎉**) latency overhead ~
-
-```python
->>> import cache_dit
->>> cache_dit.layerwise_offload(
-...   pipe, # nn.Module: pipe, transformer, text_encoder, etc.
-...   onload_device="cuda",
-...   offload_device="cpu",
-...   async_transfer=True,
-...   transfer_buckets=4,
-...   persistent_buckets=64,
-...   persistent_bins=8,
-...   prefetch_limit=True,
-...   max_copy_streams=4,
-...   max_inflight_prefetch_bytes="8gib")
->>> output = pipe(...) # Then, just call the pipe as normal.
-```
-
-For more advanced features, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
 ## 🌐Community Integration
 

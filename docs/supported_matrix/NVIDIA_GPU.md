@@ -35,6 +35,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|✅|✅|
 |Ovis-Image|✅|✅|✅|
+|Boogu-Image-Edit-0.1|✅|✅|✅|
+|ERNIE-Image|✅|✅|✅|
+|ERNIE-Image-Turbo|✅|✅|✅|
 |FLUX.2-dev|✅|✅|✅|
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
@@ -125,6 +128,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|✅|
 |Ovis-Image|✅|✅|
+|Boogu-Image-Edit-0.1|✅|✅|
+|ERNIE-Image|✅|✅|
+|ERNIE-Image-Turbo|✅|✅|
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|
