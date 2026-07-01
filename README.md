@@ -107,6 +107,60 @@ Then, try to quantize your model with just **♥️a few lines♥️** of code ~
 
 For more advanced features, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
+## 📋Supported DiT Models
+
+Cache-DiT supports **40+ DiT pipeline families** from 🤗Diffusers via `BlockAdapterRegister`, covering the vast majority of transformer-based pipelines:
+
+<div align="center">
+
+| Modality | Pipeline Series | Transformer | Variants |
+|----------|----------------|-------------|----------|
+| **Image** | FLUX / FLUX.2 / FLUX.2 Klein | `FluxTransformer2DModel` / `Flux2Transformer2DModel` | 14+ |
+| Image | SD3 | `SD3Transformer2DModel` | 3 |
+| Image | PixArt-Alpha / Sigma | `PixArtTransformer2DModel` | 2 |
+| Image | Sana (image) | `SanaTransformer2DModel` | 4 |
+| Image | DiT (original) | `DiTTransformer2DModel` | 1 |
+| Image | HunyuanDiT / PAG | `HunyuanDiT2DModel` | 2 |
+| Image | AuraFlow | `AuraFlowTransformer2DModel` | 1 |
+| Image | CogView4 | `CogView4Transformer2DModel` | 2 |
+| Image | CogView3Plus | `CogView3PlusTransformer2DModel` | 1 |
+| Image | HunyuanImage | `HunyuanImageTransformer2DModel` | 2 |
+| Image | HiDream | `HiDreamImageTransformer2DModel` | 1 |
+| Image | Bria | `BriaTransformer2DModel` | 1 |
+| Image | Chroma | `ChromaTransformer2DModel` | 3 |
+| Image | PRX | `PRXTransformer2DModel` | 2 |
+| Image | QwenImage | `QwenImageTransformer2DModel` | 9+ |
+| Image | Z-Image | `ZImageTransformer2DModel` | 6 |
+| Image | OmniGen | `OmniGenTransformer2DModel` | 1 |
+| Image | GLM-Image | `GlmImageTransformer2DModel` | 1 |
+| Image | ErnieImage | `ErnieImageTransformer2DModel` | 1 |
+| Image | LongCatImage | `LongCatImageTransformer2DModel` | 2 |
+| Image | OvisImage | `OvisImageTransformer2DModel` | 1 |
+| Image | Lumina / Lumina 2 | `LuminaNextDiT2DModel` / `Lumina2Transformer2DModel` | 4 |
+| Image | VisualCloze | `FluxTransformer2DModel` (reused) | 2 |
+| Image | Amused | `UVit2DModel` | 1 |
+| **Video** | CogVideoX | `CogVideoXTransformer3DModel` | 4 |
+| Video | Wan (T2V/I2V/VACE) | `WanTransformer3DModel` / `WanVACETransformer3DModel` | 4 |
+| Video | HunyuanVideo / 1.5 | `HunyuanVideoTransformer3DModel` / `HunyuanVideo15Transformer3DModel` | 6 |
+| Video | Mochi | `MochiTransformer3DModel` | 1 |
+| Video | Allegro | `AllegroTransformer3DModel` | 1 |
+| Video | EasyAnimate | `EasyAnimateTransformer3DModel` | 3 |
+| Video | ConsisID | `ConsisIDTransformer3DModel` | 1 |
+| Video | Cosmos | `CosmosTransformer3DModel` | 7+ |
+| Video | LTX / LTX2 | `LTXVideoTransformer3DModel` / `LTX2VideoTransformer3DModel` | 11+ |
+| Video | Helios | `HeliosTransformer3DModel` | 2 |
+| Video | ChronoEdit | `ChronoEditTransformer3DModel` | 1 |
+| Video | SkyReelsV2 | `SkyReelsV2Transformer3DModel` | 5 |
+| Video | Kandinsky5 (T2V/I2V) | `Kandinsky5Transformer3DModel` | 4 |
+| **Audio** | StableAudio | `StableAudioDiTModel` | 1 |
+| **3D/Other** | Shap-E | `PriorTransformer` | 1 |
+| Other | BooguImage (3rd-party) | `BooguImageTransformer` | 1 |
+| Other | LucyEdit | `WanTransformer3DModel` (reused) | 1 |
+
+</div>
+
+See the full support matrix at 📘[cache-dit.io/supported_matrix](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/).
+
 ## 🌐Community Integration
 
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
