@@ -57,6 +57,12 @@ def _patch_attention_processor_for_cp() -> None:
 
      - ``enable_gqa=True``  (original): ~26.4 s
      - ``enable_gqa=False`` (MHA repeat): ~12.2 s
+     - ``enable_gqa=True`` + ``--attn _sdpa_cudnn``: ~11.5 s
+
+     The cuDNN SDPA backend handles GQA efficiently without the repeat,
+     achieving the same ~2.2× speedup.  Either approach (MHA repeat for the
+     default backend, or ``_sdpa_cudnn`` for the native GQA path) avoids the
+     slow PyTorch default SDPA path.
 
      This means the GQA repeat should be applied unconditionally (even without
      CP) for any model with a similar GQA head configuration.  The CP path
