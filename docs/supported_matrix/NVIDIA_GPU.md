@@ -38,6 +38,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Boogu-Image-Edit-0.1|✅|✅|✅|
 |ERNIE-Image|✅|✅|✅|
 |ERNIE-Image-Turbo|✅|✅|✅|
+|Krea-2-Turbo|✅|✅|✅|
 |FLUX.2-dev|✅|✅|✅|
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|
@@ -131,6 +132,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Boogu-Image-Edit-0.1|✅|✅|
 |ERNIE-Image|✅|✅|
 |ERNIE-Image-Turbo|✅|✅|
+|Krea-2-Turbo|✅|✅|
 |FLUX.1-dev|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|

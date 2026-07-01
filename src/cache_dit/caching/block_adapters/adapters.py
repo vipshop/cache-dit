@@ -960,3 +960,19 @@ def boogu_image_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("Krea2")
+def krea2_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import Krea2Transformer2DModel
+
+  _relaxed_assert(pipe.transformer, Krea2Transformer2DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )
