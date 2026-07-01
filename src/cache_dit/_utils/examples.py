@@ -1601,6 +1601,9 @@ def krea2_example(args: argparse.Namespace, **kwargs) -> Example:
       task_type=ExampleType.T2I,
       model_name_or_path=_path("krea/Krea-2-Turbo"),
       pipeline_class=Krea2Pipeline,
+      extra_optimize_kwargs={
+        "enable_separate_cfg": False,  # guidance_scale=0.0 → no CFG at runtime
+      },
     ),
     input_data=ExampleInputData(
       prompt="A fox in the snow, detailed, vibrant colors",
