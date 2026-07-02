@@ -85,7 +85,7 @@ def _patch_transformer_forward_for_cp(transformer: ErnieImageTransformer2DModel,
       return _original_forward(hidden_states, timestep, text_bth, text_lens, return_dict)
 
     mesh: DeviceMesh = cp_config._flattened_mesh
-    tp_size = mesh.size()
+    cp_size = mesh.size()
     rank = dist.get_rank(mesh.get_group())
 
     device, dtype = hidden_states.device, hidden_states.dtype
@@ -148,9 +148,9 @@ def _patch_transformer_forward_for_cp(transformer: ErnieImageTransformer2DModel,
     # rotary_pos_emb: [B, S, 1, H]    → split dim=1 (batch-first)
     # attention_mask: NOT split — Ulysses all-to-all internally recovers
     #   the full sequence, so each GPU needs the full [B, 1, 1, S_full] mask.
-    x = x.tensor_split(tp_size, dim=0)[rank].contiguous()
-    temb = [t.tensor_split(tp_size, dim=0)[rank].contiguous() for t in temb]
-    rotary_pos_emb = rotary_pos_emb.tensor_split(tp_size, dim=1)[rank].contiguous()
+    x = x.tensor_split(cp_size, dim=0)[rank].contiguous()
+    temb = [t.tensor_split(cp_size, dim=0)[rank].contiguous() for t in temb]
+    rotary_pos_emb = rotary_pos_emb.tensor_split(cp_size, dim=1)[rank].contiguous()
 
     # ---- Layer loop on local chunk ----
     for layer in self.layers:
@@ -169,19 +169,19 @@ def _patch_transformer_forward_for_cp(transformer: ErnieImageTransformer2DModel,
     full_x_shape[0] = N_img + Tmax  # original S
     chunks = [
       torch.empty(
-        full_x_shape[0] // tp_size + (1 if i < full_x_shape[0] % tp_size else 0),
+        full_x_shape[0] // cp_size + (1 if i < full_x_shape[0] % cp_size else 0),
         *full_x_shape[1:],
         device=x.device,
         dtype=x.dtype,
-      ) for i in range(tp_size)
+      ) for i in range(cp_size)
     ]
     chunks[rank] = x
     dist.all_gather(chunks, x, group=mesh.get_group())
     x = torch.cat(chunks, dim=0)
 
     # ---- Post-processing (full sequence) ----
-    x = self.final_norm(x, c).type_as(x)
-    patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()
+    x = self.final_norm(x, c).type_as(x)  # type: torch.Tensor
+    patches = self.final_linear(x)[:N_img].transpose(0, 1).contiguous()  # type: torch.Tensor
     output = (patches.view(B, Hp, Wp, p, p,
                            self.out_channels).permute(0, 5, 1, 3, 2, 4).contiguous().view(
                              B, self.out_channels, H, W))

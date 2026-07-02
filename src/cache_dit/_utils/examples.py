@@ -99,6 +99,7 @@ _env_path_mapping = {
   "ERNIE_IMAGE_DIR": "baidu/ERNIE-Image",
   "ERNIE_IMAGE_TURBO_DIR": "baidu/ERNIE-Image-Turbo",
   "KREA2_DIR": "krea/Krea-2-Turbo",
+  "FIBO_DIR": "briaai/FIBO",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1611,5 +1612,26 @@ def krea2_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=8,
       guidance_scale=0.0,
+    ),
+  )
+
+
+@ExampleRegister.register("bria_fibo", default="briaai/FIBO")
+def bria_fibo_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import BriaFiboPipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("briaai/FIBO"),
+      pipeline_class=BriaFiboPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt="A cat holding a sign that says hello world",
+      height=1024,
+      width=1024,
+      num_inference_steps=28,
+      guidance_scale=5,
     ),
   )
