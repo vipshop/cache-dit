@@ -470,6 +470,29 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("BriaFibo")
+def bria_fibo_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import BriaFiboTransformer2DModel
+  from cache_dit.caching.patch_functors import BriaFiboPatchFunctor
+
+  _relaxed_assert(pipe.transformer, BriaFiboTransformer2DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.transformer_blocks,
+      pipe.transformer.single_transformer_blocks,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_1,
+      ForwardPattern.Pattern_1,
+    ],
+    check_forward_pattern=False,  # single blocks are patched to Pattern_1 later
+    patch_functor=BriaFiboPatchFunctor(),
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Bria")
 def bria_adapter(pipe, **kwargs) -> BlockAdapter:
   try:

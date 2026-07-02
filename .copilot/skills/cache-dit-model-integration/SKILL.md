@@ -3,7 +3,8 @@ name: cache-dit-model-integration
 description: "Guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, and testing workflow. Use when adding support for a new diffusion transformer model in cache-dit."
 user-invocable: true
 ---
-# cache-dit Model Integration Guide
+
+# Cache-DiT Model Integration Guide
 
 ## GATE CHECK
 
@@ -32,13 +33,130 @@ STOP — Have you identified the new model's transformer architecture?
 - **⚠️ MANDATORY: Local model path and code info.** If the user has not explicitly provided (a) the local model path and (b) the pipeline/transformer class names with source file paths (diffusers or third-party), you **MUST** ask the user to specify them via ``vscode_askQuestions`` before any code changes.  Do NOT search the codebase or assume default paths — the user knows their setup best.
 - **⚠️ MANDATORY: Plan before code.** Before writing ANY implementation code, you **MUST**: (1) thoroughly analyze the model's pipeline and transformer source code, (2) create a detailed integration plan following this skill's chapter structure (Cache → CP → TP → TE-P → VAE-P → CLI → Testing), (3) present the plan to the user for review and approval.  **Do NOT start implementing until the user explicitly approves the plan.**  This prevents wasted effort from incorrect assumptions about the model architecture.
 - ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow.
-- ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (乱码).
+- ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (garbled output).
 - For Python-only changes, `pip install -e "." --no-build-isolation` is sufficient; SVDQuant C++ compilation is NOT required.
 - **Do NOT alter core dependency versions** (torch, torchvision, transformers, diffusers, cache-dit, triton) in the `cdit` conda environment. Other dependencies may be installed only if they do not conflict with these.
 - **Do NOT modify any code in the diffusers library.** If a model requires patches (e.g., monkey-patching `forward()`, attention processors, etc.), write all patch code inside the cache-dit repository. Diffusers is a third-party dependency and must not be altered.
 - **All examples in this skill are references, not templates to copy.** Every model has unique architecture details (block signatures, tensor layouts, shared vs per-block modulation, attention mask requirements, etc.). Before following any example, first analyze whether the referenced model's architecture is actually comparable to the target model. Blindly copying an example that was designed for a different architecture will produce incorrect or broken code.
 - ControlNet parallelism is a special case and is NOT covered in this guide.
 - **⚠️ GQA attention backend pitfall**: When a model uses GQA (e.g., ``num_heads=48, num_kv_heads=12``), the ``dispatch_attention_fn(..., enable_gqa=True)`` path may cause PyTorch SDPA to fall back to a **slow backend** (``math`` or an inefficient ``mem_efficient`` kernel) because flash-attention / cuDNN SDPA backends have limited GQA support.  **Always benchmark ``enable_gqa=True`` vs. manually repeating K/V heads to match Q heads and passing ``enable_gqa=False``** (MHA path).  On NVIDIA L20, the MHA repeat gave a **~2.2× single-GPU speedup** for Krea-2-Turbo (48 Q / 12 KV heads, 128 head_dim, 4608 seq).  This is not CP-specific — any model with GQA should evaluate whether the repeat→MHA path is faster.  If confirmed, apply the repeat unconditionally in the attention processor patch, not just in the CP path.  Document the finding in the planner's docstring as well (see ``krea2.py`` for an example).
+
+---
+
+## 0. Model Integration Practical Navigation
+
+> Start here. This map orients you before you dive into any chapter. The integration order is **Cache → CP → TP → TE-P → VAE-P → CLI → Testing**; each feature is verified against a single-GPU baseline before moving on.
+
+### 0.1 End-to-End Workflow
+
+```mermaid
+flowchart TD
+    G{"GATE CHECK: local model path AND pipeline/transformer source both provided?"}
+    G -->|No| GA["STOP - ask the user via vscode_askQuestions"]
+    G -->|Yes| A["Read and analyze pipeline __call__ and transformer.forward()"]
+    A --> PL["Draft an integration plan, get user approval BEFORE writing code"]
+    PL --> C1["Ch.1 Cache: BlockAdapter + ForwardPattern"]
+    C1 --> CQ{"Block loop: keyword/positional mismatch, or extra ops in loop body?"}
+    CQ -->|Yes| CF["Write a PatchFunctor - 1.7"]
+    CQ -->|No| CA["Pick ForwardPattern, build BlockAdapter - 1.2 to 1.4"]
+    CF --> CA
+    CA --> C2["Ch.2 Context Parallelism - see CP decision chart in 0.2"]
+    C2 --> T3["Ch.3 Tensor Parallelism: shard_div_attr, GQA, DTensor-unsafe ops"]
+    T3 --> T4["Ch.4 TE-P - only if the text encoder is unsupported"]
+    T4 --> T5["Ch.5 VAE-P - only if the VAE is unsupported"]
+    T5 --> T6["Ch.6 Register the generate CLI + env mapping"]
+    T6 --> T7["Ch.7 Test every feature vs baseline: PSNR AND SSIM are BOTH mandatory"]
+```
+
+### 0.2 Context Parallelism Decision Chart (the highest-risk step)
+
+```mermaid
+flowchart TD
+    S["Start CP for a new model"] --> MK{"Model uses an attention_mask? Check inside joint_attention_kwargs / attention_kwargs too"}
+    MK -->|Yes| MKN["Flag: the mask must be permuted/reordered under CP later - 2.7"]
+    MK -->|No| HK
+    MKN --> HK{"Can every sequence tensor be split at a function-call boundary?"}
+    HK -->|"No: internal fusion / nested list or dict / local tensors"| PB["Patch-based CP - 2.4: patch forward and processor, return empty dict"]
+    HK -->|"Yes: plain tensors or 1-D lists of tensors"| HT{"What shape is transformer.forward()?"}
+    HT -->|"Simple preprocess to loop to postprocess"| RT["Root split with key '' - 2.3.1"]
+    HT -->|"One sub-module output stays full-length: caption_projection / rope / pos_embed"| OS["Add output-split hook split_output=True - 2.3.4"]
+    HT -->|"Uniform loop, processor does the all-to-all"| B0["Single-point split at transformer_blocks.0 - 2.3.5"]
+    HT -->|"Inter-block op needs the FULL sequence"| SM["Sub-module-level hooks - 2.3.2"]
+    RT --> UA
+    OS --> UA
+    B0 --> UA
+    SM --> UA
+    PB --> UA{"num_kv_heads or sequence length not divisible by cp_size?"}
+    UA -->|Yes| UAA["Enable UAA: --ulysses-anything - 2.6"]
+    UA -->|No| VF
+    UAA --> VF["Verify: top-left corner clean, PSNR > 35, SSIM > 0.90"]
+```
+
+### 0.3 Tensor Parallelism Decision Chart (second-highest-risk step)
+
+```mermaid
+flowchart TD
+    S["Start TP for a new model"] --> DT{"Fused CUDA kernels? (flash_attn SwiGLU, triton RMSNorm)"}
+    DT -->|Yes| DP["Patch to PyTorch equivalents FIRST - 3.4.6"]
+    DT -->|No| FW
+    DP --> FW{"Fused weight matrix? (QKV packed, out+down shared)"}
+    FW -->|Yes| RW["Un-fuse / rearrange weights - 3.2 rule #4"]
+    FW -->|No| HEADS
+    RW --> HEADS{"num_attention_heads % tp_size == 0?"}
+    HEADS -->|No| E1["ERROR: MHA heads must be divisible. Check tp_size choice."]
+    HEADS -->|Yes| GQA{"GQA? num_kv_heads < num_heads?"}
+    GQA -->|"No (plain MHA)"| MHA["Standard: ColwiseParallel(to_q/k/v), RowwiseParallel(to_out.0), shard_div_attr 'heads'"]
+    GQA -->|Yes| KVDIV{"num_kv_heads % tp_size == 0?"}
+    KVDIV -->|Yes| STDGQA["Same MHA plan: K/V also shardable via ColwiseParallel"]
+    KVDIV -->|No| BENCHQ{"Long sequence? (> ~10K tokens)"}
+    BENCHQ -->|"Yes or unknown"| FFNO["Prefer FFN-only TP - 3.4 caveat: skip attention sharding entirely. Only ColwiseParallel(gate/up) + RowwiseParallel(down)."]
+    BENCHQ -->|"No, short seq"| REPL["Replicate - 3.4.2: ColwiseParallel(output_layouts=Replicate()) for to_q. K/V unparallelized. Skip shard_div_attr."]
+    MHA --> FFN["Build FFN plan: ColwiseParallel(gate_proj/up_proj), RowwiseParallel(down_proj)"]
+    STDGQA --> FFN
+    FFNO --> FFN
+    REPL --> BENCH2["⚠️ Benchmark FFN-only vs Replicate before shipping - 3.4"]
+    BENCH2 --> FFN
+    FFN --> MOD{"AdaLayerNormZero / norm.linear modulation?"}
+    MOD -->|Yes| MODP["ColwiseParallel(output_layouts=Replicate()) for norm.linear"]
+    MOD -->|No| VERIFY
+    MODP --> VERIFY["Verify: PSNR > 35 dB, SSIM > 0.90. Visual inspection."]
+```
+
+### 0.4 Decision Index — "If you're dealing with X, read §Y"
+
+| Situation | Section |
+|---|---|
+| Choosing the block I/O pattern | §1.2 ForwardPattern table |
+| Block loop calls blocks with keyword args, or has extra ops inside the loop | §1.7 PatchFunctor (Pitfalls A / B) |
+| More complex structural patch (per-block forward, block-id injection, block-list merge) | §1.7 "Beyond the two canonical pitfalls" |
+| Third-party (non-diffusers) model | §1.6 |
+| CP: choosing hook-based vs patch-based | §2.2 + the chart in §0.2 |
+| CP: a projection / rope / pos_embed output stays full-length | §2.3.4 output-split hook |
+| CP: uniform loop + attention-processor all-to-all | §2.3.5 single-point split |
+| CP: an inter-block op needs the full sequence | §2.3.2 sub-module hooks |
+| CP: forward does internal concat/split/pad, or has nested/local tensors | §2.4 patch-based |
+| CP: head count or sequence length not divisible by cp_size | §2.6 UAA |
+| CP: the model has an attention_mask | §2.7 mask permute ⚠️ |
+| TP: choosing the overall TP strategy | §3.2 + the chart in §0.3 |
+| TP: attention output garbled | §3.2.1 shard_div_attr |
+| TP: fused CUDA kernels crash under TP | §3.4.6 DTensor-unsafe ops |
+| TP: a single Linear packs fused QKV or out+down weights | §3.2 rule #4 (weight rearrange) |
+| TP: GQA with `num_kv_heads` not divisible by `tp_size` | §3.4 (mind the performance caveat) |
+| TP: when to use `output_layouts=Replicate()` | §3.1 Replicate table + §3.4.2 |
+| New text encoder / new VAE | §4 / §5 |
+| Register the model in the CLI | §6 |
+| Verify correctness | §7 (PSNR AND SSIM) |
+
+### 0.5 Top Pitfalls That Silently Corrupt Output
+
+These are the traps that pass without crashing but produce wrong images. Each is expanded in its section.
+
+1. **Skipping SSIM.** PSNR alone cannot detect garbled output — a garbled image can still score PSNR > 25 dB. Always compute both. → §7.4
+2. **CP + `attention_mask` misalignment.** Ulysses all-to-all reorders the sequence; a position-indexed mask no longer lines up → localized **top-left corruption**, PSNR stuck ~28–30. → §2.7
+3. **Missing `shard_div_attr` in TP.** The attention processor reshapes with a stale head count → garbled output (the #1 TP bug). → §3.2.1
+4. **PatchFunctor drops loop-body ops.** Extra operations inside the block loop are silently skipped after the cache wrapper takes over → stale `temb` / modulation. → §1.7 Pitfall B
+5. **GQA attention TP via `Replicate` is *correct* but often *slower* than a single GPU** (all-gather on Q dominates). Benchmark against FFN-only TP before shipping. → §3.4
+6. **DTensor-unsafe fused kernels** (flash_attn SwiGLU, triton RMSNorm) crash with illegal-memory-access under TP → patch them to PyTorch ops first. → §3.4.6
 
 ---
 
@@ -84,7 +202,8 @@ Defined in `src/cache_dit/caching/block_adapters/block_adapters.py`. Key paramet
 | `transformer`           | `nn.Module` or `List[nn.Module]`               | The transformer module(s). Single module for most models; list of 2 for dual-transformer models (e.g., Wan 2.2 MoE).                                                        |
 | `blocks`                | `nn.ModuleList` or `List[nn.ModuleList]`       | The block collection(s). Single ModuleList for most models; list of 2 for models with dual block types (e.g., Flux:`transformer_blocks` + `single_transformer_blocks`). |
 | `forward_pattern`       | `ForwardPattern` or `List[ForwardPattern]`     | Must match`blocks` count. Single pattern for single block list; list of patterns for multiple block lists.                                                                |
-| `check_forward_pattern` | `bool`                                           | If`True`, cache-dit validates that each block's I/O matches the declared pattern. Recommended for new models.                                                             |
+| `check_forward_pattern` | `Optional[bool]`                                 | Validate that each block's I/O matches the declared pattern. If left `None` (default), cache-dit **auto-detects**: `True` for `diffusers` transformers, `False` for third-party ones (`maybe_skip_checks()`); it is also forced `False` when the transformer already has an `_hf_hook` / `_diffusers_hook`. Set explicitly for new models.                                                             |
+| `check_num_outputs`     | `bool`                                           | If`True`, cache-dit additionally validates that each block returns the exact number of outputs the pattern declares. Needed for models whose blocks can return a variable tuple (e.g., HiDream, HunyuanVideo 1.0). Default `False`.                                             |
 | `has_separate_cfg`      | `bool`                                           | Set`True` if the model performs separate conditional/unconditional forward passes for Classifier-Free Guidance.                                                           |
 | `patch_functor`         | `PatchFunctor` or `None`                       | Optional pre-patch logic. Used when the model needs structural modification before caching hooks are installed (e.g., Flux dummy block merging, DiT re-patching).           |
 | `blocks_name`           | `str` or `List[str]`                           | Override block attribute names (advanced).                                                                                                                                  |
@@ -293,6 +412,16 @@ for layer in self.layers:
 
 **How to detect this pitfall**: Inspect the for-loop body in `transformer.forward()`. If *any* line between `for ... in self.XXX:` and the actual block call does something other than a trivial `if torch.is_grad_enabled()` guard, you likely need a PatchFunctor.
 
+#### Beyond the two canonical pitfalls
+
+Pitfalls A and B are the two simplest cases (fix at the call site, or hoist one line out of the loop). Real models often need heavier PatchFunctors. Browse `src/cache_dit/caching/patch_functors/` (13+ functors) before writing your own — recurring patterns include:
+
+- **Per-block `forward()` replacement + block-id injection** — when the loop body has *per-block* extra operations that cannot simply be hoisted (they depend on the block index). The functor patches `transformer.forward()` **and** each block's `forward()`, and injects a `_block_id` / `_layer_id` onto every block so the patched block can look up per-block data (skip-connection lists, per-block encoder states, control hints). Examples: `HiDreamPatchFunctor`, `HunyuanDiTPatchFunctor`, `WanVACEPatchFunctor`, `ChromaPatchFunctor`, `GlmImagePatchFunctor`, `BriaFiboPatchFunctor`.
+- **Block signature modification** — rewriting a block's `forward()` signature so the caching wrapper can bind it (e.g. `FluxPatchFunctor` adds an `encoder_hidden_states` parameter to `FluxSingleTransformerBlock` in older diffusers).
+- **Block-list merge / dummy blocks** — structurally merging two `ModuleList`s into one for unified caching (e.g. `FluxPatchFunctor` merging `transformer_blocks` + `single_transformer_blocks` when `dummy_blocks_names` is set).
+
+The rules below (identical signature, identical output when cache is disabled, minimal changes) apply to all of these.
+
 #### Implementing a PatchFunctor (template)
 
 ```python
@@ -354,14 +483,16 @@ Context Parallelism splits the **sequence dimension** of hidden states across mu
 
 ### 2.2 Two Implementation Approaches
 
-> ⚠️ **Hook-based is the strongly preferred default.** Patch-based is a **last resort** — do NOT reach for it unless you have done a thorough analysis and concluded that hook-based semantics genuinely cannot express the model's CP logic. Patch-based code is manual, harder to maintain, and more prone to subtle correctness bugs (forgotten split, wrong gather boundary, double-split). If in doubt, start with hook-based and let the framework tell you where it breaks — then assess whether the breakage can be fixed by changing granularity (transformer-level → sub-module-level) rather than abandoning hooks entirely.
+> **⚠️ MANDATORY: Hook-based first.** You MUST attempt a hook-based CP plan before considering patch-based. The hook mechanism supports 1-D flat lists of tensors (each element is split independently). Only fall back to patch-based when you can articulate a specific structural reason hook-based cannot work — e.g., deeply nested list/dict structures, tensors that are not function parameters (local intermediates), or forward() methods with complex internal fusion that requires split boundaries BETWEEN internal operations rather than at function-call boundaries.
+>
+> Start with transformer-level hooks (§2.3.1). If the model has inter-block operations that need the full sequence, try sub-module-level hooks (§2.3.2). Patch-based (§2.4) is the LAST resort.
 
 cache-dit offers **two** distinct CP implementation patterns. Hook-based is the standard approach; patch-based exists only for the rare cases where hooks are structurally impossible.
 
 | Priority | Approach | Mechanism | When to use |
 |---|---|---|---|
-| **1st** | **Hook-based** (§2.3) | Declarative `_ContextParallelInput` / `_ContextParallelOutput` dict; framework inserts split/gather hooks at specified function-call boundaries. | All block inputs are **plain tensors** (no list/dict), and the `forward()` method has no internal tensor fusion or complex attention-mask logic. |
-| **2nd (last resort)** | **Patch-based** (§2.4) | Monkey-patch `transformer.forward()` (and optionally the attention processor); manually split/gather at the correct boundaries; return `{}` from `_apply()`. | Block inputs include **list/dict of tensors**, the `forward()` method does internal fusion (concat/split/pad), or there is a complex attention mask that must stay full-sequence. **Only use after confirming hook-based is truly infeasible.** |
+| **1st** | **Hook-based** (§2.3) | Declarative `_ContextParallelInput` / `_ContextParallelOutput` dict; framework inserts split/gather hooks at specified function-call boundaries. | All block inputs are **plain tensors or 1-D flat lists of tensors** (hook iterates and splits each element), and the `forward()` method has no internal tensor fusion or complex attention-mask logic. |
+| **2nd (last resort)** | **Patch-based** (§2.4) | Monkey-patch `transformer.forward()` (and optionally the attention processor); manually split/gather at the correct boundaries; return `{}` from `_apply()`. | The `forward()` method does internal fusion (concat/split/pad) that requires split points INSIDE the function body (not at function-call boundaries), or there are deeply nested list/dict-of-tensors structures. **Only use after confirming hook-based is truly infeasible.** |
 
 > **Decision shortcut**: If you can express the CP logic as "split these named tensors before the block loop, gather these named tensors after", use hook-based. If you find yourself thinking "I need to split this AFTER the concat on line 87 but BEFORE the layer loop on line 92", first try sub-module-level hooks (§2.3.2). Only if that also fails (e.g., the tensors you need to split are not function parameters but intermediate locals) should you consider patch-based.
 
@@ -377,7 +508,7 @@ The hook key `""` (empty string) means **"apply to `transformer.forward()`"** �
 
 **When to use**: The model's `forward()` is a simple "preprocess → block loop → postprocess" pipeline where all block inputs are plain tensors. No inter-block operations need the full sequence.
 
-**Examples**: `FluxContextParallelismPlanner` (`flux.py`), `OvisImageContextParallelismPlanner` (`ovis_image.py`), `QwenImageContextParallelismPlanner`, `HunyuanImageContextParallelismPlanner`, and most other models.
+**Examples**: `FluxContextParallelismPlanner` (`flux.py`), `OvisImageContextParallelismPlanner` (`ovis_image.py`), `ChromaContextParallelismPlanner` (`chroma.py`), `LongCatImageContextParallelismPlanner` (`longcat_image.py`), and the vanilla `Flux2ContextParallelismPlanner` (`flux2.py`). (Note: many models do NOT split at the root `""` but at a single block boundary `transformer_blocks.0` and rely on the attention processor's all-to-all to keep later blocks consistent — see §2.3.5.)
 
 **Template** (Flux / OvisImage pattern):
 
@@ -411,6 +542,14 @@ class MyModelContextParallelismPlanner(ContextParallelismPlanner):
 ```
 
 The `""` key exposes every named parameter of `transformer.forward()` to hooks. Split happens once, before any block executes. Gather happens once, after all blocks finish. This is the **simplest, most efficient** pattern — use it unless your model's architecture prevents it.
+
+**When transformer-level is NOT suitable** — the root-level plan can break in two distinct ways, and each has a lighter-weight fix than "convert everything to per-block split/gather":
+
+1. **A per-block sub-module produces a sequence-dependent output that must match the LOCAL (split) sequence** — e.g. BriaFIBO's per-block `caption_projection`, QwenImage's `pos_embed`, or Wan/SkyReels/HunyuanImage's `rope`. You do NOT need to abandon the root plan: keep splitting the main tensors at the root, and add an **output-split hook** (`split_output=True`) on that one sub-module so its output is re-split to the local sequence. See §2.3.4.
+
+2. **An inter-block operation genuinely needs the FULL (gathered) sequence** — e.g. history/current fusion, ControlNet injection, or multiple `ModuleList`s with different structures. Only then drop down to **sub-module-level hooks** (§2.3.2), which gather → run the op on the full sequence → re-split at each boundary (at the cost of extra communication).
+
+> ⚠️ **Do NOT reflexively rewrite a root plan into a per-block split-and-gather of `transformer_blocks.*` + `single_transformer_blocks.*`.** That structure double-splits, is almost never correct, and **no shipped planner uses it** — including BriaFIBO, whose real CP plan is a root split plus a `caption_projection` output-split plus a mask permute (see §2.3.4 and §2.7), NOT a per-block plan.
 
 #### 2.3.2 Sub-Module-Level CP Plan (Per-Block / Per-Layer)
 
@@ -513,7 +652,86 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 - **`split_output`**: If `True`, also splits the return value after the function runs (rarely needed; default `False`).
 - **`gather_dim`**: Dimension along which to all-gather the output (usually matches the corresponding `split_dim`).
 - **Parameters not listed** in the hook dict are passed through unchanged (not split, not gathered).
-- **Non-tensor parameters** (str, int, list, dict, bool) are silently ignored by hooks — they cannot be split.
+- **Scalar non-tensor parameters** (str, int, float, bool) are silently ignored by hooks — they cannot be split.
+- **1-D flat lists of tensors** (e.g., `text_encoder_layers: list[Tensor]`, `temb: list[Tensor]`) are supported — the hook iterates and splits each tensor element independently. Nested structures (list of lists, dict of tensors) are NOT supported.
+
+#### 2.3.4 Output-Split Hook (`split_output=True`) — Re-Splitting a Sub-Module Output
+
+This is the **correct, lightweight fix** for the most common "root plan is almost right, but one sub-module output has the wrong sequence length" situation. Instead of dropping to a per-block plan, you keep the root `""` split and add **one** hook on the offending sub-module with `split_output=True`.
+
+**The problem it solves.** When you split `hidden_states` / `encoder_hidden_states` at the root, some models have a sub-module (usually a *per-block projection* or a *RoPE / position-embedding builder*) that either (a) is called on a **full-sequence** input and returns a full-sequence output that must be re-split to the local chunk, or (b) recomputes a sequence-length-dependent tensor internally. The main tensors are already local, but this one sub-module output is not — so the block sees mismatched sequence lengths and produces garbage.
+
+**The mechanism.** A `_ContextParallelInput(..., split_output=True)` hook on a sub-module path does two things: it splits the named **input** before the sub-module runs *and* splits the sub-module's **return value** after it runs. Keyed on a `ModuleList` wildcard (e.g. `"caption_projection.*"`), it applies to every element of that list. The dict key is the **positional argument index** (an `int`) or the **parameter name** (a `str`).
+
+**Canonical example — BriaFIBO** (`bria_fibo.py`, `BriaFiboContextParallelismPlanner`). BriaFIBO has one `caption_projection` per block, each projecting the text embedding for that block. The real plan is a **root split** plus a **`caption_projection.*` output-split** plus a **mask permute** (see §2.7) — NOT a per-block plan:
+
+```python
+@ContextParallelismPlannerRegister.register("BriaFiboTransformer2DModel")
+class BriaFiboContextParallelismPlanner(ContextParallelismPlanner):
+    def _apply(self, transformer=None, parallelism_config=None, **kwargs):
+        _patch_bria_fibo_mask_permute(transformer)   # §2.7: permute the 2D mask under CP
+        _cp_plan = {
+            # Root split: main sequence tensors + position ids.
+            "": {
+                "hidden_states":
+                    _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "encoder_hidden_states":
+                    _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+                "img_ids":
+                    _ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+                "txt_ids":
+                    _ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            },
+            # Output-split: each per-block caption_projection output is re-split
+            # so it stays aligned with the LOCAL encoder_hidden_states.
+            # Key 0 = the first positional arg of caption_projection[i].forward().
+            "caption_projection.*": {
+                0: _ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+            },
+            # Single gather restores the full sequence for the output head.
+            "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
+        }
+        return _cp_plan
+```
+
+**Other real users of output-split:**
+
+| Model | Sub-module | Why `split_output=True` |
+|---|---|---|
+| **BriaFIBO** (`bria_fibo.py`) | `caption_projection.*` (positional arg `0`) | Per-block text projection must match the local sequence. |
+| **QwenImage** (`qwen_image.py`, newer diffusers) | `pos_embed` (args `0`, `1`) | The position embedder returns full-sequence RoPE tables that must be re-split. |
+| **Wan / ChronoEdit / SkyReels** (`wan.py`, `chrono_edit.py`, `skyreels.py`) | `rope` (args `0`, `1`) | RoPE freqs are recomputed on the full sequence; split the two returned tensors. |
+| **HunyuanImage / HunyuanVideo** (`hunyuan.py`) | `rope` (args `0`, `1`) | Same RoPE re-split, combined with the mask reorder of §2.7. |
+| **LTX2** (`ltx2.py`) | `rope`, `audio_rope`, `cross_attn_rope`, `cross_attn_audio_rope` | Four separate RoPE tables, each output-split. |
+
+**Rule of thumb**: if a root plan gives wrong results and the culprit is a *single* projection / RoPE / pos-embed sub-module whose output length is full instead of local, reach for an output-split hook **before** considering §2.3.2 (sub-module-level) or §2.4 (patch-based).
+
+#### 2.3.5 Single-Point Split at `transformer_blocks.0` (Common "Processor-Driven" Pattern)
+
+Many models do NOT split at the root `""`. Instead they split the sequence **once**, on the input of the **first block** (`transformer_blocks.0`), and rely on the **attention processor's Ulysses all-to-all** to keep every subsequent block consistent (each block's attention internally all-to-all's the sequence back and forth). A matching output gather is placed on the last block or on the final projection.
+
+**When to use**: The block loop is uniform (every block has the same signature) and the attention processor is patched to call `_dispatch_attention_fn` with the CP config, so the sequence "just flows" through the local chunks. This is the single **most common** CP shape in the codebase.
+
+**Real users**: `CogVideoX`, `CogView3Plus`, `CogView4`, `ConsisID`, `DiT`, `PixArt`, `HunyuanImage`, `HunyuanVideo`, and newer `QwenImage`. Most of these also patch the attention processor and add a `rope` output-split (§2.3.4).
+
+**Sketch**:
+
+```python
+_cp_plan = {
+    # Split once, on the first block's input.
+    "transformer_blocks.0": {
+        "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+        "encoder_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+    },
+    # Often combined with a rope output-split (see §2.3.4):
+    "rope": {0: _ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+             1: _ContextParallelInput(split_dim=1, expected_dims=3, split_output=True)},
+    # Gather after the last block (or on the final projection).
+    f"transformer_blocks.{n_blocks - 1}": _ContextParallelOutput(gather_dim=1, expected_dims=3),
+}
+```
+
+> The gather key is model-specific — Flux/OvisImage gather on `proj_out`, DiT on `proj_out_2`, CogVideoX/ConsisID on the last block, ZImage on its final layer. Always check where the full sequence must be restored for the output head.
 
 ### 2.4 Patch-Based CP
 
@@ -523,11 +741,10 @@ When hook-based semantics **cannot express** the needed CP logic, fall back to m
 
 | Trigger | Why hooks fail | Example |
 |---|---|---|
-| **List/Dict block inputs** | Hook calls `tensor_split(list_obj)` → `TypeError` | ErnieImage: `temb` is a list of 6 tensors `[S,B,D]` |
-| **List/Dict block outputs** | Hook cannot split or gather list/dict return values | Models returning `(tensor, dict)` tuples |
-| **Attention mask logic in forward()** | Mask must stay full-sequence (Ulysses recovers full seq internally), but hooks split all tensor args by name | ErnieImage: attention mask `[B,1,1,S]` must NOT be split |
-| **Internal tensor fusion** | Transformer does concat/split/pad/flat inside `forward()` — hooks at the top level cannot intercept internal transformations | BooguImage: `flat_and_pad_to_seq`, double→single stream fusion |
+| **Nested list/dict structures** | Hook cannot iterate nested `list[list[Tensor]]` or `dict[str, Tensor]` | Models with hierarchical block groupings |
+| **Internal tensor fusion** | Transformer does concat/split/pad/flat inside `forward()` — hooks at function-call boundaries cannot intercept internal transformations | BooguImage: `flat_and_pad_to_seq`, double→single stream fusion |
 | **Complex per-block control flow** | Different block types need different split boundaries; hook-based sub-module plans would double-split | BooguImage: double-stream layers (full seq) → single-stream layers (split) |
+| **Locally-created tensors** | Tensors created as local variables inside `forward()` (not function parameters) cannot be reached by hooks | Attention masks built from position IDs inside forward |
 
 **Solution**: Monkey-patch `transformer.forward()` (and optionally the attention processor), manually split/gather at the correct internal boundaries, and return an **empty dict `{}`** from `_apply()` — no hook-based plan is needed because all CP logic lives inside the patches.
 
@@ -548,14 +765,14 @@ class MyModelCPPlanner(ContextParallelismPlanner):
 
 **Reference implementations**:
 
-- **`ErnieImageContextParallelismPlanner`** (`ernie_image.py`) — list-valued `temb` (shared AdaLN modulation), attention mask requires full sequence. Monkey-patches `transformer.forward()` to: (1) compute preprocessing (patchify, RoPE, attention mask, temb) on the full sequence, (2) split `x`, `temb` elements, and `rotary_pos_emb`, (3) run the block loop on the local chunk with the full `attention_mask`, (4) all-gather output, (5) run final projection. No attention processor patch needed (ErnieImage already uses `dispatch_attention_fn`).
+- **`ErnieImageContextParallelismPlanner`** (`ernie_image.py`) — legacy patch-based CP for historical reasons (originally written before hook-based list support was added). Uses monkey-patched `transformer.forward()` for split/gather.
 
 - **`BooguImageContextParallelismPlanner`** (`boogu_image.py`) — internal `flat_and_pad_to_seq`, double→single stream fusion, GQA with `num_kv_heads=7`. Monkey-patches BOTH `transformer.forward()` AND the attention processor. The forward patch handles: preprocessing + double-stream (full seq) → split joint sequence → single-stream on local chunk → all-gather → `norm_out`. The processor patch does KV→Q repeat BEFORE `_dispatch_attention_fn` (to avoid non-integer GQA ratios after UAA split) and passes `enable_gqa=False`.
 
 **Key rules for patch-based CP:**
 
 1. **Split AFTER preprocessing, BEFORE the main block loop.** Preprocessing (embedding, patching, RoPE, modulation) runs on the full sequence on every GPU — it is cheap (no attention compute) and avoids complex split/gather logic for non-standard tensors.
-2. **DO NOT split `attention_mask`.** Ulysses all-to-all internally recovers the full sequence, so each GPU needs the complete `[B, 1, 1, S_full]` mask.
+2. **DO NOT split `attention_mask` — but CHECK whether it must be REORDERED.** Ulysses all-to-all internally recovers the full sequence, so each GPU keeps the complete mask (never `tensor_split` it). **However**, all-to-all *reorders* the recovered sequence into rank-concatenated order, so any mask indexed by sequence position can become misaligned. A 1D key-only mask `[B, 1, 1, S_full]` broadcasts over the query dim and needs reordering along the **key** dim only (Hunyuan pattern). A 2D full mask `[B, 1, S, S]` must be permuted along **both** query and key dims (BriaFIBO pattern). Getting this wrong causes *localized* corruption at the text/image boundary. **See §2.7 — this is one of the most common and hardest-to-spot CP bugs.**
 3. **Use `tensor_split` for uneven sequences** (complement to UAA at the sequence level).
 4. **All-gather the output** before the final projection (`norm_out`, `proj_out`) so the output head sees the full sequence.
 5. **Patch the attention processor** to call `_dispatch_attention_fn` (from `cache_dit.attention`) with `cp_config`. This ensures UAA all-to-all is used inside each attention layer.
@@ -575,8 +792,8 @@ MyModelContextParallelismPlanner = _safe_import(
 
 **UAA** (Ulysses Anything Attention) extends Ulysses CP to handle two common scenarios that vanilla Ulysses cannot:
 
-1. **Head count not divisible by `tp_size`** — e.g., `num_kv_heads=7` with `tp_size=2`.
-2. **Sequence length not divisible by `tp_size`** — uneven sequence splits.
+1. **Head count not divisible by `cp_size`** — e.g., `num_kv_heads=7` with `cp_size=2`.
+2. **Sequence length not divisible by `cp_size`** — uneven sequence splits.
 
 UAA is enabled via the `--ulysses-anything` CLI flag:
 
@@ -592,9 +809,99 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
 
 **When to use UAA:**
 
-- Model has GQA with `num_kv_heads` not divisible by `tp_size` (e.g., Boogu-Image with 7 KV heads).
-- Sequence lengths vary across samples in a batch or are not divisible by `tp_size`.
+- Model has GQA with `num_kv_heads` not divisible by `cp_size` (e.g., Boogu-Image with 7 KV heads).
+- Sequence lengths vary across samples in a batch or are not divisible by `cp_size`.
 - Any model where vanilla Ulysses crashes with divisibility errors.
+
+### 2.7 ⚠️ Attention Mask vs CP Sequence Reordering (Critical Pitfall)
+
+> **If the model uses an `attention_mask`, CP can silently corrupt the output even when nothing crashes.** This is the single most common "CP runs but the image is wrong" bug. ALWAYS check for a mask before assuming a model is CP-safe.
+
+**Why it happens.** Ulysses all-to-all does NOT preserve the original sequence order. Each rank holds a local sequence `[text_local, image_local]`, and the all-to-all concatenates them **in rank order**, so the global sequence the attention kernel actually sees is:
+
+```
+[text_0, image_0, text_1, image_1, ...]   # rank-concatenated
+```
+
+not the original `[text_all, image_all]`. For a **mask-free** model this is harmless — attention is permutation-equivariant, so every token still gets the correct output regardless of order (RoPE is applied per-token *before* the all-to-all). But if the model applies an `attention_mask` that is indexed by absolute sequence position, the mask no longer lines up with the reordered sequence → wrong entries get masked → **localized corruption**.
+
+**Symptoms (how to recognize it):**
+
+- The image is *mostly correct* but a **small localized region is garbled** — very often the **top-left corner** (the first image patch, which sits right at the text/image concatenation boundary).
+- Metrics plateau: PSNR stuck around ~28–30, SSIM ~0.80–0.85, and **no amount of RoPE / split-position tweaking helps**.
+- The corruption is **consistent across seeds** and independent of whether you use patch-based or hook-based CP.
+
+**Diagnosis (do this FIRST when metrics are stuck ~30):**
+
+Dump the transformer's real first-step inputs on a single GPU and inspect for a hidden mask:
+
+```python
+saved = {}
+def pre_hook(m, args, kwargs):
+    saved.setdefault("kwargs", {k: (v.detach().cpu() if torch.is_tensor(v) else v)
+                                for k, v in kwargs.items()})
+pipe.transformer.register_forward_pre_hook(pre_hook, with_kwargs=True)
+pipe(prompt=..., num_inference_steps=1)
+# Inspect saved["kwargs"] — look inside joint_attention_kwargs / attention_kwargs too!
+# A tensor of -inf/0 with shape [B,1,S,S] or [B,1,1,S] is a padding mask.
+```
+
+The mask is frequently **buried inside `joint_attention_kwargs["attention_mask"]`** (BriaFIBO) rather than a top-level forward argument, so it is easy to miss. It is typically a **text-padding mask**: real text tokens attend freely, padding text tokens are `-inf` (masked as both key and query), image attends to all image + real text.
+
+**Fix.** Do NOT split the mask. Instead, patch `transformer.forward()` to **permute** the mask into all-to-all order under CP, then delegate the rest to the original forward (local RoPE from split ids is already correct). Build the permutation from each rank's local (text, image) lengths via `all_gather_object`:
+
+```python
+import torch, torch.distributed as dist
+
+def _build_ulysses_mask_perm(local_txt, local_img, cp_config, device):
+    """Map original [text, image] order -> all-to-all [text_0, img_0, text_1, img_1, ...]."""
+    group = cp_config._ulysses_mesh.get_group()
+    ws = dist.get_world_size(group)
+    gathered = [None] * ws
+    dist.all_gather_object(gathered, (int(local_txt), int(local_img)), group=group)
+    txt_sizes = [g[0] for g in gathered]
+    img_sizes = [g[1] for g in gathered]
+    global_txt = sum(txt_sizes)
+    perm, t_off, i_off = [], 0, 0
+    for r in range(ws):
+        perm += range(t_off, t_off + txt_sizes[r])                 # text chunk r
+        base = global_txt + i_off
+        perm += range(base, base + img_sizes[r])                   # image chunk r
+        t_off += txt_sizes[r]; i_off += img_sizes[r]
+    return torch.tensor(perm, device=device, dtype=torch.long)
+
+def _patch_forward_for_mask(transformer):
+    orig = transformer.forward
+    def patched(hidden_states, encoder_hidden_states=None, *, joint_attention_kwargs=None, **kw):
+        cp = getattr(transformer, "_cp_config", None)
+        if cp is not None and getattr(cp, "_world_size", 1) > 1 and joint_attention_kwargs:
+            mask = joint_attention_kwargs.get("attention_mask")
+            if mask is not None and mask.dim() == 4:
+                perm = _build_ulysses_mask_perm(
+                    encoder_hidden_states.shape[1], hidden_states.shape[1], cp, mask.device)
+                # 2D full mask: permute BOTH query (-2) and key (-1) dims.
+                # 1D key mask [B,1,1,S]: permute only the key dim (-1).
+                mask = mask.index_select(-2, perm).index_select(-1, perm)
+                joint_attention_kwargs = {**joint_attention_kwargs, "attention_mask": mask}
+        return orig(hidden_states, encoder_hidden_states=encoder_hidden_states,
+                    joint_attention_kwargs=joint_attention_kwargs, **kw)
+    transformer.forward = patched
+```
+
+Call `_patch_forward_for_mask(transformer)` inside the planner's `_apply()` before returning the (otherwise standard root-split) CP plan.
+
+**Reference implementations:**
+
+- **BriaFIBO** (`bria_fibo.py`) — 2D `[B,1,S,S]` text-padding mask, permuted on both dims. Fix lifted PSNR 30 → 34.6–37.8, SSIM 0.83 → 0.92–0.97, and eliminated the top-left corruption.
+- **HunyuanImage** (`hunyuan.py`, `__patch__HunyuanImageTransformer2DModel_forward__`) — 1D key mask, reordered along the key dim only via interleaved `chunk`+`cat`.
+- **HunyuanVideo** (`hunyuan.py`, `__patch__HunyuanVideoTransformer3DModel_forward__`) — same 1D key-mask `chunk`+`cat` reorder, plus an attention-processor patch; a second reference for the 1D pattern.
+
+**Checklist when integrating any new model's CP:**
+
+1. Does the model (or its pipeline) build an `attention_mask`? Search the pipeline `__call__` and the transformer `forward` / attention processor. **Check inside `joint_attention_kwargs` / `attention_kwargs` dicts.**
+2. If yes, is it 1D key-mask `[B,1,1,S]` or 2D full `[B,1,S,S]`?
+3. Add a forward patch to permute it into all-to-all order (key-only for 1D, both dims for 2D).
+4. Verify: top-left corner clean, PSNR > 34, SSIM > 0.90.
 
 ---
 
@@ -700,7 +1007,7 @@ class MyModelTensorParallelismPlanner(TensorParallelismPlanner):
 1. **`ColwiseParallel()`**: Use for layers whose output dimension is split across GPUs (Q/K/V projections, FFN first layer).
 2. **`RowwiseParallel()`**: Use for layers whose input dimension is split (output projections, FFN second layer). Rowwise layers automatically all-reduce partial results.
 3. **`shard_div_attr(module, "heads", tp_size)`**: Always call this on the attention module to update the head count metadata. Without it, attention computation will use the wrong number of heads.
-4. **Weight rearrangement before sharding** (⚠️ key difficulty): Some models pack multiple logical projections into a single weight matrix. Before applying `RowwiseParallel` or `ColwiseParallel`, you must rearrange the weights so that the TP-shardable dimension is contiguous and correctly aligned. The canonical example is Flux's `rearrange_proj_out_weight` in `src/cache_dit/distributed/transformers/flux.py`: Flux packs both the `out` and `down` projection weights into `proj_out`, so the weight must be split, rearranged with `einops.rearrange`, and re-concatenated before `RowwiseParallel` is applied. Always inspect your model's weight layout — if a single `nn.Linear` serves multiple logical roles (e.g., fused QKV, combined out+down), you must un-fuse it for the TP dimension before sharding.
+4. **Weight rearrangement before sharding** (⚠️ key difficulty): Some models pack multiple logical projections into a single weight matrix. Before applying `RowwiseParallel` or `ColwiseParallel`, you must rearrange the weights so that the TP-shardable dimension is contiguous and correctly aligned. The canonical example is Flux's `rearrange_proj_out_weight` — a **nested helper defined inside `FluxTensorParallelismPlanner.parallelize_transformer()`** in `src/cache_dit/distributed/transformers/flux.py` (it is a local function, not a module-level import): Flux packs both the `out` and `down` projection weights into `proj_out`, so the weight must be split, rearranged with `einops.rearrange`, and re-concatenated before `RowwiseParallel` is applied. Always inspect your model's weight layout — if a single `nn.Linear` serves multiple logical roles (e.g., fused QKV, combined out+down), you must un-fuse it for the TP dimension before sharding.
 
 ### 3.2.1 `shard_div_attr`: Updating Attention Metadata (⚠️ #1 TP Gotcha)
 
@@ -774,7 +1081,12 @@ MyModelTensorParallelismPlanner = _safe_import(
 
 **⚠️ Common pitfall**: When a model uses Grouped Query Attention (GQA) and `num_kv_heads` is **not evenly divisible** by `tp_size`, the standard approach of applying `ColwiseParallel` to all of `to_q`, `to_k`, `to_v` will **fail** — `shard_div_attr` raises a `ValueError` because `num_kv_heads` cannot be split.
 
-This section describes the correct TP strategy, using the **Boogu-Image** model (`num_attention_heads=28`, `num_kv_heads=7`, `tp_size=2`) as a concrete reference. The full implementation is at `src/cache_dit/distributed/transformers/boogu_image.py`.
+This section describes a **numerically correct** TP strategy for this case, using the **Boogu-Image** model (`num_attention_heads=28`, `num_kv_heads=7`, `tp_size=2`) as a concrete reference. The full implementation is at `src/cache_dit/distributed/transformers/boogu_image.py`.
+
+> 🔴 **PERFORMANCE CAVEAT — read this before sharding attention on a GQA model.**
+> The `Replicate`-based attention TP below is **correct** (it produces the right image), but it is **not necessarily faster** — and for long sequences it is usually **slower than a single GPU**. Because K/V cannot be sharded, the only way to shard `to_q` is `ColwiseParallel(output_layouts=Replicate())`, which inserts an **all-gather on Q at every attention layer**. On a long joint sequence that all-gather dominates the communication budget and overwhelms the compute savings.
+>
+> **This is exactly what happened to Boogu-Image in production.** The team measured FFN-only TP as both faster and more accurate than attention TP (`108.9s` vs `115.7s` inference; PSNR `50.2` vs `49.9`), so **the shipped `boogu_image.py` now comments out all attention Q/K/V/out sharding and parallelizes only FFN + modulation** (see `_single_stream_layer_plan` / `_double_stream_layer_plan`). The `Replicate` attention plan below is kept here as a *correctness reference* and for models where attention compute genuinely dominates — **benchmark it against FFN-only TP before shipping it, and default to FFN-only for long-sequence GQA models.**
 
 #### 3.4.1 Problem: DTensor Shard Placement in Attention Processors
 
@@ -842,9 +1154,11 @@ layer_plan = {
 
 #### 3.4.4 Verification Results (Boogu-Image, tp_size=2)
 
+> **These numbers were measured on the earlier `Replicate`-based attention-TP prototype**, to prove it is *numerically* correct. They are **not** the shipped configuration — see the performance caveat at the top of §3.4. Note that FFN-only TP already reaches PSNR 47.61 and was ultimately chosen for production because it is faster **and** slightly more accurate (PSNR 50.2 vs 49.9) than full attention TP.
+
 | Configuration | Steps | PSNR (dB) | SSIM |
 |---|---|---|---|
-| FFN-only TP | 50 | 47.61 | — |
+| **FFN-only TP (shipped)** | 50 | 47.61 | — |
 | Full TP (Q+out+FFN, single-stream only) | 4 | 48.45 | 0.9945 |
 | Full TP (single + double-stream attention) | 4 | 46.77 | 0.9944 |
 | **Full TP (all layers)** | **50** | **49.99** | **0.9974** |
@@ -920,11 +1234,11 @@ TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mech
 
 ### 4.2 When to implement
 
-Implement TE-P only if your model uses a text encoder that is **not yet supported** by cache-dit. Currently supported encoders include: T5, UMT5, Mistral, Qwen2.5-VL, Qwen3, Llama, Gemma, Glm, GlmImage. If your model uses one of these, TE-P works out of the box.
+Implement TE-P only if your model uses a text encoder that is **not yet supported** by cache-dit. Currently supported encoders include: T5, UMT5, Mistral, Qwen2.5-VL, Qwen3, Llama, Gemma, Glm, GlmImage, SmolLM3. If your model uses one of these, TE-P works out of the box.
 
 ### 4.3 Finding the TP Plan from HuggingFace Transformers
 
-**⚠️ Key technique**: Most HuggingFace transformer models already define a canonical TP plan in their config class. This is the best reference for which layers should be `colwise` vs `rowwise`. For example, `cache-dit`'s `Qwen3TensorParallelismPlanner` (in `src/cache_dit/distributed/text_encoders/qwen3.py`) is directly derived from `Qwen3Config.base_model_tp_plan` in the transformers library:
+**⚠️ Key technique**: Most HuggingFace transformer models already define a canonical TP plan in their config class. This is the best reference for which layers should be `colwise` vs `rowwise`. For example, `cache-dit`'s `Qwen3TensorParallelismPlanner` (in `src/cache_dit/distributed/text_encoders/qwen3.py`) hardcodes a layer plan that **mirrors the structure of** `Qwen3Config.base_model_tp_plan` in the transformers library (it does not read the config attribute at runtime — it just uses the same colwise/rowwise mapping):
 
 ```python
 # From transformers: Qwen3Config.base_model_tp_plan
@@ -1122,8 +1436,8 @@ Users then set `export MY_MODEL_DIR=/path/to/local/model` to avoid downloading f
 ║  output that is only caught by quantitative metrics.         ║
 ║                                                              ║
 ║  NEVER skip SSIM.  PSNR alone can NOT detect garbled         ║
-║  images (乱码).  A corrupted image can still have PSNR >     ║
-║  25 dB.  If you omit SSIM you WILL ship broken code.         ║
+║  images.  A corrupted image can still have PSNR > 25 dB.     ║
+║  If you omit SSIM you WILL ship broken code.                 ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
@@ -1204,7 +1518,7 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
 
 > ⚠️ **PSNR AND SSIM ARE BOTH MANDATORY — NEVER OMIT SSIM.**
 >
-> **PSNR alone cannot detect image corruption (乱码).**  A completely garbled image can still have PSNR > 20 dB or even > 30 dB in some cases, because PSNR only measures per-pixel difference magnitude — it is blind to structural destruction.  SSIM captures perceptual structure and will drop sharply (below 0.5) when the image is corrupted.
+> **PSNR alone cannot detect image corruption (garbled output).**  A completely garbled image can still have PSNR > 20 dB or even > 30 dB in some cases, because PSNR only measures per-pixel difference magnitude — it is blind to structural destruction.  SSIM captures perceptual structure and will drop sharply (below 0.5) when the image is corrupted.
 >
 > **SSIM is not an afterthought — it is the primary guard against silent correctness bugs.**  If you only check PSNR and skip SSIM, you **will** ship broken code.
 

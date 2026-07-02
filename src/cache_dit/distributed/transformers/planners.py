@@ -109,6 +109,8 @@ def _activate_cp_planners():
     ".ernie_image", "ErnieImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Krea2ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".krea2", "Krea2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  BriaFiboContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".bria_fibo", "BriaFiboContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -171,3 +173,5 @@ def _activate_tp_planners():
     ".ernie_image", "ErnieImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Krea2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".krea2", "Krea2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  BriaFiboTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".bria_fibo", "BriaFiboTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

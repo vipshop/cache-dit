@@ -176,7 +176,7 @@ def _patch_transformer_forward_for_cp(transformer: Krea2Transformer2DModel) -> N
       )
 
     mesh: DeviceMesh = cp_config._flattened_mesh
-    tp_size = mesh.size()
+    cp_size = mesh.size()
     rank = dist.get_rank(mesh.get_group())
 
     batch_size, image_seq_len, _ = hidden_states.shape
@@ -227,11 +227,11 @@ def _patch_transformer_forward_for_cp(transformer: Krea2Transformer2DModel) -> N
 
     # ---- CP: split sequence-dependent tensors ----
     # hidden_states: (B, S_total, D) -> split dim=1
-    hidden_states = hidden_states.tensor_split(tp_size, dim=1)[rank].contiguous()
+    hidden_states = hidden_states.tensor_split(cp_size, dim=1)[rank].contiguous()
     # image_rotary_emb: tuple of (S_total, D_rope) -> split dim=0
     cos_rot, sin_rot = image_rotary_emb
-    cos_rot = cos_rot.tensor_split(tp_size, dim=0)[rank].contiguous()
-    sin_rot = sin_rot.tensor_split(tp_size, dim=0)[rank].contiguous()
+    cos_rot = cos_rot.tensor_split(cp_size, dim=0)[rank].contiguous()
+    sin_rot = sin_rot.tensor_split(cp_size, dim=0)[rank].contiguous()
     image_rotary_emb = (cos_rot, sin_rot)
     # temb_mod: NOT split (shared per-timestep modulation)
     # attention_mask: NOT split (Ulysses recovers full sequence)
@@ -252,8 +252,8 @@ def _patch_transformer_forward_for_cp(transformer: Krea2Transformer2DModel) -> N
     # ---- All-gather output ----
     total_seq = text_seq_len + image_seq_len
     # Compute per-rank chunk sizes for the full sequence (handles uneven splits)
-    S_local = total_seq // tp_size
-    remainder = total_seq % tp_size
+    S_local = total_seq // cp_size
+    remainder = total_seq % cp_size
     chunks = [
       torch.empty(
         batch_size,
@@ -261,7 +261,7 @@ def _patch_transformer_forward_for_cp(transformer: Krea2Transformer2DModel) -> N
         *hidden_states.shape[2:],
         device=hidden_states.device,
         dtype=hidden_states.dtype,
-      ) for i in range(tp_size)
+      ) for i in range(cp_size)
     ]
     chunks[rank] = hidden_states
     dist.all_gather(chunks, hidden_states, group=mesh.get_group())

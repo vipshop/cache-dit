@@ -318,7 +318,7 @@ def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel)
       )
 
     mesh: DeviceMesh = cp_config._flattened_mesh
-    tp_size = mesh.size()
+    cp_size = mesh.size()
     rank = dist.get_rank(mesh.get_group())
 
     # ---- Preprocessing (full sequence on every GPU) ----
@@ -393,9 +393,9 @@ def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel)
 
     # ---- Split joint sequence for CP ----
     # tensor_split handles uneven sizes (UAA complement at the sequence level).
-    local_h = joint_hidden_states.tensor_split(tp_size, dim=1)[rank].contiguous()
-    local_mask = joint_attention_mask.tensor_split(tp_size, dim=1)[rank].contiguous()
-    local_rope = rotary_emb.tensor_split(tp_size, dim=1)[rank].contiguous()
+    local_h = joint_hidden_states.tensor_split(cp_size, dim=1)[rank].contiguous()
+    local_mask = joint_attention_mask.tensor_split(cp_size, dim=1)[rank].contiguous()
+    local_rope = rotary_emb.tensor_split(cp_size, dim=1)[rank].contiguous()
 
     # ---- Single-stream layers on local chunk ----
     h = local_h
@@ -404,7 +404,7 @@ def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel)
 
     # ---- All-gather output (handles uneven sizes) ----
     chunks = [
-      torch.empty_like(joint_hidden_states.tensor_split(tp_size, dim=1)[i]) for i in range(tp_size)
+      torch.empty_like(joint_hidden_states.tensor_split(cp_size, dim=1)[i]) for i in range(cp_size)
     ]
     chunks[rank] = h
     dist.all_gather(chunks, h, group=mesh.get_group())
