@@ -999,3 +999,29 @@ def krea2_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("JoyImage")
+def joy_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for JoyImageEditPipeline (IE2I).
+
+  JoyImage uses a double-stream architecture:
+  - double_blocks: joint image+text processing (Pattern_0)
+  - 24 MHA heads, no GQA, head_dim=128
+
+  Extra block args (temb, image_rotary_emb) flow naturally through
+  CachedBlocks_Pattern_Base's *args, **kwargs forwarding — no PatchFunctor needed.
+  """
+  from diffusers import JoyImageEditTransformer3DModel
+
+  _relaxed_assert(pipe.transformer, JoyImageEditTransformer3DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.double_blocks,
+    forward_pattern=ForwardPattern.Pattern_0,
+    check_forward_pattern=True,
+    check_num_outputs=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )

@@ -51,6 +51,8 @@ __all__ = [
   "ernie_image_example",
   "ernie_image_turbo_example",
   "krea2_example",
+  "joy_image_edit_example",
+  "bria_fibo_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -100,6 +102,7 @@ _env_path_mapping = {
   "ERNIE_IMAGE_TURBO_DIR": "baidu/ERNIE-Image-Turbo",
   "KREA2_DIR": "krea/Krea-2-Turbo",
   "FIBO_DIR": "briaai/FIBO",
+  "JOY_EDIT_IMAGE_DIR": "jdopensource/JoyAI-Image-Edit-Diffusers",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1612,6 +1615,38 @@ def krea2_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=8,
       guidance_scale=0.0,
+    ),
+  )
+
+
+@ExampleRegister.register("joy_image_edit", default="jdopensource/JoyAI-Image-Edit-Diffusers")
+def joy_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import JoyImageEditPipeline
+
+  if args.image_path is not None:
+    image = load_image(args.image_path).convert("RGB")
+  else:
+    image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/joy_test.png").convert("RGB")
+
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  image = image.resize((width, height))
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,
+      model_name_or_path=_path("jdopensource/JoyAI-Image-Edit-Diffusers"),
+      pipeline_class=JoyImageEditPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt="Remove the construction structure from the top of the crane.",
+      height=height,
+      width=width,
+      num_inference_steps=40,
+      guidance_scale=4.0,
+      image=image,
     ),
   )
 

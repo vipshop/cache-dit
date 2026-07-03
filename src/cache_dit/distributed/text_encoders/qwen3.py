@@ -86,3 +86,41 @@ class Qwen3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     maybe_empty_cache()
 
     return text_encoder, layer_plans
+
+
+@TextEncoderTensorParallelismPlannerRegister.register("Qwen3VLForConditionalGeneration")
+class Qwen3VLTextEncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
+
+  def _apply(
+    self,
+    text_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+    **kwargs,
+  ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextDecoderLayer
+
+    tp_mesh = self.mesh(parallelism_config=parallelism_config)
+
+    model = text_encoder.model.language_model
+    layer_plans = []
+    for _, block in model.layers.named_children():
+      assert isinstance(block, Qwen3VLTextDecoderLayer)
+      layer_plan = {
+        "self_attn.q_proj": ColwiseParallel(),
+        "self_attn.k_proj": ColwiseParallel(),
+        "self_attn.v_proj": ColwiseParallel(),
+        "self_attn.o_proj": RowwiseParallel(),
+        "mlp.gate_proj": ColwiseParallel(),
+        "mlp.up_proj": ColwiseParallel(),
+        "mlp.down_proj": RowwiseParallel(),
+      }
+
+      parallelize_module(
+        module=block,
+        device_mesh=tp_mesh,
+        parallelize_plan=layer_plan,
+      )
+      layer_plans.append(layer_plan)
+
+    maybe_empty_cache()
+    return text_encoder, layer_plans
