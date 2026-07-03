@@ -1354,11 +1354,72 @@ layer_plan = {
 
 Acceptance criteria: PSNR > 35 dB, SSIM > 0.90. All configurations pass comfortably.
 
-#### 3.4.5 Head Padding (Alternative, Not Yet Needed)
+#### 3.4.5 Case Study: Fused QKV Projection (JoyImage)
+
+JoyImageEditTransformer uses **fused QKV projections** — a single `nn.Linear(dim, 3 * inner_dim)` whose weight layout is `[Q_all_heads, K_all_heads, V_all_heads]` (all Q heads packed first, then all K heads, then all V heads). The attention processor splits the output with `qkv.chunk(3, dim=-1)`.
+
+**Why standard `ColwiseParallel()` breaks:** Linear row-sharding splits the weight into two contiguous halves, but the Q/K/V boundary is at `1/3` and `2/3` of the rows, not at `1/2`. With `tp_size=2`, GPU 0 receives `[Q_all, K_half]` (no V) and GPU 1 receives `[K_half, V_all]` (no Q). The processor's `chunk(3)` then slices garbage, producing PSNR ~28 dB / SSIM ~0.10.
+
+**Two correct strategies** (both verified):
+
+**Strategy A — Replicate (recommended, matches §3.4.2):** Shard the fused QKV weights but all-gather the output so the processor sees the complete Q/K/V tensor. The output projection must use `RowwiseParallel(input_layouts=Replicate())` because its input is a full (all-gathered) tensor, not a shard.
+
+```python
+# ✅ CORRECT — PSNR 47.37 dB, SSIM 0.995 (tp_size=2, 4-step)
+layer_plan = {
+    "attn.img_attn_qkv": ColwiseParallel(output_layouts=Replicate()),
+    "attn.txt_attn_qkv": ColwiseParallel(output_layouts=Replicate()),
+    "attn.img_attn_proj": RowwiseParallel(input_layouts=Replicate()),  # ⚠️ required
+    "attn.txt_attn_proj": RowwiseParallel(input_layouts=Replicate()),  # ⚠️ required
+    "img_mlp.net.0.proj": ColwiseParallel(),
+    "img_mlp.net.2": RowwiseParallel(),
+    "txt_mlp.net.0.proj": ColwiseParallel(),
+    "txt_mlp.net.2": RowwiseParallel(),
+}
+# NOTE: Do NOT call shard_div_attr — see below.
+```
+
+**⚠️ Why `input_layouts=Replicate()` on `RowwiseParallel` is mandatory here:** `RowwiseParallel`'s default `input_layouts` is `Shard(-1)`. When the upstream `ColwiseParallel(output_layouts=Replicate())` produces a full (replicated) tensor, the default `Shard(-1)` misinterprets the full local tensor as a shard of a `2×D` logical tensor, causing a shape mismatch crash like `[8192, 8192] X [4096, 4096]`. Explicitly setting `input_layouts=Replicate()` tells the TP runtime that each GPU already holds a full copy, so it redistributes to `Shard(-1)` internally before computing partial contributions.
+
+**Strategy B — Weight rearrangement (more complex, enables true sharding):** Reorder the fused weight from `[Q_all, K_all, V_all]` to head-interleaved `[Q_h0, K_h0, V_h0, Q_h1, K_h1, V_h1, ...]` *before* `parallelize_module`. Then standard `ColwiseParallel()` gives each GPU complete Q/K/V for its head subset. This requires patching the attention processor to split by head instead of `chunk(3)`. Use only when the Replicate strategy's all-gather communication is a measured bottleneck.
+
+##### When to call `shard_div_attr` — the decisive rule
+
+> **`shard_div_attr` divides integer metadata (e.g. `attn.heads`) so that the attention processor's `unflatten(-1, (heads, -1))` produces the correct per-GPU `head_dim`. Whether to call it depends entirely on what the processor actually sees — not on the model architecture, not on whether Q/K/V are fused, not on whether you use ColwiseParallel.**
+
+**Call `shard_div_attr` when the processor sees a sharded tensor.** This happens when:
+- `ColwiseParallel()` with default `output_layouts=Shard(-1)` — each GPU's local output is `[B, S, inner_dim/tp]`, and `unflatten(-1, (heads, -1))` would infer `head_dim = (inner_dim/tp) / heads`, which is wrong. Dividing `heads` by `tp` keeps `head_dim` correct.
+- This is the **common case** for separate `to_q`/`to_k`/`to_v` projections (Flux, Wan, QwenImage, most models).
+
+**Do NOT call `shard_div_attr` when the processor sees a full (replicated) tensor.** This happens when:
+- `ColwiseParallel(output_layouts=Replicate())` — the output is all-gathered, so each GPU sees the full `inner_dim`. `unflatten(-1, (heads, -1))` already produces the correct `head_dim = inner_dim / heads`. Dividing `heads` here would corrupt the reshape.
+- This applies to the **Replicate strategy** (§3.4.2, §3.4.5 Strategy A) and to GQA models where K/V are left unparallelized.
+
+**How to decide in 3 seconds:** Open the attention processor's `__call__`. Find the line that reshapes the Q/K/V output of the sharded projection. Is the tensor the processor receives **full-dimension** (all-gathered) or **shard-dimension** (local slice)?
+- Full-dimension → **skip** `shard_div_attr`.
+- Shard-dimension → **call** `shard_div_attr`.
+
+| Projection style | `output_layouts` | Processor sees | `shard_div_attr`? |
+|---|---|---|---|
+| Separate `to_q`/`to_k`/`to_v` | `Shard(-1)` (default) | `[B, S, inner_dim/tp]` | **Yes** |
+| Fused QKV, Replicate strategy | `Replicate()` | `[B, S, 3*inner_dim]` (full) | **No** |
+| Fused QKV, rearranged + standard Colwise | `Shard(-1)` (default) | `[B, S, 3*inner_dim/tp]` | **Yes** (and also divide any split-size attrs the processor uses) |
+
+**Verification (JoyImage, tp_size=2):**
+
+| Configuration | Steps | PSNR (dB) | SSIM | Time |
+|---|---|---|---|---|
+| Baseline (1 GPU) | 4 | ∞ | 1.000 | 15.77s |
+| FFN-only TP | 4 | 29.12 | 0.613 | 13.00s |
+| **Replicate TP (Strategy A)** | **4** | **47.37** | **0.995** | **13.20s** |
+
+FFN-only TP alone is insufficient for JoyImage (SSIM 0.613 fails the >0.90 bar) because the attention path is unparallelized and the 4-step diffusion amplifies numerical drift. The Replicate strategy fixes this with negligible overhead (13.20s vs 13.00s).
+
+#### 3.4.6 Head Padding (Alternative, Not Yet Needed)
 
 Another approach for GQA TP is to **pad** `num_kv_heads` to the nearest multiple of `tp_size` (e.g., 7 → 8) by adding zero-initialized rows to `to_k.weight` / `to_v.weight`, and correspondingly pad `to_q.weight` and `to_out.0.weight` to maintain consistent shapes. This would allow standard `ColwiseParallel` for all of Q/K/V. However, the `Replicate` strategy described above is simpler and already achieves near-identical numerical results, so padding is reserved for future optimization when attention compute becomes the bottleneck.
 
-#### 3.4.6 DTensor-Unsafe Fused Ops: Patch Before Parallelizing
+#### 3.4.7 DTensor-Unsafe Fused Ops: Patch Before Parallelizing
 
 **⚠️ Common pitfall**: Some models use environment-variable-gated fused CUDA kernels (e.g., flash_attn SwiGLU, triton RMSNorm) that operate on raw GPU memory and do **not** understand DTensor shard placements. When TP wraps model parameters as DTensors, these fused kernels will either crash (`cudaErrorIllegalAddress`) or silently produce wrong results.
 

@@ -35,6 +35,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|✅|✅|
 |Ovis-Image|✅|✅|✅|
+|Joy-Image-Edit|✅|✅|✅|
 |Boogu-Image-Edit-0.1|✅|✅|✅|
 |Bria-Fibo|✅|✅|✅|
 |Bria-Fibo-Edit|✅|✅|✅|
@@ -131,6 +132,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|✅|
 |Ovis-Image|✅|✅|
+|Joy-Image-Edit|✅|✅|
 |Boogu-Image-Edit-0.1|✅|✅|
 |Bria-Fibo|✅|✅|
 |Bria-Fibo-Edit|✅|✅|

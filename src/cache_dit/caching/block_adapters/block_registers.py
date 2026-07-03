@@ -33,6 +33,7 @@ class BlockAdapterRegister:
     "HunyuanVideo15",
     "OvisImage",
     "BooguImage",
+    "JoyImage",
   ]
 
   @classmethod
