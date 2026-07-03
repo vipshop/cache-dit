@@ -1,6 +1,6 @@
 ---
 name: cache-dit-model-integration
-description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit."
+description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, installation, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit."
 user-invocable: true
 ---
 
@@ -196,7 +196,7 @@ Phase 1 — Cache (BlockAdapter)
         - Check: keyword args in block call? extra ops in loop body?
         - If needed: write PatchFunctor in patch_functors/ → wire in BlockAdapter
 - [ ] 1.3 Register in block_adapters/__init__.py
-- [ ] 1.4 pip install -e . --no-build-isolation
+- [ ] 1.4 Install editable cache-dit using `./references/install.md`
 - [ ] 1.5 BASELINE TEST: python3 -m cache_dit.generate <model> --save-path .tmp/<task>/base.png
         - Verify: image loads, inference completes, output looks correct
         - If OOM: consider --cpu-offload, --sequential-cpu-offload, or multi-GPU
@@ -443,7 +443,7 @@ Cache-dit's `python3 -m cache_dit.generate` CLI discovers models through `Exampl
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-> Detailed local model path setup, installation, command matrix, PSNR/SSIM acceptance criteria, result table, and debugging tips live in [`./references/testing.md`](./references/testing.md).
+> Installation lives in `./references/install.md`. Detailed local model path setup, command matrix, PSNR/SSIM acceptance criteria, result table, and debugging tips live in [`./references/testing.md`](./references/testing.md).
 
 ## 8. Reference Code Paths
 
@@ -520,4 +520,5 @@ Read these only when the current phase needs them:
 | TE-P | [`./references/tep.md`](./references/tep.md) | Adding or checking text encoder tensor parallelism. |
 | VAE-P | [`./references/vaep.md`](./references/vaep.md) | Adding or checking VAE parallel decoding support. |
 | CLI | [`./references/cli.md`](./references/cli.md) | Registering `cache_dit.generate` examples and local model path environment variables. |
+| Install | `./references/install.md` | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
 | Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks. |

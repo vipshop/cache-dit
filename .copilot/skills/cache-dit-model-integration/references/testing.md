@@ -1,10 +1,10 @@
 # Testing and Verification Reference
 
-When to read this: read this file before running baseline, Cache, CP, TP, TE-P, VAE-P, or final integration tests. It contains command templates, PSNR/SSIM acceptance criteria, result tables, and debugging tips. Return to `../SKILL.md` for phase gates.
+When to read this: read this file before running baseline, Cache, CP, TP, TE-P, VAE-P, or final integration tests. It contains local model path setup, command templates, PSNR/SSIM acceptance criteria, result tables, and debugging tips. Read [`./install.md`](./install.md) first when the environment or editable install needs to be prepared. Return to `../SKILL.md` for phase gates.
 
 ## 7. Testing & Verification
 
-```
+```text
 ╔══════════════════════════════════════════════════════════════╗
 ║  ⚠️  TESTING IS MANDATORY — DO NOT SKIP                      ║
 ║                                                              ║
@@ -39,12 +39,7 @@ python3 -m cache_dit.generate flux --model-path /workspace/dev/vipdev/hf_models/
 
 ### 7.2 Installation
 
-```bash
-conda activate cdit # if has cdit conda env, otherwise use the default python3 env
-
-# Python-only changes (no C++ compilation needed):
-pip install -e "." --no-build-isolation
-```
+Installation is maintained separately in [`./install.md`](./install.md). Read it before running the test command matrix if Python code changed or the environment has not been prepared yet.
 
 ### 7.3 Test Command Matrix
 
@@ -123,15 +118,15 @@ cache-dit-metrics psnr ssim -i1 .tmp/{task}/<new_model>_base.png -i2 .tmp/{task}
 
 Record your results in this format:
 
-| Configuration     | Latency (s) | PSNR (dB) | SSIM  | GPU Mem (GB) |
-| ----------------- | ----------- | --------- | ----- | ------------ |
-| Baseline          | —          | ∞        | 1.000 | —           |
-| Cache             | —          | —        | —    | —           |
-| CP Ulysses (2GPU) | —          | —        | —    | —           |
-| CP Ring (2GPU)    | —          | —        | —    | —           |
-| TP (2GPU)         | —          | —        | —    | —           |
-| TP + TE-P (2GPU)  | —          | —        | —    | —           |
-| TP + VAE-P (2GPU) | —          | —        | —    | —           |
+| Configuration | Latency (s) | PSNR (dB) | SSIM | GPU Mem (GB) |
+| --- | --- | --- | --- | --- |
+| Baseline | — | ∞ | 1.000 | — |
+| Cache | — | — | — | — |
+| CP Ulysses (2GPU) | — | — | — | — |
+| CP Ring (2GPU) | — | — | — | — |
+| TP (2GPU) | — | — | — | — |
+| TP + TE-P (2GPU) | — | — | — | — |
+| TP + VAE-P (2GPU) | — | — | — | — |
 
 **Tips for collecting latency:** Use `--warmup 1 --repeat 1` is enough for stable timing. Use `--track-memory` to log peak GPU memory (usually unnecessary).
 
