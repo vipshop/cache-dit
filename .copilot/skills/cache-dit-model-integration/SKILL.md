@@ -49,23 +49,35 @@ STOP — Have you identified the new model's transformer architecture?
 
 ### 0.1 End-to-End Workflow
 
+> The integration order is **Cache → CP → TP → TE-P → VAE-P**. Each feature is tested against a single-GPU baseline before moving to the next. Use the detailed checklist in §0.6 for planning and tracking.
+
 ```mermaid
 flowchart TD
     G{"GATE CHECK: local model path AND pipeline/transformer source both provided?"}
     G -->|No| GA["STOP - ask the user via vscode_askQuestions"]
     G -->|Yes| A["Read and analyze pipeline __call__ and transformer.forward()"]
-    A --> PL["Draft an integration plan, get user approval BEFORE writing code"]
+    A --> PL["Draft an integration plan with §0.6 TODO list, get user approval"]
     PL --> C1["Ch.1 Cache: BlockAdapter + ForwardPattern"]
+    C1 -->|"Parallel: Ch.6 CLI"| CLI["Ch.6 Register generate CLI + env mapping"]
     C1 --> CQ{"Block loop: keyword/positional mismatch, or extra ops in loop body?"}
     CQ -->|Yes| CF["Write a PatchFunctor - 1.7"]
     CQ -->|No| CA["Pick ForwardPattern, build BlockAdapter - 1.2 to 1.4"]
     CF --> CA
-    CA --> C2["Ch.2 Context Parallelism - see CP decision chart in 0.2"]
-    C2 --> T3["Ch.3 Tensor Parallelism: shard_div_attr, GQA, DTensor-unsafe ops"]
-    T3 --> T4["Ch.4 TE-P - only if the text encoder is unsupported"]
-    T4 --> T5["Ch.5 VAE-P - only if the VAE is unsupported"]
-    T5 --> T6["Ch.6 Register the generate CLI + env mapping"]
-    T6 --> T7["Ch.7 Test every feature vs baseline: PSNR AND SSIM are BOTH mandatory"]
+    CA --> TST1["TEST: baseline + cache. PSNR > 30, SSIM > 0.90"]
+    TST1 -->|FAIL| CA
+    TST1 -->|PASS| C2["Ch.2 CP: hook-based first, hybrid second - see CP chart in 0.2"]
+    C2 --> TST2["TEST: CP Ulysses vs baseline. PSNR > 35, SSIM > 0.90"]
+    TST2 -->|FAIL| C2
+    TST2 -->|PASS| T3["Ch.3 TP: shard_div_attr, GQA, DTensor-unsafe ops"]
+    T3 --> TST3["TEST: TP vs baseline. PSNR > 35, SSIM > 0.90"]
+    TST3 -->|FAIL| T3
+    TST3 -->|PASS| T4["Ch.4 TE-P - check support, add planner if needed"]
+    T4 --> TST4["TEST: TP+TE-P vs baseline. PSNR > 35, SSIM > 0.90"]
+    TST4 -->|FAIL| T4
+    TST4 -->|PASS| T5["Ch.5 VAE-P - check support, add planner if needed"]
+    T5 --> TST5["TEST: VAE-P vs baseline. PSNR > 35, SSIM > 0.90"]
+    TST5 -->|FAIL| T5
+    TST5 -->|PASS| T7["Ch.7 Final: hybrid CP+TP, results table, visual check"]
 ```
 
 ### 0.2 Context Parallelism Decision Chart (the highest-risk step)
@@ -73,11 +85,13 @@ flowchart TD
 ```mermaid
 flowchart TD
     S["Start CP for a new model"] --> MK{"Model uses an attention_mask? Check inside joint_attention_kwargs / attention_kwargs too"}
-    MK -->|Yes| MKN["Flag: the mask must be permuted/reordered under CP later - 2.7"]
-    MK -->|No| HK
-    MKN --> HK{"Can every sequence tensor be split at a function-call boundary?"}
-    HK -->|"No: internal fusion / nested list or dict / local tensors"| PB["Patch-based CP - 2.4: patch forward and processor, return empty dict"]
-    HK -->|"Yes: plain tensors or 1-D lists of tensors"| HT{"What shape is transformer.forward()?"}
+    MK -->|"Yes"| MKN["Flag: the mask must be permuted/reordered under CP later - 2.7"]
+    MK -->|"No"| HK
+    MKN --> HK{"Can every sequence tensor be split at a module-call boundary?"}
+    HK -->|"Yes: plain tensors or 1-D lists"| HT{"What shape is transformer.forward()?"}
+    HK -->|"No: a FEW tensors are methods / nested types / local vars"| HB{"Can the gap be closed by a MINIMAL patch (one method, not entire forward)?"}
+    HB -->|"Yes: patch get_rotary_pos_embed / pos_embed / one sub-module"| HY["Hybrid CP - 2.4: hook-based plan + minimal method patch"]
+    HB -->|"No: tensors are deep local intermediates unreachable by any hook"| STOP["STOP: pure patch-based is REJECTED. Re-analyze the model structure."]
     HT -->|"Simple preprocess to loop to postprocess"| RT["Root split with key '' - 2.3.1"]
     HT -->|"One sub-module output stays full-length: caption_projection / rope / pos_embed"| OS["Add output-split hook split_output=True - 2.3.4"]
     HT -->|"Uniform loop, processor does the all-to-all"| B0["Single-point split at transformer_blocks.0 - 2.3.5"]
@@ -86,9 +100,10 @@ flowchart TD
     OS --> UA
     B0 --> UA
     SM --> UA
-    PB --> UA{"num_kv_heads or sequence length not divisible by cp_size?"}
-    UA -->|Yes| UAA["Enable UAA: --ulysses-anything - 2.6"]
-    UA -->|No| VF
+    HY --> UA
+    UA{"num_kv_heads or sequence length not divisible by cp_size?"}
+    UA -->|"Yes"| UAA["Enable UAA: --ulysses-anything - 2.6"]
+    UA -->|"No"| VF
     UAA --> VF["Verify: top-left corner clean, PSNR > 35, SSIM > 0.90"]
 ```
 
@@ -130,11 +145,11 @@ flowchart TD
 | Block loop calls blocks with keyword args, or has extra ops inside the loop | §1.7 PatchFunctor (Pitfalls A / B) |
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | §1.7 "Beyond the two canonical pitfalls" |
 | Third-party (non-diffusers) model | §1.6 |
-| CP: choosing hook-based vs patch-based | §2.2 + the chart in §0.2 |
+| CP: choosing hook-based vs hybrid | §2.2 + the chart in §0.2 |
 | CP: a projection / rope / pos_embed output stays full-length | §2.3.4 output-split hook |
 | CP: uniform loop + attention-processor all-to-all | §2.3.5 single-point split |
 | CP: an inter-block op needs the full sequence | §2.3.2 sub-module hooks |
-| CP: forward does internal concat/split/pad, or has nested/local tensors | §2.4 patch-based |
+| CP: a tensor is a method return or nested type that hooks cannot split | §2.4 hybrid (hook plan + minimal method patch) |
 | CP: head count or sequence length not divisible by cp_size | §2.6 UAA |
 | CP: the model has an attention_mask | §2.7 mask permute ⚠️ |
 | TP: choosing the overall TP strategy | §3.2 + the chart in §0.3 |
@@ -157,6 +172,123 @@ These are the traps that pass without crashing but produce wrong images. Each is
 4. **PatchFunctor drops loop-body ops.** Extra operations inside the block loop are silently skipped after the cache wrapper takes over → stale `temb` / modulation. → §1.7 Pitfall B
 5. **GQA attention TP via `Replicate` is *correct* but often *slower* than a single GPU** (all-gather on Q dominates). Benchmark against FFN-only TP before shipping. → §3.4
 6. **DTensor-unsafe fused kernels** (flash_attn SwiGLU, triton RMSNorm) crash with illegal-memory-access under TP → patch them to PyTorch ops first. → §3.4.6
+7. **Choosing pure patch-based CP when hybrid (hook + method patch) suffices.** If the ONLY obstacle is a method like `get_rotary_pos_embed` or `pos_embed` that returns a sequence-length-dependent tensor not reachable by hooks, patch that ONE method — do NOT patch the entire `forward()`. Pure patch-based CP is a maintenance burden that should never be green-lit without proving hybrid is truly impossible. → §2.2, §2.4
+
+### 0.6 Integration TODO List Template
+
+> **⚠️ MANDATORY: One feature at a time. Test thoroughly before starting the next.** Do NOT develop Cache + CP + TP together — a bug in one will contaminate all downstream results. Each phase depends on a verified-correct baseline from the previous phase.
+
+Copy this template into your plan, fill in model-specific details, and check off items as they pass.
+
+Phase 0 — Prerequisites
+
+```
+- [ ] Model files downloaded to local path
+- [ ] Test image prepared (for IE2I / I2V models)
+- [ ] Diffusers source code read: pipeline __call__, transformer.forward(), block class
+- [ ] ForwardPattern identified (Pattern_0 through Pattern_5)
+- [ ] Block ModuleList name(s) confirmed
+- [ ] GQA / attention_mask / modulation style documented
+- [ ] Planning complete and reviewed (use Review Plan agent)
+
+Phase 1 — Cache (BlockAdapter)
+- [ ] 1.1 Write BlockAdapter function in adapters.py
+        - register name, _relaxed_assert, blocks, forward_pattern, check_forward_pattern=True
+- [ ] 1.2 Evaluate PatchFunctor need
+        - Check: keyword args in block call? extra ops in loop body?
+        - If needed: write PatchFunctor in patch_functors/ → wire in BlockAdapter
+- [ ] 1.3 Register in block_adapters/__init__.py
+- [ ] 1.4 pip install -e . --no-build-isolation
+- [ ] 1.5 BASELINE TEST: python3 -m cache_dit.generate <model> --save-path .tmp/<task>/base.png
+        - Verify: image loads, inference completes, output looks correct
+        - If OOM: consider --cpu-offload, --sequential-cpu-offload, or multi-GPU
+- [ ] 1.6 CACHE TEST: ... --cache --summary --save-path .tmp/<task>/cache.png
+        - Verify: inference faster than baseline, output visually identical
+- [ ] 1.7 CACHE CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 cache.png
+        - Criteria: PSNR > 30 dB, SSIM > 0.90
+- [ ] 1.8 [STOP] Cache fully verified ── do NOT proceed until this passes
+
+Phase 2 — CLI Integration (can start in parallel with Phase 1)
+- [ ] 2.1 Add Example function in _utils/examples.py
+        - @ExampleRegister.register("<model_name>", default="<hf-id>")
+        - ExampleType (T2I / IE2I / T2V / I2V / ...)
+        - prompt, height, width, num_inference_steps, guidance_scale, image (for IE2I)
+- [ ] 2.2 Add env var mapping in _env_path_mapping dict
+- [ ] 2.3 Add to __all__ list in examples.py
+- [ ] 2.4 Register in _utils/__init__.py
+- [ ] 2.5 VERIFY: python3 -m cache_dit.generate list | grep <model_name>
+
+Phase 3 — CP: Context Parallelism
+- [ ] 3.1 DESIGN: Determine CP approach per §2.2 priority
+        - Pure hook-based? (root split, single-point split, sub-module hooks)
+        - Hybrid? (hook plan + minimal method patch, e.g. for RoPE)
+        - Pure patch-based is REJECTED — escalate if hybrid cannot work
+- [ ] 3.2 Create <model>.py in distributed/transformers/
+        - ContextParallelismPlanner class + _apply()
+        - Hook plan dict (or hybrid: patch functions + hook plan)
+- [ ] 3.3 Write attention processor patch (set _parallel_config)
+- [ ] 3.4 If attention_mask present: write mask permute patch (§2.7)
+- [ ] 3.5 Register in distributed/transformers/planners.py (_activate_cp_planners)
+- [ ] 3.6 TEST CP Ulysses 2GPU:
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel ulysses --save-path .tmp/<task>/cp_ulysses2.png
+- [ ] 3.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 cp_ulysses2.png
+        - Criteria: PSNR > 35 dB, SSIM > 0.90
+        - Visual check: top-left corner clean, no localized corruption
+- [ ] 3.8 [OPTIONAL] CP Ring 2GPU: --parallel ring (long-sequence models only)
+- [ ] 3.9 [OPTIONAL] UAA: --parallel ulysses --ulysses-anything (indivisible heads/seq)
+- [ ] 3.10 [STOP] CP fully verified ── do NOT proceed until this passes
+
+Phase 4 — TP: Tensor Parallelism
+- [ ] 4.1 DESIGN: Determine TP strategy per §3.2 + §0.3 flowchart
+        - Identify fused weight matrices (QKV packed? out+down shared?)
+        - GQA? num_kv_heads divisible by tp_size?
+        - Modulation style (AdaLayerNormZero? JoyImageModulate? none?)
+- [ ] 4.2 Add TensorParallelismPlanner class in <model>.py
+        - parallelize_transformer() with layer plans
+        - shard_div_attr for every attention block
+        - Separate plans for double-stream vs single-stream blocks if both exist
+- [ ] 4.3 Handle non-Linear modules (e.g. modulation tables: skip TP, keep full copy)
+- [ ] 4.4 Handle DTensor-unsafe fused kernels (§3.4.6): patch to PyTorch equivalents
+- [ ] 4.5 Register in distributed/transformers/planners.py (_activate_tp_planners)
+- [ ] 4.6 TEST TP 2GPU:
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --save-path .tmp/<task>/tp2.png
+- [ ] 4.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2.png
+        - Criteria: PSNR > 35 dB, SSIM > 0.90
+        - If garbled: check shard_div_attr, DTensor placement, ColwiseParallel output_layouts
+- [ ] 4.8 [STOP] TP fully verified
+
+Phase 5 — TE-P: Text Encoder Parallelism
+- [ ] 5.1 CHECK existing support: grep distributed/text_encoders/ for encoder class name
+- [ ] 5.2 IF already supported → skip to test
+        IF not → create new planner in distributed/text_encoders/<encoder>.py
+        - Reference: HuggingFace Config.base_model_tp_plan
+- [ ] 5.3 Register in distributed/text_encoders/planners.py
+- [ ] 5.4 TEST TP + TE-P 2GPU:
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --parallel-text --save-path .tmp/<task>/tp2_tep2.png
+- [ ] 5.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2_tep2.png
+        - Criteria: PSNR > 35 dB, SSIM > 0.90
+- [ ] 5.6 [STOP] TE-P verified (or confirmed not needed)
+
+Phase 6 — VAE-P: VAE Parallelism
+- [ ] 6.1 CHECK existing support: grep distributed/autoencoders/ for VAE class name
+- [ ] 6.2 IF already supported → skip to test
+        IF not → create new planner in distributed/autoencoders/<vae>.py
+- [ ] 6.3 Register in distributed/autoencoders/planners.py
+- [ ] 6.4 TEST VAE-P 2GPU:
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-vae --save-path .tmp/<task>/vae2.png
+- [ ] 6.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 vae2.png
+        - Criteria: PSNR > 35 dB, SSIM > 0.90
+- [ ] 6.6 [STOP] VAE-P verified (or confirmed not needed)
+
+Phase 7 — Final Integration Tests
+- [ ] 7.1 Hybrid CP + TP: --parallel ulysses_tp (2 GPU)
+- [ ] 7.2 CORRECTNESS: vs baseline
+- [ ] 7.3 Fill in results table (§7.5): latency, PSNR, SSIM, GPU mem per config
+- [ ] 7.4 Visual inspection: at least one output image per configuration
+- [ ] 7.5 [DONE] Integration complete ── all checks passed
+```
+
+> **Key discipline**: after each test, record results in the plan before moving on. A failing test at Phase 4 should trigger a re-read of the relevant sections, not a blind "try TP with different flags" loop.
 
 ---
 
@@ -483,18 +615,21 @@ Context Parallelism splits the **sequence dimension** of hidden states across mu
 
 ### 2.2 Two Implementation Approaches
 
-> **⚠️ MANDATORY: Hook-based first.** You MUST attempt a hook-based CP plan before considering patch-based. The hook mechanism supports 1-D flat lists of tensors (each element is split independently). Only fall back to patch-based when you can articulate a specific structural reason hook-based cannot work — e.g., deeply nested list/dict structures, tensors that are not function parameters (local intermediates), or forward() methods with complex internal fusion that requires split boundaries BETWEEN internal operations rather than at function-call boundaries.
+> **⚠️ MANDATORY: Hook-based first, hybrid second, pure patch-based NEVER.**
 >
-> Start with transformer-level hooks (§2.3.1). If the model has inter-block operations that need the full sequence, try sub-module-level hooks (§2.3.2). Patch-based (§2.4) is the LAST resort.
+> The implementation priority is:
+> 1. **Pure hook-based** (§2.3): Every sequence tensor is a function parameter of an `nn.Module` → use declarative hooks only.
+> 2. **Hybrid: hook-based + minimal method patch** (§2.4): ONE or TWO tensors are produced by a plain method (e.g. `get_rotary_pos_embed`) or a nested tuple → write a ~10-line patch for that method, keep everything else hook-based.
+> 3. **Pure patch-based: REJECTED.** Patching the entire `transformer.forward()` copies ~100+ lines of diffusers code, breaks on every upstream change, and bypasses all framework validation. **If hybrid cannot work, re-analyze the model structure — pure patch-based is NOT an acceptable answer.**
 
-cache-dit offers **two** distinct CP implementation patterns. Hook-based is the standard approach; patch-based exists only for the rare cases where hooks are structurally impossible.
+cache-dit offers **two** CP implementation patterns:
 
 | Priority | Approach | Mechanism | When to use |
 |---|---|---|---|
-| **1st** | **Hook-based** (§2.3) | Declarative `_ContextParallelInput` / `_ContextParallelOutput` dict; framework inserts split/gather hooks at specified function-call boundaries. | All block inputs are **plain tensors or 1-D flat lists of tensors** (hook iterates and splits each element), and the `forward()` method has no internal tensor fusion or complex attention-mask logic. |
-| **2nd (last resort)** | **Patch-based** (§2.4) | Monkey-patch `transformer.forward()` (and optionally the attention processor); manually split/gather at the correct boundaries; return `{}` from `_apply()`. | The `forward()` method does internal fusion (concat/split/pad) that requires split points INSIDE the function body (not at function-call boundaries), or there are deeply nested list/dict-of-tensors structures. **Only use after confirming hook-based is truly infeasible.** |
+| **1st** | **Hook-based** (§2.3) | Declarative `_ContextParallelInput` / `_ContextParallelOutput` dict; framework inserts split/gather hooks at specified module-call boundaries. | All sequence tensors are **plain tensors or 1-D flat lists** passed as parameters to `nn.Module.forward()`. |
+| **2nd** | **Hybrid: hook plan + minimal patch** (§2.4) | Hook-based CP plan handles most tensors; a **single method patch** (~10 lines) fixes the one or two tensors hooks cannot reach (e.g. a RoPE method, a nested tuple return). Return the hook plan (not `{}`) from `_apply()`. | One or two sequence-dependent tensors are produced by a **plain method** (not a sub-module), have a **nested tuple type** hooks cannot iterate, or are **local variables** that a tiny wrapper can expose. |
 
-> **Decision shortcut**: If you can express the CP logic as "split these named tensors before the block loop, gather these named tensors after", use hook-based. If you find yourself thinking "I need to split this AFTER the concat on line 87 but BEFORE the layer loop on line 92", first try sub-module-level hooks (§2.3.2). Only if that also fails (e.g., the tensors you need to split are not function parameters but intermediate locals) should you consider patch-based.
+> **❌ Pure patch-based (patching the entire `forward()`) is explicitly REJECTED.** The two shipped "patch-based" planners — ErnieImage (legacy, pre-dates hook list support) and BooguImage (genuinely complex double→single stream fusion + per-stream internal concat) — should NOT be cited as justification. Any new model must use hook-based or hybrid. If a model appears to need a full forward patch, escalate for architecture review.
 
 ### 2.3 Hook-Based CP
 
@@ -704,7 +839,7 @@ class BriaFiboContextParallelismPlanner(ContextParallelismPlanner):
 | **HunyuanImage / HunyuanVideo** (`hunyuan.py`) | `rope` (args `0`, `1`) | Same RoPE re-split, combined with the mask reorder of §2.7. |
 | **LTX2** (`ltx2.py`) | `rope`, `audio_rope`, `cross_attn_rope`, `cross_attn_audio_rope` | Four separate RoPE tables, each output-split. |
 
-**Rule of thumb**: if a root plan gives wrong results and the culprit is a *single* projection / RoPE / pos-embed sub-module whose output length is full instead of local, reach for an output-split hook **before** considering §2.3.2 (sub-module-level) or §2.4 (patch-based).
+**Rule of thumb**: if a root plan gives wrong results and the culprit is a *single* projection / RoPE / pos-embed sub-module whose output length is full instead of local, reach for an output-split hook **before** considering §2.3.2 (sub-module-level) or §2.4 (hybrid).
 
 #### 2.3.5 Single-Point Split at `transformer_blocks.0` (Common "Processor-Driven" Pattern)
 
@@ -733,50 +868,104 @@ _cp_plan = {
 
 > The gather key is model-specific — Flux/OvisImage gather on `proj_out`, DiT on `proj_out_2`, CogVideoX/ConsisID on the last block, ZImage on its final layer. Always check where the full sequence must be restored for the output head.
 
-### 2.4 Patch-Based CP
+### 2.4 Hybrid CP (Hook-Based + Minimal Method Patch)
 
-> ⚠️ **This is a fallback, not a first choice.** Before writing a patch-based CP planner, you MUST exhaust hook-based options: first try transformer-level hooks (§2.3.1), then sub-module-level hooks (§2.3.2). Only when both fail — and you can articulate the specific structural reason (e.g., "temb is a list, hooks cannot split list elements", not "it seems complicated") — should you proceed with patch-based. Patches bypass the framework's validation and require manual maintenance of split/gather boundaries across forward() code changes.
+> **This is the 2nd-priority approach — use when pure hook-based hits ONE or TWO obstacles.**
 
-When hook-based semantics **cannot express** the needed CP logic, fall back to monkey-patching. This is necessary when:
+When most sequence tensors are reachable by hooks but one or two specific tensors are not — because they are produced by a **plain method** (not an `nn.Module`), have a **nested tuple type** the hook framework cannot iterate, or are **local variables** that a tiny wrapper can expose — the correct answer is **hybrid**: a hook-based CP plan PLUS a minimal patch on the offending method. **Do NOT patch the entire `transformer.forward()`.**
 
-| Trigger | Why hooks fail | Example |
+#### 2.4.1 Recognizing a Hybrid-Suitable Model
+
+The tell-tale sign of a hybrid-suitable model: you can write a complete hook-based CP plan (root split or single-point split) that covers ALL tensors EXCEPT one. That one exception falls into exactly one of these categories:
+
+| Obstacle | Why hooks fail | Hybrid fix |
 |---|---|---|
-| **Nested list/dict structures** | Hook cannot iterate nested `list[list[Tensor]]` or `dict[str, Tensor]` | Models with hierarchical block groupings |
-| **Internal tensor fusion** | Transformer does concat/split/pad/flat inside `forward()` — hooks at function-call boundaries cannot intercept internal transformations | BooguImage: `flat_and_pad_to_seq`, double→single stream fusion |
-| **Complex per-block control flow** | Different block types need different split boundaries; hook-based sub-module plans would double-split | BooguImage: double-stream layers (full seq) → single-stream layers (split) |
-| **Locally-created tensors** | Tensors created as local variables inside `forward()` (not function parameters) cannot be reached by hooks | Attention masks built from position IDs inside forward |
+| **RoPE / position embedding method** (e.g. `get_rotary_pos_embed()`) | The tensor is returned by a plain `def`, not an `nn.Module.forward()`. Hooks only intercept module call boundaries. | **Patch the method** to return local-chunk tensors when CP is active. |
+| **Nested tuple return type** (e.g. `((vis_cos, vis_sin), (txt_cos, txt_sin))`) | The hook framework supports flat tensors and 1-D lists, but NOT `tuple[tuple[Tensor, Tensor], ...]`. This prevents a hook from splitting the output. | **Same as above**: patch the method that produces the tuple so it returns already-split local chunks. |
+| **Local variable not exposed as a module parameter** (e.g. attention mask built from position IDs) | The tensor is created inside `forward()` and never passes through an `nn.Module` boundary that hooks can intercept. | **Wrap the tensor creation in a tiny `nn.Module`** subclass and register it, so hooks can intercept. Or, if the mask is simple, **patch the parent method** to split/reorder it. |
 
-**Solution**: Monkey-patch `transformer.forward()` (and optionally the attention processor), manually split/gather at the correct internal boundaries, and return an **empty dict `{}`** from `_apply()` — no hook-based plan is needed because all CP logic lives inside the patches.
+> **Key principle**: in a hybrid plan, the `_apply()` method returns a **real hook-based CP plan** (not `{}`). The method patch runs BEFORE the hook framework, making the problematic tensor hook-compatible.
 
-**Template**:
+#### 2.4.2 Template: Patching a RoPE Method
+
+The most common hybrid scenario: a model computes RoPE via a plain method `get_rotary_pos_embed(vis_rope_size, txt_rope_size)` that returns a nested tuple `((vis_cos, vis_sin), (txt_cos, txt_sin))`.
+
+**Hook-based plan** (handles all tensors EXCEPT RoPE):
 
 ```python
-@ContextParallelismPlannerRegister.register("MyModel")
+@ContextParallelismPlannerRegister.register("MyModelTransformer")
 class MyModelCPPlanner(ContextParallelismPlanner):
 
     def _apply(self, transformer=None, parallelism_config=None, **kwargs):
-        if transformer is not None:
-            # Optional: patch the attention processor for UAA dispatch
-            _patch_attention_processor_for_cp(transformer)
-            # Required: patch transformer.forward() for split/gather
-            _patch_transformer_forward_for_cp(transformer)
-        return {}  # empty — all CP logic is in the patches
+        _patch_rope_for_cp(transformer)          # §2.4.3: patch the RoPE method
+        _patch_attn_processor_for_cp(transformer) # set _parallel_config
+
+        n_blocks = len(transformer.double_blocks)
+        _cp_plan = {
+            # Single-point split on the first block.
+            # image_rotary_emb is NOT listed — the rope patch handles it.
+            "double_blocks.0": {
+                "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+                "encoder_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+            },
+            # Gather after the last block.
+            f"double_blocks.{n_blocks - 1}": _ContextParallelOutput(gather_dim=1, expected_dims=3),
+        }
+        return _cp_plan   # ← REAL hook plan, NOT {}
 ```
 
-**Reference implementations**:
+#### 2.4.3 Template: The RoPE Method Patch (~10 lines)
 
-- **`ErnieImageContextParallelismPlanner`** (`ernie_image.py`) — legacy patch-based CP for historical reasons (originally written before hook-based list support was added). Uses monkey-patched `transformer.forward()` for split/gather.
+```python
+def _patch_rope_for_cp(transformer):
+    """Patch get_rotary_pos_embed to return local-chunk RoPE under CP.
 
-- **`BooguImageContextParallelismPlanner`** (`boogu_image.py`) — internal `flat_and_pad_to_seq`, double→single stream fusion, GQA with `num_kv_heads=7`. Monkey-patches BOTH `transformer.forward()` AND the attention processor. The forward patch handles: preprocessing + double-stream (full seq) → split joint sequence → single-stream on local chunk → all-gather → `norm_out`. The processor patch does KV→Q repeat BEFORE `_dispatch_attention_fn` (to avoid non-integer GQA ratios after UAA split) and passes `enable_gqa=False`.
+    This is the ONLY patch needed — everything else is hook-based.
+    """
+    orig_rope = transformer.get_rotary_pos_embed
 
-**Key rules for patch-based CP:**
+    def patched_rope(self, vis_rope_size, txt_rope_size=None):
+        vis_freqs, txt_freqs = orig_rope(self, vis_rope_size, txt_rope_size)
+        cp = getattr(self, "_cp_config", None)
+        if cp is not None and cp.world_size > 1:
+            rank, ws = cp.rank, cp.world_size
+            # vis_freqs = (cos, sin), each [S_vis, head_dim]
+            vis_freqs = (
+                vis_freqs[0].chunk(ws, dim=0)[rank],
+                vis_freqs[1].chunk(ws, dim=0)[rank],
+            )
+            if txt_freqs is not None:
+                txt_freqs = (
+                    txt_freqs[0].chunk(ws, dim=0)[rank],
+                    txt_freqs[1].chunk(ws, dim=0)[rank],
+                )
+        return vis_freqs, txt_freqs
+
+    transformer.get_rotary_pos_embed = patched_rope.__get__(transformer)
+```
+
+#### 2.4.4 Cross-Cutting Rules (Apply to BOTH Hook-Based and Hybrid)
+
+These rules apply regardless of whether you use pure hook-based or hybrid CP:
 
 1. **Split AFTER preprocessing, BEFORE the main block loop.** Preprocessing (embedding, patching, RoPE, modulation) runs on the full sequence on every GPU — it is cheap (no attention compute) and avoids complex split/gather logic for non-standard tensors.
-2. **DO NOT split `attention_mask` — but CHECK whether it must be REORDERED.** Ulysses all-to-all internally recovers the full sequence, so each GPU keeps the complete mask (never `tensor_split` it). **However**, all-to-all *reorders* the recovered sequence into rank-concatenated order, so any mask indexed by sequence position can become misaligned. A 1D key-only mask `[B, 1, 1, S_full]` broadcasts over the query dim and needs reordering along the **key** dim only (Hunyuan pattern). A 2D full mask `[B, 1, S, S]` must be permuted along **both** query and key dims (BriaFIBO pattern). Getting this wrong causes *localized* corruption at the text/image boundary. **See §2.7 — this is one of the most common and hardest-to-spot CP bugs.**
-3. **Use `tensor_split` for uneven sequences** (complement to UAA at the sequence level).
-4. **All-gather the output** before the final projection (`norm_out`, `proj_out`) so the output head sees the full sequence.
-5. **Patch the attention processor** to call `_dispatch_attention_fn` (from `cache_dit.attention`) with `cp_config`. This ensures UAA all-to-all is used inside each attention layer.
-6. **GQA handling in the processor patch:** If the model has GQA with indivisible `num_kv_heads`, do the KV→Q repeat BEFORE calling `_dispatch_attention_fn` and pass `enable_gqa=False`. This avoids non-integer GQA ratios after UAA's head split.
+
+2. **DO NOT split `attention_mask` — REORDER it.** Ulysses all-to-all internally recovers the full sequence, so each GPU keeps the complete mask. However, all-to-all *reorders* the sequence into rank-concatenated order. Any mask indexed by sequence position must be permuted. A 1D key-only mask `[B, 1, 1, S_full]` needs reordering along the key dim only. A 2D full mask `[B, 1, S, S]` must be permuted along both query and key dims. See §2.7.
+
+3. **All-gather the output** before the final projection (`norm_out`, `proj_out`) so the output head sees the full sequence.
+
+4. **Patch the attention processor** to call `_dispatch_attention_fn` with `cp_config`, ensuring Ulysses all-to-all is used inside each attention layer.
+
+5. **GQA handling**: If the model has GQA with indivisible `num_kv_heads`, do the KV→Q repeat BEFORE calling `_dispatch_attention_fn` and pass `enable_gqa=False`.
+
+#### 2.4.5 Legacy Note: Existing Patch-Based Planners
+
+The codebase contains two planners that patch the entire `transformer.forward()`:
+
+- **`ErnieImageContextParallelismPlanner`** (`ernie_image.py`) — historical, written before the hook framework supported 1-D lists of tensors.
+- **`BooguImageContextParallelismPlanner`** (`boogu_image.py`) — genuinely complex structure: internal `flat_and_pad_to_seq`, double→single stream fusion, per-stream internal concatenation.
+
+**These are NOT templates for new models.** New models MUST use hook-based (§2.3) or hybrid (§2.4). If you believe a new model genuinely needs a full forward patch like BooguImage, escalate for architecture review first.
 
 ### 2.5 Registration
 
@@ -829,7 +1018,7 @@ not the original `[text_all, image_all]`. For a **mask-free** model this is harm
 
 - The image is *mostly correct* but a **small localized region is garbled** — very often the **top-left corner** (the first image patch, which sits right at the text/image concatenation boundary).
 - Metrics plateau: PSNR stuck around ~28–30, SSIM ~0.80–0.85, and **no amount of RoPE / split-position tweaking helps**.
-- The corruption is **consistent across seeds** and independent of whether you use patch-based or hook-based CP.
+- The corruption is **consistent across seeds** and independent of whether you use hybrid or hook-based CP.
 
 **Diagnosis (do this FIRST when metrics are stuck ~30):**
 
