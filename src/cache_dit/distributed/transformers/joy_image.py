@@ -49,13 +49,13 @@ def _patch_rope_for_cp(transformer: nn.Module, parallelism_config: ParallelismCo
     vis_freqs, txt_freqs = orig_rope(vis_rope_size, txt_rope_size)
     rank = dist.get_rank() % cp_size
     vis_freqs = (
-      vis_freqs[0].chunk(cp_size, dim=0)[rank],
-      vis_freqs[1].chunk(cp_size, dim=0)[rank],
+      torch.tensor_split(vis_freqs[0], cp_size, dim=0)[rank],
+      torch.tensor_split(vis_freqs[1], cp_size, dim=0)[rank],
     )
     if txt_freqs is not None:
       txt_freqs = (
-        txt_freqs[0].chunk(cp_size, dim=0)[rank],
-        txt_freqs[1].chunk(cp_size, dim=0)[rank],
+        torch.tensor_split(txt_freqs[0], cp_size, dim=0)[rank],
+        torch.tensor_split(txt_freqs[1], cp_size, dim=0)[rank],
       )
     return vis_freqs, txt_freqs
 

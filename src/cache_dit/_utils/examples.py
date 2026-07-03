@@ -51,6 +51,8 @@ __all__ = [
   "ernie_image_example",
   "ernie_image_turbo_example",
   "krea2_example",
+  "joy_image_edit_example",
+  "bria_fibo_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
