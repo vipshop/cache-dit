@@ -1025,3 +1025,42 @@ def joy_image_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("AnyFlow")
+def anyflow_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for AnyFlow (T2V) and AnyFlow-FAR (causal T2V/I2V).
+
+  AnyFlow is based on the Wan v0.35.1 3D DiT backbone with a dual-timestep
+  flow-map embedding.  The block forward takes (hidden_states, encoder_hidden_states)
+  and returns only hidden_states -> Pattern_2.
+
+  CFG is batch-concatenated (single forward pass), so has_separate_cfg=False.
+  No PatchFunctor is needed — the block loop uses positional args with no extra
+  operations inside the loop body.
+
+  Note: AnyFlow-FAR (``AnyFlowFARTransformer3DModel``) shares the same
+  ``AnyFlowTransformerBlock`` and Pattern_2 contract, so this adapter also
+  resolves the FAR transformer for TP-only flows (``cache_config is None``).
+  DBCache itself is NOT supported on FAR — the chunk-wise autoregressive loop
+  (per-chunk scheduler reset + mandatory full cache-prefill passes) is
+  incompatible with cache-dit's single-trajectory step tracking; enabling
+  ``--cache`` on FAR will produce corrupted output.
+  """
+  from diffusers import AnyFlowTransformer3DModel
+  try:
+    from diffusers import AnyFlowFARTransformer3DModel
+    supported_transformers = (AnyFlowTransformer3DModel, AnyFlowFARTransformer3DModel)
+  except ImportError:
+    supported_transformers = (AnyFlowTransformer3DModel, )
+
+  _relaxed_assert(pipe.transformer, supported_transformers)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )

@@ -53,6 +53,7 @@ __all__ = [
   "krea2_example",
   "joy_image_edit_example",
   "bria_fibo_example",
+  "anyflow_far_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -103,6 +104,8 @@ _env_path_mapping = {
   "KREA2_DIR": "krea/Krea-2-Turbo",
   "FIBO_DIR": "briaai/FIBO",
   "JOY_EDIT_IMAGE_DIR": "jdopensource/JoyAI-Image-Edit-Diffusers",
+  "ANY_FLOW_DIR": "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
+  "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -1668,5 +1671,89 @@ def bria_fibo_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=28,
       guidance_scale=5,
+    ),
+  )
+
+
+@ExampleRegister.register("anyflow_t2v", default="nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers")
+def anyflow_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """AnyFlow T2V example.
+
+  AnyFlow is a flow-map distilled model based on the Wan2.1 3D DiT backbone. The released
+  checkpoints fold CFG into the weights, so guidance_scale=1.0 is the recommended setting.
+  num_inference_steps should be small (1–8) as the model supports any-step sampling.
+  """
+  from diffusers import AnyFlowPipeline
+
+  num_frames = 33 if args.num_frames is None else args.num_frames
+  num_inference_steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path(
+        "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
+        args=args,
+      ),
+      pipeline_class=AnyFlowPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "enable_separate_cfg": False,  # CFG is batch-concatenated, not separate passes
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="A red panda eating bamboo in a forest, cinematic lighting",
+      height=480,
+      width=832,
+      num_frames=num_frames,
+      num_inference_steps=num_inference_steps,
+      guidance_scale=1.0,
+    ),
+  )
+
+
+@ExampleRegister.register("anyflow_far", default="nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers")
+def anyflow_far_example(args: argparse.Namespace, **kwargs) -> Example:
+  """AnyFlow-FAR T2V example.
+
+  AnyFlow-FAR is the causal (FAR-based) sibling of AnyFlow: a chunk-wise
+  autoregressive flow-map distilled model on the Wan2.1 1.3B backbone. Each
+  chunk is denoised with `num_inference_steps` flow-map steps while attending
+  only to past chunks via block-sparse causal attention; a cross-chunk KV cache
+  is reused.
+
+  Cache and CP are NOT supported (the chunk-wise AR loop is incompatible with
+  cache-dit's single-trajectory step tracking and with sequence-split CP). TP
+  is supported via the AnyFlow planner with FAR-specific KV-cache head-count
+  adaptation. The released checkpoint fuses CFG into the weights, so
+  guidance_scale=1.0 is the recommended setting.
+  """
+  from diffusers import AnyFlowFARPipeline
+
+  num_frames = 81 if args.num_frames is None else args.num_frames
+  num_inference_steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path(
+        "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
+        args=args,
+      ),
+      pipeline_class=AnyFlowFARPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "enable_separate_cfg": False,  # CFG is batch-concatenated, not separate passes
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="A red panda eating bamboo in a forest, cinematic lighting",
+      height=480,
+      width=832,
+      num_frames=num_frames,
+      num_inference_steps=num_inference_steps,
+      guidance_scale=1.0,
     ),
   )

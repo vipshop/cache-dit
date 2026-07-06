@@ -139,3 +139,9 @@ Record your results in this format:
 5. **Cache producing identical output to baseline**: The cache warmup may not have completed. Increase `--max-warmup-steps` or decrease `--residual-diff-threshold`.
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- example CLI readme: `examples/README.md`

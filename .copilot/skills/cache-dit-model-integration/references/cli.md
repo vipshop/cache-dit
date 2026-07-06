@@ -77,3 +77,9 @@ _env_path_mapping = {
 Users then set `export MY_MODEL_DIR=/path/to/local/model` to avoid downloading from HuggingFace Hub.
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- example CLI source code: `src/cache_dit/_utils`

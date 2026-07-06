@@ -50,3 +50,9 @@ MyAutoencoderKLDataParallelismPlanner = _safe_import(
 ```
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- VAE data parallelism source code: `src/cache_dit/distributed/autoencoders`
