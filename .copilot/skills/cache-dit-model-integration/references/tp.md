@@ -383,3 +383,9 @@ def _patch_dtensor_unsafe_for_tp(block: nn.Module) -> None:
 **How to detect:** Identify these ops by searching the model source for `import flash_attn` / `import triton` and checking for env-var-gated feature flags like `os.getenv("device")`. Any op behind such a gate that is a custom CUDA kernel is suspect.
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- Tensor parallelism source code: `src/cache_dit/distributed/transformers`

@@ -312,4 +312,9 @@ def mymodel_adapter(pipe, **kwargs) -> BlockAdapter:
 - Only fix the structural issue; do not refactor, optimize, or "improve" unrelated code in the patched forward.
 - Import the transformer class **lazily** (inside `_apply()`) if the model's diffusers version may not be installed everywhere.
 
----
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- cache related source code: `src/cache_dit/caching/`

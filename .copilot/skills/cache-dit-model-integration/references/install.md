@@ -10,7 +10,7 @@ Use the `cdit` conda environment when it is available:
 conda activate cdit
 ```
 
-If the environment does not exist on the current machine, use the default `python3` environment only when the user or workspace setup explicitly allows it.
+If the environment does not exist on the current machine, use the default `python3 or python` environment only when the user or workspace setup explicitly allows it.
 
 ## I.2 Python-Only Model Integration
 

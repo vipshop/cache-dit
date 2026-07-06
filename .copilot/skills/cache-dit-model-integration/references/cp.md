@@ -491,3 +491,9 @@ Call `_patch_forward_for_mask(transformer)` inside the planner's `_apply()` befo
 4. Verify: top-left corner clean, PSNR > 34, SSIM > 0.90.
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- context parallelism source code: `src/cache_dit/distributed/transformers`

@@ -72,3 +72,9 @@ MyTextEncoderTensorParallelismPlanner = _safe_import(
 ```
 
 ---
+
+## More references 
+
+We recommend reading the following files for additional context:
+
+- Text encoder Tensor parallelism source code: `src/cache_dit/distributed/text_encoders`
