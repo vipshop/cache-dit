@@ -46,10 +46,127 @@ Defined in `src/cache_dit/caching/block_adapters/block_adapters.py`. Key paramet
 | `forward_pattern`       | `ForwardPattern` or `List[ForwardPattern]`     | Must match`blocks` count. Single pattern for single block list; list of patterns for multiple block lists.                                                                |
 | `check_forward_pattern` | `Optional[bool]`                                 | Validate that each block's I/O matches the declared pattern. If left `None` (default), cache-dit **auto-detects**: `True` for `diffusers` transformers, `False` for third-party ones (`maybe_skip_checks()`); it is also forced `False` when the transformer already has an `_hf_hook` / `_diffusers_hook`. Set explicitly for new models.                                                             |
 | `check_num_outputs`     | `bool`                                           | If`True`, cache-dit additionally validates that each block returns the exact number of outputs the pattern declares. Needed for models whose blocks can return a variable tuple (e.g., HiDream, HunyuanVideo 1.0). Default `False`.                                             |
-| `has_separate_cfg`      | `bool`                                           | Set`True` if the model performs separate conditional/unconditional forward passes for Classifier-Free Guidance.                                                           |
+| `has_separate_cfg`      | `bool`                                           | Set `True` if the pipeline runs **two separate `transformer.forward()` calls** for the conditional and unconditional passes of Classifier-Free Guidance (CFG). Set `False` if the pipeline concatenates cond+uncond into a single batch and calls `transformer.forward()` **once**. See §1.3.1 for the decision guide and code patterns. |
 | `patch_functor`         | `PatchFunctor` or `None`                       | Optional pre-patch logic. Used when the model needs structural modification before caching hooks are installed (e.g., Flux dummy block merging, DiT re-patching).           |
 | `blocks_name`           | `str` or `List[str]`                           | Override block attribute names (advanced).                                                                                                                                  |
 | `dummy_blocks_names`    | `List[str]`                                      | Names of blocks that should be treated as dummy/merged (advanced, e.g., Flux single_transformer_blocks when merged into transformer_blocks).                                |
+
+### 1.3.1 `has_separate_cfg` — Decision Guide & Code Patterns
+
+> **⚠️ This parameter is about the NUMBER of `transformer.forward()` calls per denoising step, NOT about whether CFG is enabled.** A model can use CFG (`guidance_scale > 1`) and still have `has_separate_cfg=False` if the pipeline batches cond+uncond into one forward call.
+
+**Definition:**
+
+| `has_separate_cfg` | Pipeline behavior per denoising step | Number of `transformer.forward()` calls |
+|---|---|---|
+| `True`  | Pipeline calls `transformer(...)` **twice**: once with cond embeddings, once with uncond embeddings. The two outputs are combined by `noise_pred = uncond + scale * (cond - uncond)`. | **2** |
+| `False` | Pipeline concatenates `[latents, latents]` into one batch, calls `transformer(...)` **once** with `encoder_hidden_states=[uncond, cond]`, then splits the output via `chunk(2)`. | **1** |
+
+**Why it matters for caching:** cache-dit caches transformer block outputs. When `has_separate_cfg=True`, the cond and uncond passes have **independent cache contexts** (`"cond"` / `"uncond"`) because their inputs differ. When `False`, there is only one forward pass and one cache context. Setting this incorrectly causes the cache to mix cond/uncond states → garbled output.
+
+**How to decide — read the pipeline's `__call__` denoising loop:**
+
+**Pattern A → `has_separate_cfg=True`** (two separate forward calls):
+
+```python
+# WanPipeline (diffusers) — TWO calls, one for cond, one for uncond
+latent_model_input = latents.to(transformer_dtype)  # NOT concatenated
+
+with current_model.cache_context("cond"):
+    noise_pred = current_model(
+        hidden_states=latent_model_input,
+        encoder_hidden_states=prompt_embeds,          # cond embeddings
+        ...
+    )[0]
+
+if self.do_classifier_free_guidance:
+    with current_model.cache_context("uncond"):
+        noise_uncond = current_model(                 # SECOND forward call
+            hidden_states=latent_model_input,         # same latents, NOT batched
+            encoder_hidden_states=negative_prompt_embeds,  # uncond embeddings
+            ...
+        )[0]
+    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+```
+
+**Tell-tale signs of Pattern A:**
+- `latent_model_input` is NOT concatenated (no `torch.cat([latents] * 2)`).
+- There are **two** `transformer(...)` / `current_model(...)` calls inside the loop.
+- The second call uses `negative_prompt_embeds` / `negative_pooled_projections`.
+- `cache_context("cond")` / `cache_context("uncond")` wrap the two calls.
+
+**Models using Pattern A:** `Wan` (`has_separate_cfg=True`), `Flux` (with `do_true_cfg`), `QwenImage`, `CogView4`, `Cosmos`, `SkyReelsV2`, `Chroma`, `HunyuanImage`, `OvisImage`, `LongCatImage`, `GlmImage`, `Helios`, `ErnieImage`, `Krea2`, `JoyImage`, `BriaFibo`.
+
+---
+
+**Pattern B → `has_separate_cfg=False`** (single batched forward call):
+
+```python
+# AnyFlowPipeline (diffusers) — ONE call, cond+uncond batched together
+latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+# latent_model_input shape: (2*B, ...) — cond and uncond stacked
+
+noise_pred = self.transformer(
+    hidden_states=latent_model_input,           # batched cond+uncond
+    timestep=timestep,
+    encoder_hidden_states=prompt_embeds,        # [uncond_embeds, cond_embeds] stacked
+    ...
+)[0]
+
+if self.do_classifier_free_guidance:
+    noise_uncond, noise_pred = noise_pred.chunk(2)  # split the batched output
+    noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
+```
+
+**Tell-tale signs of Pattern B:**
+- `torch.cat([latents] * 2)` or `torch.cat([latents, latents])` before the forward call.
+- `encoder_hidden_states` is `torch.cat([negative_prompt_embeds, prompt_embeds])` (stacked).
+- Only **one** `transformer(...)` call inside the loop.
+- Output is split via `noise_pred.chunk(2)` after the forward.
+- No `cache_context("cond")` / `cache_context("uncond")` — single context.
+
+**Models using Pattern B:** `AnyFlow` (`has_separate_cfg=False`), `ErnieImage` (`has_separate_cfg=False`), `Krea2` (when `guidance_scale=0`, no CFG at all), distilled models with CFG folded into weights (`guidance_scale=1.0`).
+
+---
+
+**Pattern C → `has_separate_cfg=False`** (no CFG at all, `guidance_scale=1.0`):
+
+```python
+# Distilled model — no CFG, single forward, single batch
+noise_pred = self.transformer(
+    hidden_states=latents,                       # NOT concatenated
+    encoder_hidden_states=prompt_embeds,          # only cond
+    ...
+)[0]
+# No chunk(2), no noise_uncond, no CFG combination
+```
+
+**Tell-tale signs of Pattern C:**
+- `guidance_scale=1.0` (or `0.0`).
+- No `do_classifier_free_guidance` branch, no `torch.cat([latents]*2)`.
+- Only one forward call with no cond/uncond splitting.
+
+**Models using Pattern C:** AnyFlow (default `guidance_scale=1.0`, CFG folded into weights), ErnieImage Turbo, Krea2 Turbo (`guidance_scale=0.0`), ZImage Turbo (`guidance_scale=0.0`).
+
+> **Note:** Pattern B and Pattern C both use `has_separate_cfg=False`. The difference is whether CFG is active (B: `guidance_scale > 1`, batched) or inactive (C: `guidance_scale <= 1`, single). In both cases there is only ONE `transformer.forward()` call, so cache-dit uses a single cache context.
+
+**Quick decision flowchart:**
+
+```
+Read the pipeline __call__ denoising loop.
+  │
+  ├─ Does it call transformer(...) TWICE per step
+  │  (once with cond, once with uncond)?
+  │    └─ YES → has_separate_cfg = True
+  │
+  ├─ Does it torch.cat([latents]*2) and call transformer(...) ONCE,
+  │  then chunk(2) the output?
+  │    └─ YES → has_separate_cfg = False
+  │
+  └─ Does it call transformer(...) ONCE with no cat/chunk
+     (guidance_scale <= 1, no CFG)?
+        └─ YES → has_separate_cfg = False
+```
 
 ### 1.4 Implementation Templates
 

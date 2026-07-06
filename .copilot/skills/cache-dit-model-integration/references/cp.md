@@ -490,6 +490,144 @@ Call `_patch_forward_for_mask(transformer)` inside the planner's `_apply()` befo
 3. Add a forward patch to permute it into all-to-all order (key-only for 1D, both dims for 2D).
 4. Verify: top-left corner clean, PSNR > 34, SSIM > 0.90.
 
+### 2.8 ⚠️ RoPE Position Drift Under Root-Level Split (Critical Pitfall)
+
+> **If your model uses a root-level CP plan (`""` key) AND computes RoPE / position embeddings from `num_frames` / sequence length inside `transformer.forward()`, CP will silently corrupt positions on rank > 0.** This is the AnyFlow equivalent of the attention-mask pitfall (§2.7) — it produces flickering at the chunk boundary, NOT a crash.
+
+**Why it happens.** The root-level CP hook splits `hidden_states` along the time/sequence axis **before** `transformer.forward()` runs. Any code inside `forward()` that derives positions from the (now-local) sequence length — e.g. `num_frames = hidden_states.shape[1]` → `rope(layout_cfg={"total_frames": num_frames, ...})` — will see a LOCAL count on every rank. Rank 0 generates positions `0, 1, 2, ..., N/2-1`; rank 1 **also** generates `0, 1, 2, ...` instead of `N/2, N/2+1, ...`. After Ulysses all-to-all reorders the sequence into rank-concatenated order, the position embeddings no longer line up with the tokens → localized flickering at the chunk boundary.
+
+**Symptoms (how to recognize it):**
+
+- The output is *mostly correct* but a **small region near the CP boundary flickers / shows garbled content** — very often the **first frame of rank 1's chunk** (e.g. frame ~16-17 in a 33-frame video split 5/4 latent frames).
+- Metrics plateau: per-frame PSNR stuck ~26-30 dB, SSIM ~0.92-0.95, and the boundary frame is **specifically worse** than non-boundary frames.
+- The corruption is **consistent across seeds** and independent of cache settings.
+- Compare to §2.7 (attention mask): both cause boundary-localized corruption, but RoPE drift affects the *whole chunk* uniformly (every token on rank 1 has a wrong position), whereas mask misalignment affects only masked positions.
+
+**Diagnosis (do this FIRST when boundary frames are worse than non-boundary):**
+
+Dump the first-step transformer output on both single-GPU baseline and CP, then compare **per-latent-frame** PSNR/SSIM:
+
+```python
+# Single-GPU baseline
+saved = {}
+def pre_hook(m, args, kwargs):
+    saved.setdefault("kwargs", {k: (v.detach().cpu() if torch.is_tensor(v) else v)
+                                for k, v in kwargs.items()})
+pipe.transformer.register_forward_pre_hook(pre_hook, with_kwargs=True)
+pipe(prompt=..., num_inference_steps=1)
+# Inspect: does transformer.forward compute RoPE from hidden_states.shape[1]?
+```
+
+Search the transformer `forward()` for any line that:
+1. Reads `num_frames` / `seq_len` from `hidden_states.shape[...]`.
+2. Passes it to `self.rope(...)`, `self.pos_embed(...)`, or `get_rotary_pos_embed(...)`.
+3. Builds a `layout_cfg` / position config dict from the local count.
+
+If found, you need the fix below.
+
+**Fix: all-gather global sequence length, recompute RoPE on the full grid, then slice per-rank.**
+
+The RoPE method must compute frequencies on the **GLOBAL** sequence length (so positions are globally continuous), then return only the local chunk to each rank. Use `dist.all_gather` to learn every rank's local length, reconstruct the global length, call the original RoPE on the full grid, and slice by per-rank offset + length.
+
+**Canonical example — AnyFlow** (`anyflow.py`, `_patch_anyflow_rope_for_cp`):
+
+```python
+def _patch_anyflow_rope_for_cp(transformer):
+    orig_forward = transformer.rope.forward
+
+    def patched_rope(self, layout_cfg, device):
+        cp = getattr(transformer, "_cp_config", None)
+        if cp is not None and getattr(cp, "_world_size", 1) > 1:
+            rank = cp._rank
+            ws = cp._world_size
+            local_frames = layout_cfg["total_frames"]
+            tokens_per_frame = layout_cfg["full_token_per_frame"]
+
+            # 1. All-gather every rank's local frame count
+            local_t = torch.tensor([local_frames], device=device, dtype=torch.long)
+            all_frames = [torch.zeros(1, dtype=torch.long, device=device)
+                          for _ in range(ws)]
+            dist.all_gather(all_frames, local_t)
+            global_frames = sum(int(f.item()) for f in all_frames)
+
+            # 2. Compute RoPE on the FULL grid (globally-continuous positions)
+            layout_cfg_full = dict(layout_cfg)
+            layout_cfg_full["total_frames"] = global_frames
+            result = orig_forward(layout_cfg_full, device)
+
+            # 3. Slice by per-rank offset + length (NOT chunk — UAA splits unevenly)
+            frame_offset = sum(int(f.item()) for f in all_frames[:rank])
+            tok_offset = frame_offset * tokens_per_frame
+            tok_length = local_frames * tokens_per_frame
+            return {
+                "query": result["query"][:, :, tok_offset:tok_offset + tok_length, :],
+                "key": result["key"][:, :, tok_offset:tok_offset + tok_length, :],
+            }
+        return orig_forward(layout_cfg, device)
+
+    transformer.rope.forward = patched_rope.__get__(transformer.rope)
+```
+
+**Why slice instead of `chunk(ws)`:** Under UAA (§2.6), the sequence is split **unevenly** across ranks (e.g. 5 frames / 4 frames for a 9-frame latent split across 2 GPUs). `chunk(ws)` produces an even split (7020/7020) that does NOT match the actual local `hidden_states` length (7800/6240) → shape mismatch crash. Always slice by `offset = sum(local_lengths[:rank])` and `length = local_lengths[rank]`.
+
+**When to apply this fix:**
+
+| Model architecture | Needs RoPE drift fix? |
+|---|---|
+| RoPE computed inside `transformer.forward()` from `hidden_states.shape` (AnyFlow, Wan-style with token-level temb) | **YES** — root-level split changes the shape seen by forward |
+| RoPE computed from a separate `rope` module called with a `layout_cfg` derived from `hidden_states.shape` | **YES** — same root cause |
+| RoPE computed at pipeline level (before `transformer.forward`) and passed in as a pre-computed argument | NO — the CP hook splits it as a regular sequence tensor |
+| Model without RoPE (uses absolute positional embeddings baked into weights) | NO — positions are fixed, not derived from sequence length |
+
+**Verify the fix:** per-latent-frame PSNR/SSIM should become **uniform across all frames** (no boundary-specific dip). The first-step transformer output should reach PSNR > 32 dB, SSIM > 0.98. See §2.9 for why it will NOT be bit-exact even after the fix.
+
+### 2.9 ⚠️ bf16 CP Numerical Precision Is NOT Bit-Exact (Expected Behavior)
+
+> **After fixing all structural issues (RoPE drift, attention mask, etc.), CP output will still NOT be bit-exact with the single-GPU baseline.** This is expected and NOT a bug. Do not chase `inf` PSNR — it is unachievable in bf16.
+
+**Why CP is not bit-exact in bf16.** Ulysses attention works by all-to-all redistributing the **head** dimension across ranks: each rank computes SDPA on a subset of heads over the full sequence, then all-to-all back. Although the *math* is identical, the **floating-point accumulation order inside SDPA differs** because:
+- The single-GPU path runs SDPA on `[B, all_heads, S, D]` in one kernel launch.
+- The CP path runs SDPA on `[B, local_heads, S_global, D]` per rank — different head count → different kernel tile shape → different bf16 accumulation order.
+
+bf16 has ~3 decimal digits of precision; reordering additions changes the rounding by ~1e-3, which propagates through 4-30 denoising steps.
+
+**Empirical evidence (AnyFlow, 14B, bf16, 4 steps, 33 frames, 2-GPU Ulysses UAA):**
+
+| Comparison | min PSNR | min SSIM | Verdict |
+|---|---|---|---|
+| Baseline (default backend) vs Baseline (native backend), single GPU | **inf** | **1.000** | Bit-exact — backend choice is NOT the cause |
+| Baseline vs CP (first transformer step) | 32.66 dB | 0.9896 | Expected bf16 all-to-all drift |
+| Baseline vs CP (final video, 4 steps) | 24.91 dB | 0.9234 | Error accumulates ~2.5 dB/step |
+| Baseline vs TP (final video, 4 steps) | ~14 dB | ~0.74 | TP has larger drift (weight sharding) |
+
+**Reference: cache-dit's own CP test threshold.** The shipped slow test `tests/parallelism/test_flux_context_parallel_slow.py` sets:
+
+```python
+_DEFAULT_PSNR_THRESHOLD = float(os.getenv("CACHE_DIT_TEST_FLUX1_CP_PSNR_THRESHOLD", "20.0"))
+```
+
+This **20.0 dB** floor reflects the team's acceptance that bf16 CP cannot be bit-exact. AnyFlow's 24.91 dB (min) comfortably exceeds it.
+
+**How to evaluate CP correctness (mandatory protocol):**
+
+1. **Always use MIN, never AVG.** Average PSNR/SSIM hides the worst frame. A model with avg 30 dB but min 20 dB has a localized corruption that avg conceals.
+2. **Always compute BOTH PSNR and SSIM.** PSNR alone cannot detect structural corruption — a garbled frame can still score PSNR > 25. SSIM < 0.90 on any frame is a red flag even if PSNR looks acceptable.
+3. **Compare per-frame, not just global.** Dump the first-step transformer output and compare per-latent-frame. If one frame is specifically worse than the others, you have a structural bug (RoPE drift §2.8, mask §2.7). If all frames are uniformly ~3-8 dB below baseline, it's expected bf16 drift.
+4. **Visually inspect the video.** Quantitative metrics are necessary but not sufficient — always watch the CP video side-by-side with the baseline. Flickering at the chunk boundary is the tell-tale sign of a structural bug.
+
+**Acceptance criteria for CP correctness:**
+
+| Metric | Threshold | Meaning |
+|---|---|---|
+| min per-frame PSNR (first transformer step) | > 30 dB | No structural corruption |
+| min per-frame SSIM (first transformer step) | > 0.98 | Structure preserved |
+| min per-frame PSNR (final video) | > 20 dB | Matches cache-dit's official CP test floor |
+| min per-frame SSIM (final video) | > 0.90 | Visually acceptable |
+| Boundary frame PSNR vs non-boundary | Uniform (no dip) | Confirms RoPE/mask fix is correct |
+| Visual inspection | No flickering at chunk boundary | Final sign-off |
+
+If your model fails the boundary-uniformity check, you have a structural bug — re-read §2.7 (mask) and §2.8 (RoPE drift). If it passes uniformity but fails the absolute thresholds, consider whether bf16 is acceptable or whether the model needs fp32 attention (rare; usually the drift is tolerable).
+
 ---
 
 ## More references 
