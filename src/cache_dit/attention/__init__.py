@@ -32,7 +32,7 @@ def _maybe_register_custom_attn_backends():
 
   try:
     # Import backend modules to ensure they are registered
-    from .backends import native, cudnn, sage, flash, npu
+    from .backends import native, cudnn, sage, flash, flash_varlen, npu
 
     registered = _register_cache_dit_attn_backends_to_diffusers()
     ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH = True

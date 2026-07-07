@@ -25,6 +25,7 @@ class UlyssesAttention(torch.autograd.Function):
     scale: Optional[float],
     enable_gqa: bool,
     return_lse: bool,
+    cp_gqa_strategy: Optional[str],
     forward_op,
     backward_op,
     _cp_config: Optional["_ContextParallelConfig"] = None,
@@ -36,16 +37,45 @@ class UlyssesAttention(torch.autograd.Function):
     ctx.backward_op = backward_op
     ctx._cp_config = _cp_config
 
+    num_q_heads = query.shape[2]
     comm = _All2AllComm(_cp_config)
+
+    if cp_gqa_strategy == "group_aligned_flash_varlen":
+      if return_lse:
+        raise ValueError("return_lse is not supported for group-aligned GQA Ulysses.")
+
+      query, key, value, attn_mask, q_split_sizes, local_sequence_length = (
+        comm.send_group_aligned_gqa_qkv(query, key, value, attn_mask))
+
+      out = forward_op(
+        ctx,
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        True,
+        return_lse,
+        _save_ctx=False,
+        _cp_config=_cp_config,
+      )
+      return comm.send_group_aligned_gqa_o(out, q_split_sizes, local_sequence_length)
 
     # Keep K/LSE on the non-fp8 path for better numerical stability.
     query_wait = comm.send_q(query)
-    key_wait = comm.send_k(key)
-    value_wait = comm.send_v(value)
-
     query = query_wait.wait()  # type: torch.Tensor
-    key = key_wait.wait()  # type: torch.Tensor
-    value = value_wait.wait()  # type: torch.Tensor
+
+    if cp_gqa_strategy == "replicate_kv_sequence":
+      key, value = comm.gather_replicated_kv_for_local_q(query, key, value, num_q_heads)
+      enable_gqa = False
+    else:
+      key_wait = comm.send_k(key)
+      value_wait = comm.send_v(value)
+      key = key_wait.wait()  # type: torch.Tensor
+      value = value_wait.wait()  # type: torch.Tensor
+
     out = forward_op(
       ctx,
       query,

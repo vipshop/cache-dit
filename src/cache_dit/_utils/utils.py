@@ -791,6 +791,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     choices=[
       None,
       "flash",
+      "flash_varlen",
       "_flash_3",  # FlashAttention-3
       # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
       "native",  # native pytorch attention: sdpa
