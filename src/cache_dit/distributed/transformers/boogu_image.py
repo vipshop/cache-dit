@@ -228,6 +228,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       scale=softmax_scale,
       enable_gqa=enable_gqa,
       cp_gqa_strategy=cp_gqa_strategy,
+      backend=getattr(self, '_attention_backend', None),
       cp_config=cp_config,
     )
     hidden_states = hidden_states.flatten(-2)
@@ -293,6 +294,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         scale=softmax_scale,
         enable_gqa=enable_gqa,
         cp_gqa_strategy=cp_gqa_strategy,
+        backend=getattr(self, '_attention_backend', None),
         cp_config=cp_config,
       )
       hidden_states = hidden_states.flatten(-2)
