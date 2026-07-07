@@ -151,6 +151,7 @@ if _flash_attn_available:
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    cp_gqa_strategy: Optional[str] = None,
     _cp_config: Optional["_ContextParallelConfig"] = None,
   ) -> torch.Tensor:
     lse = None
@@ -182,6 +183,7 @@ if _flash_attn_available:
         scale,
         False,
         return_lse,
+        cp_gqa_strategy,
         forward_op=_flash_attention_forward_op,
         backward_op=_flash_attention_backward_op,
         _cp_config=_cp_config,
@@ -267,6 +269,7 @@ if _flash_attn_3_available:
     scale: Optional[float] = None,
     is_causal: bool = False,
     return_lse: bool = False,
+    cp_gqa_strategy: Optional[str] = None,
     _cp_config: Optional["_ContextParallelConfig"] = None,
   ) -> torch.Tensor:
     lse = None
@@ -307,6 +310,7 @@ if _flash_attn_3_available:
         scale,
         False,
         return_lse,
+        cp_gqa_strategy,
         forward_op=_flash_attention_3_forward_op,
         backward_op=None,
         _cp_config=_cp_config,

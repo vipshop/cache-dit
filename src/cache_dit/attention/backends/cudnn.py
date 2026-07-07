@@ -75,6 +75,7 @@ def _cudnn_attention(
   scale: Optional[float] = None,
   enable_gqa: bool = False,
   return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
   lse = None
@@ -103,6 +104,7 @@ def _cudnn_attention(
       scale,
       enable_gqa,
       return_lse,
+      cp_gqa_strategy,
       forward_op=_cudnn_attention_forward_op,
       backward_op=_cudnn_attention_backward_op,
       _cp_config=_cp_config,

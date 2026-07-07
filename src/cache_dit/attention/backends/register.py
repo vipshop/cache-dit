@@ -265,6 +265,7 @@ def _context_parallel_attention(
   scale: Optional[float] = None,
   enable_gqa: bool = False,
   return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
   *,
   forward_op,
   backward_op,
@@ -284,13 +285,17 @@ def _context_parallel_attention(
                        "is only supported for native attention backend.")
   if is_causal:
     raise ValueError("Causal attention is not yet supported for templated attention.")
-  if enable_gqa:
+  if cp_gqa_strategy not in (None, "replicate_kv_sequence"):
+    raise ValueError(f"Unsupported CP GQA strategy: {cp_gqa_strategy}.")
+  if enable_gqa and cp_gqa_strategy is None:
     raise ValueError("GQA is not yet supported for templated attention.")
 
   if _cp_config is None:
     raise ValueError("Context parallel config must be provided for templated attention.")
 
   if _cp_config.ring_degree > 1 and _cp_config.ulysses_degree > 1:
+    if cp_gqa_strategy is not None:
+      raise ValueError("CP GQA strategy is only supported for pure Ulysses attention.")
     return USPAttention.apply(
       query,
       key,
@@ -306,6 +311,8 @@ def _context_parallel_attention(
       _cp_config,
     )
   elif _cp_config.ring_degree > 1:
+    if cp_gqa_strategy is not None:
+      raise ValueError("CP GQA strategy is only supported for pure Ulysses attention.")
     return RingAttention.apply(
       query,
       key,
@@ -331,6 +338,7 @@ def _context_parallel_attention(
       scale,
       enable_gqa,
       return_lse,
+      cp_gqa_strategy,
       forward_op,
       backward_op,
       _cp_config,
@@ -350,6 +358,7 @@ def _dispatch_attention_fn(
   scale: Optional[float] = None,
   enable_gqa: bool = False,
   attention_kwargs: Optional[dict[str, Any]] = None,
+  cp_gqa_strategy: Optional[str] = None,
   *,
   backend: Optional[str | _AttnBackend] = None,
   cp_config: Optional[_ContextParallelConfig] = None,
@@ -380,6 +389,7 @@ def _dispatch_attention_fn(
     "is_causal": is_causal,
     "scale": scale,
     **attention_kwargs,
+    "cp_gqa_strategy": cp_gqa_strategy,
     "_cp_config": cp_config,
   }
   if _supports_enable_gqa():

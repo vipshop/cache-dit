@@ -1,9 +1,9 @@
 """Boogu-Image distributed parallelism planners (TP and CP)."""
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+import functools
+from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.distributed as dist
 from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
@@ -14,7 +14,11 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...distributed.core import _ContextParallelModelPlan
+from ...distributed.core import (
+  _ContextParallelInput,
+  _ContextParallelModelPlan,
+  _ContextParallelOutput,
+)
 from ...logger import init_logger
 from ..config import ParallelismConfig
 from ..utils import shard_div_attr  # noqa: F401
@@ -31,7 +35,6 @@ try:
     BooguImageAttnProcessor,
     BooguImageAttnProcessorFlash2Varlen,
   )
-  from boogu.models.transformers import BooguImageTransformer2DModel
   BOOGU_IMAGE_AVAILABLE = True
 except ImportError:
   # boogu-image not available
@@ -111,15 +114,11 @@ def _patch_dtensor_unsafe_modules(block: nn.Module) -> None:
 def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
   """Monkey-patch attention processors to use ``_dispatch_attention_fn`` with UAA.
 
-  Boogu-Image has ``num_kv_heads=7`` with GQA ratio 28:7 = 4:1.  UAA handles
-  head-dimension padding internally, but after all-to-all the per-GPU GQA ratio
-  becomes non-integer (14 Q heads / 4 KV heads = 3.5) because KV heads cannot
-  be evenly divided.
-
-  **Fix**: Do the GQA KV→Q repeat BEFORE calling ``_dispatch_attention_fn``,
-  so that Q/K/V all have the same head count when UAA sees them.  After the
-  repeat, Q/K/V have 28 heads each — divisible by 2, giving a clean 14:14 ratio
-  per GPU.  We then pass ``enable_gqa=False`` since heads already match.
+  Boogu-Image has ``num_kv_heads=7`` with GQA ratio 28:7 = 4:1.  The CP path
+  keeps K/V at 7 heads before communication and asks Ulysses to replicate K/V by
+  sequence all-gather.  K/V are expanded to local Q heads only immediately before
+  the backend attention call, so the backend still uses the MHA fast path with
+  ``enable_gqa=False`` while avoiding pre-all-to-all K/V head expansion.
   """
   if not BOOGU_IMAGE_AVAILABLE:
     logger.warning("Boogu-Image not available; skipping attention processor patch.")
@@ -127,9 +126,23 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
 
   from ...attention import _dispatch_attention_fn
 
+  for module in transformer.modules():
+    processor = getattr(module, "processor", None)
+    if processor is not None:
+      processor._boogu_cp_eligible = False
+
+  for layer in getattr(transformer, "single_stream_layers", []):
+    processor = getattr(getattr(layer, "attn", None), "processor", None)
+    if processor is not None:
+      processor._boogu_cp_eligible = True
+
+  if getattr(BooguImageAttnProcessor, "_cache_dit_boogu_cp_patched", False):
+    return
+
   # Patch the sdpa variant.
   _original_sdpa_call = BooguImageAttnProcessor.__call__
 
+  @functools.wraps(_original_sdpa_call)
   def _patched_sdpa_call(
     self: BooguImageAttnProcessor,
     attn: Attention,
@@ -140,7 +153,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
     base_sequence_length: Optional[int] = None,
   ) -> torch.Tensor:
     cp_config = getattr(self, '_cp_config', None)
-    if cp_config is None:
+    if cp_config is None or not getattr(self, "_boogu_cp_eligible", False):
       return _original_sdpa_call(
         self,
         attn,
@@ -174,15 +187,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
       key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
-    # ---- GQA repeat BEFORE UAA ----
-    # kv_heads=7, attn.heads=28.  UAA internally pads K/V heads from 7→8
-    # but after all-to-all split the per-GPU ratio is 14:4 = non-integer.
-    # We repeat K/V to match Q heads FIRST so all-to-all sees 28:28 (clean
-    # 14:14 after split), then set enable_gqa=False.
-    if kv_heads < attn.heads:
-      repeat_factor = attn.heads // kv_heads
-      key = key.repeat_interleave(repeat_factor, dim=2)
-      value = value.repeat_interleave(repeat_factor, dim=2)
+    cp_gqa_strategy = "replicate_kv_sequence" if kv_heads < attn.heads else None
 
     # ---- Replace sdpa with UAA dispatch ----
     softmax_scale = attn.scale
@@ -194,7 +199,8 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       dropout_p=0.0,
       is_causal=False,
       scale=softmax_scale,
-      enable_gqa=False,  # heads already 1:1 after manual repeat
+      enable_gqa=False,  # CP strategy expands K/V before attention and keeps the MHA fast path.
+      cp_gqa_strategy=cp_gqa_strategy,
       cp_config=cp_config,
     )
     hidden_states = hidden_states.flatten(-2)
@@ -204,11 +210,13 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
     return hidden_states
 
   BooguImageAttnProcessor.__call__ = _patched_sdpa_call
+  BooguImageAttnProcessor._cache_dit_boogu_cp_patched = True
 
   # Patch the flash-attn varlen variant similarly.
   if hasattr(BooguImageAttnProcessorFlash2Varlen, '__call__'):
     _original_varlen_call = BooguImageAttnProcessorFlash2Varlen.__call__
 
+    @functools.wraps(_original_varlen_call)
     def _patched_varlen_call(
       self: BooguImageAttnProcessorFlash2Varlen,
       attn: Attention,
@@ -219,7 +227,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       base_sequence_length: Optional[int] = None,
     ) -> torch.Tensor:
       cp_config = getattr(self, '_cp_config', None)
-      if cp_config is None:
+      if cp_config is None or not getattr(self, "_boogu_cp_eligible", False):
         return _original_varlen_call(self, attn, hidden_states, encoder_hidden_states,
                                      attention_mask, image_rotary_emb, base_sequence_length)
 
@@ -244,11 +252,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
         key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
-      # NOTE: GQA repeat before UAA (same rationale as sdpa variant).
-      if kv_heads < attn.heads:
-        repeat_factor = attn.heads // kv_heads
-        key = key.repeat_interleave(repeat_factor, dim=2)
-        value = value.repeat_interleave(repeat_factor, dim=2)
+      cp_gqa_strategy = "replicate_kv_sequence" if kv_heads < attn.heads else None
 
       softmax_scale = attn.scale
       hidden_states = _dispatch_attention_fn(
@@ -260,6 +264,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         is_causal=False,
         scale=softmax_scale,
         enable_gqa=False,
+        cp_gqa_strategy=cp_gqa_strategy,
         cp_config=cp_config,
       )
       hidden_states = hidden_states.flatten(-2)
@@ -269,172 +274,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       return hidden_states
 
     BooguImageAttnProcessorFlash2Varlen.__call__ = _patched_varlen_call
-
-
-def _patch_transformer_forward_for_cp(transformer: BooguImageTransformer2DModel) -> None:
-  """Monkey-patch ``transformer.forward`` for context parallelism.
-
-  Boogu-Image does internal patching (flat_and_pad_to_seq) inside its forward,
-  so top-level CP hooks cannot split the image-format input.
-
-  This wrapper runs the full preprocessing and double-stream fusion on every
-  GPU (those stages are cheap — only 2 double-stream layers), then splits the
-  joint sequence via ``tensor_split`` before entering the single-stream loop.
-
-  The attention processor monkey-patch (see ``_patch_attention_processor_for_cp``)
-  handles the UAA all-to-all inside each attention layer, so each GPU computes
-  attention over the FULL sequence for a SUBSET of heads.
-
-  After single-stream, we ``all_gather`` the output and continue with
-  ``norm_out`` / unpatchify.
-
-  Use ``--ulysses-anything`` to enable UAA for uneven joint-sequence lengths.
-  """
-  _original_forward = transformer.forward
-
-  def _cp_forward(
-    self: BooguImageTransformer2DModel,
-    hidden_states: Union[torch.Tensor, List[torch.Tensor]],
-    timestep: torch.Tensor,
-    instruction_hidden_states: torch.Tensor,
-    freqs_cis: torch.Tensor,
-    instruction_attention_mask: torch.Tensor,
-    ref_image_hidden_states: Optional[List[List[torch.Tensor]]] = None,
-    attention_kwargs: Optional[Dict[str, Any]] = None,
-    return_dict: bool = False,
-  ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-    cp_config = getattr(self, '_cp_config', None)
-    if cp_config is None:
-      # No CP active — delegate to original forward.
-      return _original_forward(
-        hidden_states,
-        timestep,
-        instruction_hidden_states,
-        freqs_cis,
-        instruction_attention_mask,
-        ref_image_hidden_states,
-        attention_kwargs,
-        return_dict,
-      )
-
-    mesh: DeviceMesh = cp_config._flattened_mesh
-    cp_size = mesh.size()
-    rank = dist.get_rank(mesh.get_group())
-
-    # ---- Preprocessing (full sequence on every GPU) ----
-    instruction_hidden_states = self.preprocess_instruction_hidden_states(
-      instruction_hidden_states, self.instruction_feature_configs)
-    temb, instruction_hidden_states = self.time_caption_embed(
-      timestep,
-      instruction_hidden_states,
-      hidden_states[0].dtype,
-    )
-
-    batch_size = len(hidden_states)
-    is_tensor = isinstance(hidden_states, torch.Tensor)
-    if is_tensor:
-      hidden_states = list(hidden_states)
-
-    (
-      hidden_states,
-      ref_image_hidden_states,
-      img_mask,
-      ref_img_mask,
-      l_effective_ref_img_len,
-      l_effective_img_len,
-      ref_img_sizes,
-      img_sizes,
-    ) = self.flat_and_pad_to_seq(hidden_states, ref_image_hidden_states)
-
-    (
-      context_rotary_emb,
-      ref_img_rotary_emb,
-      noise_rotary_emb,
-      rotary_emb,
-      encoder_seq_lengths,
-      seq_lengths,
-      combined_img_rotary_emb,
-      combined_img_seq_lengths,
-    ) = self.rope_embedder(freqs_cis, instruction_attention_mask, l_effective_ref_img_len,
-                           l_effective_img_len, ref_img_sizes, img_sizes, hidden_states.device)
-
-    for layer in self.context_refiner:
-      instruction_hidden_states = layer(instruction_hidden_states, instruction_attention_mask,
-                                        context_rotary_emb)
-
-    combined_img_hidden_states = self.img_patch_embed_and_refine(
-      hidden_states, ref_image_hidden_states, img_mask, ref_img_mask, noise_rotary_emb,
-      ref_img_rotary_emb, l_effective_ref_img_len, l_effective_img_len, temb)
-
-    # ---- Double-stream layers (full sequence, only 2 layers) ----
-    # These layers are few and cheap — running them on the full sequence
-    # avoids complicating the split/gather logic for joint cross-attention.
-    instruct_hidden_states = instruction_hidden_states
-    img_hidden_states = combined_img_hidden_states
-
-    max_seq_len = max(seq_lengths)
-    joint_attention_mask = hidden_states.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
-    for i, sl in enumerate(seq_lengths):
-      joint_attention_mask[i, :sl] = True
-
-    if self.num_double_stream_layers > 0:
-      max_img_len = max(combined_img_seq_lengths)
-      img_attention_mask = hidden_states.new_zeros(batch_size, max_img_len, dtype=torch.bool)
-      for i, sl in enumerate(combined_img_seq_lengths):
-        img_attention_mask[i, :sl] = True
-      for layer in self.double_stream_layers:
-        img_hidden_states, instruct_hidden_states = layer(img_hidden_states, instruct_hidden_states,
-                                                          img_attention_mask, joint_attention_mask,
-                                                          combined_img_rotary_emb, rotary_emb, temb,
-                                                          encoder_seq_lengths, seq_lengths)
-
-    # Fusion: concat instruction + image → joint_hidden_states [B, N, D].
-    joint_hidden_states = torch.cat([instruct_hidden_states, img_hidden_states], dim=1)
-
-    # ---- Split joint sequence for CP ----
-    # tensor_split handles uneven sizes (UAA complement at the sequence level).
-    local_h = joint_hidden_states.tensor_split(cp_size, dim=1)[rank].contiguous()
-    local_mask = joint_attention_mask.tensor_split(cp_size, dim=1)[rank].contiguous()
-    local_rope = rotary_emb.tensor_split(cp_size, dim=1)[rank].contiguous()
-
-    # ---- Single-stream layers on local chunk ----
-    h = local_h
-    for layer in self.single_stream_layers:
-      h = layer(h, local_mask, local_rope, temb)
-
-    # ---- All-gather output (handles uneven sizes) ----
-    chunks = [
-      torch.empty_like(joint_hidden_states.tensor_split(cp_size, dim=1)[i]) for i in range(cp_size)
-    ]
-    chunks[rank] = h
-    dist.all_gather(chunks, h, group=mesh.get_group())
-    gathered_h = torch.cat(chunks, dim=1)
-
-    # ---- Output projection (inline unpatchify) ----
-    from einops import rearrange
-
-    hidden_states = self.norm_out(gathered_h, temb)
-    p = self.config.patch_size
-    output = []
-    for i, (img_size, img_len,
-            seq_len) in enumerate(zip(img_sizes, l_effective_img_len, seq_lengths)):
-      height, width = img_size
-      img_tokens = hidden_states[i][seq_len - img_len:seq_len]
-      img_output = rearrange(img_tokens,
-                             "(h w) (p1 p2 c) -> c (h p1) (w p2)",
-                             h=height // p,
-                             w=width // p,
-                             p1=p,
-                             p2=p)
-      output.append(img_output)
-
-    if is_tensor:
-      output = torch.stack(output, dim=0)
-    if return_dict:
-      return {"sample": output}
-    return output
-
-  transformer.forward = _cp_forward.__get__(transformer, type(transformer))
+    BooguImageAttnProcessorFlash2Varlen._cache_dit_boogu_cp_patched = True
 
 
 @ContextParallelismPlannerRegister.register("BooguImageTransformer")
@@ -449,13 +289,28 @@ class BooguImageContextParallelismPlanner(ContextParallelismPlanner):
     if not BOOGU_IMAGE_AVAILABLE:
       return {}
 
-    # Boogu-Image receives image-format input with internal patching.
-    # We patch both the forward (sequence split/gather) and the attention
-    # processor (UAA all-to-all).  Use --ulysses-anything for UAA.
-    if transformer is not None:
-      _patch_attention_processor_for_cp(transformer)
-      _patch_transformer_forward_for_cp(transformer)
-    return {}
+    if transformer is None:
+      return {}
+
+    _patch_attention_processor_for_cp(transformer)
+    last_layer_index = len(transformer.single_stream_layers) - 1
+    if last_layer_index < 0:
+      return {}
+
+    return {
+      "single_stream_layers.0": {
+        "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+      },
+      "single_stream_layers.*": {
+        "attention_mask": _ContextParallelInput(split_dim=1, expected_dims=2),
+        "image_rotary_emb": _ContextParallelInput(split_dim=1, expected_dims=3),
+      },
+      f"single_stream_layers.{last_layer_index}":
+      _ContextParallelOutput(
+        gather_dim=1,
+        expected_dims=3,
+      ),
+    }
 
 
 @TensorParallelismPlannerRegister.register("BooguImageTransformer")
