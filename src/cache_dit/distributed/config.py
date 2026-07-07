@@ -95,7 +95,7 @@ class ParallelismConfig:
   cp_plan: Optional[Any] = None
   # attention_backend: (`str`, *optional*):
   #   The attention backend for parallel attention,
-  #   e.g, 'native', 'flash', 'sage', '_flash_3', etc.
+  #   e.g, 'native', 'flash', 'flash_varlen', 'sage', '_flash_3', etc.
   attention_backend: Optional[str] = None
   # ulysses_anything: (`bool`, *optional*):
   #   Whether to enable the ulysses anything attention (namely, UAA.)

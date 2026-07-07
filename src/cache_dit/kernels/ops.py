@@ -70,9 +70,25 @@ def _resolve_backend(op_name: str, ) -> KernelBackend:
   return backend
 
 
+def _cutedsl_fp8_comm_supports_head_size(head_size: int) -> bool:
+  elems_per_thread = 16
+  cta_threads = 256
+  if head_size % elems_per_thread != 0:
+    return False
+  row_threads = head_size // elems_per_thread
+  return row_threads <= 32 and cta_threads % row_threads == 0
+
+
+def _resolve_fp8_comm_backend(op_name: str, head_size: int) -> KernelBackend:
+  backend = _resolve_backend(op_name)
+  if backend == KernelBackend.CUTEDSL and not _cutedsl_fp8_comm_supports_head_size(head_size):
+    return KernelBackend.TRITON
+  return backend
+
+
 # Ulysses FP8 communication related ops
 def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_per_token_quant")
+  backend = _resolve_fp8_comm_backend("fp8_comm_per_token_quant", x.shape[-1])
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_per_token_quant
 
@@ -86,7 +102,7 @@ def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
 
 
 def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_per_token_dequant")
+  backend = _resolve_fp8_comm_backend("fp8_comm_per_token_dequant", x.shape[-1] - 2)
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_per_token_dequant
 
@@ -100,7 +116,7 @@ def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
 
 
 def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_qkv_permute_quant")
+  backend = _resolve_fp8_comm_backend("fp8_comm_qkv_permute_quant", x.shape[-1])
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_qkv_permute_quant
 
@@ -114,7 +130,7 @@ def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
 
 
 def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_qkv_permute_dequant")
+  backend = _resolve_fp8_comm_backend("fp8_comm_qkv_permute_dequant", quant_x.shape[-1] - 4)
   if backend == KernelBackend.TRITON:
     from .triton import fp8_comm_qkv_permute_dequant
 

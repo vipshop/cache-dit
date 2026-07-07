@@ -33,6 +33,7 @@ class _AttnBackend(str, Enum):
 
   NATIVE = "native"
   FLASH = "flash"
+  FLASH_VARLEN = "flash_varlen"
   SAGE = "sage"
   _FLASH_3 = "_flash_3"
   _SDPA_CUDNN = "_sdpa_cudnn"
@@ -277,6 +278,7 @@ def _context_parallel_attention(
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
       "_native_attention_forward_op",
       "_sdpa_cudnn_attention_forward_op",
+      "_flash_varlen_attention_forward_op",
       "_npu_attention_forward_op",
       "_npu_fused_infer_attention_forward_op",
     ]
@@ -285,7 +287,7 @@ def _context_parallel_attention(
                        "is only supported for native attention backend.")
   if is_causal:
     raise ValueError("Causal attention is not yet supported for templated attention.")
-  if cp_gqa_strategy not in (None, "replicate_kv_sequence"):
+  if cp_gqa_strategy not in (None, "replicate_kv_sequence", "group_aligned_flash_varlen"):
     raise ValueError(f"Unsupported CP GQA strategy: {cp_gqa_strategy}.")
   if enable_gqa and cp_gqa_strategy is None:
     raise ValueError("GQA is not yet supported for templated attention.")

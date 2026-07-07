@@ -1,6 +1,7 @@
 """Boogu-Image distributed parallelism planners (TP and CP)."""
 
 import functools
+import math
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -41,6 +42,31 @@ except ImportError:
   BOOGU_IMAGE_AVAILABLE = False
 
 logger = init_logger(__name__)
+
+
+def _boogu_attention_scale(
+  attn: "Attention",
+  sequence_length: int,
+  base_sequence_length: Optional[int],
+) -> float:
+  if base_sequence_length is None:
+    return attn.scale
+  return math.sqrt(math.log(sequence_length, base_sequence_length)) * attn.scale
+
+
+def _boogu_cp_gqa_dispatch(
+  kv_heads: int,
+  q_heads: int,
+) -> tuple[Optional[str], bool]:
+  if kv_heads >= q_heads:
+    return None, False
+
+  from ...attention import _AttnBackendRegistry
+
+  active_backend, _ = _AttnBackendRegistry.get_active_backend()
+  if active_backend.value == "flash_varlen":
+    return "group_aligned_flash_varlen", True
+  return "replicate_kv_sequence", False
 
 
 def _dtensor_safe_swiglu(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -187,19 +213,20 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
       key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
-    cp_gqa_strategy = "replicate_kv_sequence" if kv_heads < attn.heads else None
+    cp_gqa_strategy, enable_gqa = _boogu_cp_gqa_dispatch(kv_heads, attn.heads)
+    dispatch_attn_mask = attention_mask if cp_gqa_strategy == "group_aligned_flash_varlen" else None
 
     # ---- Replace sdpa with UAA dispatch ----
-    softmax_scale = attn.scale
+    softmax_scale = _boogu_attention_scale(attn, sequence_length, base_sequence_length)
     hidden_states = _dispatch_attention_fn(
       query,
       key,
       value,
-      attn_mask=None,
+      attn_mask=dispatch_attn_mask,
       dropout_p=0.0,
       is_causal=False,
       scale=softmax_scale,
-      enable_gqa=False,  # CP strategy expands K/V before attention and keeps the MHA fast path.
+      enable_gqa=enable_gqa,
       cp_gqa_strategy=cp_gqa_strategy,
       cp_config=cp_config,
     )
@@ -252,18 +279,19 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
         key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
 
-      cp_gqa_strategy = "replicate_kv_sequence" if kv_heads < attn.heads else None
+      cp_gqa_strategy, enable_gqa = _boogu_cp_gqa_dispatch(kv_heads, attn.heads)
+      dispatch_attn_mask = attention_mask if cp_gqa_strategy == "group_aligned_flash_varlen" else None
 
-      softmax_scale = attn.scale
+      softmax_scale = _boogu_attention_scale(attn, sequence_length, base_sequence_length)
       hidden_states = _dispatch_attention_fn(
         query,
         key,
         value,
-        attn_mask=None,
+        attn_mask=dispatch_attn_mask,
         dropout_p=0.0,
         is_causal=False,
         scale=softmax_scale,
-        enable_gqa=False,
+        enable_gqa=enable_gqa,
         cp_gqa_strategy=cp_gqa_strategy,
         cp_config=cp_config,
       )

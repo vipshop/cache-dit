@@ -38,6 +38,8 @@ __all__ = [
   "_gather_size",
   "_RingP2PComm",
   "_All2AllComm",
+  "_all_to_all_single_qkv_custom_heads",
+  "_all_to_all_single_o_custom_heads",
 ]
 
 
@@ -359,6 +361,132 @@ class _All2AllComm:
     """Launch async all-to-all for LSE on the non-fp8 path."""
     return self._launch(self._lse_impl, lse, **metadata)
 
+  def all_gather_tensor_dim(self, x: torch.Tensor, dim: int) -> torch.Tensor:
+    """Gather a tensor across the Ulysses group along one dimension.
+
+    :param x: Local tensor shard.
+    :param dim: Dimension to concatenate gathered shards on.
+    :returns: Tensor gathered across the Ulysses process group.
+    """
+    x = x.contiguous()
+    shape = list(x.shape)
+    dim_sizes = _gather_size(shape[dim], self._group)
+    gathered = []
+    for dim_size in dim_sizes:
+      current_shape = list(shape)
+      current_shape[dim] = dim_size
+      gathered.append(torch.empty(current_shape, device=x.device, dtype=x.dtype))
+    dist.all_gather(gathered, x, group=self._group)
+    return torch.cat(gathered, dim=dim).contiguous()
+
+  def gather_replicated_kv_for_local_q(
+    self,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    num_q_heads: int,
+  ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Gather K/V sequence shards and select K/V heads for the local Q shard.
+
+    :param query: Query tensor after standard Ulysses Q all-to-all.
+    :param key: Local key tensor before sequence gather.
+    :param value: Local value tensor before sequence gather.
+    :param num_q_heads: Global query head count before Ulysses.
+    :returns: K/V tensors matching the local Q head count.
+    """
+    key = self.all_gather_tensor_dim(key, dim=1)
+    value = self.all_gather_tensor_dim(value, dim=1)
+    num_kv_heads = key.shape[2]
+    if num_kv_heads == query.shape[2]:
+      return key, value
+    if num_q_heads % num_kv_heads != 0:
+      raise ValueError(f"GQA requires num_q_heads to be divisible by num_kv_heads, got "
+                       f"{num_q_heads} and {num_kv_heads}.")
+
+    rank, world_size = _get_rank_world_size(self._group)
+    local_heads = (num_q_heads + world_size - 1) // world_size
+    start = rank * local_heads
+    end = min(start + local_heads, num_q_heads)
+    q_head_indices = torch.arange(start, end, device=key.device, dtype=torch.long)
+    if q_head_indices.numel() != query.shape[2]:
+      raise ValueError(f"Local Q head count mismatch after Ulysses all-to-all: expected "
+                       f"{q_head_indices.numel()}, got {query.shape[2]}.")
+
+    repeat_factor = num_q_heads // num_kv_heads
+    kv_head_indices = torch.div(q_head_indices, repeat_factor, rounding_mode="floor")
+    key = key.index_select(2, kv_head_indices).contiguous()
+    value = value.index_select(2, kv_head_indices).contiguous()
+    return key, value
+
+  def group_aligned_gqa_head_splits(
+    self,
+    num_q_heads: int,
+    num_kv_heads: int,
+  ) -> tuple[list[int], list[int]]:
+    """Compute KV-group-aligned Q/KV head splits for GQA Ulysses.
+
+    :param num_q_heads: Global query head count.
+    :param num_kv_heads: Global key/value head count.
+    :returns: A tuple `(q_split_sizes, kv_split_sizes)`.
+    """
+    rank, world_size = _get_rank_world_size(self._group)
+    if num_q_heads % num_kv_heads != 0:
+      raise ValueError(f"GQA requires num_q_heads to be divisible by num_kv_heads, got "
+                       f"{num_q_heads} and {num_kv_heads}.")
+    if world_size > num_kv_heads:
+      raise ValueError(f"Group-aligned GQA requires world_size <= num_kv_heads, got "
+                       f"{world_size} and {num_kv_heads}.")
+
+    ratio = num_q_heads // num_kv_heads
+    kv_split_sizes = []
+    base_kv_heads = num_kv_heads // world_size
+    remainder = num_kv_heads % world_size
+    for i in range(world_size):
+      kv_split_sizes.append(base_kv_heads + (1 if i < remainder else 0))
+    q_split_sizes = [heads * ratio for heads in kv_split_sizes]
+    if q_split_sizes[rank] == 0 or kv_split_sizes[rank] == 0:
+      raise ValueError("Group-aligned GQA produced an empty local head shard.")
+    return q_split_sizes, kv_split_sizes
+
+  def send_group_aligned_gqa_qkv(
+    self,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], list[int], int]:
+    """Communicate Q/K/V for group-aligned GQA Ulysses.
+
+    :param query: Local query tensor before Ulysses communication.
+    :param key: Local key tensor before Ulysses communication.
+    :param value: Local value tensor before Ulysses communication.
+    :param attn_mask: Optional local attention mask shard.
+    :returns: Communicated Q/K/V, gathered mask, Q split sizes, and local sequence length.
+    """
+    local_sequence_length = query.shape[1]
+    q_split_sizes, kv_split_sizes = self.group_aligned_gqa_head_splits(query.shape[2], key.shape[2])
+    query = _all_to_all_single_qkv_custom_heads(query, self._group, q_split_sizes)
+    key = _all_to_all_single_qkv_custom_heads(key, self._group, kv_split_sizes)
+    value = _all_to_all_single_qkv_custom_heads(value, self._group, kv_split_sizes)
+    if attn_mask is not None:
+      attn_mask = self.all_gather_tensor_dim(attn_mask, dim=1)
+    return query, key, value, attn_mask, q_split_sizes, local_sequence_length
+
+  def send_group_aligned_gqa_o(
+    self,
+    out: torch.Tensor,
+    q_split_sizes: List[int],
+    local_sequence_length: int,
+  ) -> torch.Tensor:
+    """Communicate output back to sequence-local, global-head layout.
+
+    :param out: Attention output shaped `(B, S_GLOBAL, H_Q_LOCAL, D)`.
+    :param q_split_sizes: Per-rank Q head split sizes used for the forward Q communication.
+    :param local_sequence_length: Sequence length owned by this rank before Ulysses.
+    :returns: Output shaped `(B, S_LOCAL, H_Q_GLOBAL, D)`.
+    """
+    return _all_to_all_single_o_custom_heads(out, self._group, q_split_sizes, local_sequence_length)
+
 
 def _all_to_all_single_qkv_async(
   x: torch.Tensor,
@@ -516,6 +644,101 @@ def _all_to_all_single_o_uneven_heads_async(
     return x
 
   return wait
+
+
+def _all_to_all_single_qkv_custom_heads(
+  x: torch.Tensor,
+  group: dist.ProcessGroup,
+  head_split_sizes: List[int],
+) -> torch.Tensor:
+  """All-to-all QKV tensors with caller-provided head splits.
+
+  :param x: Input tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
+  :param group: Process group used for communication.
+  :param head_split_sizes: Per-rank output head counts.
+  :returns: Tensor shaped `(B, S_GLOBAL, H_LOCAL, D)` on the current rank.
+  """
+  rank, world_size = _get_rank_world_size(group)
+  if len(head_split_sizes) != world_size:
+    raise ValueError(f"Expected {world_size} head split sizes, got {len(head_split_sizes)}.")
+
+  B, S_LOCAL, H_GLOBAL, D = x.shape
+  if sum(head_split_sizes) != H_GLOBAL:
+    raise ValueError(f"Head split sizes sum to {sum(head_split_sizes)}, expected {H_GLOBAL}.")
+
+  seq_split_sizes = _gather_size(S_LOCAL, group)
+  input_split_sizes = [B * S_LOCAL * head_count * D for head_count in head_split_sizes]
+  output_split_sizes = [B * seq_len * head_split_sizes[rank] * D for seq_len in seq_split_sizes]
+  input_tensor = torch.cat([chunk.flatten() for chunk in torch.split(x, head_split_sizes, dim=2)])
+  output_tensor = torch.empty(sum(output_split_sizes), device=x.device, dtype=x.dtype)
+
+  dist.all_to_all_single(
+    output_tensor,
+    input_tensor.contiguous(),
+    output_split_sizes=output_split_sizes,
+    input_split_sizes=input_split_sizes,
+    group=group,
+  )
+
+  chunks = []
+  offset = 0
+  H_LOCAL = head_split_sizes[rank]
+  for seq_len, numel in zip(seq_split_sizes, output_split_sizes):
+    chunks.append(output_tensor[offset:offset + numel].view(B, seq_len, H_LOCAL, D))
+    offset += numel
+  return torch.cat(chunks, dim=1).contiguous()
+
+
+def _all_to_all_single_o_custom_heads(
+  x: torch.Tensor,
+  group: dist.ProcessGroup,
+  head_split_sizes: List[int],
+  local_sequence_length: int,
+) -> torch.Tensor:
+  """Inverse all-to-all for attention output with caller-provided head splits.
+
+  :param x: Input tensor shaped `(B, S_GLOBAL, H_LOCAL, D)`.
+  :param group: Process group used for communication.
+  :param head_split_sizes: Per-rank input head counts from Q communication.
+  :param local_sequence_length: Sequence length owned by the current rank before Ulysses.
+  :returns: Tensor shaped `(B, S_LOCAL, H_GLOBAL, D)` on the current rank.
+  """
+  rank, world_size = _get_rank_world_size(group)
+  if len(head_split_sizes) != world_size:
+    raise ValueError(f"Expected {world_size} head split sizes, got {len(head_split_sizes)}.")
+
+  B, S_GLOBAL, H_LOCAL, D = x.shape
+  if H_LOCAL != head_split_sizes[rank]:
+    raise ValueError(
+      f"Local output heads mismatch: expected {head_split_sizes[rank]}, got {H_LOCAL}.")
+
+  seq_split_sizes = _gather_size(local_sequence_length, group)
+  if sum(seq_split_sizes) != S_GLOBAL:
+    raise ValueError(f"Sequence split sizes sum to {sum(seq_split_sizes)}, expected {S_GLOBAL}.")
+
+  sequence_chunks = torch.split(x, seq_split_sizes, dim=1)
+  input_split_sizes = [B * seq_len * H_LOCAL * D for seq_len in seq_split_sizes]
+  output_split_sizes = [
+    B * local_sequence_length * head_count * D for head_count in head_split_sizes
+  ]
+  input_tensor = torch.cat([chunk.flatten() for chunk in sequence_chunks])
+  output_tensor = torch.empty(sum(output_split_sizes), device=x.device, dtype=x.dtype)
+
+  dist.all_to_all_single(
+    output_tensor,
+    input_tensor.contiguous(),
+    output_split_sizes=output_split_sizes,
+    input_split_sizes=input_split_sizes,
+    group=group,
+  )
+
+  chunks = []
+  offset = 0
+  for head_count, numel in zip(head_split_sizes, output_split_sizes):
+    chunks.append(output_tensor[offset:offset + numel].view(B, local_sequence_length, head_count,
+                                                            D))
+    offset += numel
+  return torch.cat(chunks, dim=2).contiguous()
 
 
 def _all_to_all_single_qkv_fp8_async(
