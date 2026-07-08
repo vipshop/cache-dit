@@ -1,5 +1,6 @@
 # Adapted from nunchaku's implementation of SVDQW4A4Linear.
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from ...kernels import svdq_gemm_w4a4
@@ -61,10 +62,15 @@ class SVDQW4A4Linear(nn.Module):
       device = torch.device("cpu")
     if rank < 0:
       raise ValueError(f"rank must be non-negative, got {rank}.")
-    if in_features % 2 != 0:
-      raise ValueError(f"in_features must be divisible by 2, got {in_features}.")
     if runtime_kernel not in {"v1", "v2"}:
       raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
+
+    if precision == "nvfp4":
+      self.group_size = 16
+    elif precision == "int4":
+      self.group_size = 64
+    else:
+      raise ValueError(f"Invalid precision: {precision}")
 
     self.in_features = in_features
     self.out_features = out_features
@@ -73,46 +79,49 @@ class SVDQW4A4Linear(nn.Module):
     self.torch_dtype = torch_dtype
     self.runtime_kernel = runtime_kernel
 
-    if precision == "nvfp4":
-      self.group_size = 16
-    elif precision == "int4":
-      self.group_size = 64
-    else:
-      raise ValueError(f"Invalid precision: {precision}")
-    if in_features % self.group_size != 0:
+    padded_in = ((in_features + 127) // 128) * 128
+    padded_out = ((out_features + 127) // 128) * 128
+    self._padded_in_features = padded_in
+    self._padded_out_features = padded_out
+    self._needs_k_pad = padded_in != in_features
+    self._needs_n_strip = padded_out != out_features
+
+    if in_features % 2 != 0:
+      raise ValueError(f"in_features must be divisible by 2, got {in_features}.")
+    if padded_in % self.group_size != 0:
       raise ValueError(
-        f"in_features must be divisible by group_size={self.group_size} for {precision}, got {in_features}."
-      )
+        f"Padded in_features ({padded_in}) must be divisible by group_size={self.group_size} "
+        f"for {precision}, got logical in_features={in_features}.")
 
     self.qweight = nn.Parameter(
-      torch.empty(out_features, in_features // 2, dtype=torch.int8, device=device),
+      torch.empty(padded_out, padded_in // 2, dtype=torch.int8, device=device),
       requires_grad=False,
     )
-    self.bias = (nn.Parameter(torch.empty(out_features, dtype=torch_dtype, device=device),
+    self.bias = (nn.Parameter(torch.empty(padded_out, dtype=torch_dtype, device=device),
                               requires_grad=True) if bias else None)
     self.wscales = nn.Parameter(
       torch.empty(
-        in_features // self.group_size,
-        out_features,
+        padded_in // self.group_size,
+        padded_out,
         dtype=torch_dtype if precision == "int4" else torch.float8_e4m3fn,
         device=device,
       ),
       requires_grad=False,
     )
     self.smooth_factor = nn.Parameter(
-      torch.empty(in_features, dtype=torch_dtype, device=device),
+      torch.empty(padded_in, dtype=torch_dtype, device=device),
       requires_grad=False,
     )
     self.smooth_factor_orig = nn.Parameter(
-      torch.empty(in_features, dtype=torch_dtype, device=device),
+      torch.empty(padded_in, dtype=torch_dtype, device=device),
       requires_grad=False,
     )
-    self.proj_down = nn.Parameter(torch.empty(in_features, rank, dtype=torch_dtype, device=device))
-    self.proj_up = nn.Parameter(torch.empty(out_features, rank, dtype=torch_dtype, device=device))
+    self.proj_down = nn.Parameter(torch.empty(padded_in, rank, dtype=torch_dtype, device=device))
+    self.proj_up = nn.Parameter(torch.empty(padded_out, rank, dtype=torch_dtype, device=device))
 
     if precision == "nvfp4":
       self.wcscales = nn.Parameter(
-        torch.ones(out_features, dtype=torch_dtype, device=device),
+        torch.ones(padded_out, dtype=torch_dtype, device=device),
         requires_grad=False,
       )
       self.wtscale = 1.0
@@ -173,10 +182,14 @@ class SVDQW4A4Linear(nn.Module):
     for extent in leading_shape:
       token_count *= extent
     x = x.reshape(token_count, channels)
+
+    if self._needs_k_pad:
+      x = F.pad(x, (0, self._padded_in_features - self.in_features))
+
     quantized_x, ascales, lora_act_out = self.quantize(x)
     use_direct_output = output is not None and output.shape == (
       quantized_x.shape[0],
-      self.out_features,
+      self._padded_out_features,
     )
     padded_output = self.forward_quant(
       quantized_x,
@@ -186,6 +199,9 @@ class SVDQW4A4Linear(nn.Module):
     )
 
     logical_output = padded_output[:token_count]
+    if self._needs_n_strip:
+      logical_output = logical_output[:, :self.out_features]
+
     if output is not None and not use_direct_output:
       expected_shape = (*leading_shape, self.out_features)
       if output.shape != expected_shape:
@@ -263,9 +279,13 @@ class SVDQW4A4Linear(nn.Module):
     return result
 
   def __repr__(self) -> str:
+    extra = ""
+    if self._needs_k_pad or self._needs_n_strip:
+      extra = (f", padded_in={self._padded_in_features}"
+               f", padded_out={self._padded_out_features}")
     return (f"SVDQW4A4Linear(in_features={self.in_features}, out_features={self.out_features}, "
             f"rank={self.rank}, precision={self.precision}, act_unsigned={self.act_unsigned}, "
-            f"runtime_kernel={self.runtime_kernel})")
+            f"runtime_kernel={self.runtime_kernel}{extra})")
 
 
 __all__ = ["SVDQW4A4Linear"]
