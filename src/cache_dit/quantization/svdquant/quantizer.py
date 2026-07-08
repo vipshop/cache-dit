@@ -970,6 +970,9 @@ def _quantize_from_smooth_scale(
   smooth_scale_orig = _repair_invalid_scale(smooth_scale_orig.to(device=device, dtype=torch_dtype))
 
   smoothed_weight = weight.to(dtype=math_dtype) * smooth_scale.to(dtype=math_dtype).unsqueeze(0)
+  # NOTE: The SVD decomposition is performed before the padding step, so the low-rank factors
+  # are computed for the original weight shape and make it strictly match the math precision.
+  # The padding below is applied afterwards to ensure compatibility with hardware constraints.
   lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
     smoothed_weight,
     rank,
