@@ -7,6 +7,7 @@ import warnings
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 from .dtensor import SVDQShardSpec
 from .dtensor import SVDQW4A4ShardLinear
@@ -1005,20 +1006,17 @@ def _quantize_from_smooth_scale(
   needs_pad = padded_in != local_in_features or padded_out != local_out_features
 
   if needs_pad:
-    residual = torch.nn.functional.pad(
-      residual, (0, padded_in - local_in_features, 0, padded_out - local_out_features))
-    smooth_scale = torch.nn.functional.pad(smooth_scale, (0, padded_in - local_in_features),
-                                           value=1.0)
-    smooth_scale_orig = torch.nn.functional.pad(smooth_scale_orig,
-                                                (0, padded_in - local_in_features),
-                                                value=1.0)
+    residual = F.pad(residual,
+                     (0, padded_in - local_in_features, 0, padded_out - local_out_features))
+    smooth_scale = F.pad(smooth_scale, (0, padded_in - local_in_features), value=1.0)
+    smooth_scale_orig = F.pad(smooth_scale_orig, (0, padded_in - local_in_features), value=1.0)
     if bias is not None:
-      bias = torch.nn.functional.pad(bias, (0, padded_out - local_out_features))
+      bias = F.pad(bias, (0, padded_out - local_out_features))
     if rank > 0:
-      lowrank_down = torch.nn.functional.pad(lowrank_down, (0, padded_in - local_in_features))
-      lowrank_up = torch.nn.functional.pad(lowrank_up, (0, 0, 0, padded_out - local_out_features))
+      lowrank_down = F.pad(lowrank_down, (0, padded_in - local_in_features))
+      lowrank_up = F.pad(lowrank_up, (0, 0, 0, padded_out - local_out_features))
     if channel_scales is not None:
-      channel_scales = torch.nn.functional.pad(
+      channel_scales = F.pad(
         channel_scales,
         (0, 0, 0, 0, 0, 0, 0, padded_out - local_out_features),
         value=1.0,
@@ -1026,7 +1024,7 @@ def _quantize_from_smooth_scale(
     group_scales_pad_out = padded_out - local_out_features
     group_scales_pad_in = (padded_in - local_in_features) // _resolve_svdq_group_size(precision)
     if group_scales_pad_out > 0 or group_scales_pad_in > 0:
-      group_scales = torch.nn.functional.pad(
+      group_scales = F.pad(
         group_scales,
         (0, 0, 0, group_scales_pad_in, 0, 0, 0, group_scales_pad_out),
         value=1.0,
