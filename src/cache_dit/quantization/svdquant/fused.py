@@ -53,16 +53,17 @@ def fused_gelu_mlp(
   quantized_x, ascales, lora_act = fc1.quantize(x, pad_size=pad_size)
 
   batch_size_pad = quantized_x.shape[0]
+  fc1_out_padded = getattr(fc1, '_padded_out_features', fc1.out_features)
 
   if fc2.precision == "nvfp4":
     qout_act = torch.empty(
       batch_size_pad,
-      fc1.out_features // 2,
+      fc1_out_padded // 2,
       dtype=torch.uint8,
       device=x.device,
     )
     qout_ascales = torch.empty(
-      fc1.out_features // 16,
+      fc1_out_padded // 16,
       batch_size_pad,
       dtype=torch.float8_e4m3fn,
       device=x.device,
@@ -70,12 +71,12 @@ def fused_gelu_mlp(
   else:
     qout_act = torch.empty(
       batch_size_pad,
-      fc1.out_features // 2,
+      fc1_out_padded // 2,
       dtype=torch.uint8,
       device=x.device,
     )
     qout_ascales = torch.empty(
-      fc1.out_features // 64,
+      fc1_out_padded // 64,
       batch_size_pad,
       dtype=x.dtype,
       device=x.device,
@@ -107,6 +108,8 @@ def fused_gelu_mlp(
 
   output = fc2.forward_quant(qout_act, qout_ascales, qout_lora_act)
   output = output[:token_count]
+  if hasattr(fc2, '_needs_n_strip') and fc2._needs_n_strip:
+    output = output[:, :fc2.out_features]
   return output.reshape(*leading_shape, fc2.out_features)
 
 
@@ -149,9 +152,10 @@ def fused_gelu_proj(
   quantized_x, ascales, lora_act = fc1.quantize(x, pad_size=pad_size)
 
   batch_size_pad = quantized_x.shape[0]
+  fc1_out_padded = getattr(fc1, '_padded_out_features', fc1.out_features)
   out = torch.empty(
     batch_size_pad,
-    fc1.out_features,
+    fc1_out_padded,
     dtype=x.dtype,
     device=x.device,
   )
@@ -161,12 +165,12 @@ def fused_gelu_proj(
   if fc1.precision == "nvfp4":
     qout_act = torch.empty(
       batch_size_pad,
-      fc1.out_features // 2,
+      fc1_out_padded // 2,
       dtype=torch.uint8,
       device=x.device,
     )
     qout_ascales = torch.empty(
-      fc1.out_features // 16,
+      fc1_out_padded // 16,
       batch_size_pad,
       dtype=torch.float8_e4m3fn,
       device=x.device,
@@ -174,12 +178,12 @@ def fused_gelu_proj(
   else:
     qout_act = torch.empty(
       batch_size_pad,
-      fc1.out_features // 2,
+      fc1_out_padded // 2,
       dtype=torch.uint8,
       device=x.device,
     )
     qout_ascales = torch.empty(
-      fc1.out_features // 64,
+      fc1_out_padded // 64,
       batch_size_pad,
       dtype=x.dtype,
       device=x.device,
@@ -188,7 +192,7 @@ def fused_gelu_proj(
   # smooth_factor must match fc1.out_features (output dim N),
   # not fc1.in_features (fc1.smooth_factor is for input quant).
   smooth_ones = torch.ones(
-    fc1.out_features,
+    fc1_out_padded,
     dtype=x.dtype,
     device=x.device,
   )
@@ -211,6 +215,8 @@ def fused_gelu_proj(
   )
 
   out = out[:token_count]
+  if hasattr(fc1, '_needs_n_strip') and fc1._needs_n_strip:
+    out = out[:, :fc1.out_features]
   return out.reshape(*leading_shape, fc1.out_features)
 
 

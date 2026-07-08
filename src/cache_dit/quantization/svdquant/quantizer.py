@@ -93,17 +93,15 @@ def validate_linear_geometry(
     raise ValueError(
       f"{precision.upper()} SVDQuant requires in_features divisible by {group_size}, got {in_features}."
     )
-  if in_features % 128 != 0:
-    raise ValueError(
-      f"The migrated W4A4 packer/runtime requires in_features divisible by 128, got {in_features}.")
-  if out_features % 128 != 0:
-    raise ValueError(
-      f"The migrated W4A4 packer/runtime requires out_features divisible by 128, got {out_features}."
-    )
   if rank < 0:
     raise ValueError(f"rank must be non-negative, got {rank}.")
   if rank != 0 and rank % 16 != 0:
     raise ValueError(f"The migrated W4A4 runtime requires rank 0 or a multiple of 16, got {rank}.")
+
+
+def _pad_to_multiple_128(x: int) -> int:
+  """Round up to the nearest multiple of 128 for the SVDQ W4A4 packer/runtime tile."""
+  return ((x + 127) // 128) * 128
 
 
 def _normalize_dtype(torch_dtype: torch.dtype | None, device: torch.device | str) -> torch.dtype:
@@ -998,6 +996,39 @@ def _quantize_from_smooth_scale(
 
   local_bias, _ = SVDQW4A4ShardLinear.resolve_local(linear.bias)
   bias = None if local_bias is None else local_bias.detach().to(device=device, dtype=torch_dtype)
+
+  padded_in = _pad_to_multiple_128(local_in_features)
+  padded_out = _pad_to_multiple_128(local_out_features)
+  needs_pad = padded_in != local_in_features or padded_out != local_out_features
+
+  if needs_pad:
+    residual = torch.nn.functional.pad(
+      residual, (0, padded_in - local_in_features, 0, padded_out - local_out_features))
+    smooth_scale = torch.nn.functional.pad(smooth_scale, (0, padded_in - local_in_features),
+                                           value=1.0)
+    smooth_scale_orig = torch.nn.functional.pad(smooth_scale_orig,
+                                                (0, padded_in - local_in_features),
+                                                value=1.0)
+    if bias is not None:
+      bias = torch.nn.functional.pad(bias, (0, padded_out - local_out_features))
+    if rank > 0:
+      lowrank_down = torch.nn.functional.pad(lowrank_down, (0, padded_in - local_in_features))
+      lowrank_up = torch.nn.functional.pad(lowrank_up, (0, 0, 0, padded_out - local_out_features))
+    if channel_scales is not None:
+      channel_scales = torch.nn.functional.pad(
+        channel_scales,
+        (0, 0, 0, 0, 0, 0, 0, padded_out - local_out_features),
+        value=1.0,
+      )
+    group_scales_pad_out = padded_out - local_out_features
+    group_scales_pad_in = (padded_in - local_in_features) // _resolve_svdq_group_size(precision)
+    if group_scales_pad_out > 0 or group_scales_pad_in > 0:
+      group_scales = torch.nn.functional.pad(
+        group_scales,
+        (0, 0, 0, group_scales_pad_in, 0, 0, 0, group_scales_pad_out),
+        value=1.0,
+      )
+
   raw_state_dict = export_raw_svdq_w4a4_state_dict(
     residual,
     scale=channel_scales if channel_scales is not None else group_scales,
@@ -1010,8 +1041,8 @@ def _quantize_from_smooth_scale(
   )
   module_state_dict = adapt_svdq_module_state_dict(
     raw_state_dict,
-    in_features=local_in_features,
-    out_features=local_out_features,
+    in_features=padded_in,
+    out_features=padded_out,
     rank=rank,
     precision=_normalize_svdq_precision(precision),
     torch_dtype=torch_dtype,
