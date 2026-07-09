@@ -31,6 +31,7 @@ def _safe_import(module_name: str, class_name: str) -> type[PatchFunctor]:
 DiTPatchFunctor = _safe_import(".functor_dit", "DiTPatchFunctor")
 FluxPatchFunctor = _safe_import(".functor_flux", "FluxPatchFunctor")
 ChromaPatchFunctor = _safe_import(".functor_chroma", "ChromaPatchFunctor")
+Cosmos3OmniPatchFunctor = _safe_import(".functor_cosmos3", "Cosmos3OmniPatchFunctor")
 HiDreamPatchFunctor = _safe_import(".functor_hidream", "HiDreamPatchFunctor")
 HunyuanDiTPatchFunctor = _safe_import(".functor_hunyuan_dit", "HunyuanDiTPatchFunctor")
 QwenImageControlNetPatchFunctor = _safe_import(".functor_qwen_image_controlnet",
