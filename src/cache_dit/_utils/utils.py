@@ -800,6 +800,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       # with attn masks, e.g., ZImage. It is not in diffusers yet.
       "_sdpa_cudnn",
       "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
+      "sage3",  # SageAttention-3 Blackwell FP4 backend
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
       "_mindiesd_laser",  # MindIE-SD laser attention

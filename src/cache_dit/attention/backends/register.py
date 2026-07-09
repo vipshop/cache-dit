@@ -35,6 +35,7 @@ class _AttnBackend(str, Enum):
   FLASH = "flash"
   FLASH_VARLEN = "flash_varlen"
   SAGE = "sage"
+  SAGE3 = "sage3"
   _FLASH_3 = "_flash_3"
   _SDPA_CUDNN = "_sdpa_cudnn"
   _NATIVE_NPU = "_native_npu"
