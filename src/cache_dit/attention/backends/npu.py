@@ -79,6 +79,7 @@ def _native_npu_attention(
       1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
       None,
       return_lse,
+      None,  # cp_gqa_strategy
       forward_op=None,
       backward_op=None,
       _cp_config=_cp_config,
@@ -127,6 +128,7 @@ def _npu_fused_infer_attention(
       1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
       None,
       return_lse,
+      None,  # cp_gqa_strategy
       forward_op=None,
       backward_op=None,
       _cp_config=_cp_config,

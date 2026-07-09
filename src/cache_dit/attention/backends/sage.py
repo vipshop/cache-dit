@@ -79,6 +79,7 @@ def _sage_attention(
   scale: Optional[float] = None,
   enable_gqa: bool = False,
   return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
   if attn_mask is not None:
@@ -115,6 +116,7 @@ def _sage_attention(
       scale,
       False,
       return_lse,
+      cp_gqa_strategy,
       forward_op=_sage_attention_forward_op,
       backward_op=_sage_attention_backward_op,
       _cp_config=_cp_config,
