@@ -19,19 +19,19 @@ except ImportError:
 class Cosmos3OmniPatchFunctor(PatchFunctor):
   """Adapt Cosmos3OmniTransformer (MoT: joint und/gen dual-stream) to cache-dit.
 
-    Cosmos3's decoder layers take/return ``(und_seq, gen_seq)`` — the causal
-    text (understanding) stream first and the generation (vision/sound/action)
-    stream second. cache-dit's DBCache computes its cache decision on the FIRST
-    positional arg (``hidden_states``). The und stream is (near-)static across
-    denoising steps (text embeddings do not change with the timestep), so using
-    it for the residual-diff decision would make every step a cache hit and
-    break generation.
+  Cosmos3's decoder layers take/return ``(und_seq, gen_seq)`` — the causal
+  text (understanding) stream first and the generation (vision/sound/action)
+  stream second. cache-dit's DBCache computes its cache decision on the FIRST
+  positional arg (``hidden_states``). The und stream is (near-)static across
+  denoising steps (text embeddings do not change with the timestep), so using
+  it for the residual-diff decision would make every step a cache hit and
+  break generation.
 
-    This functor therefore rewires the block contract to
-    ``(hidden_states=gen_seq, encoder_hidden_states=und_seq)`` —
-    ForwardPattern.Pattern_0 — so the cache decision tracks the DENOISED
-    stream, and patches the transformer forward's layer loop accordingly.
-    """
+  This functor therefore rewires the block contract to
+  ``(hidden_states=gen_seq, encoder_hidden_states=und_seq)`` —
+  ForwardPattern.Pattern_0 — so the cache decision tracks the DENOISED
+  stream, and patches the transformer forward's layer loop accordingly.
+  """
 
   def _apply(
     self,
