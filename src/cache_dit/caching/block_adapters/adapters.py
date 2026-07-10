@@ -362,6 +362,29 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
 def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import CosmosTransformer3DModel
 
+  try:
+    from diffusers import Cosmos3OmniTransformer
+  except ImportError:
+    Cosmos3OmniTransformer = None
+
+  if Cosmos3OmniTransformer is not None and isinstance(pipe.transformer, Cosmos3OmniTransformer):
+    # Cosmos3 Omni (Cosmos3-Nano/Super): MoT dual-stream (und/gen) DiT.
+    # Needs a patch functor to reorder the block contract so the cache
+    # decision tracks the denoised gen stream (see functor docstring).
+    from ..patch_functors import Cosmos3OmniPatchFunctor
+
+    return BlockAdapter(
+      pipe=pipe,
+      transformer=pipe.transformer,
+      blocks=pipe.transformer.layers,
+      forward_pattern=ForwardPattern.Pattern_0,
+      patch_functor=Cosmos3OmniPatchFunctor(),
+      check_forward_pattern=True,
+      # Cosmos3OmniPipeline runs cond/uncond as separate transformer calls.
+      has_separate_cfg=True,
+      **kwargs,
+    )
+
   _relaxed_assert(pipe.transformer, CosmosTransformer3DModel)
   return BlockAdapter(
     pipe=pipe,

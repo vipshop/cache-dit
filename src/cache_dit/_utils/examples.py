@@ -46,6 +46,7 @@ __all__ = [
   "firered_image_edit_example",
   "helios_t2v_example",
   "helios_t2v_distill_example",
+  "cosmos3_omni_example",
   "flux2_klein_kv_edit_example",
   "boogu_image_edit_example",
   "ernie_image_example",
@@ -98,6 +99,7 @@ _env_path_mapping = {
   "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
   "HELIOS_BASE_DIR": "BestWishYsh/Helios-Base",
   "HELIOS_DISTILLED_DIR": "BestWishYsh/Helios-Distilled",
+  "COSMOS3_OMNI_DIR": "nvidia/Cosmos3-Nano",
   "BOOGU_IMAGE_EDIT_DIR": "BOOGU-IMAGE/Boogu-Image-0.1-Edit",
   "ERNIE_IMAGE_DIR": "baidu/ERNIE-Image",
   "ERNIE_IMAGE_TURBO_DIR": "baidu/ERNIE-Image-Turbo",
@@ -1512,6 +1514,71 @@ def _boogu_post_init_hook(pipe):
     return _original_call(self, **kwargs)
 
   pipe.__class__.__call__ = _wrapped_call
+
+
+@ExampleRegister.register("cosmos3_omni_t2v", default="nvidia/Cosmos3-Nano")
+@ExampleRegister.register("cosmos3_omni_t2i", default="nvidia/Cosmos3-Nano")
+def cosmos3_omni_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import Cosmos3OmniPipeline
+
+  model_name_or_path = _path("nvidia/Cosmos3-Nano", args=args)
+
+  class _Cosmos3OmniPipelineLoader:
+    """Load Cosmos3OmniPipeline with the optional guardrail disabled.
+
+    The Cosmos guardrail requires the optional `cosmos_guardrail` package
+    (plus extra model downloads). Disable it so the benchmark example runs
+    out of the box (the returned object is a genuine Cosmos3OmniPipeline,
+    so cache-dit adapter matching works). Install `cosmos_guardrail` and
+    pass `enable_safety_checker=True` to generate real content under the
+    NVIDIA Open Model License terms.
+    """
+
+    @staticmethod
+    def from_pretrained(*fp_args, **fp_kwargs):
+      fp_kwargs.setdefault("enable_safety_checker", False)
+      return Cosmos3OmniPipeline.from_pretrained(*fp_args, **fp_kwargs)
+
+  # Cosmos3 Omni selects the task from `num_frames`: 1 -> T2I, >1 -> T2V.
+  is_t2i = "t2i" in args.example.lower()
+  num_frames = 1 if is_t2i else 93
+
+  # The pipeline output field is `video` (list of PIL frames), not `frames`;
+  # rename so the generic T2V/T2I output handling can pick it up.
+  def _patch_output_alias(pipe, **kwargs):
+    _original_call = pipe.__class__.__call__
+
+    def _wrapped_call(self, **call_kwargs):
+      output = _original_call(self, **call_kwargs)
+      if hasattr(output, "video") and not hasattr(output, "frames"):
+        if is_t2i:
+          output.images = output.video  # list of PIL frames; T2I -> 1 frame
+        else:
+          output.frames = [output.video]
+      return output
+
+    pipe.__class__.__call__ = _wrapped_call
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I if is_t2i else ExampleType.T2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=_Cosmos3OmniPipelineLoader,
+      bnb_4bit_components=["transformer"],
+      post_init_hook=_patch_output_alias,
+    ),
+    input_data=ExampleInputData(
+      prompt=("A high-tech warehouse robot arm carefully picks up a glass vial "
+              "from a metal tray and places it into a padded container, smooth "
+              "and precise motion, photorealistic, cinematic lighting"),
+      height=480,
+      width=832,
+      num_frames=num_frames,
+      num_inference_steps=35,
+      guidance_scale=6.0,
+    ),
+  )
 
 
 @ExampleRegister.register("boogu_image_edit", default="BOOGU-IMAGE/Boogu-Image-0.1-Edit")
