@@ -333,7 +333,7 @@ class QuantizeConfig:
   backend: str | QuantizeBackend = QuantizeBackend.AUTO
   # Quantization type, currently support "float8_weight_only" and "float8_per_row",
   # "float8_per_tensor", "float8_per_block", "int8_per_row", "int8_per_tensor",
-  # "int8_weight_only", "int4_weight_only", etc.
+  # "int8_weight_only", "int4_weight_only", "nvfp4", "nvfp4_weight_only", etc.
   quant_type: str = "float8_per_row"
   # The layers specified in this variable will be excluded from quantization,
   # even if they are in the repeated blocks or not filtered out by filter_fn.
