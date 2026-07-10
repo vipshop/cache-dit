@@ -425,6 +425,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "float8_per_tensor",
       "float8_per_block",
       "float8_weight_only",
+      "nvfp4",
+      "nvfp4_weight_only",
       "int8_per_row",
       "int8_per_tensor",
       "int8_weight_only",
@@ -515,6 +517,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Enable int4 weight-only quantization for transformer",
+  )
+  parser.add_argument(
+    "--nvfp4",
+    action="store_true",
+    default=False,
+    help="Enable TorchAO NVFP4 dynamic activation and weight quantization for transformer",
+  )
+  parser.add_argument(
+    "--nvfp4-weight-only",
+    action="store_true",
+    default=False,
+    help="Enable TorchAO NVFP4 weight-only quantization for transformer",
   )
   parser.add_argument(
     "--svdq-int4-r32-dq",
@@ -1183,38 +1197,36 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   # Force enable quantization if quantize_type is specified
-  if args.float8_per_row:
-    args.quantize_type = "float8_per_row"
-  elif args.float8_per_tensor:
-    args.quantize_type = "float8_per_tensor"
-  elif args.float8_per_block:
-    args.quantize_type = "float8_per_block"
-  elif args.float8_weight_only:
-    args.quantize_type = "float8_weight_only"
-  elif args.int8_per_row:
-    args.quantize_type = "int8_per_row"
-  elif args.int8_per_tensor:
-    args.quantize_type = "int8_per_tensor"
-  elif args.int8_weight_only:
-    args.quantize_type = "int8_weight_only"
-  elif args.int4_weight_only:
-    args.quantize_type = "int4_weight_only"
-  elif args.svdq_int4_r32_dq:
-    args.quantize_type = "svdq_int4_r32_dq"
-  elif args.svdq_int4_r64_dq:
-    args.quantize_type = "svdq_int4_r64_dq"
-  elif args.svdq_int4_r128_dq:
-    args.quantize_type = "svdq_int4_r128_dq"
-  elif args.svdq_int4_r256_dq:
-    args.quantize_type = "svdq_int4_r256_dq"
-  elif args.svdq_nvfp4_r32_dq:
-    args.quantize_type = "svdq_nvfp4_r32_dq"
-  elif args.svdq_nvfp4_r64_dq:
-    args.quantize_type = "svdq_nvfp4_r64_dq"
-  elif args.svdq_nvfp4_r128_dq:
-    args.quantize_type = "svdq_nvfp4_r128_dq"
-  elif args.svdq_nvfp4_r256_dq:
-    args.quantize_type = "svdq_nvfp4_r256_dq"
+  quantize_shortcuts = [
+    ("float8_per_row", args.float8_per_row),
+    ("float8_per_tensor", args.float8_per_tensor),
+    ("float8_per_block", args.float8_per_block),
+    ("float8_weight_only", args.float8_weight_only),
+    ("int8_per_row", args.int8_per_row),
+    ("int8_per_tensor", args.int8_per_tensor),
+    ("int8_weight_only", args.int8_weight_only),
+    ("int4_weight_only", args.int4_weight_only),
+    ("nvfp4", args.nvfp4),
+    ("nvfp4_weight_only", args.nvfp4_weight_only),
+    ("svdq_int4_r32_dq", args.svdq_int4_r32_dq),
+    ("svdq_int4_r64_dq", args.svdq_int4_r64_dq),
+    ("svdq_int4_r128_dq", args.svdq_int4_r128_dq),
+    ("svdq_int4_r256_dq", args.svdq_int4_r256_dq),
+    ("svdq_nvfp4_r32_dq", args.svdq_nvfp4_r32_dq),
+    ("svdq_nvfp4_r64_dq", args.svdq_nvfp4_r64_dq),
+    ("svdq_nvfp4_r128_dq", args.svdq_nvfp4_r128_dq),
+    ("svdq_nvfp4_r256_dq", args.svdq_nvfp4_r256_dq),
+  ]
+  selected_shortcuts = [quant_type for quant_type, enabled in quantize_shortcuts if enabled]
+  if len(selected_shortcuts) > 1:
+    raise ValueError(f"Quantization shortcuts are mutually exclusive, got {selected_shortcuts}.")
+  if selected_shortcuts:
+    selected_quant_type = selected_shortcuts[0]
+    if args.quantize_type is not None and args.quantize_type != selected_quant_type:
+      raise ValueError(
+        f"--quantize-type {args.quantize_type} conflicts with --{selected_quant_type.replace('_', '-')}."
+      )
+    args.quantize_type = selected_quant_type
 
   if args.quantize_type is not None:
     args.quantize = True

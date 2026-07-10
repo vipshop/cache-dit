@@ -18,6 +18,8 @@ _ALLOWED_QUANTIZE_TYPES = [
   "float8_per_tensor",
   "float8_per_block",
   "float8_weight_only",
+  "nvfp4",
+  "nvfp4_weight_only",
   "int8_per_row",
   "int8_per_tensor",
   "int8_weight_only",
@@ -29,6 +31,8 @@ _PREFERRED_PRECISION_PLAN_ORDER = [
   "float8_per_row",
   "float8_per_block",
   "float8_weight_only",
+  "nvfp4",
+  "nvfp4_weight_only",
   "int8_per_tensor",
   "int8_per_row",
   "int8_weight_only",
@@ -197,6 +201,12 @@ class QuantizeAOContext:
         8,
         9,
       ), "FP8 requires Ada or newer GPUs (>=sm89), but got " + str(
+        current_platform.get_device_capability())
+    if self.is_nvfp4():
+      assert current_platform.get_device_capability() >= (
+        10,
+        0,
+      ), "NVFP4 requires Blackwell or newer GPUs (>=sm100), but got " + str(
         current_platform.get_device_capability())
 
   @staticmethod
@@ -411,6 +421,12 @@ class QuantizeAOContext:
   def is_float8_weight_only(self) -> bool:
     return self.quant_type == "float8_weight_only"
 
+  def is_nvfp4(self) -> bool:
+    return self.quant_type in ("nvfp4", "nvfp4_weight_only")
+
+  def is_nvfp4_weight_only(self) -> bool:
+    return self.quant_type == "nvfp4_weight_only"
+
   def required_fallback(self) -> bool:
     # Currently, only support float8 per-tensor fallback for rowwise layers if
     # regional quantiztion is enabled. Not support fallback for int8/int4/weight-only
@@ -550,6 +566,20 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
         torch.float8_e4m3fn,
       ), )
 
+    elif quant_type == "nvfp4":
+      from torchao.prototype.mx_formats.inference_workflow import (
+        NVFP4DynamicActivationNVFP4WeightConfig, )
+
+      quant_config = NVFP4DynamicActivationNVFP4WeightConfig(
+        use_triton_kernel=True,
+        use_dynamic_per_tensor_scale=True,
+      )
+
+    elif quant_type == "nvfp4_weight_only":
+      from torchao.prototype.mx_formats.inference_workflow import NVFP4WeightOnlyConfig
+
+      quant_config = NVFP4WeightOnlyConfig(use_dynamic_per_tensor_scale=True)
+
     elif quant_type == "int8_per_row":
       from torchao.quantization import (
         Int8DynamicActivationInt8WeightConfig,
@@ -657,6 +687,20 @@ def _basic_filter_fn(
       quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
       logger.debug(skip_reason)
       return False
+
+    if curr_quant_type in ("nvfp4", "nvfp4_weight_only"):
+      weight_shape = tuple(m.weight.shape)
+      if weight_shape[-2] % 16 != 0 or weight_shape[-1] % 16 != 0:
+        skip_reason = _skip_reason(f"weight_shape{weight_shape}%16!=0")
+        quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+        logger.debug(skip_reason)
+        return False
+      if (curr_quant_type == "nvfp4"
+          and (weight_shape[-2] <= 64 or (weight_shape[-1] <= 1024 and weight_shape[-2] <= 1024))):
+        skip_reason = _skip_reason(f"weight_shape{weight_shape} is too small")
+        quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
+        logger.debug(skip_reason)
+        return False
 
     # check blockwise fp8 support for linear layers, if not supported,
     # skip quantization for that layer.

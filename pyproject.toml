@@ -28,7 +28,7 @@ ray = [
 ]
 
 quantization = [
-    "torchao>=0.14.1",
+    "torchao>=0.17.0",
     "bitsandbytes>=0.48.1",
     "safetensors>=0.5.3",
 ]

@@ -16,6 +16,8 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
+|<span style="color:#c77dff;">nvfp4</span>|TorchAO dynamic activation and NVFP4 weight quantization. The current integration uses Triton activation quantization and dynamic per-tensor scaling.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
+|<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. <span style="color:green;">Only</span> <span style="color:#c77dff;">svdq_kwargs["runtime_kernel"]="v1"</span> is currently supported.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
@@ -289,12 +291,41 @@ INT4 quantization can provide even better memory reduction compared to FP8 or IN
 Please note that users should also install <span style="color:#c77dff;">mslk</span> kernel library to enable INT8/INT4 quantization features. The <span style="color:#c77dff;">int4_weight_only</span> w4a16 compute kennel requires architectures >= <span style="color:#c77dff;">sm90</span> (Hopper or newer, TMA required). For older architectures, users can use <span style="color:#c77dff;">int8_weight_only</span> quantization for better compatibility. 
 
 ```bash
-# stable: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.11.0
-uv pip install torch==2.11.0 mslk --index-url https://download.pytorch.org/whl/cu130 --upgrade
-# nightly: mslk (change cu130 to cu129 if using CUDA 12.9), required torch>=2.11.0
-uv pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
+# stable: mslk (change cu13x to cu129 if using CUDA 12.9), torch>=2.11.0
+# mslk version matching: torch==2.11.x mslk==1.1.0; torch==2.12.x mslk==1.2.0
+pip install torch==2.11.0 mslk==1.1.0 --index-url https://download.pytorch.org/whl/cu130
+pip install torch==2.12.0 mslk==1.2.0 --index-url https://download.pytorch.org/whl/cu132
+# nightly: mslk (change cu13x to cu129 if using CUDA 12.9), required torch>=2.11.0
+pip install --pre torch mslk --index-url https://download.pytorch.org/whl/nightly/cu132
 ```
+
 In the case of <span style="color:#c77dff;">distributed inference</span> (context parallelism or tensor parallelism), we recommend users to use <span style="color:#c77dff;">float8 quantization</span> to avoid potential compatibility issues.
+
+
+## TorchAO NVFP4 Quantization
+
+<span style="color:#c77dff;">nvfp4</span> uses <span style="color:green;">NVFP4DynamicActivationNVFP4WeightConfig</span> from TorchAO's MX formats prototype. Cache-DiT currently fixes both <span style="color:#c77dff;">use_triton_kernel=True</span> and <span style="color:#c77dff;">use_dynamic_per_tensor_scale=True</span>. It is an online dynamic quantization path and is separate from the <span style="color:#c77dff;">svdq_nvfp4_*</span> SVDQuant path. (Required <span style="color:green;">mslk</span> kernels library)
+
+For example:
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig  
+
+cache_dit.enable_cache( 
+  pipe, cache_config=..., quantize_config=QuantizeConfig(quant_type="nvfp4"), 
+)
+```
+
+The current implementation requires Blackwell or newer GPUs (SM100+) and skips Linear layers whose two weight dimensions are not divisible by 16 or whose output dimensions are too small for the NVFP4 kernel. The supported CLI shortcut is:
+
+```bash
+python3 -m cache_dit.generate flux --nvfp4
+python3 -m cache_dit.generate flux --nvfp4 --compile
+python3 -m cache_dit.generate flux --nvfp4-weight-only
+```
+
+The model must use bfloat16 Linear weights. The Triton activation kernel can fall back internally when a runtime shape does not satisfy its kernel constraints.
 
 ## SVDQuant (W4A4) PTQ
 
@@ -824,7 +855,7 @@ Conversion complete. Load the quantized model with:
 **Experimental weight-only smooth strategy:**
 
 ```bash
-# INT4
+# SVDQ INT4
 cache-dit-convert \
   --model-path black-forest-labs/FLUX.2-klein-4B \
   --save-dir ./FLUX.2-klein-4B-svdq \
@@ -832,7 +863,7 @@ cache-dit-convert \
   --svdq-smooth-strategy weight \
   --svdq-calibrate-precision medium
 
-# NVFP4
+# SVDQ NVFP4
 cache-dit-convert \
   --model-path black-forest-labs/FLUX.2-klein-4B \
   --save-dir ./FLUX.2-klein-4B-svdq-nvfp4 \
@@ -844,7 +875,7 @@ cache-dit-convert \
 **With v2 runtime kernel and verbose logging:**
 
 ```bash
-# INT4 only, NVFP4 DQ is not supported with v2 runtime kernel for now.
+# SVDQ INT4 only, SVDQ NVFP4 DQ is not supported with v2 runtime kernel for now.
 cache-dit-convert \
   --model-path /path/to/FLUX.1-dev \
   --save-dir ./FLUX.1-dev-svdq \
