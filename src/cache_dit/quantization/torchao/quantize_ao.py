@@ -501,6 +501,7 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
         Float8DynamicActivationFloat8WeightConfig,
         PerRow,
       )
+      from torchao.quantization.quantize_.common import KernelPreference
 
       quant_config = Float8DynamicActivationFloat8WeightConfig(
         weight_dtype=kwargs.get(
@@ -512,6 +513,7 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
           torch.float8_e4m3fn,
         ),
         granularity=(PerRow(), PerRow()),
+        kernel_preference=KernelPreference.TORCH,
       )
     elif quant_type == "float8_per_tensor":
       from torchao.quantization import (

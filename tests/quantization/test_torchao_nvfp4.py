@@ -8,11 +8,16 @@ from cache_dit.quantization import QuantizeConfig, quantize
 from cache_dit.quantization.torchao.quantize_ao import _get_torchao_config
 
 torchao = pytest.importorskip("torchao")
+from torchao.quantization.quantize_.common import KernelPreference
+
 nvfp4_workflow = pytest.importorskip("torchao.prototype.mx_formats.inference_workflow")
 NVFP4Tensor = pytest.importorskip("torchao.prototype.mx_formats.nvfp4_tensor").NVFP4Tensor
 
 
 def test_nvfp4_config_and_cli() -> None:
+  float8_config = _get_torchao_config("float8_per_row")
+  assert float8_config.kernel_preference is KernelPreference.TORCH
+
   config = QuantizeConfig(quant_type="nvfp4")
   assert config.strify() == "nvfp4"
   assert config.backend.value == "TORCHAO"
