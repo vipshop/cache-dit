@@ -515,8 +515,14 @@ class SVDQPTQContext:
 
   @property
   def quantized_region(self) -> str:
+    # NOTE: This field is used for logging purpose only.
     if self.regional_quantize and self.repeated_blocks is not None:
-      return str(self.repeated_blocks)
+      # chunk repeated blocks for better logging format (max 2)
+      chunk_repeated_blocks = self.repeated_blocks[:2]
+      if len(self.repeated_blocks) > 2:
+        # show: [block_0, block_1, ...]
+        chunk_repeated_blocks.append("...")
+      return str(chunk_repeated_blocks)
     return self.root_module.__class__.__name__
 
   @property
