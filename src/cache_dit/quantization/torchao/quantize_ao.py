@@ -209,6 +209,18 @@ class QuantizeAOContext:
       ), "NVFP4 requires Blackwell or newer GPUs (>=sm100), but got " + str(
         current_platform.get_device_capability())
 
+  @property
+  def quantized_region(self) -> str:
+    # NOTE: This field is used for logging purpose only.
+    if self.regional_quantize and self.repeated_blocks is not None:
+      # chunk repeated blocks for better logging format (max 2)
+      chunk_repeated_blocks = self.repeated_blocks[:2]
+      if len(self.repeated_blocks) > 2:
+        # show: [block_0, block_1, ...]
+        chunk_repeated_blocks.append("...")
+      return str(chunk_repeated_blocks)
+    return self.module_ref.__class__.__name__ if self.module_ref else "Module"
+
   @staticmethod
   def from_config(
     quantize_config: QuantizeConfig,
@@ -228,9 +240,6 @@ class QuantizeAOContext:
     ).normalize(**kwargs)
 
   def summary(self):
-    quantized_region = (f"{self.repeated_blocks}"
-                        if self.regional_quantize and self.repeated_blocks is not None else
-                        self.module_ref.__class__.__name__ if self.module_ref else "Module")
     # Basic summary info.
     all_quant = sum(self.quantized_map.values())
     all_skip = sum(len(v) for v in self.skipped_map.values())
@@ -239,7 +248,7 @@ class QuantizeAOContext:
     mk = max(len(k) for k in self.quantized_map.keys())
     mc = max(len(str(v)) for v in self.quantized_map.values()) + 3
     quantized_map = {k: v for k, v in self.quantized_map.items() if v > 0}
-    summary_strs.append(f"Quantized        Region: {quantized_region}")
+    summary_strs.append(f"Quantized        Region: {self.quantized_region}")
     for q_type, c in quantized_map.items():
       sk = len(self.skipped_map.get(q_type, []))
       summary_strs.append(f"Quantized Linear Layers: {c:<{mc}} {q_type:<{mk}} {sk} (skipped)")
