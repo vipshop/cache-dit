@@ -111,6 +111,9 @@ _env_path_mapping = {
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
+CACHE_DIT_DIR = os.environ.get("CACHE_DIT_DIR", None)
+CACHE_DIT_FORCE_USE_LOCAL_DATA = os.environ.get("CACHE_DIT_FORCE_USE_LOCAL_DATA",
+                                                "0").lower() == "1"
 
 
 def _path(
@@ -138,6 +141,11 @@ def _path(
     if ENV is None:
       return default
   return os.environ.get(ENV, default)
+
+
+def _force_use_local_data() -> bool:
+  return CACHE_DIT_FORCE_USE_LOCAL_DATA and CACHE_DIT_DIR is not None and os.path.exists(
+    CACHE_DIT_DIR)
 
 
 @ExampleRegister.register("flux", default="black-forest-labs/FLUX.1-dev")
@@ -332,10 +340,15 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
   height = 1024 if args.height is None else args.height
   width = 1024 if args.width is None else args.width
-  image1 = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
-  image2 = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
+  if _force_use_local_data():
+    image1 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/edit2509_2.jpg"))
+    image2 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/visualcloze/12265_00.jpg"))
+  else:
+    image1 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
+    image2 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg"
+    )  # cloth
   # resize images to desired size
   image1 = image1.resize((width, height))
   image2 = image2.resize((width, height))
