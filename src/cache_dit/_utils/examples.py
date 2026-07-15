@@ -191,6 +191,14 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
   from diffusers import FluxFillPipeline
 
+  if _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/cup.png"))
+    mask_image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/cup_mask.png"))
+  else:
+    image = load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/cup.png")
+    mask_image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/cup_mask.png")
+
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -203,9 +211,8 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
     ),
     input_data=ExampleInputData(
       prompt="a white paper cup",
-      image=load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/cup.png"),
-      mask_image=load_image(
-        "https://github.com/vipshop/cache-dit/raw/main/examples/data/cup_mask.png"),
+      image=image,
+      mask_image=mask_image,
       guidance_scale=30,
       height=1024,
       width=1024,
@@ -385,10 +392,15 @@ def flux2_klein_kv_edit_example(args: argparse.Namespace, **kwargs) -> Example:
   model_path = _path("black-forest-labs/FLUX.2-klein-9b-kv")
   height = 1024 if args.height is None else args.height
   width = 1024 if args.width is None else args.width
-  image1 = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
-  image2 = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg")  # cloth
+  if _force_use_local_data():
+    image1 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/edit2509_2.jpg"))
+    image2 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/visualcloze/12265_00.jpg"))
+  else:
+    image1 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")  # bear
+    image2 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/visualcloze/12265_00.jpg"
+    )  # cloth
   # resize images to desired size
   image1 = image1.resize((width, height))
   image2 = image2.resize((width, height))
@@ -556,6 +568,15 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
   else:
     model_path_or_name = _path("Qwen/Qwen-Image-Edit-2509", args)
 
+  if _force_use_local_data():
+    image1 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/edit2509_1.jpg"))
+    image2 = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/edit2509_2.jpg"))
+  else:
+    image1 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_1.jpg")
+    image2 = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")
+
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -579,11 +600,7 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=steps,
       true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
-      # image1, image2
-      image=[
-        load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_1.jpg"),
-        load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg"),
-      ],
+      image=[image1, image2],
     ),
   )
 
@@ -636,6 +653,14 @@ def qwen_image_layered_example(args: argparse.Namespace, **kwargs) -> Example:
   from diffusers import QwenImageLayeredPipeline
 
   model_name_or_path = _path("Qwen/Qwen-Image-Layered", args=args)
+  if _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR,
+                                    "examples/data/yarn-art-pikachu.png")).convert("RGBA")
+  else:
+    image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/yarn-art-pikachu.png").convert(
+        "RGBA")
+
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -648,9 +673,7 @@ def qwen_image_layered_example(args: argparse.Namespace, **kwargs) -> Example:
       },
     ),
     input_data=ExampleInputData(
-      image=load_image(
-        "https://github.com/vipshop/cache-dit/raw/main/examples/data/yarn-art-pikachu.png").convert(
-          "RGBA"),
+      image=image,
       prompt="",
       num_inference_steps=50,
       true_cfg_scale=4.0,
@@ -979,10 +1002,15 @@ def wan_vace_example(args: argparse.Namespace, **kwargs) -> Example:
     mask = [mask_black, *[mask_white] * (num_frames - 2), mask_black]
     return frames, mask
 
-  first_frame = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_first_frame.png")
-  last_frame = load_image(
-    "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_last_frame.png")
+  if _force_use_local_data():
+    first_frame = load_image(
+      os.path.join(CACHE_DIT_DIR, "examples/data/flf2v_input_first_frame.png"))
+    last_frame = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/flf2v_input_last_frame.png"))
+  else:
+    first_frame = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_first_frame.png")
+    last_frame = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/flf2v_input_last_frame.png")
 
   height = 512 if args.height is None else args.height
   width = 512 if args.width is None else args.width
@@ -1186,7 +1214,11 @@ def zimage_controlnet_example(args: argparse.Namespace, **kwargs) -> Example:
       torch_dtype=torch.bfloat16,
     )
 
-  control_image = load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/pose.jpg")
+  if _force_use_local_data():
+    control_image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/pose.jpg"))
+  else:
+    control_image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/pose.jpg")
   steps_computation_mask = _zimage_turbo_steps_mask(args)
 
   return Example(
@@ -1308,6 +1340,9 @@ def glm_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
+  elif _force_use_local_data():
+    image_url = os.path.join(CACHE_DIT_DIR, "examples/data/snow_cat.png")
+    image = load_image(image_url).convert("RGB")
   else:
     image_url = "https://github.com/vipshop/cache-dit/raw/main/examples/data/snow_cat.png"
     image = load_image(image_url).convert("RGB")
@@ -1354,6 +1389,9 @@ def firered_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
+  elif _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR,
+                                    "examples/data/firered_edit_example.png")).convert("RGB")
   else:
     image = load_image(
       "https://github.com/vipshop/cache-dit/raw/main/examples/data/firered_edit_example.png"
@@ -1600,6 +1638,8 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
+  elif _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/boogu_01.png")).convert("RGB")
   else:
     image = load_image(
       "https://github.com/vipshop/cache-dit/raw/main/examples/data/boogu_01.png").convert("RGB")
@@ -1708,6 +1748,8 @@ def joy_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
+  elif _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/joy_test.png")).convert("RGB")
   else:
     image = load_image(
       "https://github.com/vipshop/cache-dit/raw/main/examples/data/joy_test.png").convert("RGB")
