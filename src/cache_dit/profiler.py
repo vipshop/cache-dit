@@ -3,9 +3,10 @@
 Reference: Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py
 """
 
-import gzip
+import glob
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 # Default profiler directory
 PROFILER_DIR = os.getenv("CACHE_DIT_TORCH_PROFILER_DIR", "/tmp/cache_dit_profiles")
+
+# NPU profiling depth (Level0 | Level1 | Level2 | none). Higher levels collect more
+# CANN/AscendCL data (e.g. communication.json, api_statistic.csv, aic metrics) at the
+# cost of larger output and slower parsing. See the Ascend PyTorch Profiler docs.
+NPU_PROFILER_LEVEL_ENV = "CACHE_DIT_NPU_PROFILER_LEVEL"
 
 
 def _supported_device() -> bool:
@@ -52,13 +58,92 @@ def _resolve_profiler_backend() -> Tuple:
   return profile, ProfilerActivity, "CUDA"
 
 
+def _npu_profiler_module():
+  """Import and return the ``torch_npu.profiler`` module (NPU only)."""
+
+  import torch_npu.profiler as npu_profiler  # noqa: WPS433
+
+  return npu_profiler
+
+
+def _npu_profiler_level(npu_profiler):
+  """Resolve the NPU profiler level from the env (default Level0).
+
+  :param npu_profiler: The ``torch_npu.profiler`` module.
+  :returns: A ``ProfilerLevel`` enum value.
+  """
+
+  raw = os.getenv(NPU_PROFILER_LEVEL_ENV, "Level0").strip().lower()
+  table = {
+    "none": npu_profiler.ProfilerLevel.Level_none,
+    "level_none": npu_profiler.ProfilerLevel.Level_none,
+    "0": npu_profiler.ProfilerLevel.Level0,
+    "level0": npu_profiler.ProfilerLevel.Level0,
+    "1": npu_profiler.ProfilerLevel.Level1,
+    "level1": npu_profiler.ProfilerLevel.Level1,
+    "2": npu_profiler.ProfilerLevel.Level2,
+    "level2": npu_profiler.ProfilerLevel.Level2,
+  }
+  return table.get(raw, npu_profiler.ProfilerLevel.Level0)
+
+
+def _npu_experimental_config(npu_profiler):
+  """Build the NPU experimental config that produces the full output directory.
+
+  ``export_type=Text`` emits the ``.json``/``.csv`` timeline and summary files plus the
+  aggregate ``.db`` files; ``data_simplification=False`` keeps every generated file
+  (kernel_details.csv, step_trace_time.csv, trace_view.json, op_summary.csv, the
+  ``PROF_XXX`` raw data, ``FRAMEWORK``/``logs``) instead of pruning them.
+
+  :param npu_profiler: The ``torch_npu.profiler`` module.
+  :returns: A tuple of (experimental config, resolved profiler level).
+  """
+
+  level = _npu_profiler_level(npu_profiler)
+  # aic_metrics must match the level, otherwise torch_npu resets it with a warning.
+  aic_metrics = (npu_profiler.AiCMetrics.PipeUtilization if level
+                 in (npu_profiler.ProfilerLevel.Level1,
+                     npu_profiler.ProfilerLevel.Level2) else npu_profiler.AiCMetrics.AiCoreNone)
+  config = npu_profiler._ExperimentalConfig(
+    export_type=[npu_profiler.ExportType.Text],
+    profiler_level=level,
+    aic_metrics=aic_metrics,
+    data_simplification=False,
+  )
+  return config, level
+
+
+def _npu_worker_name(profile_name: str, rank: int, world_size: int) -> str:
+  """Build a valid NPU ``worker_name`` from the profile name.
+
+  ``worker_name`` only allows letters, digits, underscores and hyphens, and becomes the
+  ``{worker_name}_{timestamp}_ascend_pt`` output directory name.
+
+  :param profile_name: The base profile name.
+  :param rank: The distributed rank.
+  :param world_size: The distributed world size.
+  :returns: A sanitized worker name.
+  """
+
+  safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(profile_name or "cache_dit")).strip("_")
+  safe = safe or "cache_dit"
+  if world_size > 1:
+    safe = f"{safe}-rank{rank}"
+  return safe
+
+
 class ProfilerContext:
   """Context manager wrapper around ``torch.profiler`` / ``torch_npu.profiler``.
 
   It centralizes trace-file naming, optional accelerator memory-history capture, and
   multi-rank output layout so profiling can be enabled consistently from scripts or
-  helper decorators. CUDA devices capture memory snapshots via ``torch.cuda.memory``;
-  Ascend NPU devices record memory through the profiler's own ``profile_memory`` option.
+  helper decorators.
+
+  On CUDA it exports a gzip chrome trace and optional ``torch.cuda.memory`` snapshots.
+  On Ascend NPU it drives ``on_trace_ready=tensorboard_trace_handler`` so the full CANN
+  profiling output directory is produced (``ASCEND_PROFILER_OUTPUT`` with
+  ``kernel_details.csv`` / ``step_trace_time.csv`` / ``trace_view.json`` / ``op_summary.csv``
+  plus the ``PROF_XXX`` raw data, ``FRAMEWORK`` and ``logs``), not just a single trace.
   """
 
   def __init__(
@@ -94,6 +179,8 @@ class ProfilerContext:
     # separate torch.cuda.memory history mechanism instead.
     self._is_npu = current_platform.device_type == "npu"
     self._track_memory = "MEM" in self.activities
+    # NPU: worker name used for the {worker_name}_{ts}_ascend_pt output directory.
+    self._npu_worker = None
 
     self.profiler = None
     self.trace_path = None
@@ -126,31 +213,62 @@ class ProfilerContext:
       rank = torch.distributed.get_rank()
       world_size = torch.distributed.get_world_size()
 
+    if not torch_activities:
+      return self
+
+    if self._is_npu:
+      self._start_npu_profiler(profile_fn, rank, world_size, torch_activities)
+    else:
+      self._start_cuda_profiler(profile_fn, rank, world_size, torch_activities)
+
+    return self
+
+  def _start_npu_profiler(self, profile_fn, rank, world_size, torch_activities):
+    """Configure and start the NPU profiler with full-directory export."""
+
+    npu_profiler = _npu_profiler_module()
+    self._npu_worker = _npu_worker_name(self.profile_name, rank, world_size)
+    experimental_config, level = _npu_experimental_config(npu_profiler)
+    trace_handler = npu_profiler.tensorboard_trace_handler(
+      dir_name=str(self.output_dir),
+      worker_name=self._npu_worker,
+      analyse_flag=True,
+      async_mode=False,
+    )
+    self.profiler = profile_fn(
+      activities=torch_activities,
+      with_stack=self.with_stack,
+      record_shapes=self.record_shapes,
+      profile_memory=self._track_memory,
+      on_trace_ready=trace_handler,
+      experimental_config=experimental_config,
+    )
+    self.profiler.start()
+    logger.info(f"Started NPU profiling. Full CANN output will be saved under "
+                f"{self.output_dir}/{self._npu_worker}_<timestamp>_ascend_pt "
+                f"(profiler_level={level}, activities: {self.activities})")
+
+  def _start_cuda_profiler(self, profile_fn, rank, world_size, torch_activities):
+    """Configure and start the CUDA profiler (gzip chrome trace)."""
+
     filename_parts = [self.profile_name]
     if world_size > 1:
       filename_parts.append(f"rank{rank}")
     filename = "-".join(filename_parts) + ".trace.json.gz"
     self.trace_path = self.output_dir / filename
 
-    if self._track_memory and not self._is_npu and torch.cuda.is_available():
+    if self._track_memory and torch.cuda.is_available():
       torch.cuda.memory._record_memory_history(max_entries=100000)
       logger.info("Started CUDA memory profiling")
 
-    if torch_activities:
-      profiler_kwargs = dict(
-        activities=torch_activities,
-        with_stack=self.with_stack,
-        record_shapes=self.record_shapes,
-      )
-      if self._is_npu and self._track_memory:
-        profiler_kwargs["profile_memory"] = True
-      self.profiler = profile_fn(**profiler_kwargs)
-
-      self.profiler.start()
-      logger.info(f"Started profiling. Traces will be saved to: {self.output_dir} "
-                  f"(activities: {self.activities})")
-
-    return self
+    self.profiler = profile_fn(
+      activities=torch_activities,
+      with_stack=self.with_stack,
+      record_shapes=self.record_shapes,
+    )
+    self.profiler.start()
+    logger.info(f"Started profiling. Traces will be saved to: {self.output_dir} "
+                f"(activities: {self.activities})")
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     if not self.enabled:
@@ -162,21 +280,13 @@ class ProfilerContext:
 
       self.profiler.stop()
 
-      logger.info(f"Exporting trace to: {self.trace_path}")
       if self._is_npu:
-        # torch_npu.profiler.export_chrome_trace can only write a plain .json file;
-        # export to a temporary json then gzip it so the .trace.json.gz artifact
-        # convention used on CUDA is preserved. with_suffix("") strips the trailing
-        # ".gz" so the temp path keeps a ".json" suffix the exporter accepts.
-        tmp_trace = self.trace_path.with_suffix("")
-        self.profiler.export_chrome_trace(str(tmp_trace))
-        with open(tmp_trace, "rb") as src, gzip.open(self.trace_path, "wb") as dst:
-          dst.writelines(src)
-        tmp_trace.unlink(missing_ok=True)
+        self.trace_path = self._locate_npu_output()
+        logger.info(f"Profiling completed. NPU profile saved to: {self.trace_path}")
       else:
+        logger.info(f"Exporting trace to: {self.trace_path}")
         self.profiler.export_chrome_trace(str(self.trace_path))
-
-      logger.info(f"Profiling completed. Trace saved to: {self.trace_path}")
+        logger.info(f"Profiling completed. Trace saved to: {self.trace_path}")
 
     if self._track_memory and not self._is_npu and torch.cuda.is_available():
       timestamp = int(time.time())
@@ -192,6 +302,28 @@ class ProfilerContext:
       with open(memory_summary_path, "w") as f:
         f.write(torch.cuda.memory_summary())
       logger.info(f"Memory summary saved to: {memory_summary_path}")
+
+  def _locate_npu_output(self) -> Path:
+    """Find the ``{worker_name}_{timestamp}_ascend_pt`` directory produced by the handler.
+
+    Parsing is synchronous (async_mode=False), so it is normally ready right after
+    ``stop()``; a short poll covers slow disk finalization.
+
+    :returns: The produced output directory (falls back to ``output_dir`` if not found).
+    """
+
+    pattern = str(self.output_dir / f"{self._npu_worker}_*_ascend_pt")
+    for _ in range(10):
+      ready = [
+        c for c in glob.glob(pattern) if os.path.isdir(os.path.join(c, "ASCEND_PROFILER_OUTPUT"))
+      ]
+      if ready:
+        return Path(max(ready, key=os.path.getmtime))
+      time.sleep(0.5)
+    candidates = glob.glob(pattern)
+    if candidates:
+      return Path(max(candidates, key=os.path.getmtime))
+    return self.output_dir
 
 
 def profile_function(

@@ -3,6 +3,7 @@ import pytest
 from cache_dit.platforms import current_platform
 from cache_dit.profiler import (
   ProfilerContext,
+  _npu_worker_name,
   _resolve_profiler_backend,
   _supported_device,
 )
@@ -31,6 +32,24 @@ class TestProfilerBackendSelection:
       assert accelerator == "NPU"
     else:
       assert accelerator == "CUDA"
+
+
+class TestNpuWorkerName:
+
+  def test_sanitizes_disallowed_chars(self):
+    # worker_name only allows [A-Za-z0-9_-]; dots and spaces must be replaced.
+    assert _npu_worker_name("wan2.2_t2v profile", 0, 1) == "wan2_2_t2v_profile"
+
+  def test_appends_rank_for_distributed(self):
+    assert _npu_worker_name("flux", 3, 8) == "flux-rank3"
+
+  def test_single_rank_omits_suffix(self):
+    assert _npu_worker_name("flux", 0, 1) == "flux"
+
+  def test_falls_back_for_empty_name(self):
+    assert _npu_worker_name("", 0, 1) == "cache_dit"
+    # All-disallowed chars sanitize to empty and fall back to the default.
+    assert _npu_worker_name("...", 0, 1) == "cache_dit"
 
 
 class TestProfilerContextGuard:
