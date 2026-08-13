@@ -420,6 +420,35 @@ pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 
 In practice the PSNR values are almost the same, so <span style="color:green;">low</span> is the recommended production default. It keeps the best PTQ throughput while preserving the same loaded-model behavior seen from medium and high.
 
+<span style="color:green;">svd_refine_iters</span> (default <span style="color:green;">0</span>) enables alternating SVD refinement of the low-rank/residual split. The one-shot split picks the low-rank branch from the smoothed weight's singular directions alone, so it cannot know what the residual quantizer will get wrong. Each refinement round simulates quantizing the current residual, re-decomposes `weight - dequant(quantize(residual))`, and re-anchors the residual on `weight`, letting the low-rank branch absorb the residual quantizer's error pattern. `0` keeps the original one-shot behavior.
+
+Each round adds one SVD per layer, so `svd_refine_iters=N` costs roughly `N+1` times the low-rank portion of PTQ time (the `quantization_s` column above). The table below is the relative L2 error of the reconstruction the runtime actually evaluates, `up @ down + dequant(quantize(residual))`, on a single **256x128** spectral-decay weight at **rank=32** (`make_spectral_decay_weight` from the test helpers, `calibrate_precision="low"`, **bfloat16**):
+
+| svd_refine_iters | NVFP4 rel L2 | INT4 rel L2 |
+| :---: | :---: | :---: |
+| 0 | 0.024128 | 0.026423 |
+| 1 | 0.019196 | 0.021266 |
+| 2 | 0.017313 | 0.019715 |
+| 5 | <span style="color:green;">0.015490</span> | <span style="color:green;">0.018608</span> |
+| 10 | 0.014506 | 0.018134 |
+
+The returns flatten quickly, and they survive on real weights: averaged over 14 PixArt-Sigma attention and feed-forward layers with real calibration activations, **5** rounds cut weight error by **7.8-8.9%** and layer output error by **17.4-18.2%** relative to the one-shot split, for both formats.
+
+These are still single-layer reconstruction numbers, not end-to-end image metrics. Treat them as a guide to where the returns flatten rather than as an expected PSNR gain, and measure PSNR on your own model before committing to a round count.
+
+```python
+quant_config = QuantizeConfig(
+  quant_type="svdq_nvfp4_r32",
+  calibrate_fn=calibrate_fn,
+  serialize_to="./FLUX.2-klein-4B-svdq-nvfp4/",
+  svdq_kwargs={
+    "runtime_kernel": "v1",
+    "svd_refine_iters": 5,
+  },
+)
+pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+```
+
 <span style="color:green;">Step 4</span>: The **FLUX.2-klein-4B-svdq** directory now contains: <span style="color:green;">{quant_type}.safetensors</span> (for example, <span style="color:green;">svdq_int4_r32.safetensors</span> or <span style="color:green;">svdq_nvfp4_r32.safetensors</span>) and <span style="color:green;">quant_config.json</span>. The quantized model can be loaded with <span style="color:#c77dff;">cache_dit.load(...)</span> for inference or further fine-tuning. For example:
 
 ```python
