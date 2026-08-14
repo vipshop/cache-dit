@@ -31,7 +31,7 @@ from .register import (
 )
 
 try:
-  from boogu.pipelines.boogu.models.attention_processor import (
+  from boogu.models.attention_processor import (
     Attention,
     BooguImageAttnProcessor,
     BooguImageAttnProcessorFlash2Varlen,
@@ -107,7 +107,7 @@ def _patch_dtensor_unsafe_modules(block: nn.Module) -> None:
   # 2. RMSNorm: replace triton fused RMSNorm with torch.nn.RMSNorm.
   _triton_rmsnorm_cls = None
   try:
-    from boogu.pipelines.boogu.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
+    from boogu.ops.triton.layer_norm import RMSNorm as TritonRMSNorm
     _triton_rmsnorm_cls = TritonRMSNorm
   except ImportError:
     pass
@@ -208,7 +208,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
       key = attn.norm_k(key)
 
     # ---- RoPE (same as original) ----
-    from boogu.pipelines.boogu.models.embeddings import apply_rotary_emb as _boogu_apply_rotary_emb
+    from boogu.models.embeddings import apply_rotary_emb as _boogu_apply_rotary_emb
     if image_rotary_emb is not None:
       query = _boogu_apply_rotary_emb(query, image_rotary_emb, use_real=False)
       key = _boogu_apply_rotary_emb(key, image_rotary_emb, use_real=False)
@@ -259,7 +259,7 @@ def _patch_attention_processor_for_cp(transformer: nn.Module) -> None:
         return _original_varlen_call(self, attn, hidden_states, encoder_hidden_states,
                                      attention_mask, image_rotary_emb, base_sequence_length)
 
-      from boogu.pipelines.boogu.models.embeddings import apply_rotary_emb as _boogu_apply_rotary_emb
+      from boogu.models.embeddings import apply_rotary_emb as _boogu_apply_rotary_emb
 
       batch_size, sequence_length, _ = hidden_states.shape
       query = attn.to_q(hidden_states)  # type: torch.Tensor
