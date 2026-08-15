@@ -130,6 +130,15 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # active; has no effect on models that use GEGLU, SwiGLU, or custom
   # FeedForward structures.
   "fused_mlp": False,
+  # Number of alternating SVD refinement rounds applied to the low-rank/residual
+  # split. After the initial SVD pass, each round simulates quantizing the
+  # current residual, re-decomposes `weight - dequant(quantize(residual))` into
+  # a new low-rank/residual split, and repeats. This lets the low-rank branch
+  # absorb the specific error pattern left behind by residual quantization
+  # instead of only the static singular directions of the smoothed weight.
+  # The default value is 0, which disables refinement and keeps the original
+  # one-shot SVD behavior.
+  "svd_refine_iters": 0,
 }
 
 
@@ -309,6 +318,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "few_shot_relax_strategy": _resolve_svdq_few_shot_relax_strategy,
     "few_shot_auto_compile": _resolve_svdq_bool_kwarg,
     "fused_mlp": _resolve_svdq_bool_kwarg,
+    "svd_refine_iters": _resolve_svdq_non_negative_int,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)

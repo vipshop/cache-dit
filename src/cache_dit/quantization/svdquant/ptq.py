@@ -1377,6 +1377,7 @@ def _quantize_context_layers(
         device=quantize_device,
         calibrate_precision=context.svdq_kwargs["calibrate_precision"],
         runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+        svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
       )
     else:
       quantized_module = _quantize_from_activation_span(
@@ -1390,6 +1391,7 @@ def _quantize_context_layers(
         device=quantize_device,
         calibrate_precision=context.svdq_kwargs["calibrate_precision"],
         runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+        svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
       )
 
     if quantized_layer_device != quantize_device:

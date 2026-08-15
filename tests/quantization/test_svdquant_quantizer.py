@@ -13,6 +13,7 @@ from torch import nn
 import cache_dit.quantization.svdquant.quantizer as svdq_quantizer
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.quantization.svdquant.lowrank import decompose_lowrank_residual
+from cache_dit.quantization.svdquant.packing import fp_quantize
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import EVALUATED_RANKS
@@ -23,6 +24,7 @@ from tests.quantization._svdq_test_utils import compute_accuracy_metrics
 from tests.quantization._svdq_test_utils import format_markdown_table
 from tests.quantization._svdq_test_utils import format_rank_report
 from tests.quantization._svdq_test_utils import make_rank_sensitive_linear
+from tests.quantization._svdq_test_utils import make_spectral_decay_weight
 from tests.quantization._svdq_test_utils import make_token_batch
 from tests.quantization._svdq_test_utils import make_token_samples
 from tests.quantization._svdq_test_utils import make_toy_model
@@ -146,6 +148,245 @@ def test_svdquant_quantizer_returns_module_state_dict() -> None:
   assert state_dict["smooth_factor_orig"].shape == (128, )
   assert state_dict["proj_down"].shape == (128, 16)
   assert state_dict["proj_up"].shape == (256, 16)
+
+
+# `torch_dtype` values a real PTQ run passes. float32 keeps the residual bookkeeping exact, while
+# bfloat16 rounds the stored residual and is what exposes precision slips in the refinement loop.
+_REFINE_TORCH_DTYPES = [torch.float32, torch.bfloat16]
+
+
+def _refine_split_pieces(
+  weight: torch.Tensor,
+  *,
+  precision: str,
+  refine_iters: int,
+  torch_dtype: torch.dtype,
+  calibrate_precision: str | None = None,
+  rank: int = 32,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Run the production low-rank split and return the pieces the runtime combines, in float32.
+
+  :returns: A tuple `(lowrank, residual, residual_q)` where `lowrank` is `up @ down`, `residual` is
+    the matrix handed to the residual branch, and `residual_q` is its quantize/dequantize
+    round-trip. The W4A4 kernel evaluates `lowrank + residual_q`.
+  """
+
+  calibrate_precision = calibrate_precision or _CALIBRATE_PRECISION
+  math_dtype = svdq_quantizer._resolve_math_dtype(torch_dtype, calibrate_precision)
+  down, up, residual = svdq_quantizer._refine_lowrank_split(
+    weight.to(math_dtype),
+    rank,
+    refine_iters=refine_iters,
+    precision=precision,
+    calibrate_precision=calibrate_precision,
+    math_dtype=math_dtype,
+    torch_dtype=torch_dtype,
+  )
+  residual_q = svdq_quantizer._fake_quantize_dequantize_residual(
+    residual,
+    precision=precision,
+    math_dtype=math_dtype,
+    torch_dtype=torch_dtype,
+  )
+  return (up.to(torch.float32) @ down.to(torch.float32), residual.to(torch.float32),
+          residual_q.to(torch.float32))
+
+
+def test_svdquant_refine_iters_codebook_matches_packing() -> None:
+  # The refinement simulation carries its own copy of the FP4 codebook so it can index values back
+  # out of `fp_quantize`'s indices. Guard against the two copies drifting apart.
+  codebook = torch.tensor(svdq_quantizer._NVFP4_CODEBOOK, dtype=torch.float32)
+  probe = codebook.clone()
+  assert torch.equal(fp_quantize(probe, codebook=codebook), fp_quantize(probe))
+  assert torch.equal(codebook[fp_quantize(probe)], probe)
+
+
+@pytest.mark.parametrize("torch_dtype", _REFINE_TORCH_DTYPES, ids=["fp32", "bf16"])
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_refine_iters_fake_quantize_matches_packing(
+  precision: str,
+  torch_dtype: torch.dtype,
+) -> None:
+  # Refinement is only as good as its model of the residual quantizer, so pin the simulation
+  # against an independent replication of `pack_svdq_w4a4_linear_tensors`. The NVFP4 path is
+  # deliberately asymmetric: the packer normalizes by the `torch_dtype` group scales but
+  # `SVDQWeightPacker.pack_micro_scale` stores them as FP8 E4M3, so the kernel dequantizes with a
+  # different value than it normalized with. INT4 group scales are not micro-scales and stay at
+  # `torch_dtype` on both sides.
+  residual = make_spectral_decay_weight(256, 128, seed=3, device="cpu", dtype=torch.float32)
+  out_features, in_features = residual.shape
+  math_dtype = torch.float32
+  group_size = 16 if precision == "nvfp4" else 64
+  grouped = residual.to(math_dtype).view(out_features, 1, in_features // group_size, group_size)
+
+  if precision == "nvfp4":
+    channel_scales, group_scales = svdq_quantizer._compute_nvfp4_channel_and_group_scales(
+      residual,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    )
+    channel_scales = channel_scales.to(math_dtype)
+    normalize_scales = group_scales.to(math_dtype)
+    stored_scales = group_scales.to(torch.float8_e4m3fn).to(math_dtype)
+    codebook = torch.tensor(svdq_quantizer._NVFP4_CODEBOOK, dtype=math_dtype)
+    codes = fp_quantize(grouped / channel_scales / normalize_scales, codebook=codebook)
+    expected = (codebook[codes] * stored_scales * channel_scales).view(out_features, in_features)
+  else:
+    group_scales = svdq_quantizer._compute_group_scales(
+      residual,
+      group_size=group_size,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    ).to(math_dtype)
+    codes = (grouped / group_scales).round().clamp(-8, 7)
+    expected = (codes * group_scales).view(out_features, in_features)
+
+  actual = svdq_quantizer._fake_quantize_dequantize_residual(
+    residual,
+    precision=precision,
+    math_dtype=math_dtype,
+    torch_dtype=torch_dtype,
+  )
+  assert torch.equal(actual, expected.to(residual.dtype))
+
+
+@pytest.mark.parametrize("torch_dtype", _REFINE_TORCH_DTYPES, ids=["fp32", "bf16"])
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_refine_iters_keeps_residual_anchored_on_weight(
+  precision: str,
+  torch_dtype: torch.dtype,
+) -> None:
+  # The residual is quantized and packed independently of the factors, so the runtime evaluates
+  # `up @ down + quantize(residual)`. That only reconstructs the weight when the returned residual
+  # is `weight - up @ down`: a residual left relative to an intermediate refit target subtracts the
+  # previous round's correction twice, and reconstructing from already-downcast factors instead of
+  # the SVD's working precision inflates the drift several-fold at bfloat16. Refinement is held to
+  # the drift the one-shot split already has at this dtype, which is pure storage rounding.
+  weight = make_spectral_decay_weight(256, 128, seed=0, device="cpu", dtype=torch.float32)
+
+  def _drift(refine_iters: int) -> float:
+    lowrank, residual, _ = _refine_split_pieces(
+      weight,
+      precision=precision,
+      refine_iters=refine_iters,
+      torch_dtype=torch_dtype,
+    )
+    return compute_accuracy_metrics(weight - lowrank, residual).rel_l2
+
+  baseline_drift = _drift(0)
+  assert baseline_drift < 1e-2, "one-shot split should not drift beyond storage rounding"
+  for refine_iters in (1, 2, 5):
+    drift = _drift(refine_iters)
+    assert drift <= baseline_drift * 1.1 + 1e-6, (
+      f"residual drifted off the weight at refine_iters={refine_iters}: "
+      f"{drift:.3e} vs one-shot {baseline_drift:.3e}")
+
+
+@pytest.mark.parametrize("calibrate_precision", ["low", "medium", "high"])
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_refine_iters_anchoring_survives_calibrate_precision(
+  precision: str,
+  calibrate_precision: str,
+) -> None:
+  # `_resolve_math_dtype` returns the raw `torch_dtype` for the "low" route and float32 otherwise,
+  # while the "high" route runs the SVD in float64. The re-anchoring has to follow that internal
+  # working precision, so cover all three routes at a bfloat16 `torch_dtype`.
+  weight = make_spectral_decay_weight(256, 128, seed=0, device="cpu", dtype=torch.float32)
+
+  def _drift(refine_iters: int) -> float:
+    lowrank, residual, _ = _refine_split_pieces(
+      weight,
+      precision=precision,
+      refine_iters=refine_iters,
+      torch_dtype=torch.bfloat16,
+      calibrate_precision=calibrate_precision,
+    )
+    return compute_accuracy_metrics(weight - lowrank, residual).rel_l2
+
+  baseline_drift = _drift(0)
+  for refine_iters in (1, 5):
+    assert _drift(refine_iters) <= baseline_drift * 1.1 + 1e-6, (
+      f"residual drifted at calibrate_precision={calibrate_precision!r}, "
+      f"refine_iters={refine_iters}")
+
+
+@pytest.mark.parametrize("torch_dtype", _REFINE_TORCH_DTYPES, ids=["fp32", "bf16"])
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_refine_iters_improves_weight_error(
+  precision: str,
+  torch_dtype: torch.dtype,
+) -> None:
+  weight = make_spectral_decay_weight(256, 128, seed=0, device="cpu", dtype=torch.float32)
+
+  def _rel_l2(refine_iters: int) -> float:
+    lowrank, _, residual_q = _refine_split_pieces(
+      weight,
+      precision=precision,
+      refine_iters=refine_iters,
+      torch_dtype=torch_dtype,
+    )
+    return compute_accuracy_metrics(weight, lowrank + residual_q).rel_l2
+
+  baseline_rel_l2 = _rel_l2(0)
+  # Refinement must strictly beat the one-shot split, and never regress as rounds are added.
+  previous_rel_l2 = baseline_rel_l2
+  for refine_iters in (1, 2, 5):
+    current_rel_l2 = _rel_l2(refine_iters)
+    assert current_rel_l2 < baseline_rel_l2
+    assert current_rel_l2 <= previous_rel_l2
+    previous_rel_l2 = current_rel_l2
+
+
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_refine_iters_is_noop_at_rank_zero(precision: str) -> None:
+  # At rank 0 the factors are empty, so there is nothing to refit and the split must be untouched.
+  weight = make_spectral_decay_weight(256, 128, seed=0, device="cpu", dtype=torch.float32)
+  baseline = _refine_split_pieces(weight,
+                                  precision=precision,
+                                  refine_iters=0,
+                                  torch_dtype=torch.bfloat16,
+                                  rank=0)
+  refined = _refine_split_pieces(weight,
+                                 precision=precision,
+                                 refine_iters=5,
+                                 torch_dtype=torch.bfloat16,
+                                 rank=0)
+  for expected, actual in zip(baseline, refined, strict=True):
+    assert torch.equal(expected, actual)
+
+
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_svdquant_quantizer_accepts_refine_iters(precision: str) -> None:
+  linear = make_rank_sensitive_linear(
+    in_features=128,
+    out_features=256,
+    seed=0,
+    device="cpu",
+    dtype=torch.bfloat16,
+  )
+  representative = make_token_batch(
+    batch_size=4,
+    seq_len=8,
+    width=128,
+    seed=1,
+    device="cpu",
+    dtype=torch.bfloat16,
+  )
+
+  state_dict = quantize_linear_svdq_w4a4(
+    linear,
+    representative,
+    rank=32,
+    device="cpu",
+    torch_dtype=torch.bfloat16,
+    precision=precision,
+    return_state_dict=True,
+    **_quantizer_kwargs(svd_refine_iters=5),
+  )
+  assert state_dict["proj_down"].shape == (128, 32)
+  assert state_dict["proj_up"].shape == (256, 32)
+  for name in ("proj_down", "proj_up"):
+    assert torch.isfinite(state_dict[name].to(torch.float32)).all()
 
 
 def test_svdquant_quantizer_returns_nvfp4_module_state_dict() -> None:

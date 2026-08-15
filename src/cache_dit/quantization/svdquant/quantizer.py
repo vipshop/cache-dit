@@ -15,6 +15,7 @@ from .linear import SVDQW4A4Linear
 from .lowrank import decompose_lowrank_residual
 from .packing import adapt_svdq_module_state_dict
 from .packing import export_raw_svdq_w4a4_state_dict
+from .packing import fp_quantize
 
 CalibrationInputs = torch.Tensor | tp.Iterable[torch.Tensor]
 
@@ -165,6 +166,136 @@ def _repair_invalid_scale(scale: torch.Tensor) -> torch.Tensor:
   scale[scale == 0] = 1
   scale[~torch.isfinite(scale)] = 1
   return scale
+
+
+# The 16 representable FP4 (E2M1) values, ordered so that the index of each value is the nibble
+# `fp_quantize` emits for it. Kept in sync with `fp_quantize`'s built-in default codebook, which is
+# asserted by `test_svdquant_refine_iters_codebook_matches_packing`.
+_NVFP4_CODEBOOK = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
+                   -6.0)
+
+
+@torch.inference_mode()
+def _fake_quantize_dequantize_residual(
+  residual: torch.Tensor,
+  *,
+  precision: str,
+  math_dtype: torch.dtype,
+  torch_dtype: torch.dtype,
+) -> torch.Tensor:
+  """Simulate a residual quantize/dequantize round-trip entirely in float.
+
+  Used by the SVD alternating-refinement loop to estimate the error pattern that residual
+  quantization will leave behind, without touching the bit-packing path. The scales are rounded the
+  way `pack_svdq_w4a4_linear_tensors` rounds them, so the simulated error matches what the runtime
+  will actually see. Note the asymmetry for NVFP4: the packer divides the weight by the
+  `torch_dtype` group scales, but `SVDQWeightPacker.pack_micro_scale` *stores* those group scales as
+  FP8 E4M3, so the kernel dequantizes with a slightly different value than the one used to
+  normalize. NVFP4 channel scales and INT4 group scales are not micro-scales and stay at
+  `torch_dtype` on both sides.
+
+  :param residual: Residual weight matrix with shape `[out_features, in_features]`.
+  :param precision: Target weight format, `"int4"` or `"nvfp4"`.
+  :param math_dtype: Intermediate dtype used for scale computation and rounding.
+  :param torch_dtype: Storage dtype the packer casts scales to before packing.
+  :returns: The float dequantized reconstruction of `residual`, same shape and dtype.
+  """
+
+  out_features, in_features = residual.shape
+  residual_math = residual.to(dtype=math_dtype)
+  if _normalize_svdq_precision(precision) == "nvfp4":
+    group_size = _resolve_svdq_group_size("nvfp4")
+    channel_scales, group_scales = _compute_nvfp4_channel_and_group_scales(
+      residual,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    )
+    channel_scales = channel_scales.to(dtype=math_dtype)
+    group_scales = group_scales.to(dtype=math_dtype)
+    stored_group_scales = group_scales.to(dtype=torch.float8_e4m3fn).to(dtype=math_dtype)
+    codebook = torch.tensor(_NVFP4_CODEBOOK, dtype=math_dtype, device=residual.device)
+    grouped = residual_math.view(out_features, 1, in_features // group_size, group_size)
+    codes = fp_quantize(grouped / channel_scales / group_scales, codebook=codebook)
+    dequantized = codebook[codes] * stored_group_scales * channel_scales
+    dequantized = dequantized.view(out_features, in_features)
+  else:
+    group_size = _resolve_svdq_group_size("int4")
+    group_scales = _compute_group_scales(
+      residual,
+      group_size=group_size,
+      math_dtype=math_dtype,
+      output_dtype=torch_dtype,
+    ).to(dtype=math_dtype)
+    grouped = residual_math.view(out_features, 1, in_features // group_size, group_size)
+    codes = (grouped / group_scales).round_().clamp_(-8, 7)
+    dequantized = (codes * group_scales).view(out_features, in_features)
+
+  return dequantized.to(dtype=residual.dtype)
+
+
+@torch.inference_mode()
+def _refine_lowrank_split(
+  smoothed_weight: torch.Tensor,
+  rank: int,
+  *,
+  refine_iters: int,
+  precision: str,
+  calibrate_precision: str,
+  math_dtype: torch.dtype,
+  torch_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Split a smoothed weight into low-rank factors and residual, optionally refining the split.
+
+  With `refine_iters=0` this is exactly `decompose_lowrank_residual`. Each additional round refits
+  the factors against `smoothed_weight - dequant(quantize(residual))`, so the low-rank branch can
+  absorb the error pattern residual quantization leaves behind instead of only the smoothed
+  weight's static singular directions.
+
+  The residual is always re-anchored on `smoothed_weight` rather than on the refit target: it is
+  quantized and packed independently of the factors, so the runtime evaluates
+  `up @ down + quantize(residual)`. A residual left relative to the refit target would make that
+  sum subtract the previous round's correction a second time.
+
+  :param smoothed_weight: Smoothed weight matrix with shape `[out_features, in_features]`.
+  :param rank: Target rank for the low-rank branch. Refinement is skipped when `rank == 0`, where
+    the factors are empty and there is nothing to refit.
+  :param refine_iters: Number of alternating refinement rounds. `0` keeps the one-shot split.
+  :param precision: Target weight format for the residual branch, `"int4"` or `"nvfp4"`.
+  :param calibrate_precision: SVD precision route, forwarded as `svd_precision`.
+  :param math_dtype: Intermediate dtype for the residual quantization simulation.
+  :param torch_dtype: Output dtype for the returned tensors.
+  :returns: A tuple `(down, up, residual)` matching `decompose_lowrank_residual`'s contract.
+  """
+
+  lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
+    smoothed_weight,
+    rank,
+    output_dtype=torch_dtype,
+    svd_precision=calibrate_precision,
+  )
+  # Re-anchor in the dtype `decompose_lowrank_residual` uses internally for this subtraction:
+  # float64 on the "high" route, float32 otherwise, since bf16/fp16 SVD is unsupported and falls
+  # back to float32 there. `math_dtype` is the raw `torch_dtype` when `calibrate_precision="low"`,
+  # and reconstructing in bf16/fp16 loses enough precision to drift the next round's refit target.
+  refine_dtype = (torch.float64 if _normalize_calibrate_precision(calibrate_precision) == "high"
+                  else torch.promote_types(math_dtype, torch.float32))
+  for _ in range(refine_iters if rank > 0 else 0):
+    refit_target = smoothed_weight - _fake_quantize_dequantize_residual(
+      residual,
+      precision=precision,
+      math_dtype=math_dtype,
+      torch_dtype=torch_dtype,
+    )
+    lowrank_down, lowrank_up, _ = decompose_lowrank_residual(
+      refit_target,
+      rank,
+      output_dtype=torch_dtype,
+      svd_precision=calibrate_precision,
+    )
+    reconstructed = lowrank_up.to(dtype=refine_dtype) @ lowrank_down.to(dtype=refine_dtype)
+    residual = (smoothed_weight.to(dtype=refine_dtype) - reconstructed).to(dtype=torch_dtype)
+
+  return lowrank_down, lowrank_up, residual
 
 
 def _normalize_calibrate_precision(calibrate_precision: str) -> str:
@@ -930,6 +1061,7 @@ def _quantize_from_smooth_scale(
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
   runtime_kernel: str = "v1",
+  svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from an explicitly resolved runtime smooth vector."""
 
@@ -974,11 +1106,14 @@ def _quantize_from_smooth_scale(
   # NOTE: The SVD decomposition is performed before the padding step, so the low-rank factors
   # are computed for the original weight shape and make it strictly match the math precision.
   # The padding below is applied afterwards to ensure compatibility with hardware constraints.
-  lowrank_down, lowrank_up, residual = decompose_lowrank_residual(
+  lowrank_down, lowrank_up, residual = _refine_lowrank_split(
     smoothed_weight,
     rank,
-    output_dtype=torch_dtype,
-    svd_precision=calibrate_precision,
+    refine_iters=svd_refine_iters,
+    precision=precision,
+    calibrate_precision=calibrate_precision,
+    math_dtype=math_dtype,
+    torch_dtype=torch_dtype,
   )
   scale_kwargs = {
     "math_dtype": math_dtype,
@@ -1100,6 +1235,7 @@ def _quantize_from_activation_span(
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
   runtime_kernel: str = "v1",
+  svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from either PTQ activation spans or DQ mode.
 
@@ -1181,6 +1317,7 @@ def _quantize_from_activation_span(
     return_state_dict=return_state_dict,
     calibrate_precision=calibrate_precision,
     runtime_kernel=runtime_kernel,
+    svd_refine_iters=svd_refine_iters,
     tp_info=tp_info,
   )
 
@@ -1201,6 +1338,7 @@ def quantize_linear_svdq_w4a4(
   streaming: bool = True,
   activation_buffer_flush_sample_count: int | None = 1,
   activation_buffer_flush_cpu_bytes: int | None = None,
+  svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a float `nn.Linear` into the cache-dit SVDQ W4A4 format.
 
@@ -1226,6 +1364,8 @@ def quantize_linear_svdq_w4a4(
     before merging them when `streaming=True`.
   :param activation_buffer_flush_cpu_bytes: CPU buffer limit that also triggers a
     merge when `streaming=True`.
+  :param svd_refine_iters: Number of alternating SVD refinement rounds applied to the
+    low-rank/residual split. `0` (the default) keeps the original one-shot SVD.
 
   :returns: Either a quantized `SVDQW4A4Linear` module or the corresponding module
   `state_dict`, depending on `return_state_dict`.
@@ -1282,4 +1422,5 @@ def quantize_linear_svdq_w4a4(
     device=device,
     return_state_dict=return_state_dict,
     calibrate_precision=calibrate_precision,
+    svd_refine_iters=svd_refine_iters,
   )
