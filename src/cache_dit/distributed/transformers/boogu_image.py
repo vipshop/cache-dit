@@ -327,12 +327,14 @@ class BooguImageContextParallelismPlanner(ContextParallelismPlanner):
     if last_layer_index < 0:
       return {}
 
+    # attention_mask is NOT split: every rank holds the identical full mask
+    # (rebuilt from seq_lengths each forward), and Ulysses consumes it at
+    # full-sequence granularity — splitting then re-gathering is wasted comm.
     return {
       "single_stream_layers.0": {
         "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
       },
       "single_stream_layers.*": {
-        "attention_mask": _ContextParallelInput(split_dim=1, expected_dims=2),
         "image_rotary_emb": _ContextParallelInput(split_dim=1, expected_dims=3),
       },
       f"single_stream_layers.{last_layer_index}":

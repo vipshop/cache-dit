@@ -278,7 +278,7 @@ def _context_parallel_attention(
     # allowlist of forward op names that support attn_mask
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
       "_native_attention_forward_op",
-      "_sdpa_cudnn_attention_forward_op",
+      "_cudnn_attention_forward_op",
       "_flash_varlen_attention_forward_op",
       "_npu_attention_forward_op",
       "_npu_fused_infer_attention_forward_op",
