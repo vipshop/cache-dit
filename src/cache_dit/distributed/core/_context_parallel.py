@@ -375,6 +375,9 @@ def _fill_gather_shapes(shape: tuple[int, ...], gather_dims: tuple[int, ...],
   return gather_shapes
 
 
+# Disable tracing: `_gather_size` does a real communication to collect per-rank
+# shard sizes, which cannot be faked under dynamo (symbolic shape mismatch).
+@torch.compiler.disable
 def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.ProcessGroup) -> torch.Tensor:
   tensor = tensor.contiguous()
   shape = tensor.shape
