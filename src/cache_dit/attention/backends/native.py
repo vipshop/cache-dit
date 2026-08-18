@@ -32,10 +32,6 @@ def _native_attention_forward_op(
     ctx.scale = scale
     ctx.enable_gqa = enable_gqa
 
-  if attn_mask is not None and attn_mask.dim() == 2:
-    # CP path delivers a 2D full-sequence padding mask; expand for SDPA.
-    attn_mask = attn_mask.view(attn_mask.shape[0], 1, 1, -1)
-
   if return_lse:
     if attn_mask is not None:
       raise ValueError("`attn_mask` is not yet supported for native flash attention with lse.")

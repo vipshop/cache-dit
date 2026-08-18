@@ -67,7 +67,6 @@ class UlyssesAttention(torch.autograd.Function):
     query_wait = comm.send_q(query)
     query = query_wait.wait()  # type: torch.Tensor
 
-    local_seq_len = key.shape[1]
     if cp_gqa_strategy == "replicate_kv_sequence":
       key, value = comm.gather_replicated_kv_for_local_q(query, key, value, num_q_heads)
       enable_gqa = False
@@ -76,20 +75,6 @@ class UlyssesAttention(torch.autograd.Function):
       value_wait = comm.send_v(value)
       key = key_wait.wait()  # type: torch.Tensor
       value = value_wait.wait()  # type: torch.Tensor
-
-    if attn_mask is not None:
-      # The mask must cover the gathered full-sequence K/V in original token
-      # order. Callers either pass the full 2D [B, L] padding mask, or a rank
-      # shard of it ([B, L/world]); gather shards back in rank order. Keep it
-      # 2D so each backend op applies it its own way (view/unpad).
-      if attn_mask.dim() != 2:
-        raise ValueError("Ulysses attention expects a 2D [B, L] padding mask, "
-                         f"got shape {tuple(attn_mask.shape)}.")
-      if attn_mask.shape[1] != key.shape[1]:
-        if attn_mask.shape[1] != local_seq_len:
-          raise ValueError(f"Ulysses attention mask length {attn_mask.shape[1]} matches neither "
-                           f"the local ({local_seq_len}) nor the global ({key.shape[1]}) sequence.")
-        attn_mask = comm.all_gather_tensor_dim(attn_mask, dim=1)
 
     out = forward_op(
       ctx,

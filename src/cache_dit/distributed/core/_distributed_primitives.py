@@ -469,10 +469,6 @@ class _All2AllComm:
     key = _all_to_all_single_qkv_custom_heads(key, self._group, kv_split_sizes)
     value = _all_to_all_single_qkv_custom_heads(value, self._group, kv_split_sizes)
     if attn_mask is not None:
-      if attn_mask.shape[1] != local_sequence_length:
-        # Caller passed the full-sequence mask; take the local shard first.
-        rank, world_size = _get_rank_world_size(self._group)
-        attn_mask = attn_mask.chunk(world_size, dim=1)[rank]
       attn_mask = self.all_gather_tensor_dim(attn_mask, dim=1)
     return query, key, value, attn_mask, q_split_sizes, local_sequence_length
 

@@ -35,10 +35,6 @@ def _cudnn_attention_forward_op(
     ctx.scale = scale
     ctx.enable_gqa = enable_gqa
 
-  if attn_mask is not None and attn_mask.dim() == 2:
-    # CP path delivers a 2D full-sequence padding mask; expand for SDPA.
-    attn_mask = attn_mask.view(attn_mask.shape[0], 1, 1, -1)
-
   query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
   with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.CUDNN_ATTENTION):
     out = torch.nn.functional.scaled_dot_product_attention(
