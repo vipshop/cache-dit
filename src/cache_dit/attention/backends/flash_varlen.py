@@ -55,6 +55,7 @@ def _flash_varlen_attention_impl(
   dropout_p: float = 0.0,
   is_causal: bool = False,
   scale: Optional[float] = None,
+  cp_query_offset: Optional[int] = None,
 ) -> torch.Tensor:
   if flash_attn_varlen_func is None:
     raise RuntimeError("flash_varlen attention backend is not available.")
@@ -106,7 +107,12 @@ def _flash_varlen_attention_impl(
       max_seqlen_q = 1
       indices_q = cu_seqlens_q[:-1]
     else:
-      query_mask = mask_2d[:, -query_length:]
+      if cp_query_offset is not None:
+        # CP shard: query is the rank's contiguous chunk of the full sequence
+        # (rank * L_local offset), NOT a suffix of it.
+        query_mask = mask_2d[:, cp_query_offset:cp_query_offset + query_length]
+      else:
+        query_mask = mask_2d[:, -query_length:]
       query_states, indices_q, cu_seqlens_q, max_seqlen_q = unpad_input(query, query_mask)
 
   out = flash_attn_varlen_func(
@@ -142,6 +148,21 @@ def _flash_varlen_attention_forward_op(
 ):
   if return_lse:
     raise ValueError("flash_varlen attention does not support return_lse=True.")
+
+  # Under CP (replicate or group-aligned strategies) query is the local shard
+  # while K/V are the gathered full sequence; the q unpad mask must be sliced
+  # at the rank's contiguous offset, not taken from the sequence tail.
+  cp_query_offset = None
+  if (_cp_config is not None and _cp_config.ulysses_degree > 1 and query.shape[1] != key.shape[1]
+      and query.shape[1] > 1):
+    rank = getattr(_cp_config, "_ulysses_local_rank", None)
+    if rank is not None:
+      if key.shape[1] != _cp_config.ulysses_degree * query.shape[1]:
+        raise ValueError("flash_varlen CP mask slicing requires an even sequence partition: "
+                         f"key length {key.shape[1]} != ulysses_degree "
+                         f"{_cp_config.ulysses_degree} * query length {query.shape[1]}.")
+      cp_query_offset = rank * query.shape[1]
+
   return _flash_varlen_attention_impl(
     query,
     key,
@@ -150,6 +171,7 @@ def _flash_varlen_attention_forward_op(
     dropout_p=dropout_p,
     is_causal=is_causal,
     scale=scale,
+    cp_query_offset=cp_query_offset,
   )
 
 

@@ -1,5 +1,6 @@
 import inspect
 import os
+import re
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -21,11 +22,15 @@ _CACHE_DIT_ATTN_CHECKS_ENV = "CACHE_DIT_ATTN_CHECKS"
 
 
 def _supports_enable_gqa() -> bool:
+  # enable_gqa was added to SDPA in torch 2.5. Recent torch builds expose SDPA
+  # as a C builtin without a Python signature, so signature probing alone fails
+  # and must fall back to a version check.
   try:
     return "enable_gqa" in inspect.signature(
       torch.nn.functional.scaled_dot_product_attention).parameters
   except (TypeError, ValueError):
-    return False
+    match = re.match(r"(\d+)\.(\d+)", torch.__version__)
+    return match is not None and tuple(int(g) for g in match.groups()) >= (2, 5)
 
 
 class _AttnBackend(str, Enum):
@@ -278,7 +283,7 @@ def _context_parallel_attention(
     # allowlist of forward op names that support attn_mask
     _ATTENTION_OPS_ALLOW_ATTN_MASK = [
       "_native_attention_forward_op",
-      "_sdpa_cudnn_attention_forward_op",
+      "_cudnn_attention_forward_op",
       "_flash_varlen_attention_forward_op",
       "_npu_attention_forward_op",
       "_npu_fused_infer_attention_forward_op",

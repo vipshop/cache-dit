@@ -40,6 +40,37 @@ _PREFERRED_PRECISION_PLAN_ORDER = [
 ]
 
 
+def _patch_torchao_zero_row_scale() -> None:
+  """Clamp torchao float8 scales to avoid NaN on all-zero rows.
+
+  torchao's ``_choose_scale_float8`` yields scale=0 for all-zero rows/columns
+  (e.g. padded tokens or zero-initialized modulation weights). The inference
+  matmul then computes ``0 / 0 = NaN`` (emulated) or ``1 / 0 = inf``
+  (``_scaled_mm``). Clamping zero scales to 1 keeps zero rows exactly zero
+  without affecting other rows.
+  """
+  import importlib
+
+  import torchao.quantization.quant_primitives as qp
+
+  if getattr(qp, "_cache_dit_zero_scale_patched", False):
+    return
+
+  # torchao's ``quantize_`` package is lazily bound, so import the inference
+  # workflow module (which imported ``_choose_scale_float8`` by name) directly.
+  wf = importlib.import_module("torchao.quantization.quantize_.workflows.float8.float8_tensor")
+
+  orig_choose_scale_float8 = qp._choose_scale_float8
+
+  def safe_choose_scale_float8(*args, **kwargs):
+    scale = orig_choose_scale_float8(*args, **kwargs)
+    return torch.where(scale == 0, torch.ones_like(scale), scale)
+
+  qp._choose_scale_float8 = safe_choose_scale_float8
+  wf._choose_scale_float8 = safe_choose_scale_float8
+  qp._cache_dit_zero_scale_patched = True
+
+
 def quantize_ao(
   module: torch.nn.Module,
   quantize_config: QuantizeConfig,
@@ -48,6 +79,7 @@ def quantize_ao(
   # Check if already quantized by checking the _is_quantized attribute.
   # This is to avoid redundant quantization which may cause performance
   # regression and other issues. If you want to quantize an already quantized.
+  _patch_torchao_zero_row_scale()
   if not _check_if_module_can_quantized(module):
     return module
 
