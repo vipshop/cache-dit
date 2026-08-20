@@ -57,24 +57,25 @@ def _build_ffpa_cuda_backend(
     return backend
 
   kwargs = {}
+  # RTX 5090/5080 use the fastest fp8 config: int8 QK MMA + fp16 PV acc.
+  # Otherwise, use the default fp8 attn config: fp8 QK MMA + fp32 PV acc.
+  # Both quant methods support every fp8 head_dim including non-32-multiple
+  # Hybrid fp16 keeps the precision of the early Q rows (attention sink),
+  # the rows most sensitive to fp8/fp4 quantization noise.
+  n_early = 128 if is_causal else 256
   if enable_fp8:
-    # Highest-precision fp8 config (all sm_120): int8 QK MMA + fp16 PV acc
-    # with the finest-grained quantization (Q/K per_thread, V per_channel).
-    # Both quant methods support every fp8 head_dim including non-32-multiple
-    # D (e.g. 120; per-channel V stats are D_og-aware), verified vs SDPA.
-    # GeForce RTX 5090/5080 mandate the same int8/f16-acc values as defaults.
-    # Hybrid fp16 keeps the precision of the early Q rows (attention sink),
-    # the rows most sensitive to fp8/fp4 quantization noise.
-    n_early = 256 if is_causal else 128
     kwargs.update(
-      fp8_qk_mm_type="int8",
-      fp8_pv_acc_type="f16",
-      fp8_q_quant_method="per_thread",
-      fp8_k_quant_method="per_thread",
-      fp8_v_quant_method="per_channel",
-      fp8_hybrid=True,
+      fp8_qk_mm_type="int8" if is_consumer else "fp8",
+      fp8_pv_acc_type="f16" if is_consumer else "f32",
+      fp8_q_quant_method="per_block",
+      fp8_k_quant_method="per_block",
+      fp8_v_quant_method="per_block",
+      fp8_hybrid=True,  # keep attention sink rows in fp16
       fp8_hybrid_n_early=n_early,
-      fp4_hybrid=True,
+    )
+  elif enable_fp4:
+    kwargs.update(
+      fp4_hybrid=True,  # keep attention sink rows in fp16
       fp4_hybrid_n_early=n_early,
     )
   backend = CUDABackend(
