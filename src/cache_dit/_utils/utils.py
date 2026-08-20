@@ -815,6 +815,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "_sdpa_cudnn",
       "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
       "sage3",  # SageAttention-3 Blackwell FP4 backend
+      # ffpa-attn CUDA backends (sm_120 only, forward inference only):
+      # Need install ffpa-attn: https://github.com/xlite-dev/ffpa-attn
+      "ffpa",  # CUTE_TMA fp16/bf16
+      "ffpa_fp8",  # CUTE_TMA_FP8
+      "ffpa_fp4",  # CUTE_TMA_FP4 NVFP4
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
       "_mindiesd_laser",  # MindIE-SD laser attention
