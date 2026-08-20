@@ -64,18 +64,19 @@ def _build_ffpa_cuda_backend(
   # the rows most sensitive to fp8/fp4 quantization noise.
   if enable_fp8:
     kwargs.update(
-      fp8_qk_mm_type="int8",
-      fp8_pv_acc_type="f16",
+      fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
+      fp8_pv_acc_type="f16" if is_geforce_50x0 else "f32",
       fp8_q_quant_method="per_block",
       fp8_k_quant_method="per_block",
       fp8_v_quant_method="per_block",
       fp8_smooth_k=True,
-      fp8_hybrid=is_causal,
+      fp8_smooth_v=False,
+      fp8_hybrid=True,
       fp8_hybrid_n_early=256,
     )
   elif enable_fp4:
     kwargs.update(
-      fp4_hybrid=is_causal,
+      fp4_hybrid=True,
       fp4_hybrid_n_early=256,
     )
   backend = CUDABackend(
