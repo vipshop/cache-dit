@@ -66,11 +66,10 @@ def _build_ffpa_cuda_backend(
     kwargs.update(
       fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
       fp8_pv_acc_type="f16" if is_geforce_50x0 else "f32",
-      fp8_q_quant_method="per_block",
-      fp8_k_quant_method="per_block",
-      fp8_v_quant_method="per_block",
+      fp8_q_quant_method="per_thread",
+      fp8_k_quant_method="per_thread",
+      fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=False,
       fp8_hybrid=True,
       fp8_hybrid_n_early=256,
     )
