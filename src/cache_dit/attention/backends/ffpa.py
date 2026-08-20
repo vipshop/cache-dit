@@ -70,6 +70,7 @@ def _build_ffpa_cuda_backend(
       fp8_k_quant_method="per_thread",
       fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
+      fp8_smooth_v=True if is_geforce_50x0 else False,
       fp8_hybrid=True,
       fp8_hybrid_n_early=256,
     )
