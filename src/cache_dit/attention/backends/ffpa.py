@@ -62,6 +62,7 @@ def _build_ffpa_cuda_backend(
   # Both quant methods support every fp8 head_dim including non-32-multiple
   # Hybrid fp16 keeps the precision of the early Q rows (attention sink),
   # the rows most sensitive to fp8/fp4 quantization noise.
+  n_early = 128 if is_causal else 256  # causal Q rows are less sensitive to quant noise
   if enable_fp8:
     kwargs.update(
       fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
@@ -72,12 +73,12 @@ def _build_ffpa_cuda_backend(
       fp8_smooth_k=True,
       fp8_smooth_v=True if is_geforce_50x0 else False,
       fp8_hybrid=True,
-      fp8_hybrid_n_early=256,
+      fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
     kwargs.update(
       fp4_hybrid=True,
-      fp4_hybrid_n_early=256,
+      fp4_hybrid_n_early=n_early,
     )
   backend = CUDABackend(
     backward=False,
