@@ -195,6 +195,8 @@ def test_build_fp8_backend_consumer_config(monkeypatch):
   assert backend.enable_fp8 and not backend.enable_fp4
   assert backend.fp8_qk_mm_type == "int8"
   assert backend.fp8_pv_acc_type == "f16"
+  assert backend.fp8_q_quant_method == "per_thread"
+  assert backend.fp8_v_quant_method == "per_channel"
 
 
 @requires_sm120
@@ -202,8 +204,37 @@ def test_build_fp8_backend_pro_config():
   ffpa_backend._ffpa_backend_cache.clear()
   backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
   assert backend.enable_fp8 and not backend.enable_fp4
-  assert backend.fp8_qk_mm_type == "fp8"
-  assert backend.fp8_pv_acc_type == "f32"
+  assert backend.fp8_qk_mm_type == "int8"
+  assert backend.fp8_pv_acc_type == "f16"
+  assert backend.fp8_q_quant_method == "per_thread"
+  assert backend.fp8_k_quant_method == "per_thread"
+  assert backend.fp8_v_quant_method == "per_channel"
+  assert backend.fp8_hybrid is True
+  assert backend.fp8_hybrid_n_early == 128
+  causal = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"),
+                                                 enable_fp8=True,
+                                                 is_causal=True)
+  assert causal.fp8_hybrid_n_early == 256
+
+
+@requires_sm120
+def test_toy_model_dispatch_ffpa_fp8_head_dim_120(monkeypatch):
+  # Non-32-multiple head_dim: Q/K per_thread and V per_channel quant are
+  # D_og-aware and must still run the real fp8 kernel (D pads 120->128).
+  spy = _FFPAFuncSpy()
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
+
+  model = ToyAttentionModel("ffpa_fp8")
+  q, k, v = _make_qkv(D=120)
+  out = model(q, k, v)
+
+  assert len(spy.calls) == 1
+  backend = spy.calls[0]
+  assert backend.fp8_q_quant_method == "per_thread"
+  assert backend.fp8_v_quant_method == "per_channel"
+
+  ref = _sdpa_ref(q, k, v)
+  assert _cos_sim(out, ref) > 0.99
 
 
 @requires_sm120

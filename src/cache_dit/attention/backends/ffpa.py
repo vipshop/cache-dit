@@ -46,19 +46,37 @@ def _build_ffpa_cuda_backend(
   *,
   enable_fp8: bool = False,
   enable_fp4: bool = False,
+  is_causal: bool = False,
 ) -> "CUDABackend":
   if enable_fp8 and enable_fp4:
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_consumer = _is_geforce_5090_or_5080(device)
-  cache_key = (device.index, enable_fp8, enable_fp4, is_consumer)
+  cache_key = (device.index, enable_fp8, enable_fp4, is_consumer, is_causal)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
 
   kwargs = {}
-  if enable_fp8 and is_consumer:
-    # Consumer Blackwell gets better throughput with int8 QK MMA + fp16 PV acc.
-    kwargs.update(fp8_qk_mm_type="int8", fp8_pv_acc_type="f16")
+  if enable_fp8:
+    # Highest-precision fp8 config (all sm_120): int8 QK MMA + fp16 PV acc
+    # with the finest-grained quantization (Q/K per_thread, V per_channel).
+    # Both quant methods support every fp8 head_dim including non-32-multiple
+    # D (e.g. 120; per-channel V stats are D_og-aware), verified vs SDPA.
+    # GeForce RTX 5090/5080 mandate the same int8/f16-acc values as defaults.
+    # Hybrid fp16 keeps the precision of the early Q rows (attention sink),
+    # the rows most sensitive to fp8/fp4 quantization noise.
+    n_early = 256 if is_causal else 128
+    kwargs.update(
+      fp8_qk_mm_type="int8",
+      fp8_pv_acc_type="f16",
+      fp8_q_quant_method="per_thread",
+      fp8_k_quant_method="per_thread",
+      fp8_v_quant_method="per_channel",
+      fp8_hybrid=True,
+      fp8_hybrid_n_early=n_early,
+      fp4_hybrid=True,
+      fp4_hybrid_n_early=n_early,
+    )
   backend = CUDABackend(
     backward=False,
     enable_fp8=enable_fp8,
@@ -154,7 +172,10 @@ def _ffpa_attention_impl(
       "FFPA attention backend is not available. Please install `ffpa-attn` to use it.")
   _require_sm120_cuda(query)
 
-  backend = _build_ffpa_cuda_backend(query.device, enable_fp8=enable_fp8, enable_fp4=enable_fp4)
+  backend = _build_ffpa_cuda_backend(query.device,
+                                     enable_fp8=enable_fp8,
+                                     enable_fp4=enable_fp4,
+                                     is_causal=is_causal)
   if _cp_config is None:
     return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend)
   return _context_parallel_attention(
@@ -240,9 +261,10 @@ def _ffpa_fp8_attention(
 ) -> torch.Tensor:
   """FFPA CUDA FP8 backend (CUTE_TMA_FP8, forward-only, sm_120 only).
 
-  Inputs stay fp16/bf16; Q/K/V are fp8-quantized inside the kernel. On
-  GeForce RTX 5090/5080 the kernel is configured with int8 QK MMA and fp16
-  PV accumulation for better tensor-core throughput.
+  Inputs stay fp16/bf16; Q/K/V are fp8-quantized inside the kernel using the
+  highest-precision config: int8 QK MMA, fp16 PV accumulation, Q/K quantized
+  per_thread and V per_channel (supported for every fp8 head_dim including
+  non-32-multiple D such as 120).
 
   :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
   :param key: ``[B, N_kv, H, D]``.
