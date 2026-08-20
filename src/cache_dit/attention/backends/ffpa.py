@@ -65,17 +65,19 @@ def _build_ffpa_cuda_backend(
   n_early = 128 if is_causal else 256
   if enable_fp8:
     kwargs.update(
-      fp8_qk_mm_type="int8" if is_consumer else "fp8",
-      fp8_pv_acc_type="f16" if is_consumer else "f32",
-      fp8_q_quant_method="per_block",
-      fp8_k_quant_method="per_block",
-      fp8_v_quant_method="per_block",
-      fp8_hybrid=True,  # keep attention sink rows in fp16
+      fp8_qk_mm_type="int8",
+      fp8_pv_acc_type="f16",
+      fp8_q_quant_method="per_thread",
+      fp8_k_quant_method="per_thread",
+      fp8_v_quant_method="per_channel",
+      fp8_smooth_k=True,
+      fp8_smooth_v=True,
+      fp8_hybrid=True,
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
     kwargs.update(
-      fp4_hybrid=True,  # keep attention sink rows in fp16
+      fp4_hybrid=True,
       fp4_hybrid_n_early=n_early,
     )
   backend = CUDABackend(

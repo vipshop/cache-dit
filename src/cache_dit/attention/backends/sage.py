@@ -33,12 +33,13 @@ def _sage_attention_forward_op(
     raise ValueError("`attn_mask` is not yet supported for Sage attention.")
   if dropout_p > 0.0:
     raise ValueError("`dropout_p` is not yet supported for Sage attention.")
-  if enable_gqa:
-    raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
   if sageattn is None:
     raise RuntimeError(
       "Sage attention backend is not available. Please install `sageattention` to use it.")
 
+  # GQA is natively supported in Sage attention, but we don't need to set
+  # enable_gqa=True here because sageattn will automatically detect the
+  # query/key shapes and apply GQA if applicable.
   out = sageattn(
     q=query,
     k=key,
@@ -86,8 +87,9 @@ def _sage_attention(
     raise ValueError("`attn_mask` is not yet supported for Sage attention.")
   if dropout_p > 0.0:
     raise ValueError("`dropout_p` is not yet supported for Sage attention.")
-  if enable_gqa:
-    raise ValueError("`enable_gqa` is not yet supported for Sage attention.")
+  # GQA is natively supported in Sage attention, but we don't need to set
+  # enable_gqa=True here because sageattn will automatically detect the
+  # query/key shapes and apply GQA if applicable.
 
   lse = None
   if _cp_config is None:
