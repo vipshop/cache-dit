@@ -47,6 +47,8 @@ def _build_ffpa_cuda_backend(
   enable_fp8: bool = False,
   enable_fp4: bool = False,
 ) -> "CUDABackend":
+  if enable_fp8 and enable_fp4:
+    raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_consumer = _is_geforce_5090_or_5080(device)
   cache_key = (device.index, enable_fp8, enable_fp4, is_consumer)
   backend = _ffpa_backend_cache.get(cache_key)

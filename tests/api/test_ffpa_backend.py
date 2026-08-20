@@ -206,6 +206,12 @@ def test_build_fp8_backend_pro_config():
   assert backend.fp8_pv_acc_type == "f32"
 
 
+@requires_sm120
+def test_build_backend_rejects_fp8_and_fp4_together():
+  with pytest.raises(ValueError, match="mutually exclusive"):
+    ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True, enable_fp4=True)
+
+
 # ------------------------------------------------------ toy model dispatch tests
 
 
