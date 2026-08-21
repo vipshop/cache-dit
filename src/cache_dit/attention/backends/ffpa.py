@@ -47,11 +47,12 @@ def _build_ffpa_cuda_backend(
   enable_fp8: bool = False,
   enable_fp4: bool = False,
   is_causal: bool = False,
+  fp8_preset: Optional[str] = None,
 ) -> "CUDABackend":
   if enable_fp8 and enable_fp4:
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
-  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal)
+  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -70,7 +71,20 @@ def _build_ffpa_cuda_backend(
   #    negilible performance overhead, ~3% for 16K sequence length).
   # NOTE: The hybrid mode will be removed once we have better precision for fp8.
   n_early = 128 if is_causal else 256
-  if enable_fp8:
+  if enable_fp8 and fp8_preset == "per_block":
+    # Performance-first config: per_block Q/K/V + f32 PV acc (f32 acc is required
+    # by per-block quantization to avoid overflow for large N), no hybrid.
+    kwargs.update(
+      fp8_qk_mm_type="int8",
+      fp8_pv_acc_type="f32",
+      fp8_q_quant_method="per_block",
+      fp8_k_quant_method="per_block",
+      fp8_v_quant_method="per_block",
+      fp8_smooth_k=True,
+      fp8_smooth_v=False,
+      fp8_hybrid=False,
+    )
+  elif enable_fp8:
     kwargs.update(
       # Use QK INT8 for better precision, same as SageAttention
       fp8_qk_mm_type="int8",
@@ -81,7 +95,7 @@ def _build_ffpa_cuda_backend(
       fp8_smooth_k=True,
       fp8_smooth_v=True,
       # Currently, the hybrid mode is required for precision.
-      fp8_hybrid=True,
+      fp8_hybrid=fp8_preset != "no_hybrid",
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
@@ -177,6 +191,7 @@ def _ffpa_attention_impl(
   *,
   enable_fp8: bool = False,
   enable_fp4: bool = False,
+  fp8_preset: Optional[str] = None,
 ) -> torch.Tensor:
   if attn_mask is not None:
     raise ValueError("`attn_mask` is not yet supported for FFPA attention.")
@@ -192,7 +207,8 @@ def _ffpa_attention_impl(
   backend = _build_ffpa_cuda_backend(query.device,
                                      enable_fp8=enable_fp8,
                                      enable_fp4=enable_fp4,
-                                     is_causal=is_causal)
+                                     is_causal=is_causal,
+                                     fp8_preset=fp8_preset)
   if _cp_config is None:
     return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend)
   return _context_parallel_attention(
@@ -344,4 +360,97 @@ def _ffpa_fp4_attention(
     cp_gqa_strategy,
     _cp_config,
     enable_fp4=True,
+  )
+
+
+@_AttnBackendRegistry.register(
+  _AttnBackend.FFPA_FP8_PER_BLOCK,
+  constraints=[],
+  supports_context_parallel=True,
+)
+def _ffpa_fp8_per_block_attention(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+  attn_mask: Optional[torch.Tensor] = None,
+  dropout_p: float = 0.0,
+  is_causal: bool = False,
+  scale: Optional[float] = None,
+  enable_gqa: bool = False,
+  return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
+  _cp_config: Optional["_ContextParallelConfig"] = None,
+) -> torch.Tensor:
+  """FFPA CUDA FP8 per-block backend (CUTE_TMA_FP8, forward-only, sm_120 only).
+
+  Performance-first config: int8 QK MMA, f32 PV accumulation, Q/K/V all
+  quantized per_block, smooth K only, and no hybrid fp16 early rows. Fastest
+  FFPA fp8 backend but the lowest precision.
+
+  :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
+  :param key: ``[B, N_kv, H, D]``.
+  :param value: ``[B, N_kv, H, D]``.
+  :returns: ``[B, N, H, D]`` attention output.
+  """
+  return _ffpa_attention_impl(
+    query,
+    key,
+    value,
+    attn_mask,
+    dropout_p,
+    is_causal,
+    scale,
+    enable_gqa,
+    return_lse,
+    cp_gqa_strategy,
+    _cp_config,
+    enable_fp8=True,
+    fp8_preset="per_block",
+  )
+
+
+@_AttnBackendRegistry.register(
+  _AttnBackend.FFPA_FP8_NO_HYBRID,
+  constraints=[],
+  supports_context_parallel=True,
+)
+def _ffpa_fp8_no_hybrid_attention(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+  attn_mask: Optional[torch.Tensor] = None,
+  dropout_p: float = 0.0,
+  is_causal: bool = False,
+  scale: Optional[float] = None,
+  enable_gqa: bool = False,
+  return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
+  _cp_config: Optional["_ContextParallelConfig"] = None,
+) -> torch.Tensor:
+  """FFPA CUDA FP8 backend without hybrid mode (forward-only, sm_120 only).
+
+  Same quantization config as ``ffpa_fp8`` (int8 QK MMA, fp16 PV
+  accumulation, Q/K per_thread, V per_channel, smooth K and V) but with the
+  hybrid fp16 early-rows path forcibly disabled: slightly faster, slightly
+  lower precision than ``ffpa_fp8``.
+
+  :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
+  :param key: ``[B, N_kv, H, D]``.
+  :param value: ``[B, N_kv, H, D]``.
+  :returns: ``[B, N, H, D]`` attention output.
+  """
+  return _ffpa_attention_impl(
+    query,
+    key,
+    value,
+    attn_mask,
+    dropout_p,
+    is_causal,
+    scale,
+    enable_gqa,
+    return_lse,
+    cp_gqa_strategy,
+    _cp_config,
+    enable_fp8=True,
+    fp8_preset="no_hybrid",
   )

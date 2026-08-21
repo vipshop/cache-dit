@@ -820,6 +820,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "ffpa",  # CUTE_TMA fp16/bf16
       "ffpa_fp8",  # CUTE_TMA_FP8
       "ffpa_fp4",  # CUTE_TMA_FP4 NVFP4
+      "ffpa_fp8_per_block",  # CUTE_TMA_FP8 per-block quant, no hybrid (fastest, lowest precision)
+      "ffpa_fp8_no_hybrid",  # CUTE_TMA_FP8 without hybrid fp16 early rows
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
       "_mindiesd_laser",  # MindIE-SD laser attention
