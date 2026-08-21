@@ -57,27 +57,41 @@ def _build_ffpa_cuda_backend(
     return backend
 
   kwargs = {}
-  # RTX 5090/5080 use the fastest fp8 config: int8 QK MMA + fp16 PV acc.
-  # Otherwise, use the default fp8 attn config: fp8 QK MMA + fp32 PV acc.
-  # Both quant methods support every fp8 head_dim including non-32-multiple
-  # Hybrid fp16 keeps the precision of the early Q rows (attention sink),
-  # the rows most sensitive to fp8/fp4 quantization noise.
-  n_early = 128 if is_causal else 256  # causal Q rows are less sensitive to quant noise
+  # Higher precision config: int8 QK MMA + fp16 PV acc + per_thread Q/K + per_channel V
+  # Both quant methods support every fp8 head_dim including non-32-multiple. Hybrid fp16
+  # keeps the precision of the early Q rows (attention sink), the rows most sensitive to
+  # fp8/fp4 quantization noise. The know limitations:
+  # 1. The per-block quantization must use PV acc type f32 to avoid overflow for large N.
+  # 2. The hybrid mode is required for fp8 for better precision, but not required for fp4.
+  #    Since fp4 already uses fine-grained per-group(16) quantization for better precision.
+  #    We still keep improving the precision of fp8 and fp4 in the future. This hybrid mode
+  #    will be removed once we have better precision for fp8/fp4.
+  # 3. Currently, the best precision config for fp8 attention is always recommended (with
+  #    negilible performance overhead, ~3% for 16K sequence length).
+  # NOTE: The hybrid mode will be removed once we have better precision for fp8.
+  n_early = 128 if is_causal else 256
   if enable_fp8:
     kwargs.update(
-      fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
-      fp8_pv_acc_type="f16" if is_geforce_50x0 else "f32",
+      # Use QK INT8 for better precision, same as SageAttention
+      fp8_qk_mm_type="int8",
+      fp8_pv_acc_type="f16",
       fp8_q_quant_method="per_thread",
       fp8_k_quant_method="per_thread",
       fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=True if is_geforce_50x0 else False,
+      fp8_smooth_v=True,
+      # Currently, the hybrid mode is required for precision.
       fp8_hybrid=True,
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
     kwargs.update(
-      fp4_hybrid=True,
+      # FP4 alreay use fine-grained per-group(16) quantization for better precision,
+      # the same as SageAttention3. So we don't need to use hybrid mode for FP4 for
+      # non-causal attention senarios. But for causal attention, we still use hybrid
+      # mode to keep the precision of the early Q rows (attention sink).
+      # NOTE: This hybrid mode will be removed once we have better precision for fp4.
+      fp4_hybrid=is_causal,
       fp4_hybrid_n_early=n_early,
     )
   backend = CUDABackend(
