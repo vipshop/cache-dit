@@ -827,6 +827,17 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "_mindiesd_laser",  # MindIE-SD laser attention
     ],
   )
+  parser.add_argument(
+    "--ffpa-hybrid-n-early",
+    "--ffpa-hybird-n-early",  # typo-tolerant alias
+    dest="ffpa_hybrid_n_early",
+    type=int,
+    default=None,
+    help=("Number of fp16 early rows for the FFPA hybrid mode (multiple of "
+          "128). Requires --attn ffpa_fp8/ffpa_fp4. Explicitly setting it "
+          "forces the hybrid mode on, including non-causal attention. "
+          "Reflected in the saved filename as hybrid_n_early_<N>."),
+  )
   # Ulysses context parallelism settings
   parser.add_argument(
     "--ulysses-anything",
@@ -1274,6 +1285,15 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   # Force enable compile if force_compile_dynamic is enabled
   if args.force_compile_dynamic:
     args.compile = True
+
+  # FFPA hybrid n_early override: validated early and applied globally so
+  # both the direct and the context-parallel attention paths pick it up.
+  if getattr(args, "ffpa_hybrid_n_early", None) is not None:
+    if args.attn is None or not str(args.attn).startswith("ffpa"):
+      raise ValueError("--ffpa-hybrid-n-early requires an ffpa attention backend "
+                       "(--attn ffpa_fp8 / ffpa_fp4 / ...).")
+    from ..attention.backends.ffpa import set_ffpa_hybrid_n_early
+    set_ffpa_hybrid_n_early(args.ffpa_hybrid_n_early)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2489,6 +2509,8 @@ def strify(args, pipe_or_stats):
       base_str += "_CNP"  # ControlNet Parallelism
   if args.attn is not None:
     base_str += f"_{args.attn.strip('_')}"
+  if getattr(args, "ffpa_hybrid_n_early", None) is not None:
+    base_str += f"_hybrid_n_early_{args.ffpa_hybrid_n_early}"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.

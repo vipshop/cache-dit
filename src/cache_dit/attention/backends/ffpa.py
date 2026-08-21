@@ -24,6 +24,21 @@ _SM120_MAJOR = 12
 # CUDABackend instances are immutable config objects; cache to avoid the
 # per-call dataclass __post_init__ auto-resolve overhead.
 _ffpa_backend_cache: dict[tuple, "CUDABackend"] = {}
+# Global override for the hybrid fp16 early-rows count, set from the CLI
+# (--ffpa-hybrid-n-early). When set it forces the hybrid mode on, including
+# non-causal attention (where the default keeps hybrid off).
+_ffpa_hybrid_n_early_override: Optional[int] = None
+
+
+def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
+  """Override the FFPA hybrid fp16 early-rows count.
+
+  :param n_early: Positive multiple of 128, or ``None`` to restore defaults.
+  """
+  global _ffpa_hybrid_n_early_override
+  if n_early is not None and (n_early <= 0 or n_early % 128 != 0):
+    raise ValueError(f"ffpa hybrid n_early must be a positive multiple of 128, got {n_early}.")
+  _ffpa_hybrid_n_early_override = n_early
 
 
 def _require_sm120_cuda(query: torch.Tensor) -> None:
@@ -52,7 +67,8 @@ def _build_ffpa_cuda_backend(
   if enable_fp8 and enable_fp4:
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
-  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset)
+  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
+               _ffpa_hybrid_n_early_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -71,6 +87,12 @@ def _build_ffpa_cuda_backend(
   #    negilible performance overhead, ~3% for 16K sequence length).
   # NOTE: The hybrid mode will be removed once we have better precision for fp8.
   n_early = 128 if is_causal else 256
+  force_hybrid = False
+  if _ffpa_hybrid_n_early_override is not None:
+    # Explicit CLI value forces the hybrid mode on, even for non-causal
+    # attention and the no-hybrid presets.
+    n_early = _ffpa_hybrid_n_early_override
+    force_hybrid = True
   if enable_fp8 and fp8_preset == "per_block":
     # Performance-first config: per_block Q/K/V + f32 PV acc (f32 acc is required
     # by per-block quantization to avoid overflow for large N), no hybrid.
@@ -82,7 +104,8 @@ def _build_ffpa_cuda_backend(
       fp8_v_quant_method="per_block",
       fp8_smooth_k=True,
       fp8_smooth_v=False,
-      fp8_hybrid=False,
+      fp8_hybrid=force_hybrid,
+      fp8_hybrid_n_early=n_early,
     )
   elif enable_fp8:
     kwargs.update(
@@ -95,7 +118,7 @@ def _build_ffpa_cuda_backend(
       fp8_smooth_k=True,
       fp8_smooth_v=True,
       # Currently, the hybrid mode is required for precision.
-      fp8_hybrid=fp8_preset != "no_hybrid",
+      fp8_hybrid=(fp8_preset != "no_hybrid") or force_hybrid,
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
@@ -105,7 +128,7 @@ def _build_ffpa_cuda_backend(
       # non-causal attention senarios. But for causal attention, we still use hybrid
       # mode to keep the precision of the early Q rows (attention sink).
       # NOTE: This hybrid mode will be removed once we have better precision for fp4.
-      fp4_hybrid=is_causal,
+      fp4_hybrid=is_causal or force_hybrid,
       fp4_hybrid_n_early=n_early,
     )
   backend = CUDABackend(
