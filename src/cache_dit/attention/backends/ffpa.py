@@ -32,6 +32,10 @@ _ffpa_hybrid_n_early_override: Optional[int] = None
 # (--ffpa-fp4-hadamard). Off by default: it trades a small perf overhead
 # for lower fp4 quantization noise on outlier-heavy activations.
 _ffpa_fp4_hadamard_override: bool = False
+# Global override for the fp8 Hadamard Q/K pre-rotation, set from the CLI
+# (--ffpa-fp8-hadamard). Off by default: off-path stays free of any
+# dependency on the hadamard-enabled CUDABackend fields.
+_ffpa_fp8_hadamard_override: bool = False
 
 
 def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
@@ -52,6 +56,15 @@ def set_ffpa_fp4_hadamard(enabled: bool) -> None:
   """
   global _ffpa_fp4_hadamard_override
   _ffpa_fp4_hadamard_override = bool(enabled)
+
+
+def set_ffpa_fp8_hadamard(enabled: bool) -> None:
+  """Toggle the FFPA fp8 Hadamard Q/K pre-rotation.
+
+  :param enabled: True to enable (requires an fp8 attention backend).
+  """
+  global _ffpa_fp8_hadamard_override
+  _ffpa_fp8_hadamard_override = bool(enabled)
 
 
 def _require_sm120_cuda(query: torch.Tensor) -> None:
@@ -81,7 +94,8 @@ def _build_ffpa_cuda_backend(
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
   cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
-               _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override)
+               _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override,
+               _ffpa_fp8_hadamard_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -145,6 +159,10 @@ def _build_ffpa_cuda_backend(
       fp4_hybrid_n_early=n_early,
       fp4_hadamard=_ffpa_fp4_hadamard_override,
     )
+  if enable_fp8 and _ffpa_fp8_hadamard_override:
+    # Injected after both fp8 presets; off-path stays free of the kwarg so
+    # older ffpa-attn builds (without the field) keep working.
+    kwargs["fp8_hadamard"] = True
   backend = CUDABackend(
     backward=False,
     enable_fp8=enable_fp8,

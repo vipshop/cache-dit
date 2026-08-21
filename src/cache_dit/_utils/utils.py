@@ -848,6 +848,17 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "overhead). Requires --attn ffpa_fp4. Reflected in the saved "
           "filename as fp4_hadamard."),
   )
+  parser.add_argument(
+    "--ffpa-fp8-hadamard",
+    dest="ffpa_fp8_hadamard",
+    action="store_true",
+    default=False,
+    help=("Enable the Hadamard Q/K pre-rotation for the FFPA fp8 backends "
+          "(incoherent processing as in FlashAttention-3: spreads per-dim "
+          "outliers so per-block/per-group quant amax drops, exact in fp32 "
+          "math). Requires an ffpa_fp8* attention backend. Reflected in the "
+          "saved filename as fp8_hadamard."),
+  )
   # Ulysses context parallelism settings
   parser.add_argument(
     "--ulysses-anything",
@@ -1312,6 +1323,14 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
       raise ValueError("--ffpa-fp4-hadamard requires --attn ffpa_fp4.")
     from ..attention.backends.ffpa import set_ffpa_fp4_hadamard
     set_ffpa_fp4_hadamard(True)
+
+  if getattr(args, "ffpa_fp8_hadamard", False):
+    if args.attn is None or not str(args.attn).startswith("ffpa_fp8"):
+      raise ValueError("--ffpa-fp8-hadamard requires an ffpa_fp8 attention "
+                       "backend (--attn ffpa_fp8 / ffpa_fp8_per_block / "
+                       "ffpa_fp8_no_hybrid).")
+    from ..attention.backends.ffpa import set_ffpa_fp8_hadamard
+    set_ffpa_fp8_hadamard(True)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2531,6 +2550,8 @@ def strify(args, pipe_or_stats):
     base_str += f"_hybrid_n_early_{args.ffpa_hybrid_n_early}"
   if getattr(args, "ffpa_fp4_hadamard", False):
     base_str += "_fp4_hadamard"
+  if getattr(args, "ffpa_fp8_hadamard", False):
+    base_str += "_fp8_hadamard"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.
