@@ -252,6 +252,26 @@ def test_build_fp8_no_hybrid_backend_config():
 
 
 @requires_sm120
+def test_build_fp4_backend_hadamard_override():
+  ffpa_backend._ffpa_backend_cache.clear()
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+  assert backend.enable_fp4 and backend.fp4_hadamard is False
+  ffpa_backend.set_ffpa_fp4_hadamard(True)
+  try:
+    backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+    assert backend.fp4_hadamard is True
+    # distinct cache entries per override state
+    assert len(ffpa_backend._ffpa_backend_cache) == 2
+    # fp8 backends keep the switch off
+    fp8 = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
+    assert fp8.fp4_hadamard is False
+  finally:
+    ffpa_backend.set_ffpa_fp4_hadamard(False)
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+  assert backend.fp4_hadamard is False
+
+
+@requires_sm120
 def test_toy_model_dispatch_ffpa_fp8_head_dim_120(monkeypatch):
   # Non-32-multiple head_dim: Q/K per_thread and V per_channel quant are
   # D_og-aware and must still run the real fp8 kernel (D pads 120->128).

@@ -28,6 +28,10 @@ _ffpa_backend_cache: dict[tuple, "CUDABackend"] = {}
 # (--ffpa-hybrid-n-early). When set it forces the hybrid mode on, including
 # non-causal attention (where the default keeps hybrid off).
 _ffpa_hybrid_n_early_override: Optional[int] = None
+# Global override for the fp4 Hadamard Q/K pre-rotation, set from the CLI
+# (--ffpa-fp4-hadamard). Off by default: it trades a small perf overhead
+# for lower fp4 quantization noise on outlier-heavy activations.
+_ffpa_fp4_hadamard_override: bool = False
 
 
 def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
@@ -39,6 +43,15 @@ def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
   if n_early is not None and (n_early <= 0 or n_early % 128 != 0):
     raise ValueError(f"ffpa hybrid n_early must be a positive multiple of 128, got {n_early}.")
   _ffpa_hybrid_n_early_override = n_early
+
+
+def set_ffpa_fp4_hadamard(enabled: bool) -> None:
+  """Toggle the FFPA fp4 Hadamard Q/K pre-rotation.
+
+  :param enabled: True to enable (requires the fp4 attention backend).
+  """
+  global _ffpa_fp4_hadamard_override
+  _ffpa_fp4_hadamard_override = bool(enabled)
 
 
 def _require_sm120_cuda(query: torch.Tensor) -> None:
@@ -68,7 +81,7 @@ def _build_ffpa_cuda_backend(
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
   cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
-               _ffpa_hybrid_n_early_override)
+               _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -130,6 +143,7 @@ def _build_ffpa_cuda_backend(
       # NOTE: This hybrid mode will be removed once we have better precision for fp4.
       fp4_hybrid=is_causal or force_hybrid,
       fp4_hybrid_n_early=n_early,
+      fp4_hadamard=_ffpa_fp4_hadamard_override,
     )
   backend = CUDABackend(
     backward=False,

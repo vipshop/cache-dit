@@ -838,6 +838,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "forces the hybrid mode on, including non-causal attention. "
           "Reflected in the saved filename as hybrid_n_early_<N>."),
   )
+  parser.add_argument(
+    "--ffpa-fp4-hadamard",
+    dest="ffpa_fp4_hadamard",
+    action="store_true",
+    default=False,
+    help=("Enable the Hadamard Q/K pre-rotation for the FFPA fp4 backend "
+          "(flattens per-16-group outliers, exact in fp32 math, small perf "
+          "overhead). Requires --attn ffpa_fp4. Reflected in the saved "
+          "filename as fp4_hadamard."),
+  )
   # Ulysses context parallelism settings
   parser.add_argument(
     "--ulysses-anything",
@@ -1294,6 +1304,14 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
                        "(--attn ffpa_fp8 / ffpa_fp4 / ...).")
     from ..attention.backends.ffpa import set_ffpa_hybrid_n_early
     set_ffpa_hybrid_n_early(args.ffpa_hybrid_n_early)
+
+  # FFPA fp4 Hadamard toggle: applied globally like the hybrid override so
+  # both the direct and the context-parallel attention paths pick it up.
+  if getattr(args, "ffpa_fp4_hadamard", False):
+    if args.attn != "ffpa_fp4":
+      raise ValueError("--ffpa-fp4-hadamard requires --attn ffpa_fp4.")
+    from ..attention.backends.ffpa import set_ffpa_fp4_hadamard
+    set_ffpa_fp4_hadamard(True)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2511,6 +2529,8 @@ def strify(args, pipe_or_stats):
     base_str += f"_{args.attn.strip('_')}"
   if getattr(args, "ffpa_hybrid_n_early", None) is not None:
     base_str += f"_hybrid_n_early_{args.ffpa_hybrid_n_early}"
+  if getattr(args, "ffpa_fp4_hadamard", False):
+    base_str += "_fp4_hadamard"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.
