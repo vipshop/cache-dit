@@ -15,7 +15,7 @@ from cache_dit.attention.backends.register import (
   _dispatch_attention_fn,
 )
 
-_FFPA_BACKENDS = ("ffpa", "ffpa_fp8", "ffpa_fp4")
+_FFPA_BACKENDS = ("ffpa", "ffpa_fp8", "ffpa_fp4", "ffpa_fp8_per_block", "ffpa_fp8_no_hybrid")
 
 
 def _is_sm120_cuda() -> bool:
@@ -210,11 +210,65 @@ def test_build_fp8_backend_pro_config():
   assert backend.fp8_k_quant_method == "per_thread"
   assert backend.fp8_v_quant_method == "per_channel"
   assert backend.fp8_hybrid is True
-  assert backend.fp8_hybrid_n_early == 128
+  assert backend.fp8_hybrid_n_early == 256
   causal = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"),
                                                  enable_fp8=True,
                                                  is_causal=True)
-  assert causal.fp8_hybrid_n_early == 256
+  assert causal.fp8_hybrid_n_early == 128
+
+
+@requires_sm120
+def test_build_fp8_per_block_backend_config():
+  ffpa_backend._ffpa_backend_cache.clear()
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"),
+                                                  enable_fp8=True,
+                                                  fp8_preset="per_block")
+  assert backend.enable_fp8 and not backend.enable_fp4
+  assert backend.fp8_qk_mm_type == "int8"
+  assert backend.fp8_pv_acc_type == "f32"
+  assert backend.fp8_q_quant_method == "per_block"
+  assert backend.fp8_k_quant_method == "per_block"
+  assert backend.fp8_v_quant_method == "per_block"
+  assert backend.fp8_smooth_k is True
+  assert backend.fp8_smooth_v is False
+  assert backend.fp8_hybrid is False
+
+
+@requires_sm120
+def test_build_fp8_no_hybrid_backend_config():
+  ffpa_backend._ffpa_backend_cache.clear()
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"),
+                                                  enable_fp8=True,
+                                                  fp8_preset="no_hybrid")
+  assert backend.enable_fp8 and not backend.enable_fp4
+  assert backend.fp8_qk_mm_type == "int8"
+  assert backend.fp8_pv_acc_type == "f16"
+  assert backend.fp8_q_quant_method == "per_thread"
+  assert backend.fp8_k_quant_method == "per_thread"
+  assert backend.fp8_v_quant_method == "per_channel"
+  assert backend.fp8_smooth_k is True
+  assert backend.fp8_smooth_v is True
+  assert backend.fp8_hybrid is False
+
+
+@requires_sm120
+def test_build_fp4_backend_hadamard_override():
+  ffpa_backend._ffpa_backend_cache.clear()
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+  assert backend.enable_fp4 and backend.fp4_hadamard is False
+  ffpa_backend.set_ffpa_fp4_hadamard(True)
+  try:
+    backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+    assert backend.fp4_hadamard is True
+    # distinct cache entries per override state
+    assert len(ffpa_backend._ffpa_backend_cache) == 2
+    # fp8 backends keep the switch off
+    fp8 = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
+    assert fp8.fp4_hadamard is False
+  finally:
+    ffpa_backend.set_ffpa_fp4_hadamard(False)
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+  assert backend.fp4_hadamard is False
 
 
 @requires_sm120
@@ -278,6 +332,54 @@ def test_toy_model_dispatch_ffpa_fp8(monkeypatch):
   backend = spy.calls[0]
   assert backend.enable_fp8 is True and backend.enable_fp4 is False
 
+  ref = _sdpa_ref(q, k, v)
+  assert _cos_sim(out, ref) > 0.99
+  assert (out.float() - ref.float()).abs().mean().item() < 0.05
+
+
+@requires_sm120
+def test_toy_model_dispatch_ffpa_fp8_per_block(monkeypatch):
+  spy = _FFPAFuncSpy()
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
+
+  model = ToyAttentionModel("ffpa_fp8_per_block")
+  q, k, v = _make_qkv()
+  out = model(q, k, v)
+
+  assert len(spy.calls) == 1
+  backend = spy.calls[0]
+  assert backend.enable_fp8 is True and backend.enable_fp4 is False
+  assert backend.fp8_qk_mm_type == "int8"
+  assert backend.fp8_pv_acc_type == "f32"
+  assert backend.fp8_q_quant_method == "per_block"
+  assert backend.fp8_k_quant_method == "per_block"
+  assert backend.fp8_v_quant_method == "per_block"
+  assert backend.fp8_smooth_v is False
+  assert backend.fp8_hybrid is False
+
+  # per_block is the lowest-precision fp8 config; use fp4-level tolerances.
+  ref = _sdpa_ref(q, k, v)
+  assert _cos_sim(out, ref) > 0.9
+  assert (out.float() - ref.float()).abs().mean().item() < 0.15
+
+
+@requires_sm120
+def test_toy_model_dispatch_ffpa_fp8_no_hybrid(monkeypatch):
+  spy = _FFPAFuncSpy()
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
+
+  model = ToyAttentionModel("ffpa_fp8_no_hybrid")
+  q, k, v = _make_qkv()
+  out = model(q, k, v)
+
+  assert len(spy.calls) == 1
+  backend = spy.calls[0]
+  assert backend.enable_fp8 is True and backend.enable_fp4 is False
+  assert backend.fp8_q_quant_method == "per_thread"
+  assert backend.fp8_v_quant_method == "per_channel"
+  assert backend.fp8_hybrid is False
+
+  # Same quant config as ffpa_fp8, only the hybrid early-rows path is off.
   ref = _sdpa_ref(q, k, v)
   assert _cos_sim(out, ref) > 0.99
   assert (out.float() - ref.float()).abs().mean().item() < 0.05
