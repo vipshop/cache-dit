@@ -236,10 +236,12 @@ def _ffpa_attn_core(
   backend: "CUDABackend",
   nhd_native: bool = False,
 ) -> torch.Tensor:
-  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8 CUDA path
-  # reads NHD gmem natively (Phase C), so a zero-copy permute view suffices;
-  # fp16/fp4 kernels still require a BHND-packed copy (non-contiguous Q
-  # silently corrupts them). Any non-packed input falls back to the copy.
+  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
+  # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
+  # natively (Phase C), so a zero-copy permute view suffices; unsupported
+  # fp16 paths materialize packed copies inside the CUDA op (same cost as
+  # the explicit fallback below). Any non-packed input falls back to the
+  # copy.
   if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
     q = query.permute(0, 2, 1, 3)
     k = key.permute(0, 2, 1, 3)
@@ -333,7 +335,7 @@ def _ffpa_attention_impl(
                            scale,
                            enable_gqa,
                            backend,
-                           nhd_native=enable_fp8)
+                           nhd_native=True)
   return _context_parallel_attention(
     query,
     key,
@@ -345,7 +347,7 @@ def _ffpa_attention_impl(
     enable_gqa,
     return_lse,
     cp_gqa_strategy,
-    forward_op=_make_ffpa_forward_op(backend, enable_fp8),
+    forward_op=_make_ffpa_forward_op(backend, True),
     backward_op=_ffpa_attention_backward_op,
     _cp_config=_cp_config,
   )
