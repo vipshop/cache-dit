@@ -859,6 +859,26 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "math). Requires an ffpa_fp8* attention backend. Reflected in the "
           "saved filename as fp8_hadamard."),
   )
+  parser.add_argument(
+    "--ffpa-fp4-pv-mm-type",
+    dest="ffpa_fp4_pv_mm_type",
+    type=str,
+    default=None,
+    choices=["fp4", "fp8"],
+    help=("PV MMA dtype for the FFPA fp4 backend: fp4 (NVFP4 e2m1 + ue4m3/16, "
+          "default) or fp8 (MXFP8 e4m3 + ue8m0/32, higher PV precision, "
+          "persist_d head_dim <= 192 only). Requires --attn ffpa_fp4. "
+          "Reflected in the saved filename as fp4_pv_mm_type_<T>."),
+  )
+  parser.add_argument(
+    "--ffpa-fp4-smooth-v",
+    dest="ffpa_fp4_smooth_v",
+    action="store_true",
+    default=False,
+    help=("Subtract the per-(b,hkv) V column mean before V quantize for the "
+          "FFPA fp4 backend (persist_d head_dim <= 256 only). Requires "
+          "--attn ffpa_fp4. Reflected in the saved filename as fp4_smooth_v."),
+  )
   # Ulysses context parallelism settings
   parser.add_argument(
     "--ulysses-anything",
@@ -1331,6 +1351,20 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
                        "ffpa_fp8_no_hybrid).")
     from ..attention.backends.ffpa import set_ffpa_fp8_hadamard
     set_ffpa_fp8_hadamard(True)
+
+  # FFPA fp4 PV MMA dtype / V smoothing: applied globally like the other
+  # ffpa overrides so both the direct and the CP attention paths pick it up.
+  if getattr(args, "ffpa_fp4_pv_mm_type", None) is not None:
+    if args.attn != "ffpa_fp4":
+      raise ValueError("--ffpa-fp4-pv-mm-type requires --attn ffpa_fp4.")
+    from ..attention.backends.ffpa import set_ffpa_fp4_pv_mm_type
+    set_ffpa_fp4_pv_mm_type(args.ffpa_fp4_pv_mm_type)
+
+  if getattr(args, "ffpa_fp4_smooth_v", False):
+    if args.attn != "ffpa_fp4":
+      raise ValueError("--ffpa-fp4-smooth-v requires --attn ffpa_fp4.")
+    from ..attention.backends.ffpa import set_ffpa_fp4_smooth_v
+    set_ffpa_fp4_smooth_v(True)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2552,6 +2586,10 @@ def strify(args, pipe_or_stats):
     base_str += "_fp4_hadamard"
   if getattr(args, "ffpa_fp8_hadamard", False):
     base_str += "_fp8_hadamard"
+  if getattr(args, "ffpa_fp4_pv_mm_type", None) is not None:
+    base_str += f"_fp4_pv_mm_type_{args.ffpa_fp4_pv_mm_type}"
+  if getattr(args, "ffpa_fp4_smooth_v", False):
+    base_str += "_fp4_smooth_v"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.

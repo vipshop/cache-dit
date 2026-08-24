@@ -36,6 +36,13 @@ _ffpa_fp4_hadamard_override: bool = False
 # (--ffpa-fp8-hadamard). Off by default: off-path stays free of any
 # dependency on the hadamard-enabled CUDABackend fields.
 _ffpa_fp8_hadamard_override: bool = False
+# Global override for the fp4 PV MMA dtype ("fp8" = MXFP8, higher PV
+# precision than NVFP4), set from the CLI (--ffpa-fp4-pv-mm-type). None
+# keeps the ffpa-attn default (fp4).
+_ffpa_fp4_pv_mm_type_override: Optional[str] = None
+# Global override for the fp4 V-column-mean smoothing, set from the CLI
+# (--ffpa-fp4-smooth-v).
+_ffpa_fp4_smooth_v_override: bool = False
 
 
 def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
@@ -67,6 +74,26 @@ def set_ffpa_fp8_hadamard(enabled: bool) -> None:
   _ffpa_fp8_hadamard_override = bool(enabled)
 
 
+def set_ffpa_fp4_pv_mm_type(pv_mm_type: Optional[str]) -> None:
+  """Override the FFPA fp4 PV MMA dtype.
+
+  :param pv_mm_type: ``"fp4"`` (NVFP4), ``"fp8"`` (MXFP8, head_dim <= 192), or ``None`` for the default.
+  """
+  global _ffpa_fp4_pv_mm_type_override
+  if pv_mm_type not in (None, "fp4", "fp8"):
+    raise ValueError(f"ffpa fp4 pv_mm_type must be 'fp4' or 'fp8', got {pv_mm_type}.")
+  _ffpa_fp4_pv_mm_type_override = pv_mm_type
+
+
+def set_ffpa_fp4_smooth_v(enabled: bool) -> None:
+  """Toggle the FFPA fp4 V-column-mean smoothing.
+
+  :param enabled: True to enable (requires the fp4 attention backend).
+  """
+  global _ffpa_fp4_smooth_v_override
+  _ffpa_fp4_smooth_v_override = bool(enabled)
+
+
 def _require_sm120_cuda(query: torch.Tensor) -> None:
   if query.device.type != "cuda":
     raise RuntimeError(
@@ -95,7 +122,8 @@ def _build_ffpa_cuda_backend(
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
   cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
                _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override,
-               _ffpa_fp8_hadamard_override)
+               _ffpa_fp8_hadamard_override, _ffpa_fp4_pv_mm_type_override,
+               _ffpa_fp4_smooth_v_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -163,6 +191,10 @@ def _build_ffpa_cuda_backend(
     # Injected after both fp8 presets; off-path stays free of the kwarg so
     # older ffpa-attn builds (without the field) keep working.
     kwargs["fp8_hadamard"] = True
+  if enable_fp4 and _ffpa_fp4_pv_mm_type_override is not None:
+    kwargs["fp4_pv_mm_type"] = _ffpa_fp4_pv_mm_type_override
+  if enable_fp4 and _ffpa_fp4_smooth_v_override:
+    kwargs["fp4_smooth_v"] = True
   backend = CUDABackend(
     backward=False,
     enable_fp8=enable_fp8,
