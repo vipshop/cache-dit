@@ -160,16 +160,20 @@ def _build_ffpa_cuda_backend(
   # including causal attention.
   force_hybrid = _ffpa_hybrid_override
   if enable_fp8 and fp8_preset == "per_block":
-    # Performance-first config: per_block Q/K/V + f32 PV acc (f32 acc is required
+    # Performance-first config: per_block Q/K + f32 PV acc (f32 acc is required
     # by per-block quantization to avoid overflow for large N), no hybrid.
+    # V uses per_channel + smooth_v: per_block V (one amax over a 128-row
+    # block) collapses on outlier-heavy rows (FLUX text tokens), producing a
+    # catastrophically wrong image at large N (PSNR ~12 at 2048). per_channel V
+    # (amax per D column over all rows) keeps those rows intact.
     kwargs.update(
       fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f32",
       fp8_q_quant_method="per_block",
       fp8_k_quant_method="per_block",
-      fp8_v_quant_method="per_block",
+      fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=False,
+      fp8_smooth_v=True,
       fp8_hybrid=force_hybrid,
       fp8_hybrid_n_early=n_early,
     )

@@ -228,9 +228,9 @@ def test_build_fp8_per_block_backend_config():
   assert backend.fp8_pv_acc_type == "f32"
   assert backend.fp8_q_quant_method == "per_block"
   assert backend.fp8_k_quant_method == "per_block"
-  assert backend.fp8_v_quant_method == "per_block"
+  assert backend.fp8_v_quant_method == "per_channel"
   assert backend.fp8_smooth_k is True
-  assert backend.fp8_smooth_v is False
+  assert backend.fp8_smooth_v is True
   assert backend.fp8_hybrid is False
 
 
@@ -382,8 +382,8 @@ def test_toy_model_dispatch_ffpa_fp8_per_block(monkeypatch):
   assert backend.fp8_pv_acc_type == "f32"
   assert backend.fp8_q_quant_method == "per_block"
   assert backend.fp8_k_quant_method == "per_block"
-  assert backend.fp8_v_quant_method == "per_block"
-  assert backend.fp8_smooth_v is False
+  assert backend.fp8_v_quant_method == "per_channel"
+  assert backend.fp8_smooth_v is True
   assert backend.fp8_hybrid is False
 
   # per_block is the lowest-precision fp8 config; use fp4-level tolerances.
