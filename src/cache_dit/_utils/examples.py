@@ -54,6 +54,7 @@ __all__ = [
   "krea2_example",
   "joy_image_edit_example",
   "bria_fibo_example",
+  "anyflow_t2v_example",
   "anyflow_far_example",
 ]
 
