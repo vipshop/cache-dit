@@ -25,8 +25,7 @@ _SM120_MAJOR = 12
 # per-call dataclass __post_init__ auto-resolve overhead.
 _ffpa_backend_cache: dict[tuple, "CUDABackend"] = {}
 # Global override for the hybrid fp16 early-rows count, set from the CLI
-# (--ffpa-hybrid-n-early). When set it forces the hybrid mode on, including
-# non-causal attention (where the default keeps hybrid off).
+# (--ffpa-hybrid-n-early). Only meaningful when hybrid is enabled.
 _ffpa_hybrid_n_early_override: Optional[int] = None
 # Global override for the fp4 Hadamard Q/K pre-rotation, set from the CLI
 # (--ffpa-fp4-hadamard). Off by default: it trades a small perf overhead
@@ -43,11 +42,10 @@ _ffpa_fp4_pv_mm_type_override: Optional[str] = None
 # Global override for the fp4 V-column-mean smoothing, set from the CLI
 # (--ffpa-fp4-smooth-v).
 _ffpa_fp4_smooth_v_override: bool = False
-# Global overrides forcing the hybrid fp16 early-rows stage OFF, set from
-# the CLI (--ffpa-fp8-no-hybrid / --ffpa-fp4-no-hybrid). Trades precision
-# (causal early rows lose the fp16 attention-sink path) for speed.
-_ffpa_fp8_no_hybrid_override: bool = False
-_ffpa_fp4_no_hybrid_override: bool = False
+# Global override toggling the FFPA hybrid fp16 early-rows stage ON, set
+# from the CLI (--ffpa-hybrid). Off by default for every backend, including
+# causal attention; hybrid is opt-in only.
+_ffpa_hybrid_override: bool = False
 
 
 def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
@@ -99,18 +97,13 @@ def set_ffpa_fp4_smooth_v(enabled: bool) -> None:
   _ffpa_fp4_smooth_v_override = bool(enabled)
 
 
-def set_ffpa_no_hybrid(enable_fp8: Optional[bool] = None,
-                       enable_fp4: Optional[bool] = None) -> None:
-  """Force the FFPA hybrid fp16 early-rows stage off.
+def set_ffpa_hybrid(enabled: bool) -> None:
+  """Toggle the FFPA hybrid fp16 early-rows stage.
 
-  :param enable_fp8: Force fp8 hybrid off (requires an fp8 attention backend).
-  :param enable_fp4: Force fp4 hybrid off (requires the fp4 attention backend).
+  :param enabled: True to enable the hybrid stage (requires an ffpa backend).
   """
-  global _ffpa_fp8_no_hybrid_override, _ffpa_fp4_no_hybrid_override
-  if enable_fp8 is not None:
-    _ffpa_fp8_no_hybrid_override = bool(enable_fp8)
-  if enable_fp4 is not None:
-    _ffpa_fp4_no_hybrid_override = bool(enable_fp4)
+  global _ffpa_hybrid_override
+  _ffpa_hybrid_override = bool(enabled)
 
 
 def _require_sm120_cuda(query: torch.Tensor) -> None:
@@ -142,8 +135,7 @@ def _build_ffpa_cuda_backend(
   cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
                _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override,
                _ffpa_fp8_hadamard_override, _ffpa_fp4_pv_mm_type_override,
-               _ffpa_fp4_smooth_v_override, _ffpa_fp8_no_hybrid_override,
-               _ffpa_fp4_no_hybrid_override)
+               _ffpa_fp4_smooth_v_override, _ffpa_hybrid_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -162,12 +154,11 @@ def _build_ffpa_cuda_backend(
   #    negilible performance overhead, ~3% for 16K sequence length).
   # NOTE: The hybrid mode will be removed once we have better precision for fp8.
   n_early = 128 if is_causal else 256
-  force_hybrid = False
   if _ffpa_hybrid_n_early_override is not None:
-    # Explicit CLI value forces the hybrid mode on, even for non-causal
-    # attention and the no-hybrid presets.
     n_early = _ffpa_hybrid_n_early_override
-    force_hybrid = True
+  # Hybrid is opt-in only (--ffpa-hybrid); off by default for every backend,
+  # including causal attention.
+  force_hybrid = _ffpa_hybrid_override
   if enable_fp8 and fp8_preset == "per_block":
     # Performance-first config: per_block Q/K/V + f32 PV acc (f32 acc is required
     # by per-block quantization to avoid overflow for large N), no hybrid.
@@ -193,18 +184,17 @@ def _build_ffpa_cuda_backend(
       fp8_smooth_k=True,
       fp8_smooth_v=True,
       # Hybrid keeps fp16 precision on the early Q rows (attention sink);
-      # --ffpa-fp8-no-hybrid forces it off for speed at a precision cost.
-      fp8_hybrid=((fp8_preset != "no_hybrid") or force_hybrid) and not _ffpa_fp8_no_hybrid_override,
+      # opt-in via --ffpa-hybrid, off by default.
+      fp8_hybrid=force_hybrid,
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
     kwargs.update(
-      # FP4 alreay use fine-grained per-group(16) quantization for better precision,
-      # the same as SageAttention3. So we don't need to use hybrid mode for FP4 for
-      # non-causal attention senarios. But for causal attention, we still use hybrid
-      # mode to keep the precision of the early Q rows (attention sink).
+      # FP4 already uses fine-grained per-group(16) quantization for better
+      # precision, the same as SageAttention3. Hybrid is opt-in via --ffpa-hybrid
+      # and off by default (including causal).
       # NOTE: This hybrid mode will be removed once we have better precision for fp4.
-      fp4_hybrid=(is_causal or force_hybrid) and not _ffpa_fp4_no_hybrid_override,
+      fp4_hybrid=force_hybrid,
       fp4_hybrid_n_early=n_early,
       fp4_hadamard=_ffpa_fp4_hadamard_override,
     )
@@ -531,51 +521,4 @@ def _ffpa_fp8_per_block_attention(
     _cp_config,
     enable_fp8=True,
     fp8_preset="per_block",
-  )
-
-
-@_AttnBackendRegistry.register(
-  _AttnBackend.FFPA_FP8_NO_HYBRID,
-  constraints=[],
-  supports_context_parallel=True,
-)
-def _ffpa_fp8_no_hybrid_attention(
-  query: torch.Tensor,
-  key: torch.Tensor,
-  value: torch.Tensor,
-  attn_mask: Optional[torch.Tensor] = None,
-  dropout_p: float = 0.0,
-  is_causal: bool = False,
-  scale: Optional[float] = None,
-  enable_gqa: bool = False,
-  return_lse: bool = False,
-  cp_gqa_strategy: Optional[str] = None,
-  _cp_config: Optional["_ContextParallelConfig"] = None,
-) -> torch.Tensor:
-  """FFPA CUDA FP8 backend without hybrid mode (forward-only, sm_120 only).
-
-  Same quantization config as ``ffpa_fp8`` (int8 QK MMA, fp16 PV
-  accumulation, Q/K per_thread, V per_channel, smooth K and V) but with the
-  hybrid fp16 early-rows path forcibly disabled: slightly faster, slightly
-  lower precision than ``ffpa_fp8``.
-
-  :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
-  :param key: ``[B, N_kv, H, D]``.
-  :param value: ``[B, N_kv, H, D]``.
-  :returns: ``[B, N, H, D]`` attention output.
-  """
-  return _ffpa_attention_impl(
-    query,
-    key,
-    value,
-    attn_mask,
-    dropout_p,
-    is_causal,
-    scale,
-    enable_gqa,
-    return_lse,
-    cp_gqa_strategy,
-    _cp_config,
-    enable_fp8=True,
-    fp8_preset="no_hybrid",
   )

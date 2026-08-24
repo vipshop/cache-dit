@@ -47,7 +47,6 @@ class _AttnBackend(str, Enum):
   FFPA_FP8 = "ffpa_fp8"
   FFPA_FP4 = "ffpa_fp4"
   FFPA_FP8_PER_BLOCK = "ffpa_fp8_per_block"
-  FFPA_FP8_NO_HYBRID = "ffpa_fp8_no_hybrid"
   _NATIVE_NPU = "_native_npu"
   _NPU_FIA = "_npu_fia"
   _MINDIESD_LASER = "_mindiesd_laser"

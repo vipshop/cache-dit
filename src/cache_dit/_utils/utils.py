@@ -820,12 +820,21 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "ffpa",  # CUTE_TMA fp16/bf16
       "ffpa_fp8",  # CUTE_TMA_FP8
       "ffpa_fp4",  # CUTE_TMA_FP4 NVFP4
-      "ffpa_fp8_per_block",  # CUTE_TMA_FP8 per-block quant, no hybrid (fastest, lowest precision)
-      "ffpa_fp8_no_hybrid",  # CUTE_TMA_FP8 without hybrid fp16 early rows
+      "ffpa_fp8_per_block",  # CUTE_TMA_FP8 per-block quant (fastest, lowest precision)
       "_native_npu",  # native npu attention
       "_npu_fia",  # npu fused infer attention
       "_mindiesd_laser",  # MindIE-SD laser attention
     ],
+  )
+  parser.add_argument(
+    "--ffpa-hybrid",
+    dest="ffpa_hybrid",
+    action="store_true",
+    default=False,
+    help=("Enable the FFPA hybrid fp16 early-rows stage (--attn ffpa_fp8 / "
+          "ffpa_fp4 / ffpa_fp8_per_block). Off by default for every backend, "
+          "including causal attention; opt-in only. Reflected in the saved "
+          "filename as hybrid."),
   )
   parser.add_argument(
     "--ffpa-hybrid-n-early",
@@ -834,8 +843,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=None,
     help=("Number of fp16 early rows for the FFPA hybrid mode (multiple of "
-          "128). Requires --attn ffpa_fp8/ffpa_fp4. Explicitly setting it "
-          "forces the hybrid mode on, including non-causal attention. "
+          "128). Requires --attn ffpa_fp8/ffpa_fp4 and --ffpa-hybrid. "
           "Reflected in the saved filename as hybrid_n_early_<N>."),
   )
   parser.add_argument(
@@ -858,27 +866,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "outliers so per-block/per-group quant amax drops, exact in fp32 "
           "math). Requires an ffpa_fp8* attention backend. Reflected in the "
           "saved filename as fp8_hadamard."),
-  )
-  parser.add_argument(
-    "--ffpa-fp8-no-hybrid",
-    dest="ffpa_fp8_no_hybrid",
-    action="store_true",
-    default=False,
-    help=("Force the FFPA fp8 hybrid fp16 early-rows stage OFF (--attn "
-          "ffpa_fp8 / ffpa_fp8_per_block). Faster (drops the fp16 stage-1 "
-          "kernel + its prep), but causal early rows lose the fp16 "
-          "attention-sink precision (~28.5dB vs ~34dB PSNR @1024 on Flux). "
-          "Reflected in the saved filename as fp8_no_hybrid."),
-  )
-  parser.add_argument(
-    "--ffpa-fp4-no-hybrid",
-    dest="ffpa_fp4_no_hybrid",
-    action="store_true",
-    default=False,
-    help=("Force the FFPA fp4 hybrid fp16 early-rows stage OFF (--attn "
-          "ffpa_fp4). Faster, but causal early rows lose the fp16 "
-          "attention-sink precision. Reflected in the saved filename as "
-          "fp4_no_hybrid."),
   )
   parser.add_argument(
     "--ffpa-fp4-pv-mm-type",
@@ -1348,6 +1335,15 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   if args.force_compile_dynamic:
     args.compile = True
 
+  # FFPA hybrid toggle: applied globally so both the direct and the
+  # context-parallel attention paths pick it up. Off by default.
+  if getattr(args, "ffpa_hybrid", False):
+    if args.attn is None or not str(args.attn).startswith("ffpa"):
+      raise ValueError("--ffpa-hybrid requires an ffpa attention backend "
+                       "(--attn ffpa_fp8 / ffpa_fp4 / ffpa_fp8_per_block).")
+    from ..attention.backends.ffpa import set_ffpa_hybrid
+    set_ffpa_hybrid(True)
+
   # FFPA hybrid n_early override: validated early and applied globally so
   # both the direct and the context-parallel attention paths pick it up.
   if getattr(args, "ffpa_hybrid_n_early", None) is not None:
@@ -1368,8 +1364,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   if getattr(args, "ffpa_fp8_hadamard", False):
     if args.attn is None or not str(args.attn).startswith("ffpa_fp8"):
       raise ValueError("--ffpa-fp8-hadamard requires an ffpa_fp8 attention "
-                       "backend (--attn ffpa_fp8 / ffpa_fp8_per_block / "
-                       "ffpa_fp8_no_hybrid).")
+                       "backend (--attn ffpa_fp8 / ffpa_fp8_per_block).")
     from ..attention.backends.ffpa import set_ffpa_fp8_hadamard
     set_ffpa_fp8_hadamard(True)
 
@@ -1386,20 +1381,6 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
       raise ValueError("--ffpa-fp4-smooth-v requires --attn ffpa_fp4.")
     from ..attention.backends.ffpa import set_ffpa_fp4_smooth_v
     set_ffpa_fp4_smooth_v(True)
-
-  if getattr(args, "ffpa_fp8_no_hybrid", False):
-    if args.attn is None or not str(args.attn).startswith("ffpa_fp8"):
-      raise ValueError("--ffpa-fp8-no-hybrid requires an ffpa_fp8 attention "
-                       "backend (--attn ffpa_fp8 / ffpa_fp8_per_block / "
-                       "ffpa_fp8_no_hybrid).")
-    from ..attention.backends.ffpa import set_ffpa_no_hybrid
-    set_ffpa_no_hybrid(enable_fp8=True)
-
-  if getattr(args, "ffpa_fp4_no_hybrid", False):
-    if args.attn != "ffpa_fp4":
-      raise ValueError("--ffpa-fp4-no-hybrid requires --attn ffpa_fp4.")
-    from ..attention.backends.ffpa import set_ffpa_no_hybrid
-    set_ffpa_no_hybrid(enable_fp4=True)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2617,10 +2598,8 @@ def strify(args, pipe_or_stats):
     base_str += f"_{args.attn.strip('_')}"
   if getattr(args, "ffpa_hybrid_n_early", None) is not None:
     base_str += f"_hybrid_n_early_{args.ffpa_hybrid_n_early}"
-  if getattr(args, "ffpa_fp8_no_hybrid", False):
-    base_str += "_fp8_no_hybrid"
-  if getattr(args, "ffpa_fp4_no_hybrid", False):
-    base_str += "_fp4_no_hybrid"
+  if getattr(args, "ffpa_hybrid", False):
+    base_str += "_hybrid"
   if getattr(args, "ffpa_fp4_hadamard", False):
     base_str += "_fp4_hadamard"
   if getattr(args, "ffpa_fp8_hadamard", False):
