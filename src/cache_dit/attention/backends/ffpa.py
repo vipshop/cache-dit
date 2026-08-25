@@ -24,6 +24,99 @@ _SM120_MAJOR = 12
 # CUDABackend instances are immutable config objects; cache to avoid the
 # per-call dataclass __post_init__ auto-resolve overhead.
 _ffpa_backend_cache: dict[tuple, "CUDABackend"] = {}
+# Global override for the hybrid fp16 early-rows count, set from the CLI
+# (--ffpa-hybrid-n-early). Only meaningful when hybrid is enabled.
+_ffpa_hybrid_n_early_override: Optional[int] = None
+# Global override for the fp4 Hadamard Q/K pre-rotation, set from the CLI
+# (--ffpa-fp4-hadamard). Off by default: it trades a small perf overhead
+# for lower fp4 quantization noise on outlier-heavy activations.
+_ffpa_fp4_hadamard_override: bool = False
+# Global override for the fp8 Hadamard Q/K pre-rotation, set from the CLI
+# (--ffpa-fp8-hadamard). Off by default: off-path stays free of any
+# dependency on the hadamard-enabled CUDABackend fields.
+_ffpa_fp8_hadamard_override: bool = False
+# Global override for the fp4 PV MMA dtype ("fp8" = MXFP8, higher PV
+# precision than NVFP4), set from the CLI (--ffpa-fp4-pv-mm-type). None
+# keeps the ffpa-attn default (fp4).
+_ffpa_fp4_pv_mm_type_override: Optional[str] = None
+# Global override for the fp4 V-column-mean smoothing, set from the CLI
+# (--ffpa-fp4-smooth-v).
+_ffpa_fp4_smooth_v_override: bool = False
+# Global override for the fp8 V-column-mean smoothing, set from the CLI
+# (--ffpa-fp8-smooth-v). Off by default: smooth_v can mask per-channel V
+# regressions, so tests run the unsmoothed per-channel path.
+_ffpa_fp8_smooth_v_override: bool = False
+# Global override toggling the FFPA hybrid fp16 early-rows stage ON, set
+# from the CLI (--ffpa-hybrid). Off by default for every backend, including
+# causal attention; hybrid is opt-in only.
+_ffpa_hybrid_override: bool = False
+
+
+def set_ffpa_hybrid_n_early(n_early: Optional[int]) -> None:
+  """Override the FFPA hybrid fp16 early-rows count.
+
+  :param n_early: Positive multiple of 128, or ``None`` to restore defaults.
+  """
+  global _ffpa_hybrid_n_early_override
+  if n_early is not None and (n_early <= 0 or n_early % 128 != 0):
+    raise ValueError(f"ffpa hybrid n_early must be a positive multiple of 128, got {n_early}.")
+  _ffpa_hybrid_n_early_override = n_early
+
+
+def set_ffpa_fp4_hadamard(enabled: bool) -> None:
+  """Toggle the FFPA fp4 Hadamard Q/K pre-rotation.
+
+  :param enabled: True to enable (requires the fp4 attention backend).
+  """
+  global _ffpa_fp4_hadamard_override
+  _ffpa_fp4_hadamard_override = bool(enabled)
+
+
+def set_ffpa_fp8_hadamard(enabled: bool) -> None:
+  """Toggle the FFPA fp8 Hadamard Q/K pre-rotation.
+
+  :param enabled: True to enable (requires an fp8 attention backend).
+  """
+  global _ffpa_fp8_hadamard_override
+  _ffpa_fp8_hadamard_override = bool(enabled)
+
+
+def set_ffpa_fp4_pv_mm_type(pv_mm_type: Optional[str]) -> None:
+  """Override the FFPA fp4 PV MMA dtype.
+
+  :param pv_mm_type: ``"fp4"`` (NVFP4), ``"fp8"`` (MXFP8, head_dim <= 192), or ``None`` for the default.
+  """
+  global _ffpa_fp4_pv_mm_type_override
+  if pv_mm_type not in (None, "fp4", "fp8"):
+    raise ValueError(f"ffpa fp4 pv_mm_type must be 'fp4' or 'fp8', got {pv_mm_type}.")
+  _ffpa_fp4_pv_mm_type_override = pv_mm_type
+
+
+def set_ffpa_fp4_smooth_v(enabled: bool) -> None:
+  """Toggle the FFPA fp4 V-column-mean smoothing.
+
+  :param enabled: True to enable (requires the fp4 attention backend).
+  """
+  global _ffpa_fp4_smooth_v_override
+  _ffpa_fp4_smooth_v_override = bool(enabled)
+
+
+def set_ffpa_fp8_smooth_v(enabled: bool) -> None:
+  """Toggle the FFPA fp8 V-column-mean smoothing.
+
+  :param enabled: True to enable (requires an fp8 attention backend).
+  """
+  global _ffpa_fp8_smooth_v_override
+  _ffpa_fp8_smooth_v_override = bool(enabled)
+
+
+def set_ffpa_hybrid(enabled: bool) -> None:
+  """Toggle the FFPA hybrid fp16 early-rows stage.
+
+  :param enabled: True to enable the hybrid stage (requires an ffpa backend).
+  """
+  global _ffpa_hybrid_override
+  _ffpa_hybrid_override = bool(enabled)
 
 
 def _require_sm120_cuda(query: torch.Tensor) -> None:
@@ -47,11 +140,15 @@ def _build_ffpa_cuda_backend(
   enable_fp8: bool = False,
   enable_fp4: bool = False,
   is_causal: bool = False,
+  fp8_preset: Optional[str] = None,
 ) -> "CUDABackend":
   if enable_fp8 and enable_fp4:
     raise ValueError("enable_fp8 and enable_fp4 are mutually exclusive.")
   is_geforce_50x0 = _is_geforce_5090_or_5080(device)
-  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal)
+  cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
+               _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override,
+               _ffpa_fp8_hadamard_override, _ffpa_fp4_pv_mm_type_override,
+               _ffpa_fp4_smooth_v_override, _ffpa_fp8_smooth_v_override, _ffpa_hybrid_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -70,30 +167,68 @@ def _build_ffpa_cuda_backend(
   #    negilible performance overhead, ~3% for 16K sequence length).
   # NOTE: The hybrid mode will be removed once we have better precision for fp8.
   n_early = 128 if is_causal else 256
-  if enable_fp8:
+  if _ffpa_hybrid_n_early_override is not None:
+    n_early = _ffpa_hybrid_n_early_override
+  # Hybrid is opt-in only (--ffpa-hybrid); off by default for every backend,
+  # including causal attention.
+  force_hybrid = _ffpa_hybrid_override
+  if enable_fp8 and fp8_preset == "per_block":
+    # Performance-first config: per_block Q/K + f32 PV acc (f32 acc is required
+    # by per-block quantization to avoid overflow for large N), no hybrid.
+    # V uses per_channel: per_block V (one amax over a 128-row block)
+    # collapses on outlier-heavy rows (FLUX text tokens), producing a
+    # catastrophically wrong image at large N (PSNR ~12 at 2048). per_channel V
+    # (amax per D column over all rows) keeps those rows intact. smooth_v is
+    # decoupled (SageAttention2 treats it as an independent add-on) and off by
+    # default: per_channel alone matches the ffpa-attn default and the
+    # math-domain reference; enable via --ffpa-fp8-smooth-v.
     kwargs.update(
-      # Use QK INT8 for better precision, same as SageAttention
+      # Uses QK INT8 for better precision and performance on RTX 5090/5080.
       fp8_qk_mm_type="int8",
+      fp8_pv_acc_type="f32",
+      fp8_q_quant_method="per_block",
+      fp8_k_quant_method="per_block",
+      fp8_v_quant_method="per_channel",
+      fp8_smooth_k=True,
+      fp8_hybrid=force_hybrid,
+      fp8_hybrid_n_early=n_early,
+    )
+  elif enable_fp8:
+    kwargs.update(
+      # Use QK INT8 for better precision and performance on RTX 5090/5080.
+      fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
       fp8_pv_acc_type="f16",
       fp8_q_quant_method="per_thread",
       fp8_k_quant_method="per_thread",
       fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=True,
-      # Currently, the hybrid mode is required for precision.
-      fp8_hybrid=True,
+      # Hybrid keeps fp16 precision on the early Q rows (attention sink);
+      # opt-in via --ffpa-hybrid, off by default.
+      fp8_hybrid=force_hybrid,
       fp8_hybrid_n_early=n_early,
     )
   elif enable_fp4:
     kwargs.update(
-      # FP4 alreay use fine-grained per-group(16) quantization for better precision,
-      # the same as SageAttention3. So we don't need to use hybrid mode for FP4 for
-      # non-causal attention senarios. But for causal attention, we still use hybrid
-      # mode to keep the precision of the early Q rows (attention sink).
+      # FP4 already uses fine-grained per-group(16) quantization for better
+      # precision, the same as SageAttention3. Hybrid is opt-in via --ffpa-hybrid
+      # and off by default (including causal).
       # NOTE: This hybrid mode will be removed once we have better precision for fp4.
-      fp4_hybrid=is_causal,
+      fp4_hybrid=force_hybrid,
       fp4_hybrid_n_early=n_early,
+      fp4_hadamard=_ffpa_fp4_hadamard_override,
     )
+  if enable_fp8 and _ffpa_fp8_hadamard_override:
+    # Injected after both fp8 presets; off-path stays free of the kwarg so
+    # older ffpa-attn builds (without the field) keep working.
+    kwargs["fp8_hadamard"] = True
+  if enable_fp8 and _ffpa_fp8_smooth_v_override:
+    # Requires per-channel V (both fp8 presets use it); off by default so
+    # per-channel V regressions are not masked by the mean subtraction.
+    kwargs["fp8_smooth_v"] = True
+  if enable_fp4 and _ffpa_fp4_pv_mm_type_override is not None:
+    kwargs["fp4_pv_mm_type"] = _ffpa_fp4_pv_mm_type_override
+  if enable_fp4 and _ffpa_fp4_smooth_v_override:
+    kwargs["fp4_smooth_v"] = True
   backend = CUDABackend(
     backward=False,
     enable_fp8=enable_fp8,
@@ -112,12 +247,22 @@ def _ffpa_attn_core(
   scale: Optional[float],
   enable_gqa: bool,
   backend: "CUDABackend",
+  nhd_native: bool = False,
 ) -> torch.Tensor:
-  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. contiguous() is
-  # mandatory: non-contiguous Q silently corrupts the fp8/fp4 kernels.
-  q = query.permute(0, 2, 1, 3).contiguous()
-  k = key.permute(0, 2, 1, 3).contiguous()
-  v = value.permute(0, 2, 1, 3).contiguous()
+  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
+  # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
+  # natively (Phase C), so a zero-copy permute view suffices; unsupported
+  # fp16 paths materialize packed copies inside the CUDA op (same cost as
+  # the explicit fallback below). Any non-packed input falls back to the
+  # copy.
+  if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
+    q = query.permute(0, 2, 1, 3)
+    k = key.permute(0, 2, 1, 3)
+    v = value.permute(0, 2, 1, 3)
+  else:
+    q = query.permute(0, 2, 1, 3).contiguous()
+    k = key.permute(0, 2, 1, 3).contiguous()
+    v = value.permute(0, 2, 1, 3).contiguous()
   out = ffpa_attn_func(
     q,
     k,
@@ -130,7 +275,7 @@ def _ffpa_attn_core(
   return out.permute(0, 2, 1, 3)
 
 
-def _make_ffpa_forward_op(backend: "CUDABackend"):
+def _make_ffpa_forward_op(backend: "CUDABackend", nhd_native: bool = False):
 
   def _ffpa_attention_forward_op(
     ctx: torch.autograd.function.FunctionCtx,
@@ -149,7 +294,7 @@ def _make_ffpa_forward_op(backend: "CUDABackend"):
     # attn_mask / dropout_p / return_lse are rejected in _ffpa_attention_impl
     # before the CP template runs; enable_gqa / is_causal are natively
     # supported by FFPA and forwarded as-is.
-    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend)
+    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend, nhd_native)
 
   return _ffpa_attention_forward_op
 
@@ -177,6 +322,7 @@ def _ffpa_attention_impl(
   *,
   enable_fp8: bool = False,
   enable_fp4: bool = False,
+  fp8_preset: Optional[str] = None,
 ) -> torch.Tensor:
   if attn_mask is not None:
     raise ValueError("`attn_mask` is not yet supported for FFPA attention.")
@@ -192,9 +338,17 @@ def _ffpa_attention_impl(
   backend = _build_ffpa_cuda_backend(query.device,
                                      enable_fp8=enable_fp8,
                                      enable_fp4=enable_fp4,
-                                     is_causal=is_causal)
+                                     is_causal=is_causal,
+                                     fp8_preset=fp8_preset)
   if _cp_config is None:
-    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend)
+    return _ffpa_attn_core(query,
+                           key,
+                           value,
+                           is_causal,
+                           scale,
+                           enable_gqa,
+                           backend,
+                           nhd_native=True)
   return _context_parallel_attention(
     query,
     key,
@@ -206,7 +360,7 @@ def _ffpa_attention_impl(
     enable_gqa,
     return_lse,
     cp_gqa_strategy,
-    forward_op=_make_ffpa_forward_op(backend),
+    forward_op=_make_ffpa_forward_op(backend, True),
     backward_op=_ffpa_attention_backward_op,
     _cp_config=_cp_config,
   )
@@ -344,4 +498,50 @@ def _ffpa_fp4_attention(
     cp_gqa_strategy,
     _cp_config,
     enable_fp4=True,
+  )
+
+
+@_AttnBackendRegistry.register(
+  _AttnBackend.FFPA_FP8_PER_BLOCK,
+  constraints=[],
+  supports_context_parallel=True,
+)
+def _ffpa_fp8_per_block_attention(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+  attn_mask: Optional[torch.Tensor] = None,
+  dropout_p: float = 0.0,
+  is_causal: bool = False,
+  scale: Optional[float] = None,
+  enable_gqa: bool = False,
+  return_lse: bool = False,
+  cp_gqa_strategy: Optional[str] = None,
+  _cp_config: Optional["_ContextParallelConfig"] = None,
+) -> torch.Tensor:
+  """FFPA CUDA FP8 per-block backend (CUTE_TMA_FP8, forward-only, sm_120 only).
+
+  Performance-first config: int8 QK MMA, f32 PV accumulation, Q/K/V all
+  quantized per_block, smooth K only, and no hybrid fp16 early rows. Fastest
+  FFPA fp8 backend but the lowest precision.
+
+  :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
+  :param key: ``[B, N_kv, H, D]``.
+  :param value: ``[B, N_kv, H, D]``.
+  :returns: ``[B, N, H, D]`` attention output.
+  """
+  return _ffpa_attention_impl(
+    query,
+    key,
+    value,
+    attn_mask,
+    dropout_p,
+    is_causal,
+    scale,
+    enable_gqa,
+    return_lse,
+    cp_gqa_strategy,
+    _cp_config,
+    enable_fp8=True,
+    fp8_preset="per_block",
   )
