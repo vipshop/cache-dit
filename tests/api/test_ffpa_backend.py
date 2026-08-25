@@ -230,7 +230,7 @@ def test_build_fp8_per_block_backend_config():
   assert backend.fp8_k_quant_method == "per_block"
   assert backend.fp8_v_quant_method == "per_channel"
   assert backend.fp8_smooth_k is True
-  assert backend.fp8_smooth_v is True
+  assert backend.fp8_smooth_v is False
   assert backend.fp8_hybrid is False
 
 
@@ -298,6 +298,30 @@ def test_build_fp4_backend_pv_mm_type_smooth_v_override():
   backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
   assert backend.fp4_pv_mm_type == "fp4"
   assert backend.fp4_smooth_v is False
+
+
+@requires_sm120
+def test_build_fp8_backend_smooth_v_override():
+  ffpa_backend._ffpa_backend_cache.clear()
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
+  assert backend.fp8_smooth_v is False
+  ffpa_backend.set_ffpa_fp8_smooth_v(True)
+  try:
+    backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
+    assert backend.fp8_smooth_v is True
+    per_block = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"),
+                                                      enable_fp8=True,
+                                                      fp8_preset="per_block")
+    assert per_block.fp8_smooth_v is True
+    # distinct cache entries per override state / preset
+    assert len(ffpa_backend._ffpa_backend_cache) == 3
+    # fp4 backends keep the switch off
+    fp4 = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp4=True)
+    assert fp4.fp8_smooth_v is False
+  finally:
+    ffpa_backend.set_ffpa_fp8_smooth_v(False)
+  backend = ffpa_backend._build_ffpa_cuda_backend(torch.device("cuda"), enable_fp8=True)
+  assert backend.fp8_smooth_v is False
 
 
 @requires_sm120
@@ -383,7 +407,7 @@ def test_toy_model_dispatch_ffpa_fp8_per_block(monkeypatch):
   assert backend.fp8_q_quant_method == "per_block"
   assert backend.fp8_k_quant_method == "per_block"
   assert backend.fp8_v_quant_method == "per_channel"
-  assert backend.fp8_smooth_v is True
+  assert backend.fp8_smooth_v is False
   assert backend.fp8_hybrid is False
 
   # per_block is the lowest-precision fp8 config; use fp4-level tolerances.

@@ -42,6 +42,10 @@ _ffpa_fp4_pv_mm_type_override: Optional[str] = None
 # Global override for the fp4 V-column-mean smoothing, set from the CLI
 # (--ffpa-fp4-smooth-v).
 _ffpa_fp4_smooth_v_override: bool = False
+# Global override for the fp8 V-column-mean smoothing, set from the CLI
+# (--ffpa-fp8-smooth-v). Off by default: smooth_v can mask per-channel V
+# regressions, so tests run the unsmoothed per-channel path.
+_ffpa_fp8_smooth_v_override: bool = False
 # Global override toggling the FFPA hybrid fp16 early-rows stage ON, set
 # from the CLI (--ffpa-hybrid). Off by default for every backend, including
 # causal attention; hybrid is opt-in only.
@@ -97,6 +101,15 @@ def set_ffpa_fp4_smooth_v(enabled: bool) -> None:
   _ffpa_fp4_smooth_v_override = bool(enabled)
 
 
+def set_ffpa_fp8_smooth_v(enabled: bool) -> None:
+  """Toggle the FFPA fp8 V-column-mean smoothing.
+
+  :param enabled: True to enable (requires an fp8 attention backend).
+  """
+  global _ffpa_fp8_smooth_v_override
+  _ffpa_fp8_smooth_v_override = bool(enabled)
+
+
 def set_ffpa_hybrid(enabled: bool) -> None:
   """Toggle the FFPA hybrid fp16 early-rows stage.
 
@@ -135,7 +148,7 @@ def _build_ffpa_cuda_backend(
   cache_key = (device.index, enable_fp8, enable_fp4, is_geforce_50x0, is_causal, fp8_preset,
                _ffpa_hybrid_n_early_override, _ffpa_fp4_hadamard_override,
                _ffpa_fp8_hadamard_override, _ffpa_fp4_pv_mm_type_override,
-               _ffpa_fp4_smooth_v_override, _ffpa_hybrid_override)
+               _ffpa_fp4_smooth_v_override, _ffpa_fp8_smooth_v_override, _ffpa_hybrid_override)
   backend = _ffpa_backend_cache.get(cache_key)
   if backend is not None:
     return backend
@@ -162,10 +175,13 @@ def _build_ffpa_cuda_backend(
   if enable_fp8 and fp8_preset == "per_block":
     # Performance-first config: per_block Q/K + f32 PV acc (f32 acc is required
     # by per-block quantization to avoid overflow for large N), no hybrid.
-    # V uses per_channel + smooth_v: per_block V (one amax over a 128-row
-    # block) collapses on outlier-heavy rows (FLUX text tokens), producing a
+    # V uses per_channel: per_block V (one amax over a 128-row block)
+    # collapses on outlier-heavy rows (FLUX text tokens), producing a
     # catastrophically wrong image at large N (PSNR ~12 at 2048). per_channel V
-    # (amax per D column over all rows) keeps those rows intact.
+    # (amax per D column over all rows) keeps those rows intact. smooth_v is
+    # decoupled (SageAttention2 treats it as an independent add-on) and off by
+    # default: per_channel alone matches the ffpa-attn default and the
+    # math-domain reference; enable via --ffpa-fp8-smooth-v.
     kwargs.update(
       fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f32",
@@ -173,7 +189,6 @@ def _build_ffpa_cuda_backend(
       fp8_k_quant_method="per_block",
       fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=True,
       fp8_hybrid=force_hybrid,
       fp8_hybrid_n_early=n_early,
     )
@@ -186,7 +201,6 @@ def _build_ffpa_cuda_backend(
       fp8_k_quant_method="per_thread",
       fp8_v_quant_method="per_channel",
       fp8_smooth_k=True,
-      fp8_smooth_v=True,
       # Hybrid keeps fp16 precision on the early Q rows (attention sink);
       # opt-in via --ffpa-hybrid, off by default.
       fp8_hybrid=force_hybrid,
@@ -206,6 +220,10 @@ def _build_ffpa_cuda_backend(
     # Injected after both fp8 presets; off-path stays free of the kwarg so
     # older ffpa-attn builds (without the field) keep working.
     kwargs["fp8_hadamard"] = True
+  if enable_fp8 and _ffpa_fp8_smooth_v_override:
+    # Requires per-channel V (both fp8 presets use it); off by default so
+    # per-channel V regressions are not masked by the mean subtraction.
+    kwargs["fp8_smooth_v"] = True
   if enable_fp4 and _ffpa_fp4_pv_mm_type_override is not None:
     kwargs["fp4_pv_mm_type"] = _ffpa_fp4_pv_mm_type_override
   if enable_fp4 and _ffpa_fp4_smooth_v_override:

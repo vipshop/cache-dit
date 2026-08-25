@@ -887,6 +887,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "FFPA fp4 backend (persist_d head_dim <= 256 only). Requires "
           "--attn ffpa_fp4. Reflected in the saved filename as fp4_smooth_v."),
   )
+  parser.add_argument(
+    "--ffpa-fp8-smooth-v",
+    dest="ffpa_fp8_smooth_v",
+    action="store_true",
+    default=False,
+    help=("Subtract the per-(b,h) V dim mean before V quantize for the FFPA "
+          "fp8 backends (requires per-channel V, the default). Off by default; "
+          "requires --attn ffpa_fp8 or ffpa_fp8_per_block. Reflected in the "
+          "saved filename as fp8_smooth_v."),
+  )
   # Ulysses context parallelism settings
   parser.add_argument(
     "--ulysses-anything",
@@ -1381,6 +1391,12 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
       raise ValueError("--ffpa-fp4-smooth-v requires --attn ffpa_fp4.")
     from ..attention.backends.ffpa import set_ffpa_fp4_smooth_v
     set_ffpa_fp4_smooth_v(True)
+
+  if getattr(args, "ffpa_fp8_smooth_v", False):
+    if args.attn not in ("ffpa_fp8", "ffpa_fp8_per_block"):
+      raise ValueError("--ffpa-fp8-smooth-v requires --attn ffpa_fp8 or ffpa_fp8_per_block.")
+    from ..attention.backends.ffpa import set_ffpa_fp8_smooth_v
+    set_ffpa_fp8_smooth_v(True)
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
@@ -2608,6 +2624,8 @@ def strify(args, pipe_or_stats):
     base_str += f"_fp4_pv_mm_type_{args.ffpa_fp4_pv_mm_type}"
   if getattr(args, "ffpa_fp4_smooth_v", False):
     base_str += "_fp4_smooth_v"
+  if getattr(args, "ffpa_fp8_smooth_v", False):
+    base_str += "_fp8_smooth_v"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.
