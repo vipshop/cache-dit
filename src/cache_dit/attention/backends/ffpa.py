@@ -183,6 +183,7 @@ def _build_ffpa_cuda_backend(
     # default: per_channel alone matches the ffpa-attn default and the
     # math-domain reference; enable via --ffpa-fp8-smooth-v.
     kwargs.update(
+      # Uses QK INT8 for better precision and performance on RTX 5090/5080.
       fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f32",
       fp8_q_quant_method="per_block",
@@ -194,8 +195,8 @@ def _build_ffpa_cuda_backend(
     )
   elif enable_fp8:
     kwargs.update(
-      # Use QK INT8 for better precision, same as SageAttention
-      fp8_qk_mm_type="int8",
+      # Use QK INT8 for better precision and performance on RTX 5090/5080.
+      fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
       fp8_pv_acc_type="f16",
       fp8_q_quant_method="per_thread",
       fp8_k_quant_method="per_thread",
