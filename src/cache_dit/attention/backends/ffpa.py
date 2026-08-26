@@ -331,10 +331,18 @@ def _make_ffpa_forward_op(backend: "CUDABackend", nhd_native: bool = False):
   ):
     # attn_mask / dropout_p / return_lse are rejected in _ffpa_attention_impl
     # before the CP template runs; enable_gqa / is_causal are natively
-    # supported by FFPA and forwarded as-is. nhd_out=False: CP output
-    # reassembly expects the legacy BHND-storage NHD view.
-    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend, nhd_native,
-                           False)
+    # supported by FFPA and forwarded as-is. CP input shards arrive NHD
+    # packed (send_q/k/v materialize them), and the reassembly primitives
+    # (send_o) reshape/copy stride-agnostically — the same NHD contract sage
+    # uses — so the forward op keeps the native NHD output (nhd_out default).
+    return _ffpa_attn_core(query,
+                           key,
+                           value,
+                           is_causal,
+                           scale,
+                           enable_gqa,
+                           backend,
+                           nhd_native=nhd_native)
 
   return _ffpa_attention_forward_op
 
