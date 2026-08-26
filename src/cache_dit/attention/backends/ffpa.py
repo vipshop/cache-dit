@@ -239,6 +239,21 @@ def _build_ffpa_cuda_backend(
   return backend
 
 
+def _is_nhd_supported(nhd_out: bool, backend: "CUDABackend", headdim: int) -> bool:
+  # causal is allowed: _build_ffpa_cuda_backend always resolves *_hybrid to
+  # an explicit bool, so the ffpa auto causal-hybrid never triggers.
+  if not nhd_out or torch.is_grad_enabled():
+    return False
+  if backend.enable_fp8:
+    # fp8 persist-D: hybrid and hadamard stages are BHND-only.
+    return not backend.fp8_hybrid and not backend.fp8_hadamard
+  if backend.enable_fp4:
+    # fp4 persist-D covers 64<=D<=256; hybrid/hadamard fall back.
+    return headdim <= 256 and not backend.fp4_hybrid and not backend.fp4_hadamard
+  # fp16 persist-D covers D<=128; the family has no hybrid/hadamard stages.
+  return headdim <= 128
+
+
 def _ffpa_attn_core(
   query: torch.Tensor,
   key: torch.Tensor,
@@ -257,15 +272,19 @@ def _ffpa_attn_core(
   # the explicit fallback below). Any non-packed input falls back to the
   # copy.
   if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
-    # tensor_layout="NHD": the fp8 persist-D CUDA kernel reads NHD inputs
-    # and writes a contiguous NHD output directly, skipping the input
-    # permute views and the BHND->NHD output permute whose non-contiguous
-    # view forces a strided copy in downstream consumers (diffusers
-    # flatten). Conditions mirror the ffpa fast-path NHD gate: forward-only
-    # fp8 persist-D (hybrid/hadamard/fp4/grad-on all fall back below).
-    if (nhd_out and not torch.is_grad_enabled() and backend.enable_fp8 and not backend.enable_fp4
-        and not backend.fp8_hybrid and not is_causal and not backend.fp8_hadamard
-        and not backend.fp4_hybrid and not backend.fp4_hadamard):
+    # tensor_layout="NHD": the persist-D CUDA kernels (fp8 / fp16 / fp4) read
+    # NHD inputs and write a contiguous NHD output directly, skipping the
+    # input permute views and the BHND->NHD output permute whose
+    # non-contiguous view forces a strided copy in downstream consumers
+    # (diffusers flatten). Conditions mirror the ffpa fast-path NHD gate;
+    # per-family head_dim caps keep unsupported D on the graceful permute
+    # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
+    head_dim = query.size(-1)
+    if _is_nhd_supported(nhd_out, backend, head_dim):
+      # Stateful per call, like fm.is_causal in the ffpa fast path: the
+      # backend is a cached shared object, so every fallback below restores
+      # the HND layout it passes.
+      backend.tensor_layout = "NHD"
       return ffpa_attn_func(
         query,
         key,
@@ -274,12 +293,13 @@ def _ffpa_attn_core(
         scale=scale,
         enable_gqa=enable_gqa,
         forward_backend=backend,
-        tensor_layout="NHD",
       )
+    backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3)
     k = key.permute(0, 2, 1, 3)
     v = value.permute(0, 2, 1, 3)
   else:
+    backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3).contiguous()
     k = key.permute(0, 2, 1, 3).contiguous()
     v = value.permute(0, 2, 1, 3).contiguous()
