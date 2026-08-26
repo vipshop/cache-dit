@@ -248,6 +248,7 @@ def _ffpa_attn_core(
   enable_gqa: bool,
   backend: "CUDABackend",
   nhd_native: bool = False,
+  nhd_out: bool = True,
 ) -> torch.Tensor:
   # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
   # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
@@ -256,6 +257,25 @@ def _ffpa_attn_core(
   # the explicit fallback below). Any non-packed input falls back to the
   # copy.
   if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
+    # tensor_layout="NHD": the fp8 persist-D CUDA kernel reads NHD inputs
+    # and writes a contiguous NHD output directly, skipping the input
+    # permute views and the BHND->NHD output permute whose non-contiguous
+    # view forces a strided copy in downstream consumers (diffusers
+    # flatten). Conditions mirror the ffpa fast-path NHD gate: forward-only
+    # fp8 persist-D (hybrid/hadamard/fp4/grad-on all fall back below).
+    if (nhd_out and not torch.is_grad_enabled() and backend.enable_fp8 and not backend.enable_fp4
+        and not backend.fp8_hybrid and not is_causal and not backend.fp8_hadamard
+        and not backend.fp4_hybrid and not backend.fp4_hadamard):
+      return ffpa_attn_func(
+        query,
+        key,
+        value,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+        forward_backend=backend,
+        tensor_layout="NHD",
+      )
     q = query.permute(0, 2, 1, 3)
     k = key.permute(0, 2, 1, 3)
     v = value.permute(0, 2, 1, 3)
@@ -293,8 +313,10 @@ def _make_ffpa_forward_op(backend: "CUDABackend", nhd_native: bool = False):
   ):
     # attn_mask / dropout_p / return_lse are rejected in _ffpa_attention_impl
     # before the CP template runs; enable_gqa / is_causal are natively
-    # supported by FFPA and forwarded as-is.
-    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend, nhd_native)
+    # supported by FFPA and forwarded as-is. nhd_out=False: CP output
+    # reassembly expects the legacy BHND-storage NHD view.
+    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend, nhd_native,
+                           False)
 
   return _ffpa_attention_forward_op
 
