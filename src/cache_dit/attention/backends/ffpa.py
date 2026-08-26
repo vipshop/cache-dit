@@ -239,19 +239,17 @@ def _build_ffpa_cuda_backend(
   return backend
 
 
-def _is_nhd_supported(nhd_out: bool, backend: "CUDABackend", headdim: int) -> bool:
-  # causal is allowed: _build_ffpa_cuda_backend always resolves *_hybrid to
-  # an explicit bool, so the ffpa auto causal-hybrid never triggers.
-  if not nhd_out or torch.is_grad_enabled():
-    return False
-  if backend.enable_fp8:
-    # fp8 persist-D: hybrid and hadamard stages are BHND-only.
-    return not backend.fp8_hybrid and not backend.fp8_hadamard
-  if backend.enable_fp4:
-    # fp4 persist-D covers 64<=D<=256; hybrid/hadamard fall back.
-    return headdim <= 256 and not backend.fp4_hybrid and not backend.fp4_hadamard
-  # fp16 persist-D covers D<=128; the family has no hybrid/hadamard stages.
-  return headdim <= 128
+def _is_nhd_supported(
+  nhd_out: bool,
+  backend: "CUDABackend",
+  headdim: int,
+  seqlen_q: int,
+) -> bool:
+  # All per-family rules (hybrid/hadamard, fp16 D<=128, fp4 D<=256) live in
+  # CUDABackend.is_nhd_supported. causal is fine: _build_ffpa_cuda_backend
+  # always resolves *_hybrid to an explicit bool.
+  return (nhd_out and not torch.is_grad_enabled()
+          and backend.is_nhd_supported(False, seqlen_q, headdim))
 
 
 def _ffpa_attn_core(
@@ -280,10 +278,10 @@ def _ffpa_attn_core(
     # per-family head_dim caps keep unsupported D on the graceful permute
     # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
     head_dim = query.size(-1)
-    if _is_nhd_supported(nhd_out, backend, head_dim):
-      # Stateful per call, like fm.is_causal in the ffpa fast path: the
-      # backend is a cached shared object, so every fallback below restores
-      # the HND layout it passes.
+    if _is_nhd_supported(nhd_out, backend, head_dim, query.size(1)):
+      # Stateful per call, like forward_backend.is_causal in the ffpa
+      # fast path: the backend is a cached shared object, so every fallback
+      # below restores the HND layout it passes.
       backend.tensor_layout = "NHD"
       return ffpa_attn_func(
         query,
