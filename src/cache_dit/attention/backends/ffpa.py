@@ -242,14 +242,15 @@ def _build_ffpa_cuda_backend(
 def _is_nhd_supported(
   nhd_out: bool,
   backend: "CUDABackend",
+  is_causal: bool,
   headdim: int,
   seqlen_q: int,
 ) -> bool:
   # All per-family rules (hybrid/hadamard, fp16 D<=128, fp4 D<=256) live in
-  # CUDABackend.is_nhd_supported. causal is fine: _build_ffpa_cuda_backend
-  # always resolves *_hybrid to an explicit bool.
+  # CUDABackend.is_nhd_supported. is_causal is forwarded so a None (auto)
+  # hybrid resolves the same way here as in the ffpa fast-path gate.
   return (nhd_out and not torch.is_grad_enabled()
-          and backend.is_nhd_supported(False, seqlen_q, headdim))
+          and backend.is_nhd_supported(is_causal, seqlen_q, headdim))
 
 
 def _ffpa_attn_core(
@@ -278,7 +279,7 @@ def _ffpa_attn_core(
     # per-family head_dim caps keep unsupported D on the graceful permute
     # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
     head_dim = query.size(-1)
-    if _is_nhd_supported(nhd_out, backend, head_dim, query.size(1)):
+    if _is_nhd_supported(nhd_out, backend, is_causal, head_dim, query.size(1)):
       # Stateful per call, like forward_backend.is_causal in the ffpa
       # fast path: the backend is a cached shared object, so every fallback
       # below restores the HND layout it passes.
