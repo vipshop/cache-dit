@@ -253,6 +253,18 @@ def _is_nhd_supported(
           and backend.is_nhd_supported(is_causal, seqlen_q, headdim))
 
 
+def _is_qkv_contiguous(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+) -> bool:
+  """Whether the Q/K/V tensors are contiguous in memory.
+
+  :returns: True if the three tensors are contiguous, False otherwise.
+  """
+  return (query.is_contiguous() and key.is_contiguous() and value.is_contiguous())
+
+
 def _ffpa_attn_core(
   query: torch.Tensor,
   key: torch.Tensor,
@@ -270,7 +282,7 @@ def _ffpa_attn_core(
   # fp16 paths materialize packed copies inside the CUDA op (same cost as
   # the explicit fallback below). Any non-packed input falls back to the
   # copy.
-  if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
+  if nhd_native and _is_qkv_contiguous(query, key, value):
     # tensor_layout="NHD": the persist-D CUDA kernels (fp8 / fp16 / fp4) read
     # NHD inputs and write a contiguous NHD output directly, skipping the
     # input permute views and the BHND->NHD output permute whose
