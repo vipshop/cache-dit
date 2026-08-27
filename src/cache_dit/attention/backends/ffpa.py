@@ -275,11 +275,10 @@ def _ffpa_attn_core(
 ) -> torch.Tensor:
   # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
   # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
-  # natively (Phase C), so a zero-copy permute view suffices; unsupported
-  # fp16 paths materialize packed copies inside the CUDA op (same cost as
-  # the explicit fallback below). Any non-packed input falls back to the
-  # copy.
-  if nhd_native and _is_qkv_contiguous(query, key, value):
+  # natively, so contiguous NHD inputs stay zero-copy; non-contiguous
+  # inputs (e.g. fused-QKV chunk views from single-stream blocks) are
+  # materialized per tensor instead of all-or-nothing.
+  if nhd_native and _is_nhd_supported(nhd_out, backend, query.size(-1)):
     # tensor_layout="NHD": the persist-D CUDA kernels (fp8 / fp16 / fp4) read
     # NHD inputs and write a contiguous NHD output directly, skipping the
     # input permute views and the BHND->NHD output permute whose
@@ -287,21 +286,26 @@ def _ffpa_attn_core(
     # (diffusers flatten). Conditions mirror the ffpa fast-path NHD gate;
     # per-family head_dim caps keep unsupported D on the graceful permute
     # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
-    head_dim = query.size(-1)
-    if _is_nhd_supported(nhd_out, backend, head_dim):
-      # Stateful per call, like forward_backend.is_causal in the ffpa
-      # fast path: the backend is a cached shared object, so every fallback
-      # below restores the HND layout it passes.
-      backend.tensor_layout = "NHD"
-      return ffpa_attn_func(
-        query,
-        key,
-        value,
-        is_causal=is_causal,
-        scale=scale,
-        enable_gqa=enable_gqa,
-        forward_backend=backend,
-      )
+    if not query.is_contiguous():
+      query = query.contiguous()
+    if not key.is_contiguous():
+      key = key.contiguous()
+    if not value.is_contiguous():
+      value = value.contiguous()
+    # Stateful per call, like forward_backend.is_causal in the ffpa
+    # fast path: the backend is a cached shared object, so every fallback
+    # below restores the HND layout it passes.
+    backend.tensor_layout = "NHD"
+    return ffpa_attn_func(
+      query,
+      key,
+      value,
+      is_causal=is_causal,
+      scale=scale,
+      enable_gqa=enable_gqa,
+      forward_backend=backend,
+    )
+  if nhd_native and _is_qkv_contiguous(query, key, value):
     backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3)
     k = key.permute(0, 2, 1, 3)
