@@ -391,6 +391,38 @@ def test_toy_model_dispatch_ffpa_fp8(monkeypatch):
 
 
 @requires_sm120
+def test_toy_model_dispatch_ffpa_fp8_noncontiguous_v(monkeypatch):
+  # Single-stream blocks (e.g. FLUX.2) slice a fused QKV projection, so V
+  # arrives as an interleaved chunk view; the backend must materialize only
+  # the non-contiguous tensor and stay on the NHD fast path.
+  spy = _FFPAFuncSpy()
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
+
+  model = ToyAttentionModel("ffpa_fp8")
+  B, N, H, D = 1, 1024, 16, 128
+  proj = torch.randn(B, N, 3 * H * D, dtype=torch.bfloat16, device="cuda")
+  q, k, v = proj.chunk(3, dim=-1)
+  q = q.unflatten(-1, (H, D)).contiguous()
+  k = k.unflatten(-1, (H, D)).contiguous()
+  v = v.unflatten(-1, (H, D))
+  assert not v.is_contiguous()
+
+  # Inference semantics (pipeline runs under torch.no_grad) enable the NHD gate.
+  with torch.no_grad():
+    out = model(q, k, v)
+
+  assert len(spy.calls) == 1
+  assert spy.calls[0].tensor_layout == "NHD"
+  # NHD direct output is packed; the old BHND fallback returned a strided view.
+  assert out.shape == q.shape and out.is_contiguous()
+
+  with torch.no_grad():
+    ref = model(q, k, v.contiguous())
+  assert torch.equal(out, ref)
+  assert _cos_sim(out, _sdpa_ref(q, k, v.contiguous())) > 0.99
+
+
+@requires_sm120
 def test_toy_model_dispatch_ffpa_fp8_per_block(monkeypatch):
   spy = _FFPAFuncSpy()
   monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
