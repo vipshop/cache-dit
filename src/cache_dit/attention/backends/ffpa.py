@@ -12,9 +12,13 @@ from .register import (
 
 try:
   from ffpa_attn import CUDABackend, ffpa_attn_func
+  # Relaxed strided-NHD gate probe: older ffpa_attn releases lack it, in
+  # which case every non-contiguous input keeps the materialize fallback.
+  from ffpa_attn import is_nhd_zero_copy_input as _ffpa_is_nhd_zero_copy_input
 except Exception:
   CUDABackend = None
   ffpa_attn_func = None
+  _ffpa_is_nhd_zero_copy_input = None
 
 # FFPA CUDA kernels cover D in [64, 256] only with this flag; without it
 # ffpa_attn_func silently falls back to SDPA (e.g. FLUX head_dim=128).
@@ -273,11 +277,12 @@ def _ffpa_attn_core(
   nhd_native: bool = False,
   nhd_out: bool = True,
 ) -> torch.Tensor:
-  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
-  # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
-  # natively, so contiguous NHD inputs stay zero-copy; non-contiguous
-  # inputs (e.g. fused-QKV chunk views from single-stream blocks) are
-  # materialized per tensor instead of all-or-nothing.
+  # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The persist-D
+  # CUDA kernels (fp8 / fp4 / fp16) read NHD gmem natively, so contiguous
+  # NHD inputs stay zero-copy, and strided-NHD views (fused-QKV chunk
+  # layouts from single-stream blocks) pass through the relaxed layout
+  # gate zero-copy as well; anything outside the contract is materialized
+  # per tensor instead of all-or-nothing.
   if nhd_native and _is_nhd_supported(nhd_out, backend, query.size(-1)):
     # tensor_layout="NHD": the persist-D CUDA kernels (fp8 / fp16 / fp4) read
     # NHD inputs and write a contiguous NHD output directly, skipping the
@@ -286,12 +291,21 @@ def _ffpa_attn_core(
     # (diffusers flatten). Conditions mirror the ffpa fast-path NHD gate;
     # per-family head_dim caps keep unsupported D on the graceful permute
     # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
-    if not query.is_contiguous():
-      query = query.contiguous()
-    if not key.is_contiguous():
-      key = key.contiguous()
-    if not value.is_contiguous():
-      value = value.contiguous()
+    # Zero-copy contract: all three persist-D families consume strided-NHD
+    # (fused-QKV chunk) views natively — fp8/fp4 through the relaxed quant
+    # gates, fp16 through stride-parameterized CUTE_TMA descriptors. The
+    # python predicate mirrors the shared C++ layout contract; tensors that
+    # fail it (misaligned strides etc.) fall back to materialization.
+    zero_copy_ok = _ffpa_is_nhd_zero_copy_input is not None
+
+    def _keep_or_pack(t: torch.Tensor) -> torch.Tensor:
+      if zero_copy_ok and _ffpa_is_nhd_zero_copy_input(t):
+        return t
+      return t if t.is_contiguous() else t.contiguous()
+
+    query = _keep_or_pack(query)
+    key = _keep_or_pack(key)
+    value = _keep_or_pack(value)
     # Stateful per call, like forward_backend.is_causal in the ffpa
     # fast path: the backend is a cached shared object, so every fallback
     # below restores the HND layout it passes.

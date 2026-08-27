@@ -73,10 +73,12 @@ class _FFPAFuncSpy:
 
   def __init__(self):
     self.calls: list = []
+    self.arg_calls: list = []
     self._orig = ffpa_backend.ffpa_attn_func
 
   def __call__(self, *args, **kwargs):
     self.calls.append(kwargs.get("forward_backend"))
+    self.arg_calls.append(args)
     return self._orig(*args, **kwargs)
 
 
@@ -393,8 +395,10 @@ def test_toy_model_dispatch_ffpa_fp8(monkeypatch):
 @requires_sm120
 def test_toy_model_dispatch_ffpa_fp8_noncontiguous_v(monkeypatch):
   # Single-stream blocks (e.g. FLUX.2) slice a fused QKV projection, so V
-  # arrives as an interleaved chunk view; the backend must materialize only
-  # the non-contiguous tensor and stay on the NHD fast path.
+  # arrives as an interleaved chunk view (row stride wider than H*D). The
+  # fp8 persist-D relaxed gate consumes such strided-NHD views zero-copy,
+  # so the backend must pass the strided V through to ffpa_attn_func
+  # untouched instead of materializing it.
   spy = _FFPAFuncSpy()
   monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", spy)
 
@@ -413,6 +417,10 @@ def test_toy_model_dispatch_ffpa_fp8_noncontiguous_v(monkeypatch):
 
   assert len(spy.calls) == 1
   assert spy.calls[0].tensor_layout == "NHD"
+  # Zero-copy: the strided V view reaches ffpa_attn_func unmaterialized.
+  v_passed = spy.arg_calls[0][2]
+  assert not v_passed.is_contiguous()
+  assert v_passed.data_ptr() == v.data_ptr() and v_passed.stride() == v.stride()
   # NHD direct output is packed; the old BHND fallback returned a strided view.
   assert out.shape == q.shape and out.is_contiguous()
 
