@@ -183,7 +183,7 @@ def _build_ffpa_cuda_backend(
     # default: per_channel alone matches the ffpa-attn default and the
     # math-domain reference; enable via --ffpa-fp8-smooth-v.
     kwargs.update(
-      # Uses QK INT8 for better precision and performance on RTX 5090/5080.
+      # Uses QK INT8 for better precision, same as SageAttention2.
       fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f32",
       fp8_q_quant_method="per_block",
@@ -195,8 +195,8 @@ def _build_ffpa_cuda_backend(
     )
   elif enable_fp8:
     kwargs.update(
-      # Use QK INT8 for better precision and performance on RTX 5090/5080.
-      fp8_qk_mm_type="int8" if is_geforce_50x0 else "fp8",
+      # Uses QK INT8 for better precision, same as SageAttention2.
+      fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f16",
       fp8_q_quant_method="per_thread",
       fp8_k_quant_method="per_thread",
@@ -239,6 +239,29 @@ def _build_ffpa_cuda_backend(
   return backend
 
 
+def _is_nhd_supported(
+  nhd_out: bool,
+  backend: "CUDABackend",
+  headdim: int,
+) -> bool:
+  # All per-family rules (hadamard, head_dim caps per quant family) live
+  # in CUDABackend.is_nhd_supported; hybrid no longer blocks NHD (its
+  # stage-1 writeback is a stride-generic slice copy).
+  return (nhd_out and not torch.is_grad_enabled() and backend.is_nhd_supported(headdim))
+
+
+def _is_qkv_contiguous(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+) -> bool:
+  """Whether the Q/K/V tensors are contiguous in memory.
+
+  :returns: True if the three tensors are contiguous, False otherwise.
+  """
+  return (query.is_contiguous() and key.is_contiguous() and value.is_contiguous())
+
+
 def _ffpa_attn_core(
   query: torch.Tensor,
   key: torch.Tensor,
@@ -248,6 +271,7 @@ def _ffpa_attn_core(
   enable_gqa: bool,
   backend: "CUDABackend",
   nhd_native: bool = False,
+  nhd_out: bool = True,
 ) -> torch.Tensor:
   # diffusers NHD [B, N, H, D] -> FFPA BHND [B, H, N, D]. The fp8/fp4 CUDA
   # paths and the sm120 fp16/bf16 cute persist-D kernel read NHD gmem
@@ -255,11 +279,35 @@ def _ffpa_attn_core(
   # fp16 paths materialize packed copies inside the CUDA op (same cost as
   # the explicit fallback below). Any non-packed input falls back to the
   # copy.
-  if nhd_native and query.is_contiguous() and key.is_contiguous() and value.is_contiguous():
+  if nhd_native and _is_qkv_contiguous(query, key, value):
+    # tensor_layout="NHD": the persist-D CUDA kernels (fp8 / fp16 / fp4) read
+    # NHD inputs and write a contiguous NHD output directly, skipping the
+    # input permute views and the BHND->NHD output permute whose
+    # non-contiguous view forces a strided copy in downstream consumers
+    # (diffusers flatten). Conditions mirror the ffpa fast-path NHD gate;
+    # per-family head_dim caps keep unsupported D on the graceful permute
+    # fallback below (fp16 persist-D D<=128, fp4 persist-D D<=256).
+    head_dim = query.size(-1)
+    if _is_nhd_supported(nhd_out, backend, head_dim):
+      # Stateful per call, like forward_backend.is_causal in the ffpa
+      # fast path: the backend is a cached shared object, so every fallback
+      # below restores the HND layout it passes.
+      backend.tensor_layout = "NHD"
+      return ffpa_attn_func(
+        query,
+        key,
+        value,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+        forward_backend=backend,
+      )
+    backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3)
     k = key.permute(0, 2, 1, 3)
     v = value.permute(0, 2, 1, 3)
   else:
+    backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3).contiguous()
     k = key.permute(0, 2, 1, 3).contiguous()
     v = value.permute(0, 2, 1, 3).contiguous()
@@ -293,8 +341,18 @@ def _make_ffpa_forward_op(backend: "CUDABackend", nhd_native: bool = False):
   ):
     # attn_mask / dropout_p / return_lse are rejected in _ffpa_attention_impl
     # before the CP template runs; enable_gqa / is_causal are natively
-    # supported by FFPA and forwarded as-is.
-    return _ffpa_attn_core(query, key, value, is_causal, scale, enable_gqa, backend, nhd_native)
+    # supported by FFPA and forwarded as-is. CP input shards arrive NHD
+    # packed (send_q/k/v materialize them), and the reassembly primitives
+    # (send_o) reshape/copy stride-agnostically — the same NHD contract sage
+    # uses — so the forward op keeps the native NHD output (nhd_out default).
+    return _ffpa_attn_core(query,
+                           key,
+                           value,
+                           is_causal,
+                           scale,
+                           enable_gqa,
+                           backend,
+                           nhd_native=nhd_native)
 
   return _ffpa_attention_forward_op
 
