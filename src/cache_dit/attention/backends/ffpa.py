@@ -195,7 +195,7 @@ def _build_ffpa_cuda_backend(
     )
   elif enable_fp8:
     kwargs.update(
-     # Uses QK INT8 for better precision, same as SageAttention2.
+      # Uses QK INT8 for better precision, same as SageAttention2.
       fp8_qk_mm_type="int8",
       fp8_pv_acc_type="f16",
       fp8_q_quant_method="per_thread",
