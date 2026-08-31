@@ -109,7 +109,6 @@ Cache-DiT provides a [model-integration](./.copilot/skills/cache-dit-model-integ
 
 ## 🌐Community Integration
 
-- 🎉[ComfyUI-RH-MiniMax-H3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
 - 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/blob/main/xfuser/model_executor/cache/adapters/cache_dit.py)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
@@ -123,6 +122,7 @@ Cache-DiT provides a [model-integration](./.copilot/skills/cache-dit-model-integ
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)
 - 🎉[jetson-containers x Cache-DiT](https://github.com/dusty-nv/jetson-containers/tree/master/packages/cv/diffusion/cache_edit)
+- 🎉[ComfyUI-RH-MiniMax-H3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
 
 
 ## ©️Acknowledgements
