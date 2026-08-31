@@ -109,6 +109,7 @@ Cache-DiT provides a [model-integration](./.copilot/skills/cache-dit-model-integ
 
 ## 🌐Community Integration
 
+- 🎉[ComfyUI-RH-MiniMax-H3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
 - 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/blob/main/xfuser/model_executor/cache/adapters/cache_dit.py)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
