@@ -172,8 +172,9 @@ class CachedAdapter:
     # `_context_manager` -- causing this method to return early and a later
     # `assert hasattr(block_adapter.pipe, "_context_manager")` to fail. Only skip when
     # this specific instance actually has a context manager.
-    if BlockAdapter.is_cached(block_adapter.pipe) and hasattr(
-        block_adapter.pipe, "_context_manager"
+    if BlockAdapter.is_cached(block_adapter.pipe) and isinstance(
+        getattr(block_adapter.pipe, "_context_manager", None),
+        ContextManager._supported_managers,
     ):
       logger.warning("Pipeline has been already cached, skip creating cache context again.")
       return None, block_adapter.pipe
