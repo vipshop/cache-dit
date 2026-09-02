@@ -52,6 +52,7 @@ def _parallelize_controlnet_cp(
       ulysses_anything=parallelism_config.ulysses_anything,
       ulysses_float8=parallelism_config.ulysses_float8,
       ulysses_async=parallelism_config.ulysses_async,
+      extra_kwargs=dict(parallelism_config.extra_parallel_kwargs),
     )
 
     cp_plan = parallelism_config.cp_plan
