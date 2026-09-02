@@ -162,7 +162,20 @@ class CachedAdapter:
 
     BlockAdapter.assert_normalized(block_adapter)
 
-    if BlockAdapter.is_cached(block_adapter.pipe):
+    # `_is_cached` is set on `block_adapter.pipe.__class__` further down in this
+    # method, while `_context_manager` is set on the instance. Pipelines that wrap
+    # more than one transformer in a shared placeholder class (e.g. FakeDiffusionPipeline
+    # for dual/multi-DiT models) create a fresh pipe instance per transformer, but all
+    # those instances share the same class. Once the first instance sets the class-level
+    # `_is_cached` flag, `BlockAdapter.is_cached()` (a plain `getattr`) reports every
+    # sibling instance as already cached too, even though they never got their own
+    # `_context_manager` -- causing this method to return early and a later
+    # `assert hasattr(block_adapter.pipe, "_context_manager")` to fail. Only skip when
+    # this specific instance actually has a context manager.
+    if BlockAdapter.is_cached(block_adapter.pipe) and isinstance(
+        getattr(block_adapter.pipe, "_context_manager", None),
+        ContextManager._supported_managers,
+    ):
       logger.warning("Pipeline has been already cached, skip creating cache context again.")
       return None, block_adapter.pipe
 
