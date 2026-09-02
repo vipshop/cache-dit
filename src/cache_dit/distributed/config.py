@@ -109,6 +109,14 @@ class ParallelismConfig:
   #   Whether to enable the ulysses async attention to overlap
   #   communication and computation.
   ulysses_async: Optional[bool] = False
+  # extra_parallel_kwargs: (`Dict[str, Any]`, *optional*):
+  #   Extra model-specific options forwarded to downstream CP planners and
+  #   attention patches via ``_ContextParallelConfig.extra_kwargs``. Unlike the
+  #   deprecated ``parallel_kwargs`` (which maps to ParallelismConfig fields),
+  #   these keys are opaque to cache-dit, e.g.,
+  #   {"boogu_double_stream_cp": False} to opt out of the Boogu double-stream
+  #   CP wrapper (on by default).
+  extra_parallel_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
   # ring_rotate_method: (`str`, *optional*):
   #   The ring rotate method, default is `p2p`:
   #   'p2p': Use batch_isend_irecv ops to rotate the key and value tensors.

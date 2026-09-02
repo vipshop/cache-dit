@@ -117,7 +117,8 @@ class FluxAsyncUlyssesPlanner(AsyncUlyssesPlanner):
       image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return FluxAsyncUlyssesPlanner._async_ulysses_attn_flux(
           self,
           attn,

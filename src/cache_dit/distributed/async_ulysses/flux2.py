@@ -17,6 +17,30 @@ from ..core import _All2AllComm
 __all__ = ["Flux2AsyncUlyssesPlanner"]
 
 
+class _AsyncA2A:
+  """Eager-boundary wrapper around ``_All2AllComm``.
+
+  Comm construction, a2a launches and waits stay out of compiled graphs
+  (opaque calls that do not graph-break), mirroring fast-boogu's async
+  launcher pattern; the projections / norms / rope around them remain
+  traceable. Without this, the comm-induced graph break pushes the fp8
+  Linear calls into nested resume frames where torchao's tensor-subclass
+  ``__torch_function__`` dispatch crashes dynamo.
+  """
+
+  @torch.compiler.disable
+  def __init__(self, cp_config):
+    self.comm = _All2AllComm(cp_config)
+
+  @torch.compiler.disable
+  def launch(self, tensor, op):
+    return getattr(self.comm, op)(tensor)
+
+  @torch.compiler.disable
+  def wait(self, handle):
+    return handle.wait()
+
+
 @AsyncUlyssesRegistry.register("Flux2Transformer2DModel")
 class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
 
@@ -45,8 +69,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
       encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
       value = torch.cat([encoder_value, value], dim=1)
 
-    comm = _All2AllComm(cp_config)
-    value_wait = comm.send_v(value)
+    comm = _AsyncA2A(cp_config)
+    value_wait = comm.launch(value, "send_v")
 
     query = attn.to_q(hidden_states)
     query = query.unflatten(-1, (attn.heads, -1))
@@ -58,7 +82,7 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
       query = torch.cat([encoder_query, query], dim=1)
     if image_rotary_emb is not None:
       query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-    query_wait = comm.send_q(query)
+    query_wait = comm.launch(query, "send_q")
 
     key = attn.to_k(hidden_states)
     key = key.unflatten(-1, (attn.heads, -1))
@@ -70,11 +94,11 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
       key = torch.cat([encoder_key, key], dim=1)
     if image_rotary_emb is not None:
       key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-    key_wait = comm.send_k(key)
+    key_wait = comm.launch(key, "send_k")
 
-    value = value_wait.wait()
-    query = query_wait.wait()
-    key = key_wait.wait()
+    value = comm.wait(value_wait)
+    query = comm.wait(query_wait)
+    key = comm.wait(key_wait)
 
     out = _dispatch_attention_fn(
       query,
@@ -84,8 +108,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
       backend=self._attention_backend,
       cp_config=None,
     )
-    out_wait = comm.send_o(out)
-    out = out_wait.wait()
+    out_wait = comm.launch(out, "send_o")
+    out = comm.wait(out_wait)
 
     hidden_states = out.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)
@@ -123,24 +147,24 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
     query, key, value = qkv.chunk(3, dim=-1)
 
     value = value.unflatten(-1, (attn.heads, -1))
-    comm = _All2AllComm(cp_config)
-    value_wait = comm.send_v(value)
+    comm = _AsyncA2A(cp_config)
+    value_wait = comm.launch(value, "send_v")
 
     query = query.unflatten(-1, (attn.heads, -1))
     query = attn.norm_q(query)
     if image_rotary_emb is not None:
       query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-    query_wait = comm.send_q(query)
+    query_wait = comm.launch(query, "send_q")
 
     key = key.unflatten(-1, (attn.heads, -1))
     key = attn.norm_k(key)
     if image_rotary_emb is not None:
       key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-    key_wait = comm.send_k(key)
+    key_wait = comm.launch(key, "send_k")
 
-    value = value_wait.wait()
-    query = query_wait.wait()
-    key = key_wait.wait()
+    value = comm.wait(value_wait)
+    query = comm.wait(query_wait)
+    key = comm.wait(key_wait)
 
     out = _dispatch_attention_fn(
       query,
@@ -150,10 +174,9 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
       backend=self._attention_backend,
       cp_config=None,
     )
-    out_wait = comm.send_o(out)
+    out_wait = comm.launch(out, "send_o")
     mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
-    out = out_wait.wait()
-
+    out = comm.wait(out_wait)
     hidden_states = out.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)
     hidden_states = torch.cat([hidden_states, mlp_hidden_states], dim=-1)
@@ -170,7 +193,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
                 attention_mask=None,
                 image_rotary_emb=None):
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return Flux2AsyncUlyssesPlanner._async_ulysses_attn_flux2(
           self,
           attn,
@@ -196,7 +220,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
     @functools.wraps(original)
     def wrapper(self, attn, hidden_states, attention_mask=None, image_rotary_emb=None):
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return Flux2AsyncUlyssesPlanner._async_ulysses_self_attn_flux2(
           self,
           attn,
