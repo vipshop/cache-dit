@@ -120,7 +120,8 @@ class QwenImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
                 attention_mask=None,
                 image_rotary_emb=None):
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return QwenImageAsyncUlyssesPlanner._async_ulysses_attn_qwen(
           self,
           attn,

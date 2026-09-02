@@ -170,7 +170,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
                 attention_mask=None,
                 image_rotary_emb=None):
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return Flux2AsyncUlyssesPlanner._async_ulysses_attn_flux2(
           self,
           attn,
@@ -196,7 +197,8 @@ class Flux2AsyncUlyssesPlanner(AsyncUlyssesPlanner):
     @functools.wraps(original)
     def wrapper(self, attn, hidden_states, attention_mask=None, image_rotary_emb=None):
       cp_config = getattr(self, "_cp_config", None)
-      if cp_config is not None and cp_config.ulysses_degree > 1:
+      if (cp_config is not None and cp_config.ulysses_degree > 1
+          and getattr(cp_config, "ulysses_async", False)):
         return Flux2AsyncUlyssesPlanner._async_ulysses_self_attn_flux2(
           self,
           attn,
