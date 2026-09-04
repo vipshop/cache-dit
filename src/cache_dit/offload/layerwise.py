@@ -546,6 +546,10 @@ class _LayerwiseTarget:
   module: nn.Module
   index: int
   persistent: bool = False
+  # True when tie-dedup dropped this target's duplicate shared states (kept
+  # states, if any, still move normally); dropped states are owned by another
+  # target and must not be moved through this one.
+  tie_deduped: bool = False
   return_devices: list[torch.device] = dataclasses.field(default_factory=list)
   tensor_states: list[_LayerwiseTensorState] = dataclasses.field(default_factory=list)
   resident_device: torch.device = dataclasses.field(default_factory=lambda: torch.device("cpu"))
@@ -1156,6 +1160,9 @@ class LayerwiseOffloadHandle:
     """
     if not self.async_transfer:
       return
+    if not target.tensor_states:
+      # Tie-deduped target: its shared states are owned (and kept resident) elsewhere.
+      return
     self._reap_completed_transfers()
     if target.pending_onload_event is not None or target.resident_device == self.onload_device:
       return
@@ -1220,6 +1227,9 @@ class LayerwiseOffloadHandle:
     if not self.async_transfer:
       return
     if target.persistent:
+      return
+    if not target.tensor_states:
+      # Tie-deduped target: nothing of its own to sync back or rebind.
       return
     self._reap_completed_transfers()
     if target.pending_offload_event is not None or target.resident_device == self.offload_device:
@@ -1331,6 +1341,9 @@ class LayerwiseOffloadHandle:
       return
     if target.tensor_states:
       self._materialize_onload_sync(target)
+    elif target.tie_deduped:
+      # Shared states are owned (and kept resident) by another target.
+      target.resident_device = self.onload_device
     else:
       _move_module_state(target.module, self.onload_device, non_blocking=self.non_blocking)
       target.resident_device = self.onload_device
@@ -1343,9 +1356,9 @@ class LayerwiseOffloadHandle:
 
     if target.tensor_states:
       self._materialize_offload_sync(target)
-    else:
+    elif not target.tie_deduped:
       _move_module_state(target.module, self.offload_device, non_blocking=self.non_blocking)
-      target.resident_device = self.offload_device
+    target.resident_device = self.offload_device
 
   def _resolve_target_return_device(
     self,
@@ -1583,6 +1596,69 @@ def _prepare_async_target(module: nn.Module, *, index: int, name: str) -> _Layer
   )
   target.prefetch_residency_bytes = _target_prefetch_residency_bytes(target)
   return target
+
+
+def _dedupe_shared_target_states(targets: list[_LayerwiseTarget]) -> None:
+  """Deduplicate tensor states shared across targets (tied weights).
+
+  Weight tying (e.g. ``lm_head.weight is embed_tokens.weight``) makes two targets
+  reference the same live parameter object. Per-target mirrors and per-forward
+  onload/offload would then fight over the shared ``.data``: one target's CPU
+  rebind poisons the other's GPU residency bookkeeping, and an async prefetch of
+  either target can expose a half-copied tensor to the other's forward. Shared
+  states are therefore owned by their first target, dropped from later ones, and
+  the owners are forced persistent so each shared tensor stays resident on the
+  onload device for the whole handle lifetime.
+
+  :param targets: Target list in target-list order (mutated in place).
+  """
+  owner_by_tensor_id: dict[int, _LayerwiseTarget] = {}
+  owners_to_force: set[int] = set()
+  shared: list[tuple[str, str, str]] = []
+  for target in targets:
+    # Identity must come from the stable parameter/buffer objects themselves
+    # (never from ``tensor.data`` views, whose ids are recycled temporaries).
+    live_states = {
+      (kind, name): tensor
+      for kind, name, tensor, _requires_grad in _iter_direct_state_entries(target.module)
+    }
+    seen_here: set[int] = set()
+    kept: list[_LayerwiseTensorState] = []
+    for state in target.tensor_states:
+      live = live_states.get((state.kind, state.name))
+      if live is None:
+        kept.append(state)
+        continue
+      tensor_id = id(live)
+      if tensor_id in seen_here:
+        # Same object listed twice within one target (degenerate module); keep it.
+        kept.append(state)
+        continue
+      seen_here.add(tensor_id)
+      owner = owner_by_tensor_id.get(tensor_id)
+      if owner is None:
+        owner_by_tensor_id[tensor_id] = target
+        kept.append(state)
+      else:
+        owners_to_force.add(owner.index)
+        shared.append((owner.name or _ROOT_TARGET_NAME, target.name
+                       or _ROOT_TARGET_NAME, state.name))
+    if len(kept) != len(target.tensor_states):
+      target.tensor_states = kept
+      target.tie_deduped = True
+      target.prefetch_residency_bytes = _target_prefetch_residency_bytes(target)
+  if not shared:
+    return
+  for target in targets:
+    if target.index in owners_to_force:
+      target.persistent = True
+  logger.warning(
+    "Layerwise offload detected %d tensor(s) shared across targets (tied "
+    "weights, e.g. %s); owning targets are forced persistent and duplicate "
+    "states are excluded from onload/offload.",
+    len(shared),
+    "; ".join(f"{owner}.{name} also used by {dup}" for owner, dup, name in shared[:3]),
+  )
 
 
 def _get_registered_layerwise_offload_handles(
@@ -1866,6 +1942,10 @@ def _apply_layerwise_offload(
       )
     targets.append(target)
 
+  # Tied weights (shared parameter objects across targets) break per-target
+  # residency bookkeeping; dedupe them before the handle snapshots metadata.
+  _dedupe_shared_target_states(targets)
+
   handles: list[Any] = []
   handle = LayerwiseOffloadHandle(
     root_module=root_module,
@@ -1924,12 +2004,15 @@ def _apply_layerwise_offload(
         continue
       if async_transfer or target.tensor_states:
         handle._materialize_offload_sync(target)
-      else:
+      elif not target.tie_deduped:
         _move_module_state(
           target.module,
           resolved_offload_device,
           non_blocking=non_blocking,
         )
+        target.resident_device = resolved_offload_device
+      else:
+        # Tie-deduped: shared states are owned by a persistent target.
         target.resident_device = resolved_offload_device
 
   logger.info(
