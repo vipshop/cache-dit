@@ -1654,7 +1654,7 @@ def _dedupe_shared_target_states(targets: list[_LayerwiseTarget]) -> None:
       target.persistent = True
   logger.warning(
     "Layerwise offload detected %d tensor(s) shared across targets (tied "
-    "weights, e.g. %s); owning targets are forced persistent and duplicate "
+    "weights, e.g. %s); \nOwning targets are forced persistent and duplicate "
     "states are excluded from onload/offload.",
     len(shared),
     "; ".join(f"{owner}.{name} also used by {dup}" for owner, dup, name in shared[:3]),
