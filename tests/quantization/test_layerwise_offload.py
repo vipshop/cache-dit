@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import dataclasses
 from collections import OrderedDict
 
@@ -1443,3 +1444,74 @@ def test_layerwise_cpu_offload_persistent_prefix_prefetches_first_non_persistent
     "block.to_v",
     "block.to_out",
   ]
+
+
+class _TiedLmModel(nn.Module):
+  """Toy LM with tied embedding/lm_head weights (Qwen3-style tie_word_embeddings).
+
+  Blocks hold direct parameters (like the leaf targets used in real text-encoder offload) so async
+  transfer moves them through the tensor-state mirror path.
+  """
+
+  def __init__(self, vocab_size: int = 128, embed_dim: int = 64, seed: int = 921) -> None:
+    super().__init__()
+    torch.manual_seed(seed)
+    self.embed_tokens = nn.Embedding(vocab_size, embed_dim)
+    self.blocks = nn.ModuleList([nn.Linear(embed_dim, embed_dim) for _ in range(2)])
+    self.norm = nn.LayerNorm(embed_dim)
+    self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
+    self.lm_head.weight = self.embed_tokens.weight
+
+  def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
+    hidden = self.embed_tokens(token_ids)
+    for block in self.blocks:
+      hidden = block(hidden) + hidden
+    return self.lm_head(self.norm(hidden))
+
+
+@pytest.mark.parametrize("offload_kwargs", [
+  {},
+  {
+    "async_transfer": True
+  },
+  {
+    "async_transfer": True,
+    "transfer_buckets": 4
+  },
+  {
+    "async_transfer": True,
+    "transfer_buckets": 4,
+    "prefetch_limit": True
+  },
+])
+def test_layerwise_cpu_offload_tied_weights_bitwise_match(offload_kwargs: dict) -> None:
+  module_names = ["embed_tokens", "blocks.0", "blocks.1", "norm", "lm_head"]
+  inputs = torch.randint(0, 128, (2, 8), generator=torch.Generator().manual_seed(922))
+
+  baseline_model = copy.deepcopy(_TiedLmModel()).cuda().eval()
+  with torch.inference_mode():
+    expected = baseline_model(inputs.cuda()).cpu()
+  del baseline_model
+
+  model = _TiedLmModel().eval()
+  offload_handle = layerwise_cpu_offload(
+    model,
+    module_names=module_names,
+    onload_device="cuda",
+    **offload_kwargs,
+  )
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+    torch.cuda.synchronize()
+  finally:
+    targets = {target.name: target for target in offload_handle.targets}
+    owner, duplicate = targets["embed_tokens"], targets["lm_head"]
+    assert model.lm_head.weight is model.embed_tokens.weight
+    assert owner.persistent
+    assert duplicate.tie_deduped
+    assert all(state.name != "weight" for state in duplicate.tensor_states)
+    offload_handle.remove()
+
+  assert torch.equal(output, expected)
+  assert model.embed_tokens.weight.device.type == "cpu"
