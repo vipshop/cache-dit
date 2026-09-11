@@ -21,7 +21,7 @@ _CACHE_DIT_ATTN_BACKEND_ENV = "CACHE_DIT_ATTN_BACKEND"
 _CACHE_DIT_ATTN_CHECKS_ENV = "CACHE_DIT_ATTN_CHECKS"
 
 
-def _supports_enable_gqa() -> bool:
+def _probe_supports_enable_gqa() -> bool:
   # enable_gqa was added to SDPA in torch 2.5. Recent torch builds expose SDPA
   # as a C builtin without a Python signature, so signature probing alone fails
   # and must fall back to a version check.
@@ -31,6 +31,21 @@ def _supports_enable_gqa() -> bool:
   except (TypeError, ValueError):
     match = re.match(r"(\d+)\.(\d+)", torch.__version__)
     return match is not None and tuple(int(g) for g in match.groups()) >= (2, 5)
+
+
+# Probed once at import: probing `inspect.signature` per call breaks
+# torch.compile tracing from every dispatch site (gb0191) - dynamo traces
+# through `lru_cache` wrappers, and the probe unwraps the builtin to an
+# `id()`-based pseudo signature, so caching the probe cannot hide it from the
+# tracer. The answer cannot change within a process unless something
+# monkeypatches `scaled_dot_product_attention` after import, which nothing in
+# cache-dit does. Other runtime probes follow the same rule;
+# `_maybe_register_diffusers_backend_proxy` probes only at registration time.
+_SUPPORTS_ENABLE_GQA = _probe_supports_enable_gqa()
+
+
+def _supports_enable_gqa() -> bool:
+  return _SUPPORTS_ENABLE_GQA
 
 
 class _AttnBackend(str, Enum):
