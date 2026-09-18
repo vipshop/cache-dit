@@ -397,7 +397,11 @@ class _All2AllComm:
     key = self.all_gather_tensor_dim(key, dim=1)
     value = self.all_gather_tensor_dim(value, dim=1)
     num_kv_heads = key.shape[2]
-    if num_kv_heads == query.shape[2]:
+    if num_kv_heads == query.shape[2] and num_q_heads == num_kv_heads:
+      # Identity only when the local Q window needs every KV head verbatim
+      # (global MHA). A local Q count that merely equals the global KV head
+      # count (GQA, e.g. 28Q/7KV at world=4 -> 7 local Q heads) still needs
+      # the per-window head selection below.
       return key, value
     if num_q_heads % num_kv_heads != 0:
       raise ValueError(f"GQA requires num_q_heads to be divisible by num_kv_heads, got "
