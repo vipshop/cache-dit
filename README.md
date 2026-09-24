@@ -98,11 +98,9 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 Cache-DiT provides a [model-integration](./.github/skills/cache-dit-model-integration/SKILL.md) SKILL to help users integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
-<div align="center">
-
-<img src=docs/assets/agent.png width=800px>
-
-</div>
+```bash
+gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
+```
 
 > [!NOTE]
 > Please note that quantization and layerwise offload in Cache-DiT are generally supported for **nn.Module**, thus no extra integration is needed for new DiT pipelines or transformers. 
