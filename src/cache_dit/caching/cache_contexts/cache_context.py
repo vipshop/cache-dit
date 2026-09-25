@@ -249,28 +249,18 @@ class CachedContext:
   def add_cached_step(self):
     curr_cached_step = self.get_current_step()
     if not self.is_separate_cfg_step():
-      if self.cached_steps:
-        prev_cached_step = self.cached_steps[-1]
-        if curr_cached_step - prev_cached_step == 1:
-          if self.continuous_cached_steps == 0:
-            self.continuous_cached_steps += 2
-          else:
-            self.continuous_cached_steps += 1
-      else:
+      if self.cached_steps and curr_cached_step - self.cached_steps[-1] == 1:
         self.continuous_cached_steps += 1
+      else:
+        self.continuous_cached_steps = 1
 
       self.cached_steps.append(curr_cached_step)
       self.accumulated_cached_steps += 1
     else:
-      if self.cfg_cached_steps:
-        prev_cfg_cached_step = self.cfg_cached_steps[-1]
-        if curr_cached_step - prev_cfg_cached_step == 1:
-          if self.cfg_continuous_cached_steps == 0:
-            self.cfg_continuous_cached_steps += 2
-          else:
-            self.cfg_continuous_cached_steps += 1
-      else:
+      if self.cfg_cached_steps and curr_cached_step - self.cfg_cached_steps[-1] == 1:
         self.cfg_continuous_cached_steps += 1
+      else:
+        self.cfg_continuous_cached_steps = 1
 
       self.cfg_cached_steps.append(curr_cached_step)
       self.cfg_accumulated_cached_steps += 1
