@@ -905,12 +905,6 @@ class CachedContextManager:
         logger.debug(f"{prefix}, max_continuous_cached_steps "
                      f"reached: {max_continuous_cached_steps}, "
                      "can not use cache.")
-      # reset continuous cached steps stats
-      cached_context = self.get_context()
-      if not self.is_separate_cfg_step():
-        cached_context.continuous_cached_steps = 0
-      else:
-        cached_context.cfg_continuous_cached_steps = 0
       return False
 
     # max accumulated residual diff threshold

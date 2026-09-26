@@ -30,9 +30,27 @@ DTYPES = ([torch.float32]
     (True, True),
   ],
 )
+@pytest.mark.parametrize(
+  "cache_kwargs,expected",
+  [
+    pytest.param({}, list(range(4, 19, 2)), id="cap"),
+    pytest.param(
+      {"max_warmup_steps": 8, "warmup_interval": 2},
+      list(range(1, 19, 2)),
+      id="interleaved-warmup",
+    ),
+    pytest.param(
+      {"max_warmup_steps": 0, "steps_computation_mask": [1, 0] * 9 + [1]},
+      list(range(1, 19, 2)),
+      id="dynamic-mask",
+    ),
+  ],
+)
 def test_continuous_cache_limit_restarts_after_compute_step(
   enable_separate_cfg,
   cfg_compute_first,
+  cache_kwargs,
+  expected,
 ):
   config = DBCacheConfig(
     max_warmup_steps=4,
@@ -42,6 +60,7 @@ def test_continuous_cache_limit_restarts_after_compute_step(
     cfg_compute_first=cfg_compute_first,
     cfg_diff_compute_separate=not cfg_compute_first,
   )
+  config.update(**cache_kwargs)
   manager = CachedContextManager()
   context = manager.new_context(cache_config=config)
   manager.set_context(context)
@@ -60,7 +79,6 @@ def test_continuous_cache_limit_restarts_after_compute_step(
     else:
       manager.set_Fn_buffer(residual)
 
-  expected = list(range(4, 19, 2))
   assert cached_steps[False] == expected
   assert cached_steps[True] == (expected if enable_separate_cfg else [])
 
