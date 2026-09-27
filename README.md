@@ -120,7 +120,7 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/cache_dit.hpp)
 - 🎉[jetson-containers x Cache-DiT](https://github.com/dusty-nv/jetson-containers/tree/master/packages/cv/diffusion/cache_edit)
-- 🎉[ComfyUI-RH-MiniMax-H3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
+- 🎉[ComfyUI_RH_MinMaxH3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
 
 
 ## ©️Acknowledgements
