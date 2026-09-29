@@ -99,7 +99,8 @@ def _dmd_svd(
   Three precision levels:
   - ``"low"``: randomised ``torch.svd_lowrank`` (fastest, niter=1, deterministic seed).
   - ``"medium"``: standard ``torch.linalg.svd`` with default ``gesdd``.
-  - ``"high"``: ``torch.linalg.svd`` with ``driver="gesvd"`` for maximum accuracy.
+  - ``"high"``: ``torch.linalg.svd`` with ``driver="gesvd"`` for maximum accuracy
+    (CUDA only; other devices use the default driver, same as ``"medium"``).
 
   :param X: Tall-skinny input matrix of shape ``[d, n]``.
   :param svd_precision: One of ``("low", "medium", "high")``.
@@ -116,7 +117,11 @@ def _dmd_svd(
       U, S, V = torch.svd_lowrank(X, q=n, niter=_SVD_LOWRANK_NITER)
       Vh = V.mH
   elif svd_precision == "high":
-    U, S, Vh = torch.linalg.svd(X, full_matrices=False, driver="gesvd")
+    # `driver=` is only accepted for CUDA inputs (cuSOLVER); passing it on CPU (or any
+    # non-CUDA device) raises, which `_dmd_fit_one` would swallow and silently
+    # degrade to reuse.
+    driver = "gesvd" if X.device.type == "cuda" else None
+    U, S, Vh = torch.linalg.svd(X, full_matrices=False, driver=driver)
   else:  # medium
     U, S, Vh = torch.linalg.svd(X, full_matrices=False)
   return U, S, Vh
