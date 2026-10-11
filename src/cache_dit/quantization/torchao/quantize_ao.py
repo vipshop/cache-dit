@@ -666,7 +666,7 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
 def _basic_filter_fn(
     m: torch.nn.Module,
     name: str,
-    quant_ctx: QuantizeAOContext = QuantizeAOContext(),
+    quant_ctx: QuantizeAOContext,
     override_quant_type: Optional[str] = None,  # For precision plan.
 ) -> bool:
   from torchao.float8.float8_linear import Float8Linear
@@ -776,9 +776,9 @@ def _basic_filter_fn(
 
 
 def _fallback_filter_fn(
-    m: torch.nn.Module,
-    name: str,
-    quant_ctx: QuantizeAOContext = QuantizeAOContext(),
+  m: torch.nn.Module,
+  name: str,
+  quant_ctx: QuantizeAOContext,
 ) -> bool:
   from torchao.float8.float8_linear import Float8Linear
 
