@@ -629,14 +629,16 @@ def _get_torchao_config(quant_type: str, **kwargs) -> AOBaseConfig:
         PerRow,
       )
 
-      quant_config = Int8DynamicActivationInt8WeightConfig(granularity=(PerRow(), PerRow()), )
+      # A single granularity applies to both activation and weight. torchao
+      # 0.18 no longer accepts an (act, weight) tuple here.
+      quant_config = Int8DynamicActivationInt8WeightConfig(granularity=PerRow())
     elif quant_type == "int8_per_tensor":
       from torchao.quantization import (
         Int8DynamicActivationInt8WeightConfig,
         PerTensor,
       )
 
-      quant_config = Int8DynamicActivationInt8WeightConfig(granularity=(PerTensor(), PerTensor()), )
+      quant_config = Int8DynamicActivationInt8WeightConfig(granularity=PerTensor())
 
     elif quant_type == "int8_weight_only":
 
