@@ -33,7 +33,10 @@ def test_torchao_backend_imports_on_pre_ada_gpu() -> None:
   assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="The torchao backend requires CUDA.")
+@pytest.mark.skipif(
+  not torch.cuda.is_available() or torch.cuda.get_device_capability() < (8, 0),
+  reason="TorchAO dynamic INT8 tests require SM80 or newer.",
+)
 @pytest.mark.parametrize("quant_type", ["int8_per_row", "int8_per_tensor"])
 def test_int8_dynamic_quantization_matches_bf16(quant_type: str) -> None:
   torch.manual_seed(0)
