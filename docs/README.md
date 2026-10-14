@@ -66,11 +66,12 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
   <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
 </div>
 
-First, build Cache-DiT from source with SVDQuant support (Experimental):
+First, install the pre-built CUDA package, or build Cache-DiT from source with SVDQuant support (Experimental):
 
 ```bash
-# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+.
-uv pip install -U cache-dit-cu13 # PyPI, stable release.
+# Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
+# release (2.38; see the platform tags on the index page).
+uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```
 
