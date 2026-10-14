@@ -119,14 +119,35 @@ def set_ffpa_hybrid(enabled: bool) -> None:
   _ffpa_hybrid_override = bool(enabled)
 
 
-def _require_sm120_cuda(query: torch.Tensor) -> None:
+def _require_supported_cuda(query: torch.Tensor, *, enable_fp4: bool = False) -> tuple[int, int]:
+  """Validate the FFPA device requirements and return the capability.
+
+  Supported architectures mirror the ffpa-attn router:
+  - fp16/bf16 (``ffpa``): sm_120 (CUTE_TMA) and sm_89 (Ada; the TMA /
+    CUTE_TMA hints are sm_120-only, so Ada auto-resolves to the cp.async
+    NATIVE family).
+  - fp8 (``ffpa_fp8`` / ``ffpa_fp8_per_block``): sm_120 (CUTE_TMA_FP8) and
+    sm_89 (TMA-free CUTE_FP8_SM_89).
+  - fp4 (``ffpa_fp4``): sm_120 only (CUTE_TMA_FP4_SM_120).
+
+  :param query: Query tensor; supplies the device to probe.
+  :param enable_fp4: Whether the fp4 family is selected.
+  :returns: ``(major, minor)`` device capability.
+  """
   if query.device.type != "cuda":
     raise RuntimeError(
       f"FFPA attention backends require CUDA tensors, got device {query.device.type}.")
   major, minor = torch.cuda.get_device_capability(query.device)
-  if major != _SM120_MAJOR:
-    raise RuntimeError(f"FFPA attention backends only support sm_120 GPUs, "
-                       f"got capability sm_{major}{minor} on device {query.device}.")
+  if enable_fp4:
+    if major != _SM120_MAJOR:
+      raise RuntimeError(f"FFPA fp4 attention backend only supports sm_120 GPUs, "
+                         f"got capability sm_{major}{minor} on device {query.device}.")
+    return major, minor
+  if major != _SM120_MAJOR and not (major == 8 and minor >= 9):
+    raise RuntimeError(f"FFPA attention backends support sm_120 or sm_89 (Ada) "
+                       f"only; sm_90 / sm_100 are not supported. Got capability "
+                       f"sm_{major}{minor} on device {query.device}.")
+  return major, minor
 
 
 def _is_geforce_5090_or_5080(device: torch.device) -> bool:
@@ -244,10 +265,44 @@ def _is_nhd_supported(
   backend: "CUDABackend",
   headdim: int,
 ) -> bool:
-  # All per-family rules (hadamard, head_dim caps per quant family) live
-  # in CUDABackend.is_nhd_supported; hybrid no longer blocks NHD (its
-  # stage-1 writeback is a stride-generic slice copy).
+  """Whether the caller-side NHD fast-path conditions hold.
+
+  Only the per-family rules (hadamard, head_dim caps per quant family)
+  live in CUDABackend.is_nhd_supported; hybrid no longer blocks NHD (its
+  stage-1 writeback is a stride-generic slice copy). The caller owns the
+  remaining gates: no attn_mask (the fp16 + bias route stores a
+  BHND-packed O) and sm_120+ (the NHD O-store branch requires the
+  CUTE_TMA family).
+
+  :returns: True when the NHD fast path may run.
+  """
   return (nhd_out and not torch.is_grad_enabled() and backend.is_nhd_supported(headdim))
+
+
+def _normalize_attn_mask(attn_mask: torch.Tensor, key: torch.Tensor) -> torch.Tensor:
+  """Adapt a cache-dit attention mask to the FFPA/SDPA broadcast contract.
+
+  The mask contract is documented, not inferred: ``True`` keeps an element
+  (bool) or the value is an additive bias (float), and which positions or
+  sequence shards are masked is the caller's responsibility. Only the
+  unambiguous low-rank forms are expanded here: ``[Nkv]`` ->
+  ``[1, 1, 1, Nkv]`` and ``[B, Nkv]`` -> ``[B, 1, 1, Nkv]``; 3-D / 4-D
+  masks pass through untouched (ffpa-attn normalizes them).
+
+  :param attn_mask: Mask whose last dimension is the key sequence length.
+  :param key: Key tensor in NHD layout ``[B, Nkv, H_kv, D]``.
+  :returns: Mask broadcastable to ``[B, Nh_q, Nq, Nkv]``.
+  """
+  if attn_mask.dim() == 1:
+    attn_mask = attn_mask[None, None, None, :]
+  elif attn_mask.dim() == 2:
+    attn_mask = attn_mask[:, None, None, :]
+  elif attn_mask.dim() not in (3, 4):
+    raise ValueError(f"FFPA attention masks must be 1-D to 4-D, got {attn_mask.dim()}-D.")
+  if attn_mask.shape[-1] != key.shape[-3]:
+    raise ValueError(f"Attention mask must match the key's sequence length, "
+                     f"got {attn_mask.shape[-1]} and {key.shape[-3]}.")
+  return attn_mask
 
 
 def _is_qkv_contiguous(
@@ -266,6 +321,7 @@ def _ffpa_attn_core(
   query: torch.Tensor,
   key: torch.Tensor,
   value: torch.Tensor,
+  attn_mask: Optional[torch.Tensor],
   is_causal: bool,
   scale: Optional[float],
   enable_gqa: bool,
@@ -279,7 +335,11 @@ def _ffpa_attn_core(
   # so the three tensors pass through zero-copy; layouts outside the NHD
   # contract fail loudly in the C++ layout gates instead of being silently
   # materialized.
-  if nhd_native and _is_nhd_supported(nhd_out, backend, query.size(-1)):
+  # A non-None mask also forces the HND route: a mask disables the ffpa
+  # inference fast path (ffpa_attn_interface) and NHD is a fast-path-only
+  # feature (the full meta/autograd chain below assumes BHND-packed
+  # tensors, so an NHD call would fail or misread).
+  if attn_mask is None and nhd_native and _is_nhd_supported(nhd_out, backend, query.size(-1)):
     # tensor_layout="NHD": the CUDA kernels read NHD inputs and write a
     # contiguous NHD output directly, skipping the input permute views and
     # the BHND->NHD output permute whose non-contiguous view forces a
@@ -313,6 +373,7 @@ def _ffpa_attn_core(
     q,
     k,
     v,
+    attn_mask=attn_mask,
     is_causal=is_causal,
     scale=scale,
     enable_gqa=enable_gqa,
@@ -337,15 +398,19 @@ def _make_ffpa_forward_op(backend: "CUDABackend", nhd_native: bool = False):
     _save_ctx: bool = True,
     _cp_config: Optional["_ContextParallelConfig"] = None,
   ):
-    # attn_mask / dropout_p / return_lse are rejected in _ffpa_attention_impl
-    # before the CP template runs; enable_gqa / is_causal are natively
-    # supported by FFPA and forwarded as-is. CP input shards arrive NHD
-    # packed (send_q/k/v materialize them), and the reassembly primitives
-    # (send_o) reshape/copy stride-agnostically — the same NHD contract sage
-    # uses — so the forward op keeps the native NHD output (nhd_out default).
+    # attn_mask never reaches this CP forward op: the templated-CP allowlist
+    # rejects ffpa with a mask (its shard/order semantics are out of the
+    # backend contract), and dropout_p / return_lse are rejected in
+    # _ffpa_attention_impl before the template runs. enable_gqa / is_causal
+    # are natively supported by FFPA and forwarded as-is. CP input shards
+    # arrive NHD packed (send_q/k/v materialize them), and the reassembly
+    # primitives (send_o) reshape/copy stride-agnostically — the same NHD
+    # contract sage uses — so the forward op keeps the native NHD output
+    # (nhd_out default).
     return _ffpa_attn_core(query,
                            key,
                            value,
+                           None,
                            is_causal,
                            scale,
                            enable_gqa,
@@ -380,16 +445,23 @@ def _ffpa_attention_impl(
   enable_fp4: bool = False,
   fp8_preset: Optional[str] = None,
 ) -> torch.Tensor:
-  if attn_mask is not None:
-    raise ValueError("`attn_mask` is not yet supported for FFPA attention.")
   if dropout_p > 0.0:
     raise ValueError("`dropout_p` is not yet supported for FFPA attention.")
   if return_lse:
     raise ValueError("`return_lse` is not supported for FFPA attention.")
+  if attn_mask is not None:
+    if is_causal:
+      raise ValueError("`attn_mask` and `is_causal=True` are mutually exclusive "
+                       "for FFPA attention; pass a full mask instead.")
+    attn_mask = _normalize_attn_mask(attn_mask, key)
   if ffpa_attn_func is None:
     raise RuntimeError(
       "FFPA attention backend is not available. Please install `ffpa-attn` to use it.")
-  _require_sm120_cuda(query)
+  capability = _require_supported_cuda(query, enable_fp4=enable_fp4)
+  # NHD fast path: sm_120 only (the NHD O-store branch lives in the sm_120
+  # CUTE_TMA family; the `>=` mirrors the upstream `prop->major >= 12`
+  # gate) and bias-free (see _ffpa_attn_core).
+  nhd_native = capability[0] >= _SM120_MAJOR
 
   backend = _build_ffpa_cuda_backend(query.device,
                                      enable_fp8=enable_fp8,
@@ -400,23 +472,27 @@ def _ffpa_attention_impl(
     return _ffpa_attn_core(query,
                            key,
                            value,
+                           attn_mask,
                            is_causal,
                            scale,
                            enable_gqa,
                            backend,
-                           nhd_native=True)
+                           nhd_native=nhd_native)
+  # A non-None mask is rejected by the templated-CP allowlist (ffpa is not
+  # a mask-enabled CP forward op): the mask shard/order semantics are out
+  # of the backend contract, so this stays a loud error.
   return _context_parallel_attention(
     query,
     key,
     value,
-    None,
+    attn_mask,
     0.0,
     is_causal,
     scale,
     enable_gqa,
     return_lse,
     cp_gqa_strategy,
-    forward_op=_make_ffpa_forward_op(backend, True),
+    forward_op=_make_ffpa_forward_op(backend, nhd_native),
     backward_op=_ffpa_attention_backward_op,
     _cp_config=_cp_config,
   )
@@ -440,12 +516,19 @@ def _ffpa_attention(
   cp_gqa_strategy: Optional[str] = None,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-  """FFPA CUDA backend (CUTE_TMA, fp16/bf16, forward-only, sm_120 only).
+  """FFPA CUDA backend (CUTE_TMA, fp16/bf16, forward-only, sm_120 / sm_89+).
 
   :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
   :param key: ``[B, N_kv, H, D]``.
   :param value: ``[B, N_kv, H, D]``.
-  :param attn_mask: Not supported.
+  :param attn_mask: Optional mask broadcastable to ``[B, H, N, N_kv]``
+      (SDPA semantics: bool ``True`` keeps an element, float is an additive
+      bias). Low-rank ``[N_kv]`` / ``[B, N_kv]`` forms are expanded to 4-D;
+      3-D / 4-D masks pass through as-is. The mask itself is forwarded
+      untouched: which positions or sequence shards are masked is the
+      caller's contract — the backend never infers pad/sharding semantics.
+      Mutually exclusive with ``is_causal=True``; not supported together
+      with context parallelism.
   :param dropout_p: Not supported.
   :param is_causal: Causal masking (FFPA tail-aligned semantics).
   :param scale: Pre-softmax scaling; defaults to ``1/sqrt(D)``.
@@ -486,16 +569,18 @@ def _ffpa_fp8_attention(
   cp_gqa_strategy: Optional[str] = None,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-  """FFPA CUDA FP8 backend (CUTE_TMA_FP8, forward-only, sm_120 only).
+  """FFPA CUDA FP8 backend (CUTE_TMA_FP8, forward-only, sm_120 / sm_89+).
 
   Inputs stay fp16/bf16; Q/K/V are fp8-quantized inside the kernel using the
   highest-precision config: int8 QK MMA, fp16 PV accumulation, Q/K quantized
   per_thread and V per_channel (supported for every fp8 head_dim including
-  non-32-multiple D such as 120).
+  non-32-multiple D such as 120). On sm_89 the fp8 family runs the TMA-free
+  persist-D kernel (f16 PV accumulator enforced by ffpa-attn).
 
   :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
   :param key: ``[B, N_kv, H, D]``.
   :param value: ``[B, N_kv, H, D]``.
+  :param attn_mask: Optional mask; same contract as the ``ffpa`` backend.
   :returns: ``[B, N, H, D]`` attention output.
   """
   return _ffpa_attention_impl(
@@ -534,11 +619,14 @@ def _ffpa_fp4_attention(
 ) -> torch.Tensor:
   """FFPA CUDA NVFP4 backend (CUTE_TMA_FP4, forward-only, sm_120 only).
 
-  Inputs stay fp16/bf16; Q/K/V are NVFP4-quantized inside the kernel.
+  Inputs stay fp16/bf16; Q/K/V are NVFP4-quantized inside the kernel. The
+  fp4 family ships the CUTE_TMA_FP4_SM_120 kernels only, so this backend
+  keeps the sm_120 gate (sm_89 is rejected before kernel dispatch).
 
   :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
   :param key: ``[B, N_kv, H, D]``.
   :param value: ``[B, N_kv, H, D]``.
+  :param attn_mask: Optional mask; same contract as the ``ffpa`` backend.
   :returns: ``[B, N, H, D]`` attention output.
   """
   return _ffpa_attention_impl(
@@ -575,15 +663,17 @@ def _ffpa_fp8_per_block_attention(
   cp_gqa_strategy: Optional[str] = None,
   _cp_config: Optional["_ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-  """FFPA CUDA FP8 per-block backend (CUTE_TMA_FP8, forward-only, sm_120 only).
+  """FFPA CUDA FP8 per-block backend (CUTE_TMA_FP8, forward-only, sm_120 / sm_89+).
 
   Performance-first config: int8 QK MMA, f32 PV accumulation, Q/K/V all
   quantized per_block, smooth K only, and no hybrid fp16 early rows. Fastest
-  FFPA fp8 backend but the lowest precision.
+  FFPA fp8 backend but the lowest precision. On sm_89 the f16 PV accumulator
+  is enforced by ffpa-attn regardless of the preset.
 
   :param query: ``[B, N, H, D]`` (diffusers / NHD convention).
   :param key: ``[B, N_kv, H, D]``.
   :param value: ``[B, N_kv, H, D]``.
+  :param attn_mask: Optional mask; same contract as the ``ffpa`` backend.
   :returns: ``[B, N, H, D]`` attention output.
   """
   return _ffpa_attention_impl(
