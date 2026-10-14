@@ -108,7 +108,7 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 ## 🌐Community Integration
 
 - 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
-- 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/blob/main/xfuser/model_executor/cache/adapters/cache_dit.py)
+- 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
 - 🎉[(Intel) llm-scaler x Cache-DiT](https://github.com/intel/llm-scaler/tree/main/omni#cache-dit--torchcompile-acceleration)
 - 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
