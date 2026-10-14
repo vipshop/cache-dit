@@ -12,6 +12,10 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 |<span style="color:#c77dff;">flash</span>| official FlashAttention-2|✅|✖️| 
 |<span style="color:#c77dff;">_flash_3</span>| official FlashAttention-3|✅|✖️|
 |<span style="color:#c77dff;">sage</span>| FP8 SageAttention|✅|✖️|
+|<span style="color:#c77dff;">ffpa</span>| FFPA CUDA fp16/bf16 (sm_120 / sm_89)|✅|✅|
+|<span style="color:#c77dff;">ffpa_fp8</span>| FFPA CUDA FP8 (sm_120 / sm_89)|✅|✅|
+|<span style="color:#c77dff;">ffpa_fp8_per_block</span>| FFPA CUDA FP8 per-block quant (sm_120 / sm_89)|✅|✅|
+|<span style="color:#c77dff;">ffpa_fp4</span>| FFPA CUDA NVFP4 (sm_120 only)|✅|✅|
 |<span style="color:#c77dff;">_native_npu</span>| Optimized Ascend NPU Attention|✅|✅|
 |<span style="color:#c77dff;">_npu_fia</span>| NPU Attention for Ring Parallelism|✅|✅|
 
@@ -67,3 +71,47 @@ cache_dit.enable_cache(
   ),
 )
 ```
+
+## FFPA Attention
+
+<div id="ffpa-attention"></div>
+
+[ffpa-attn](https://github.com/vipshop/ffpa-attn) provides hand-written CUDA (CUTE_TMA / cp.async) prefill attention kernels for large head dims. Install its CUDA wheel (the plain PyPI package ships no CUDA kernels):
+
+```bash
+pip install ffpa-attn --index-url https://vipshop.github.io/ffpa-attn/whl/cu13/ \
+  --extra-index-url https://pypi.org/simple
+```
+
+Then pass one of the ffpa backends:
+
+```python
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(...),
+  attention_backend="ffpa_fp8",  # ffpa, ffpa_fp8, ffpa_fp8_per_block, ffpa_fp4
+)
+```
+
+Hardware scope:
+
+|backend|precision|hardware|
+|:---|:---|:---|
+|<span style="color:#c77dff;">ffpa</span>| fp16 / bf16|sm_120, sm_89 (Ada)|
+|<span style="color:#c77dff;">ffpa_fp8</span>| FP8 quantized (int8 QK, per-thread / per-channel)|sm_120, sm_89 (Ada)|
+|<span style="color:#c77dff;">ffpa_fp8_per_block</span>| FP8 per-block quant (fastest, lowest precision)|sm_120, sm_89 (Ada)|
+|<span style="color:#c77dff;">ffpa_fp4</span>| NVFP4 quantized|sm_120 only|
+
+sm_90 / sm_100 GPUs are not supported yet. On sm_89 the fp16 family runs the cp.async native kernels and the fp8 family the TMA-free persist-D kernels (compiled head dims `64 / 128 / 192`, f16 PV accumulator enforced by ffpa-attn); sm_120 runs the CUTE_TMA families.
+
+> [!WARNING]
+> Upstream fp8 attention is known to return wrong results at `D=192` (sm_120 and sm_89 share the persist-D code); `D=64` / `D=128` are unaffected. Prefer fp16/bf16, or the fp4 family, at `D=192` until the upstream fix lands.
+
+### Attention mask contract
+
+FFPA backends accept an attention mask on the single-GPU path. The backend only adapts unambiguous shapes and forwards the mask untouched — which positions or sequence shards are masked is the **caller's responsibility**: different models build masks in different ways, and cache-dit never infers pad or sharding semantics.
+
+- Shapes broadcastable to `[B, H, Nq, Nkv]`: `[Nkv]` and `[B, Nkv]` are expanded to 4-D automatically; 3-D / 4-D masks pass through as-is. The last dimension must equal the key sequence length.
+- `bool` masks follow the SDPA semantics (`True` = the element participates); float masks are additive biases (ffpa-attn downcasts fp32 masks to the activation dtype).
+- `attn_mask` and `is_causal=True` are mutually exclusive.
+- Context parallelism (Ulysses / Ring) does not support `attn_mask` for FFPA backends.
