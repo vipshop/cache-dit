@@ -295,12 +295,13 @@ build_cu13_wheel() {
   [[ "$(basename "$raw")" == "$WHEEL_STEM-$RELEASE_VERSION+$CHANNEL-$python_tag-$python_tag-"* ]] \
     || fail "$env_name: built $(basename "$raw") but expected version $RELEASE_VERSION+$CHANNEL"
 
-  # The platform tag of the wheel built in a conda env advertises nothing useful;
-  # the floor is derived from the GLIBC symbols the extension actually needs.
+  # Two things a wheel built in a conda environment cannot ship as-is: the platform
+  # tag (the floor is derived from the GLIBC symbols the extension actually needs)
+  # and the RPATH, which points at the build environment's lib directory.
   retagged="$(conda run -n "$BASE_ENV" python \
-    "$REPO_DIR/tools/repair_wheel_platform_tag.py" --retag "$raw")"
+    "$REPO_DIR/tools/repair_wheel_platform_tag.py" --retag --set-rpath '$ORIGIN' "$raw")"
   detected="${retagged#*$'\t'}"
-  echo "[build_releases] $env_name: platform tag $detected"
+  echo "[build_releases] $env_name: platform tag $detected, RPATH \$ORIGIN"
 }
 
 verify_artifacts() {
@@ -329,10 +330,14 @@ verify_artifacts() {
     inspect_wheel "${wheels[0]}" svdquant "$RELEASE_VERSION+$CHANNEL"
 
     report="$(conda run -n "$BASE_ENV" python \
-      "$REPO_DIR/tools/repair_wheel_platform_tag.py" "${wheels[0]}")"
+      "$REPO_DIR/tools/repair_wheel_platform_tag.py" --print-rpath "${wheels[0]}")"
     detected="${report#*$'\t'}"
+    detected="${detected%%$'\t'*}"
+    detected_rpath="${report##*$'\t'}"
     [[ "$(basename "${wheels[0]}")" == *"-${detected}.whl" ]] || fail \
       "${wheels[0]} advertises a platform tag other than the detected $detected"
+    [[ "$detected_rpath" == '$ORIGIN' ]] || fail \
+      "${wheels[0]} carries RPATH '$detected_rpath'; a release wheel is relocatable (\$ORIGIN)"
   done
   shopt -u nullglob
 }
