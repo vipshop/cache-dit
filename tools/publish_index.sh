@@ -287,7 +287,11 @@ commit_and_push() {
     echo "[publish_index] index unchanged"
     return 0
   fi
-  git -C "$SITE_REPO" commit -q -m "index: $TAG"
+  # A worktree shares the hooks of the repository it belongs to, so the source
+  # repository's pre-commit setup runs on this index tree -- which has no
+  # configuration of its own, and fails on that.  This is pre-commit's own escape
+  # hatch: the hook path stays intact instead of being bypassed.
+  PRE_COMMIT_ALLOW_NO_CONFIG=1 git -C "$SITE_REPO" commit -q -m "index: $TAG"
   if [[ "$NO_PUSH" == "1" ]]; then
     echo "[publish_index] --no-push: committed $TAG, nothing pushed"
     return 0
