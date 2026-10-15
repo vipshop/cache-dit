@@ -333,13 +333,14 @@ Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with hi
 
 ![svdq](../assets/svdq-algo.png)
 
-With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, please make sure to **build Cache-DiT from source with SVDQuant support**. We may consider releasing pre-built Cache-DiT packages with SVDQuant support in the future.
+With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with SVDQuant support**.
 
 For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs, while the NVFP4 path is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and requires <span style="color:#c77dff;">svdq_kwargs={"runtime_kernel": "v1"}</span>. Setting <span style="color:#c77dff;">runtime_kernel="v2"</span> with NVFP4 is rejected intentionally at config-validation time.
 
 ```bash
-# Required: CUDA 13.0+, PyTorch 2.11+, Ubuntu 22.04+ (GLIBC 2.32+).
-uv pip install -U cache-dit-cu13 # PyPI, stable release with SVDQ.
+# Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
+# release (2.38; see the platform tags on the index page).
+uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
 # Optional: just build Cache-DiT with SVDQuant support from source.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 git submodule update --init --recursive --force # init submodules 

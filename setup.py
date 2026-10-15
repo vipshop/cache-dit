@@ -25,9 +25,10 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # Distribution name is intentionally not managed via a PACKAGE_NAME env var in
 # setup.py. Under PEP 621, setuptools reads the project name from the active
 # workspace's pyproject.toml. Default builds therefore use the repository root
-# pyproject.toml, while release builds obtain cache-dit-cu13 by preparing a
-# temporary workspace whose pyproject.toml is rewritten by
-# tools/release_workspace.py.
+# pyproject.toml, and so do the release builds: the pure-Python wheel and the CUDA
+# wheel share the distribution name, and only the CUDA wheel's local version
+# (+cu13) tells them apart. tools/release_workspace.py prepares the workspace the
+# release build runs in.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
 # sm100 (Blackwell B100/B200, CC 10.0) is not included in the default
@@ -246,12 +247,12 @@ def _validate_release_configuration() -> None:
     return
 
   if not _should_build_svdquant():
-    raise RuntimeError("The cache-dit-cu13 release flavor requires CACHE_DIT_BUILD_SVDQUANT=1.")
+    raise RuntimeError("The 'cu13' release flavor requires CACHE_DIT_BUILD_SVDQUANT=1 "
+                       "(see docs/user_guide/INSTALL.md for the release commands).")
 
   build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "").strip().upper()
   if build_mode != "ALL":
-    raise RuntimeError(
-      "The cache-dit-cu13 release flavor requires CACHE_DIT_SVDQUANT_BUILD_MODE=ALL.")
+    raise RuntimeError("The 'cu13' release flavor requires CACHE_DIT_SVDQUANT_BUILD_MODE=ALL.")
 
 
 def _get_sm_targets() -> list[str]:
@@ -327,7 +328,7 @@ def _require_min_cuda_for_cu13_release() -> None:
   assert packaging_version is not None
   nvcc_version = _get_nvcc_version(CUDA_HOME)
   if packaging_version.parse(nvcc_version) < packaging_version.parse("13.0"):
-    raise RuntimeError("The cache-dit-cu13 release flavor requires CUDA 13.0+ for compilation, "
+    raise RuntimeError("The 'cu13' release flavor requires CUDA 13.0+ for compilation, "
                        f"but nvcc reports {nvcc_version}.")
 
 
