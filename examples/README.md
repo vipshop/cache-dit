@@ -50,6 +50,8 @@ Available examples:
 - ✅ flux2_klein_9b_edit            - Default: black-forest-labs/FLUX.2-klein-9B
 - ✅ flux2_klein_4b_edit            - Default: black-forest-labs/FLUX.2-klein-4B
 - ✅ flux2_klein_9b_kv_edit         - Default: black-forest-labs/FLUX.2-klein-9b-kv
+- ✅ flux3                          - Default: black-forest-labs/flux-3-image-klein
+- ✅ flux3_edit                     - Default: black-forest-labs/flux-3-image-klein
 - ✅ qwen_image_lightning           - Default: lightx2v/Qwen-Image-Lightning
 - ✅ qwen_image_2512                - Default: Qwen/Qwen-Image-2512
 - ✅ qwen_image                     - Default: Qwen/Qwen-Image
@@ -94,6 +96,8 @@ The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is t
 python3 -m cache_dit.generate flux 
 python3 -m cache_dit.generate flux_nunchaku # need nunchaku library
 python3 -m cache_dit.generate flux2
+python3 -m cache_dit.generate flux3 # diffusers modular pipeline
+python3 -m cache_dit.generate flux3_edit # diffusers modular pipeline, image editing
 python3 -m cache_dit.generate ovis_image
 python3 -m cache_dit.generate qwen_image_edit_lightning
 python3 -m cache_dit.generate qwen_image
@@ -286,9 +290,9 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 python3 -m cache_dit.generate --help
 
 positional arguments:
-  {generate,list,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_nunchaku,zimage,zimage_controlnet_2.0,zimage_controlnet_2.1,longcat_image,longcat_image_edit}
+  {generate,list,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,flux3,flux3_edit,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_nunchaku,zimage,zimage_controlnet_2.0,zimage_controlnet_2.1,longcat_image,longcat_image_edit}
                         The task to perform or example name to run. Use 'list' to list all available examples, or specify an example name directly (defaults to 'generate' task).
-  {None,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_nunchaku,zimage,zimage_controlnet_2.0,zimage_controlnet_2.1,longcat_image,longcat_image_edit}
+  {None,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,flux3,flux3_edit,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_nunchaku,zimage,zimage_controlnet_2.0,zimage_controlnet_2.1,longcat_image,longcat_image_edit}
                         Names of the examples to run. If not specified, skip running example.
 
 options:

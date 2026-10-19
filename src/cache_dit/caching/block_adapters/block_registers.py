@@ -6,6 +6,8 @@ from .block_adapters import (
   BlockAdapter,
   FakeDiffusionPipeline,
 )
+from ...utils import is_pipeline
+from ...utils import is_modular_pipeline
 
 from ...logger import init_logger
 
@@ -20,6 +22,9 @@ class BlockAdapterRegister:
   """
 
   _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
+  # Modular pipeline families whose adapter has been verified end to end (see the
+  # cache-dit-model-integration skill, `references/modular_pipeline.md`).
+  _verified_modular_pipelines: Tuple[str, ...] = ("Flux3", )
   _predefined_adapters_has_separate_cfg: List[str] = [
     "QwenImage",
     "Wan",
@@ -71,7 +76,7 @@ class BlockAdapterRegister:
 
     for name in cls._adapters:
       if cls_name.startswith(name):
-        if not isinstance(pipe_or_module, DiffusionPipeline):
+        if not is_pipeline(pipe_or_module):
           assert isinstance(pipe_or_module, torch.nn.Module)
           # NOTE: Make pre-registered adapters support Transformer-only case.
           # WARN: This branch is not officially supported and only for testing
@@ -82,6 +87,16 @@ class BlockAdapterRegister:
           # such cases.
           return cls._adapters[name](FakeDiffusionPipeline(pipe_or_module), **kwargs)
         else:
+          if is_modular_pipeline(pipe_or_module) and not cls_name.startswith(
+              cls._verified_modular_pipelines):
+            # Modular pipelines reuse the adapter of the matching transformer family. Only a few
+            # families are verified so far, so flag the others instead of silently claiming
+            # support.
+            logger.warning(
+              f"Modular pipeline {cls_name} is dispatched to the '{name}' "
+              f"BlockAdapter. Only {cls._verified_modular_pipelines} modular pipelines "
+              "are verified, please check the output (PSNR and SSIM) before relying "
+              "on caching.")
           return cls._adapters[name](pipe_or_module, **kwargs)
 
     return None
@@ -110,7 +125,8 @@ class BlockAdapterRegister:
     if isinstance(pipe_or_adapter_or_module, FakeDiffusionPipeline):
       return False
 
-    if isinstance(pipe_or_adapter_or_module, (DiffusionPipeline, torch.nn.Module)):
+    if isinstance(pipe_or_adapter_or_module,
+                  torch.nn.Module) or is_pipeline(pipe_or_adapter_or_module):
       adapter = cls.get_adapter(
         pipe_or_adapter_or_module,
         skip_post_init=True,  # check cfg setting only

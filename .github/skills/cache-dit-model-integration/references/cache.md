@@ -430,8 +430,28 @@ def mymodel_adapter(pipe, **kwargs) -> BlockAdapter:
 - Import the transformer class **lazily** (inside `_apply()`) if the model's diffusers version may not be installed everywhere.
 
 
+## 1.8 Modular pipelines (FLUX.3)
+
+A diffusers `ModularPipeline` is not a `DiffusionPipeline` nor a `torch.nn.Module`, and its denoise
+step builds the transformer kwargs by introspecting `transformer.forward`. Two consequences:
+
+1. The core pipeline guards (`CachedAdapter.apply`, `BlockAdapterRegister.get_adapter`,
+   `summary`) accept modular pipelines through `cache_dit.utils.is_pipeline()`; a new modular model
+   does not need to re-add them.
+2. Cache-dit's `forward` patch must keep the original `__signature__`, otherwise the modular step
+   drops required kwargs (`img_ids`, `txt_ids`, ...) and the first denoise step raises `TypeError`.
+
+For a transformer with several block stacks (per-mode + joint), cache the **joint** stack that
+carries the whole sequence, and keep the per-mode stacks recomputed. A nested list such as
+`mode_blocks["image"]` cannot be passed as `blocks_name` (the wrapper is installed with
+`patch.object(self, name, ...)`), so caching it needs a `PatchFunctor` that aliases the list and
+rewrites the loop.
+
+Full template, FLUX.3 numbers and the CP/TP analysis: [`./modular_pipeline.md`](./modular_pipeline.md).
+
 ## More references 
 
 We recommend reading the following files for additional context:
 
 - cache related source code: `src/cache_dit/caching/`
+- modular pipeline integration: `./modular_pipeline.md`

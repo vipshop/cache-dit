@@ -1,5 +1,6 @@
 import copy
 import torch
+import inspect
 import unittest
 import functools
 from contextlib import ExitStack
@@ -16,6 +17,7 @@ from ..cache_contexts import ContextManager
 from ..cache_contexts import BasicCacheConfig
 from ..cache_contexts import CalibratorConfig
 from ..cache_blocks import UnifiedBlocks
+from ...utils import is_pipeline
 from ...logger import init_logger
 
 try:
@@ -51,7 +53,8 @@ class CachedAdapter:
   ]:
     assert pipe_or_adapter is not None, "pipe or block_adapter can not both None!"
 
-    if isinstance(pipe_or_adapter, (DiffusionPipeline, torch.nn.Module, ModelMixin)):
+    if isinstance(pipe_or_adapter,
+                  (DiffusionPipeline, torch.nn.Module, ModelMixin)) or is_pipeline(pipe_or_adapter):
       if BlockAdapterRegister.is_supported(pipe_or_adapter):
         logger.info(f"{pipe_or_adapter.__class__.__name__} is officially "
                     "supported by cache-dit. Use it's pre-defined BlockAdapter "
@@ -66,7 +69,7 @@ class CachedAdapter:
           block_adapter.params_modifiers = params_modifiers
 
         block_adapter = cls.cachify(block_adapter, **context_kwargs)
-        if isinstance(pipe_or_adapter, DiffusionPipeline):
+        if is_pipeline(pipe_or_adapter):
           return block_adapter.pipe
 
         return block_adapter.transformer
@@ -429,10 +432,15 @@ class CachedAdapter:
       return outputs
 
     # NOTE: Still can't fully compatible with group offloading
-    transformer.forward = functools.update_wrapper(
-      functools.partial(new_forward_with_hf_hook, transformer),
-      new_forward_with_hf_hook,
-    )
+    patched_forward = functools.partial(new_forward_with_hf_hook, transformer)
+    # Keep the original forward signature discoverable. Modular pipelines (e.g. FLUX.3) build the
+    # transformer kwargs by inspecting `transformer.forward`, which would otherwise collapse into
+    # `(*args, **kwargs)` after the patch and silently drop required inputs like `img_ids`.
+    try:
+      patched_forward.__signature__ = inspect.signature(original_forward)
+    except (TypeError, ValueError) as e:
+      logger.debug(f"Failed to preserve the forward signature: {e}")
+    transformer.forward = functools.update_wrapper(patched_forward, new_forward_with_hf_hook)
 
     transformer._original_forward = original_forward
     transformer._is_cached = True
@@ -657,7 +665,7 @@ class CachedAdapter:
     _release_transformer: Optional[Callable] = None,
     _release_pipeline: Optional[Callable] = None,
   ):
-    if isinstance(pipe_or_adapter, DiffusionPipeline):
+    if is_pipeline(pipe_or_adapter):
       pipe = pipe_or_adapter
       if _release_pipeline is not None:
         _release_pipeline(pipe)

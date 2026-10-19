@@ -29,6 +29,7 @@ def _safe_import(module_name: str, func_name: str) -> Callable[..., BlockAdapter
     return import_error_adapter
 
 
+flux3_adapter = _safe_import(".adapters", "flux3_adapter")
 flux_adapter = _safe_import(".adapters", "flux_adapter")
 mochi_adapter = _safe_import(".adapters", "mochi_adapter")
 cogvideox_adapter = _safe_import(".adapters", "cogvideox_adapter")
