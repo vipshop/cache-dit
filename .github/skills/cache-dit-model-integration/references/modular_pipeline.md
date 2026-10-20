@@ -375,8 +375,15 @@ night"): 10.47 s → 6.77 s (1.55×), 8/16 steps cached, PSNR 39.03 / SSIM 0.996
 | CP Ulysses (2 GPU) | 3.20 s (1.53×) | 40.13 / 0.9899 (vs 1 GPU baseline) |
 | CP Ring (2 GPU) | 2.95 s (1.66×) | 38.48 / 0.9816 |
 | CP Ulysses + cache | 2.54 s (1.93×) | 33.95 / 0.9527 |
+| CP Ulysses + `--compile` | 2.73–2.74 s (1.79×) | 34.84–35.81 / 0.9484–0.9555 |
+| TP + `--compile` | 2.61 s (1.88×) | 36.76–37.83 / 0.9708–0.9746 |
 | CP Ulysses, I2I (`flux3_edit`) | 6.58 s (1.58× vs 10.42 s) | 40.28 / 0.9849 |
 | CP Ulysses + UAA, 528×528 (1089 image tokens) | 1.08 s | 46.28 / 0.9987 (vs 1 GPU 528×528) |
+
+`--compile` stacks with both parallelisms (CP −0.46 s, TP −0.41 s, ≈+15 % throughput) and keeps the
+runs reproducible within ~2–4 dB (CP: 37.95 dB between two processes; TP: 40.69 dB), i.e. much
+tighter than the 1-GPU fp8+compile case. It costs 4–5 dB against the non-compiled variants
+(40.1 → 34.8–35.8 for CP, 42.0 → 36.8–37.8 for TP), the same bf16-compile penalty measured on 1 GPU.
 
 On 2 GPUs CP and TP land at a similar throughput (1.53–1.66× vs 1.62×). Pick CP when the token
 streams dominate memory (it shards the sequence of all three streams, including the long text
