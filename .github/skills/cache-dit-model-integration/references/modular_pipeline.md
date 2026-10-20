@@ -265,3 +265,32 @@ night"): 10.47 s → 6.77 s (1.55×), 8/16 steps cached, PSNR 39.03 / SSIM 0.996
 | TP + TE-P | 3.07 s | 36.22 / 0.9600 |
 | TP + VAE-P | 3.03 s | 42.02 / 0.9940 (bit-identical to TP) |
 | TP + cache | 2.43 s (2.02× vs 1 GPU) | 34.09 / 0.9552 (vs TP baseline) |
+
+### 7.1 Quantization: fp8 per-row + compile
+
+`python3 -m cache_dit.generate flux3 --quantize --compile [--cache]` (`--quantize` defaults to
+torchao `float8_per_row`, i.e. `Float8DynamicActivationFloat8WeightConfig`). Regional quantization
+covers the 4 block stacks only: 258 linear layers (`43 blocks x 6`), 0 skipped.
+
+| Config | Latency | Peak mem | PSNR / SSIM vs bf16 baseline |
+|---|---|---|---|
+| bf16 baseline | 4.91 s | 21.21 GiB | — |
+| bf16 + cache | 3.86 s (1.27×) | — | 34.21 / 0.9569 |
+| bf16 + compile | 3.96 s (1.24×) | — | 38.00 / 0.9781 |
+| bf16 + compile + cache | 3.12 s (1.57×) | — | 34.00 / 0.9519 |
+| fp8 per-row | 4.40 s (1.11×) | — | 32.32 / 0.9257 |
+| fp8 per-row + compile | 2.36 s (2.08×) | — | 31.85–32.81 / 0.906–0.943 |
+| fp8 per-row + compile + cache | **1.88 s (2.60×)** | **16.39 GiB** | 31.81–32.41 / 0.895–0.935 |
+
+**fp8 needs compile to pay off.** fp8 alone only reaches 1.11× (4.90 s → 4.40 s) because torchao's
+rowwise `addmm_float8_unwrapped_inference` (`_scaled_mm`) runs unfused in eager; under
+`torch.compile` it is lowered into a compiled subgraph (cache-dit ships that wiring in
+`quantization/torchao/_scaled_mm.py`), and the combination reaches 2.08× — more than fp8 (1.11×)
+and compile (1.24×) add up to.
+
+**`--compile` is not bit-reproducible.** Two identical runs of the same config differ by
+PSNR ≈ 34 dB / SSIM ≈ 0.93 (fp8) and ≈ 38 dB / 0.97 (bf16), while the non-compiled runs are
+bit-identical (PSNR inf). The cached-step set and latency stay stable (5/16 steps, ±0.01 s), so the
+drift is Inductor kernel/fusion numerics amplified by the 16-step sampler — budget for it when
+judging fp8 on high-frequency content: SSIM lands in a 0.89–0.94 band, i.e. right at the 0.90
+acceptance bar, whereas PSNR stays comfortably above 30.
