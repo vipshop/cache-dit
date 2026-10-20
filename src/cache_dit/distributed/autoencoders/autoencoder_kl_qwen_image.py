@@ -19,6 +19,12 @@ logger = init_logger(__name__)
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLQwenImage")
 class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
 
+  # The Qwen-Image 2.1 decoder takes a `first_chunk` flag for the first temporal chunk of every
+  # tile; the 1.x decoder has no such argument and must not receive it.
+  decoder_first_chunk: bool = False
+  # 2.1 also clamps the decoded range like its own `tiled_decode`; 1.x does not.
+  clamp_decoded_output: bool = False
+
   def _apply(
     self,
     auto_encoder: torch.nn.Module,
@@ -44,9 +50,12 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
     group = dp_mesh.get_group()
     world_size = dist.get_world_size(group)
     rank = dist.get_rank(group)
+    # captured here: `self` inside the wrappers below is the VAE, not the planner
+    decoder_first_chunk = self.decoder_first_chunk
 
     auto_encoder.enable_tiling()
 
+    clamp_decoded_output = self.clamp_decoded_output
     comm = TileBatchedP2PComm()
     comm.set_dims(5)  # [1, 3, T, H, W]
 
@@ -214,7 +223,10 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
                 j:j + tile_latent_min_width,
               ]
               tile = self.post_quant_conv(tile)
-              decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
+              decoder_kwargs = {"feat_cache": self._feat_map, "feat_idx": self._conv_idx}
+              if decoder_first_chunk:
+                decoder_kwargs["first_chunk"] = (k == 0)
+              decoded = self.decoder(tile, **decoder_kwargs)
               time.append(decoded)
             decoded = torch.cat(time, dim=2)
           else:
@@ -273,6 +285,8 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
         comm.send_tensor(dec, rank + 1, group)
 
       comm.sync()
+      if clamp_decoded_output:
+        dec = torch.clamp(dec, -1.0, 1.0)
       if not return_dict:
         return (dec, )
 

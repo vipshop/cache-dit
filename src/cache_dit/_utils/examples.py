@@ -30,6 +30,14 @@ __all__ = [
   "qwen_image_controlnet_example",
   "qwen_image_edit_example",
   "qwen_image_layered_example",
+  "qwen_image_21_example",
+  "qwen_image_21_edit_example",
+  "qwen_image_21_turbo_example",
+  "qwen_image_21_turbo_edit_example",
+  "qwen_image_21_modular_example",
+  "qwen_image_21_turbo_modular_example",
+  "qwen_image_21_modular_edit_example",
+  "qwen_image_21_turbo_modular_edit_example",
   "skyreels_v2_example",
   "ltx2_t2v_example",
   "ltx2_i2v_example",
@@ -78,6 +86,8 @@ _env_path_mapping = {
   "LTX2_DIR": "Lightricks/LTX-2",
   "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
   "QWEN_IMAGE_2512_DIR": "Qwen/Qwen-Image-2512",
+  "QWEN_IMAGE_21_DIR": "Qwen/Qwen-Image-2.1",
+  "QWEN_IMAGE_21_TURBO_DIR": "Qwen/Qwen-Image-2.1-Turbo",
   "QWEN_IMAGE_LIGHT_DIR": "lightx2v/Qwen-Image-Lightning",
   "QWEN_IMAGE_EDIT_2509_DIR": "Qwen/Qwen-Image-Edit-2509",
   "QWEN_IMAGE_EDIT_2511_DIR": "Qwen/Qwen-Image-Edit-2511",
@@ -711,6 +721,327 @@ def qwen_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       num_inference_steps=steps,
       true_cfg_scale=true_cfg_scale,  # 1.0 means no separate cfg for lightning models
       image=[image1, image2],
+    ),
+  )
+
+
+def _qwen_image_21_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+  *,
+  separate_cfg: bool,
+  distilled: bool,
+) -> Optional[DBCacheConfig]:
+  """DBCache config tuned for the Qwen-Image 2.1 family.
+
+  The transformer runs a single forward per step unless classifier-free guidance is enabled with
+  `true_cfg_scale > 1`, so `enable_separate_cfg` has to follow the actual number of forwards or
+  cache-dit counts every step as half a step. `Fn_compute_blocks=1` keeps the cached prefix short
+  and both checkpoints are flow-matching, where consecutive steps of the 8-step distilled one move
+  further apart than those of the 40-step base model.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :param separate_cfg: Whether the pipeline runs a negative branch as a second forward.
+  :param distilled: Whether the checkpoint is the few-step Turbo variant.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+
+  if not args.cache:
+    return None
+  # A model-provided cache config normally overrides the CLI knobs, so `--ws`/`--rdt` would be
+  # silently ignored. Honour an explicit value and fall back to the tuned default otherwise.
+  warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
+  threshold = (args.residual_diff_threshold if args.residual_diff_threshold != 0.12 else
+               (0.24 if distilled else 0.12))
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=warmup,
+    num_inference_steps=steps,
+    enable_separate_cfg=separate_cfg,
+    residual_diff_threshold=threshold,
+  )
+
+
+def _qwen_image_21_edit_image(
+  args: argparse.Namespace,
+  model_path_or_name: str,
+) -> "PIL.Image.Image":
+  """Load the yacht sketch shipped with the Qwen-Image 2.1 Turbo assets.
+
+  :param args: CLI arguments.
+  :param model_path_or_name: Model id or local directory of the current example.
+  :returns: The condition image used by the edit examples.
+  """
+
+  # "Qwen/Qwen-Image-2.1-Turbo" resolves to QWEN_IMAGE_21_TURBO_DIR when it is set
+  candidates = [model_path_or_name, _path("Qwen/Qwen-Image-2.1-Turbo")]
+  for base in candidates:
+    if not os.path.isdir(base):
+      continue
+    path = os.path.join(base, "assets", "turbo-boat-input.png")
+    if os.path.exists(path):
+      return load_image(path)
+  return load_image(
+    "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/raw/main/assets/turbo-boat-input.png")
+
+
+def _qwen_image_21_modular_cfg_guider(pipe) -> None:
+  """Replace the modular pipeline's guider with a CFG one.
+
+  `ModularPipeline.__call__` does not route `guidance_scale` into a component config, so the
+  default guider of the modular pipeline always samples without guidance. The image-conditioned
+  workflow needs the replacement to actually run the negative branch.
+
+  :param pipe: The freshly constructed modular pipeline.
+  """
+
+  from diffusers import ClassifierFreeGuidance
+
+  pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.0))
+
+
+_QWEN_IMAGE_21_PROMPT = (
+  "A capybara wearing a wizard hat, reading a book by candlelight, oil painting")
+_QWEN_IMAGE_21_EDIT_PROMPT = (
+  "Turn this yacht design sketch into a painted side view of the finished yacht, broadside on a calm "
+  "deep-blue sea, black hull, white superstructures and mast, yellow funnel, sunlight from the front "
+  "left with a bright reflection path on the water.")
+
+
+@ExampleRegister.register("qwen_image_21", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21Pipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1", args),
+      pipeline_class=QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args,
+                                                    steps,
+                                                    separate_cfg=False,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,  # sampled without guidance by default
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21Pipeline
+
+  # The checkpoint ships its own 8-point sigma grid; `num_inference_steps` does not override it.
+  steps = 8
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1-Turbo", args),
+      pipeline_class=QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_edit", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21Pipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=True,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      negative_prompt="blurry, low quality",
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=4.0,  # separate cfg: one negative branch per step
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo_edit", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21Pipeline
+
+  steps = 8
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1-Turbo", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_modular", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_modular_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21AutoBlocks, QwenImage21ModularPipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1", args),
+      pipeline_class=QwenImage21ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      # the Qwen-Image 2.1 repo has no `modular_model_index.json`, so the blocks are explicit
+      modular_blocks_factory=QwenImage21AutoBlocks,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args,
+                                                    steps,
+                                                    separate_cfg=False,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo_modular", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_modular_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21TurboAutoBlocks, QwenImage21TurboModularPipeline
+
+  steps = 8
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1-Turbo", args),
+      pipeline_class=QwenImage21TurboModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      # the Qwen-Image 2.1 repo has no `modular_model_index.json`, so the blocks are explicit
+      modular_blocks_factory=QwenImage21TurboAutoBlocks,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_modular_edit", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_modular_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21AutoBlocks, QwenImage21ModularPipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21ModularPipeline,
+      bnb_4bit_components=[],
+      modular_blocks_factory=QwenImage21AutoBlocks,
+      # the modular guider defaults to guidance_scale=1.0, i.e. no negative branch
+      post_init_hook=_qwen_image_21_modular_cfg_guider,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=True,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      negative_prompt="blurry, low quality",
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo_modular_edit", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_modular_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21TurboAutoBlocks, QwenImage21TurboModularPipeline
+
+  steps = 8
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1-Turbo", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21TurboModularPipeline,
+      bnb_4bit_components=[],
+      modular_blocks_factory=QwenImage21TurboAutoBlocks,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
     ),
   )
 

@@ -120,5 +120,69 @@ def test_flux3_ffn_weight_rearrange_keeps_swiglu_aligned():
   )
 
 
+QWENIMAGE21_DENOISER_INPUTS = (
+  "hidden_states",
+  "encoder_hidden_states",
+  "timestep",
+  "img_shapes",
+  "img_mask",
+  "encoder_hidden_states_mask",
+  "attention_kwargs",
+  "kv_cache",
+  "kv_cache_mode",
+)
+
+
+def test_qwenimage21_modular_denoise_kwargs_survive_enable_cache():
+  """A modular denoise step forwards only the kwargs found in `inspect.signature(forward)`."""
+  try:
+    from diffusers import QwenImage21Transformer2DModel
+  except ImportError:
+    pytest.skip("Qwen-Image 2.1 requires a newer diffusers")
+
+  transformer = QwenImage21Transformer2DModel(
+    in_channels=4,
+    context_in_dim=16,
+    num_layers=2,
+    num_attention_heads=2,
+    attention_head_dim=8,
+    axes_dims_rope=(2, 2, 4),
+    mlp_ratio=2,
+  ).eval()
+
+  cache_dit.enable_cache(
+    transformer,
+    cache_config=DBCacheConfig(
+      num_inference_steps=2,
+      Fn_compute_blocks=1,
+      Bn_compute_blocks=0,
+      max_warmup_steps=2,
+      residual_diff_threshold=0.0,
+      enable_separate_cfg=False,
+    ),
+  )
+
+  # this is exactly how `QwenImage21LoopDenoiser` builds `additional_cond_kwargs`
+  available = set(inspect.signature(transformer.forward).parameters)
+  missing = [name for name in QWENIMAGE21_DENOISER_INPUTS if name not in available]
+  assert not missing, f"modular denoise would silently drop {missing}"
+
+  text_len, grid = 3, 4
+  img_mask = torch.zeros(1, text_len + grid * grid // 4, dtype=torch.bool)
+  img_mask[:, text_len:] = True
+  inputs = dict(
+    hidden_states=torch.randn(1, grid * grid, 4),
+    encoder_hidden_states=torch.randn(1, text_len, 16),
+    timestep=torch.tensor([0.5]),
+    img_shapes=[[(1, grid, grid)]],
+    img_mask=img_mask,
+  )
+  output = transformer(**{k: v for k, v in inputs.items() if k in available}, return_dict=False)
+  # the transformer returns the whole joint sequence, condition prefix included
+  assert output[0].shape == (1, text_len + grid * grid, transformer.config.out_channels)
+
+  cache_dit.disable_cache(transformer)
+
+
 if __name__ == "__main__":
   pytest.main([__file__, "-v"])

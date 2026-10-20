@@ -24,9 +24,10 @@ class BlockAdapterRegister:
   _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
   # Modular pipeline families whose adapter has been verified end to end (see the
   # cache-dit-model-integration skill, `references/modular_pipeline.md`).
-  _verified_modular_pipelines: Tuple[str, ...] = ("Flux3", )
+  _verified_modular_pipelines: Tuple[str, ...] = ("Flux3", "QwenImage21")
+  # QwenImage / QwenImage21 are deliberately absent: their adapters decide per checkpoint
+  # (Qwen-Image 2.1 samples without guidance by default, so a fixed True would halve the step count).
   _predefined_adapters_has_separate_cfg: List[str] = [
-    "QwenImage",
     "Wan",
     "CogView4",
     "Cosmos",
