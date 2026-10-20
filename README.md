@@ -38,7 +38,7 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | **Image** | FLUX | [`FluxTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 10+ | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.2 | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.2 Klein | [`Flux2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 3 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.3 Klein (modular) | [`Flux3Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.3 Klein | [`Flux3Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | ERNIE-Image | [`ErnieImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Qwen-Image | [`QwenImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 9+ | ✔️/✔️/✔️/✔️ |
 | Image | Z-Image | [`ZImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 6 | ✔️/✔️/✔️/✔️ |
@@ -91,8 +91,7 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | **3D/Other** | Shap-E | [`PriorTransformer`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✖️/✔️/✔️ |
 | Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✔️/✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead); <b>—</b>: not verified yet<br>
-FLUX.3 runs as a diffusers modular pipeline: parallelism covers CP (Ulysses / Ring, incl. UAA) + TP + TE-P + VAE-P; quantization is verified with torchao fp8 per-row (258 linear layers, + torch.compile) and SVDQuant nvfp4 dynamic (`svdq_nvfp4_r32_dq`); layerwise offload streams its components (21.2 GiB -> 3.1 GiB peak, bit-exact) and composes with cache / CP. </i>
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
 
 </div>
 
