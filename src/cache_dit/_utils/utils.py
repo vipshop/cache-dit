@@ -32,6 +32,7 @@ from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
 
 from ..summary import strify as summary_strify
+from ..utils import is_modular_pipeline
 
 logger = init_logger(__name__)
 
@@ -2215,6 +2216,16 @@ def maybe_cpu_offload(
       pipe = pipe_or_adapter
 
     pipe_cls_name = pipe.__class__.__name__
+    if is_modular_pipeline(pipe):
+      # diffusers implements the offload switches on `DiffusionPipeline` only, while a modular
+      # pipeline owns its components directly. Stream the components layer by layer with
+      # cache-dit's own offload instead of failing on the missing pipeline method.
+      logger.info(f"{pipe_cls_name} is a modular pipeline and has no diffusers CPU offload API, "
+                  "using cache-dit layerwise CPU offload for its components instead ...")
+      # Pass the resolved pipe, not the adapter: an adapter would only expose the transformer and
+      # the offloaded component set would silently depend on whether `--cache` is enabled.
+      return _apply_layerwise_cpu_offload(args, pipe, strict=False)
+
     if args.sequential_cpu_offload:
       logger.info(f"Enabling Sequential CPU offload for the model {pipe_cls_name} ...")
       pipe.enable_sequential_cpu_offload(device=device)
@@ -2360,18 +2371,32 @@ def _resolve_layerwise_target_kwargs(
   }
 
 
-def maybe_generic_module_offload(
+def _apply_layerwise_cpu_offload(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
+  *,
+  strict: bool = True,
 ) -> bool:
-  if not getattr(args, "module_layerwise_cpu_offload", False):
-    return False
+  """Stream every discovered component through cache-dit's layerwise CPU offload.
+
+  Shared by the `--module-layerwise-cpu-offload` switch and by the modular-pipeline fallback of
+  `--cpu-offload` / `--sequential-cpu-offload` (diffusers has no pipeline-level offload API there).
+
+  :param args: CLI arguments with the `layerwise_*` options.
+  :param pipe_or_adapter: Pipeline, modular pipeline, `BlockAdapter`, or plain module.
+  :param strict: Whether an empty target set is an error (`True`) or only a warning (`False`, used
+    by the `--cpu-offload` fallback so the caller can still move the pipeline to the device).
+  :returns: Whether at least one module is now covered by layerwise offload.
+  """
 
   _, device = get_rank_device()
   targets = _resolve_generic_offload_targets(pipe_or_adapter)
   if not targets:
-    raise ValueError(
-      "--module-layerwise-cpu-offload was requested, but no nn.Module targets were found.")
+    if not strict:
+      logger.warning("No nn.Module components were found for cache-dit layerwise CPU offload, "
+                     "falling back to a plain pipeline move.")
+      return False
+    raise ValueError("Layerwise CPU offload was requested, but no nn.Module targets were found.")
 
   handles = []
   skipped_due_to_existing_offload = False
@@ -2402,6 +2427,15 @@ def maybe_generic_module_offload(
         **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
       ))
   return bool(handles) or skipped_due_to_existing_offload
+
+
+def maybe_generic_module_offload(
+  args,
+  pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
+) -> bool:
+  if not getattr(args, "module_layerwise_cpu_offload", False):
+    return False
+  return _apply_layerwise_cpu_offload(args, pipe_or_adapter)
 
 
 def maybe_apply_optimization(

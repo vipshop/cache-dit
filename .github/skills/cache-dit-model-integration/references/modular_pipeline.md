@@ -265,6 +265,8 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 - [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache
 - [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel ulysses
       (and a non-divisible resolution with --ulysses-anything)
+- [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
+      -> peak memory drops, image stays bit-exact vs baseline
 - [ ] python3 -m pytest tests/api/test_modular_pipeline.py -q
       (guards the forward-signature preservation and the TP FFN rearrangement)
 ```
@@ -348,3 +350,90 @@ bit-identical (PSNR inf). The cached-step set and latency stay stable (5/16 step
 drift is Inductor kernel/fusion numerics amplified by the 16-step sampler — budget for it when
 judging fp8 on high-frequency content: SSIM lands in a 0.89–0.94 band, i.e. right at the 0.90
 acceptance bar, whereas PSNR stays comfortably above 30.
+### 7.2 Layerwise offload
+
+`--module-layerwise-cpu-offload` (alias `--layerwise-offload`) and the public
+`cache_dit.layerwise_offload(pipe, module_names=[...])` stream the DiT block by block and are
+bit-exact on FLUX.3:
+
+| Config | Latency | Peak mem | PSNR / SSIM |
+|---|---|---|---|
+| bf16 baseline | 4.91 s | 21.21 GiB | — |
+| + layerwise offload (all components) | 8.07 s | **3.11 GiB** | inf / 1.0000 (bit-exact) |
+| + offload + `--layerwise-async-transfer` | 7.91 s | 11.40 GiB | inf / 1.0000 |
+| + offload + cache | 6.46 s | 3.16 GiB | 34.21 / 0.9569 (= cache only) |
+| + offload + CP (2 GPU) | 6.48 s | 3.11 GiB | 40.13 / 0.9899 (= CP only) |
+| + offload + TP (2 GPU) | 22.27 s | 3.11 GiB | 42.02 / 0.9940 (= TP only) |
+| + offload + fp8 per-row | 20.42 s | 3.11 GiB | inf (== fp8 only) |
+| API: offload only the transformer (`module_names=["transformer"]`) | 7.9–8.4 s | 10.88 GiB allocated | inf (bit-exact) |
+
+Four things had to be modular-pipeline aware:
+
+1. **Component discovery.** `_collect_public_offload_roots` only special-cased `DiffusionPipeline`
+   and fell back to `vars(pipe)` for anything else. It now resolves a modular pipeline from its
+   public `components` mapping, i.e. it offloads the same roots a diffusion pipeline would.
+2. **`--cpu-offload` / `--sequential-cpu-offload`.** Those map to diffusers'
+   `enable_(sequential_)cpu_offload`, which a `ModularPipeline` does not have
+   (`AttributeError: 'Flux3DistilledModularPipeline' object has no attribute
+   'enable_model_cpu_offload'`). They now log the fallback and stream the components with cache-dit's
+   own layerwise offload (shared `_apply_layerwise_cpu_offload(args, pipe)`), which also keeps
+   `pipe.to(device)` skipped afterwards. Pass the resolved pipe, never the `BlockAdapter`, or the
+   offloaded set would depend on whether `--cache` is on.
+3. **Quantized / wrapper-subclass weights cannot use the pinned CPU mirror.** The mirror rebinds
+   tensors with `parameter.data = <tensor on another device>`; torchao `Float8Tensor` has no
+   `aten.empty_like` during packing and its `.data` rejects the cross-device swap (*"Attempted to set
+   the storage of a tensor on device cuda:0 to a storage on different device cpu"*), and DTensor
+   fails the same way when the handle is removed. Targets whose direct state is not a plain tensor
+   now skip the mirror and move whole with `module.to(device)`: correct and bit-exact, but the
+   per-leaf moves dominate the latency (fp8 + offload 20.4 s, TP + offload 22.3 s at 2 GPUs).
+4. **Async transfer must not silently skip those targets.** `_schedule_target_onload` /
+   `_schedule_target_offload` only know how to stage mirror entries, so the forward hooks now route
+   mirror-less targets through `_ensure_target_on_onload_device` / `_release_target_to_offload_device`
+   (whole-module moves). Before that fix, `--quantize --module-layerwise-cpu-offload
+   --layerwise-async-transfer` reported "with async transfer" but kept every weight on the GPU.
+
+`--layerwise-async-transfer` trades memory for overlap: it keeps a prefetch window of targets
+resident (11.4 GiB instead of 3.1 GiB for bf16) for a small latency gain (7.91 s vs 8.07 s).
+
+Offload composes with cache and CP without changing their numerics (bit-identical to the
+non-offload run). `--compile --quantize fp8 --module-layerwise-cpu-offload` does **not** work yet:
+Dynamo fails on the per-step `module.to()` with `RuntimeError: Polyfill handler ... does not have a
+traceable function`. Use fp8+compile or fp8+offload, not both.
+### 7.3 SVDQuant NVFP4 (`svdq_nvfp4_r32_dq`)
+
+`--quantize --quantize-type svdq_nvfp4_r32_dq` (CLI uses the underscore spelling; the converter also
+accepts `svdq-nvfp4-r32-dq`). The `_dq` suffix selects **dynamic** quantization: no calibration set,
+no `serialize_to`, the low-rank decomposition + packing run on the fly during load (~60 s for the
+168 quantized layers) with `smooth_strategy="identity"`. NVFP4 requires
+`svdq_kwargs["runtime_kernel"] = "v1"` (validated in `QuantizeConfig`).
+
+**No modular-pipeline specific code was needed**: the quantizer walks the transformer's repeated
+blocks and replaces `nn.Linear` in place, so it only needs `pipe.transformer` (already resolved
+through `is_pipeline()` / `resolve_pipe()`, see §2) and the deferred few-shot pipeline-move callback
+works through `pipe.to()`.
+
+| Type | Latency | Peak mem | PSNR / SSIM vs bf16 |
+|---|---|---|---|
+| bf16 baseline | 4.91 s | 21.21 GiB | — |
+| `svdq_nvfp4_r32_dq` | 3.27 s | 16.72 GiB | 29.37 / 0.8025 |
+| `svdq_nvfp4_r64_dq` | 3.32 s | 16.83 GiB | 30.11 / 0.8292 |
+| `svdq_int4_r32_dq` | 11.82 s | 16.62 GiB | 28.76 / 0.7258 |
+| `svdq_nvfp4_r32_dq` + cache | 2.78 s | — | vs SVDQ only: 31.29 / 0.9051 |
+| `svdq_nvfp4_r32_dq` + layerwise offload | 5.27 s | 3.11 GiB | vs SVDQ only: 31.93 / 0.8875 (inside its run noise) |
+
+Notes:
+
+* **Layer coverage**: 168 / 168 quantized, 90 of the 258 transformer linears skipped — the quantized
+  set is the fused qkv / gate-up projections inside the repeated blocks; embedders and `proj_out`
+  stay bf16.
+* **Quality**: nvfp4 r32 without calibration lands below the usual 30 dB / 0.90 bar, and the visual
+  check shows a coherent image with a softer knit texture (no garbling). r64 buys ~0.7 dB; int4 is
+  worse *and* 3.6× slower than nvfp4 on this GPU (sm_120 has a native nvfp4 path), so prefer nvfp4 on
+  Blackwell. For better accuracy at the same bit width use the PTQ flow instead of `_dq`
+  (`calibrate_fn` + `serialize_to` + `smooth_strategy="activation"`).
+* **Not bit-reproducible**: two identical runs of `svdq_nvfp4_r32_dq` differ by PSNR 31.4 dB /
+  SSIM 0.927 (the DQ path re-quantizes and re-packs per process; fp8 per-row is bit-exact by
+  comparison). Judge SVDQ quality over repeated runs, the same way as `--compile`.
+* **Combinations**: cache and layerwise offload both work on top of it; offload drops the peak to
+  3.11 GiB and its only cost is the per-leaf streaming latency. `--compile` + SVDQ + offload is
+  untested (the fp8 variant already fails, see §7.2).
