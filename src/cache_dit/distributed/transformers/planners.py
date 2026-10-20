@@ -61,6 +61,10 @@ def _activate_cp_planners():
     ".flux", "FluxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Flux3ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".flux3", "Flux3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  # "QwenImage21" is imported before "QwenImage": planner lookup matches the first registered
+  # prefix, and `QwenImage21Transformer2DModel` also starts with "QwenImage".
+  QwenImage21ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".qwen_image21", "QwenImage21ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   QwenImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".qwen_image", "QwenImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   WanContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -159,6 +163,8 @@ def _activate_tp_planners():
     ".ltx2_video", "LTX2VideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   PixArtTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".pixart", "PixArtTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  QwenImage21TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".qwen_image21", "QwenImage21TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   QwenImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".qwen_image", "QwenImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   WanTensorParallelismPlanner = _safe_import(  # noqa: F841

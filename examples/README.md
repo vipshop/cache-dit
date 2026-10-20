@@ -55,6 +55,12 @@ Available examples:
 - ✅ qwen_image_lightning           - Default: lightx2v/Qwen-Image-Lightning
 - ✅ qwen_image_2512                - Default: Qwen/Qwen-Image-2512
 - ✅ qwen_image                     - Default: Qwen/Qwen-Image
+- ✅ qwen_image_21                  - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo            - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_edit             - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_edit       - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_modular          - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_modular    - Default: Qwen/Qwen-Image-2.1-Turbo
 - ✅ qwen_image_edit_2511_lightning - Default: lightx2v/Qwen-Image-Edit-2511-Lightning
 - ✅ qwen_image_edit_2511           - Default: Qwen/Qwen-Image-Edit-2511
 - ✅ qwen_image_edit_lightning      - Default: lightx2v/Qwen-Image-Lightning
@@ -127,6 +133,17 @@ python3 -m cache_dit.generate qwen_image_edit_lightning --cpu-offload --steps 8
 python3 -m cache_dit.generate flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
 python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast --summary
+
+# Qwen-Image 2.1: the pipeline samples without guidance by default, so the example disables
+# separate-CFG bookkeeping (pass `--true-cfg-scale 4.0` and a negative prompt only in your own
+# script, and set `enable_separate_cfg=True` there). Turbo keeps the 8-step sigma grid that ships
+# with the checkpoint, `--steps` does not override it.
+python3 -m cache_dit.generate qwen_image_21 --cache
+python3 -m cache_dit.generate qwen_image_21_turbo --cache
+python3 -m cache_dit.generate qwen_image_21_edit --cache # 40 steps, needs cfg bookkeeping
+python3 -m cache_dit.generate qwen_image_21_turbo_edit --cache
+python3 -m cache_dit.generate qwen_image_21_modular --cache # diffusers modular pipeline
+python3 -m cache_dit.generate qwen_image_21_turbo_modular --cache
 ```
 
 ## Custom Model Path
@@ -165,6 +182,12 @@ torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel ulysses --
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text --cache
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
+# Qwen-Image 2.1: Ulysses only. The text/condition-image prefix is replicated on every rank and
+# only the target image tokens are sharded, so Ring (which would split the block-causal mask) and
+# `--ulysses-anything` (uneven shards) are rejected. target tokens must divide by cp_size, e.g.
+# 1024x1024 -> 4096 tokens.
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel ulysses --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel tp --parallel-text --parallel-vae --cache
 ```
 
 ## Low-bits Quantization 

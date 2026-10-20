@@ -36,6 +36,7 @@ HiDreamPatchFunctor = _safe_import(".functor_hidream", "HiDreamPatchFunctor")
 HunyuanDiTPatchFunctor = _safe_import(".functor_hunyuan_dit", "HunyuanDiTPatchFunctor")
 QwenImageControlNetPatchFunctor = _safe_import(".functor_qwen_image_controlnet",
                                                "QwenImageControlNetPatchFunctor")
+QwenImage21PatchFunctor = _safe_import(".functor_qwen_image_21", "QwenImage21PatchFunctor")
 WanVACEPatchFunctor = _safe_import(".functor_wan_vace", "WanVACEPatchFunctor")
 LTX2PatchFunctor = _safe_import(".functor_ltx2", "LTX2PatchFunctor")
 BriaFiboPatchFunctor = _safe_import(".functor_bria_fibo", "BriaFiboPatchFunctor")

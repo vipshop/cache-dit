@@ -25,6 +25,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |LTX-2-I2V|✅|✅|✅|
 |LTX-2-T2V|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
+|Qwen-Image-2.1-Turbo (8 steps)|✅|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|✖️|
 |Qwen-Image-Layered|✅|✅|✅|
 |Qwen-Image-Edit-2511-Lightning|✅|✅|✅|
@@ -46,6 +47,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |FLUX.1-Fill-dev|✅|✅|✅|
 |FLUX.1-Kontext-dev|✅|✅|✅|
 |Qwen-Image|✅|✅|✅|
+|Qwen-Image-2.1|✅|✅|✅|
+|Qwen-Image-2.1-Turbo|✅|✅|✅|
 |Qwen-Image-Edit|✅|✅|✅|
 |Qwen-Image-Edit-2509|✅|✅|✅|
 |Qwen-Image-ControlNet|✅|✅|✅|

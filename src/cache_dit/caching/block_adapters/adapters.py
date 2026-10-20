@@ -1,3 +1,4 @@
+import inspect
 import torch
 from typing import List, Tuple, Union, Optional
 from ..forward_pattern import ForwardPattern
@@ -262,6 +263,72 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
       check_num_outputs=False,
       **kwargs,
     )
+
+
+def _qwenimage21_default_cfg_scale(pipe) -> Optional[float]:
+  """Return the pipeline's default classifier-free guidance scale, if discoverable.
+
+  :param pipe: Pipeline instance.
+  :returns: The default `true_cfg_scale` / `guidance_scale`, or `None` when unknown.
+  """
+
+  try:
+    default = inspect.signature(pipe.__call__).parameters["true_cfg_scale"].default
+    if isinstance(default, (int, float)):
+      return float(default)
+  except (AttributeError, KeyError, TypeError, ValueError):
+    pass
+
+  guider = getattr(pipe, "guider", None)
+  if guider is not None:
+    for attr in ("guidance_scale", "true_cfg_scale"):
+      value = getattr(guider, attr, None)
+      if isinstance(value, (int, float)):
+        return float(value)
+      config = getattr(guider, "config", None)
+      value = getattr(config, attr, None)
+      if isinstance(value, (int, float)):
+        return float(value)
+
+  return None
+
+
+# NOTE: The registry returns the first class-name prefix that matches, so "QwenImage21" must be
+# registered before "QwenImage" ("QwenImage21*" class names also start with "QwenImage").
+@BlockAdapterRegister.register("QwenImage21")
+def qwenimage21_adapter(pipe, **kwargs) -> BlockAdapter:
+  try:
+    from diffusers import QwenImage21Transformer2DModel
+  except ImportError:
+    QwenImage21Transformer2DModel = None  # requires a diffusers build with Qwen-Image 2.1
+
+  _relaxed_assert(pipe.transformer, QwenImage21Transformer2DModel)
+
+  from cache_dit.caching.patch_functors import QwenImage21PatchFunctor
+
+  cfg_scale = _qwenimage21_default_cfg_scale(pipe)
+  # Qwen-Image 2.1 samples without guidance by default, so each step runs the transformer once.
+  # Cache-dit would otherwise assume two forwards per step (cond -> uncond) and count every step
+  # as half a step. Unknown defaults keep the previous, guidance-enabled behavior.
+  has_separate_cfg = True if cfg_scale is None else cfg_scale > 1.0
+  if not has_separate_cfg:
+    logger.warning(
+      f"Qwen-Image 2.1 defaults to true_cfg_scale={cfg_scale}, which runs a single transformer "
+      "forward per step; separate CFG bookkeeping is disabled. Set `enable_separate_cfg=True` in "
+      "the cache config if you pass `true_cfg_scale > 1` together with a negative prompt.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    # Single-stream blocks; the transformer forward is patched by the functor so that the
+    # per-layer prefix KV cache survives the cached-blocks wrapper.
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    patch_functor=QwenImage21PatchFunctor(),
+    check_forward_pattern=True,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
 
 
 @BlockAdapterRegister.register("QwenImage")

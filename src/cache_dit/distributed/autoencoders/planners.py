@@ -36,6 +36,9 @@ def _activate_auto_encoder_dp_planners():
     ".autoencoder_kl", "AutoencoderKLDataParallelismPlanner")
   AutoencoderKLLTX2VideoDataParallelismPlanner = _safe_import(  # noqa: F841
     ".autoencoder_kl_ltx2", "AutoencoderKLLTX2VideoDataParallelismPlanner")
+  # Registered under its full class name; the auto-encoder planner registry matches exactly.
+  AutoencoderKLQwenImage21DataParallelismPlanner = _safe_import(  # noqa: F841
+    ".autoencoder_kl_qwen_image21", "AutoencoderKLQwenImage21DataParallelismPlanner")
   AutoencoderKLQwenImageDataParallelismPlanner = _safe_import(  # noqa: F841
     ".autoencoder_kl_qwen_image", "AutoencoderKLQwenImageDataParallelismPlanner")
   AutoencoderKLWanDataParallelismPlanner = _safe_import(  # noqa: F841

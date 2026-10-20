@@ -366,6 +366,9 @@ class ExampleInitConfig:
   extra_optimize_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
   # For third-party models that require trust_remote_code
   trust_remote_code: bool = False
+  # Modular pipelines only: factory of the pipeline blocks. Needed for checkpoints whose repo has no
+  # `modular_model_index.json` (e.g. Qwen-Image 2.1), so `from_pretrained` cannot resolve the blocks.
+  modular_blocks_factory: Optional[Callable[[], Any]] = None
 
   @property
   def is_modular_pipeline(self) -> bool:
@@ -397,10 +400,18 @@ class ExampleInitConfig:
     if self.is_modular_pipeline:
       # diffusers modular pipelines load the pipeline class from the model config first, then
       # load the components separately (`load_components`), instead of one-shot `from_pretrained`.
-      pipe = self.pipeline_class.from_pretrained(
-        model_path,
-        trust_remote_code=self.trust_remote_code,
-      )
+      if self.modular_blocks_factory is not None:
+        # Checkpoints without `modular_model_index.json` cannot resolve their blocks in
+        # `from_pretrained`, so build the pipeline from explicit blocks instead.
+        pipe = self.pipeline_class(
+          blocks=self.modular_blocks_factory(),
+          pretrained_model_name_or_path=model_path,
+        )
+      else:
+        pipe = self.pipeline_class.from_pretrained(
+          model_path,
+          trust_remote_code=self.trust_remote_code,
+        )
       pipe.load_components(dtype=self.torch_dtype)
       if self.post_init_hook is not None:
         self.post_init_hook(pipe, **kwargs)
