@@ -36,6 +36,8 @@ __all__ = [
   "qwen_image_21_turbo_edit_example",
   "qwen_image_21_modular_example",
   "qwen_image_21_turbo_modular_example",
+  "qwen_image_21_modular_edit_example",
+  "qwen_image_21_turbo_modular_edit_example",
   "skyreels_v2_example",
   "ltx2_t2v_example",
   "ltx2_i2v_example",
@@ -747,13 +749,18 @@ def _qwen_image_21_cache_config(
 
   if not args.cache:
     return None
+  # A model-provided cache config normally overrides the CLI knobs, so `--ws`/`--rdt` would be
+  # silently ignored. Honour an explicit value and fall back to the tuned default otherwise.
+  warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
+  threshold = (args.residual_diff_threshold if args.residual_diff_threshold != 0.12 else
+               (0.24 if distilled else 0.12))
   return DBCacheConfig(
     Fn_compute_blocks=1,
     Bn_compute_blocks=0,
-    max_warmup_steps=min(4, max(1, steps // 4)),
+    max_warmup_steps=warmup,
     num_inference_steps=steps,
     enable_separate_cfg=separate_cfg,
-    residual_diff_threshold=0.24 if distilled else 0.12,
+    residual_diff_threshold=threshold,
   )
 
 
@@ -958,6 +965,67 @@ def qwen_image_21_turbo_modular_example(args: argparse.Namespace, **kwargs) -> E
       height=1024,
       width=1024,
       num_inference_steps=steps,
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_modular_edit", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_modular_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21AutoBlocks, QwenImage21ModularPipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21ModularPipeline,
+      bnb_4bit_components=[],
+      modular_blocks_factory=QwenImage21AutoBlocks,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=True,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      negative_prompt="blurry, low quality",
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=4.0,  # separate cfg: the modular guider runs pred_cond / pred_uncond
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo_modular_edit", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_modular_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import QwenImage21TurboAutoBlocks, QwenImage21TurboModularPipeline
+
+  steps = 8
+  model_path_or_name = _path("Qwen/Qwen-Image-2.1-Turbo", args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=model_path_or_name,
+      pipeline_class=QwenImage21TurboModularPipeline,
+      bnb_4bit_components=[],
+      modular_blocks_factory=QwenImage21TurboAutoBlocks,
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_EDIT_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
+      image=[_qwen_image_21_edit_image(args, model_path_or_name)],
     ),
   )
 

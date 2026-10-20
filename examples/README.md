@@ -61,6 +61,8 @@ Available examples:
 - ✅ qwen_image_21_turbo_edit       - Default: Qwen/Qwen-Image-2.1-Turbo
 - ✅ qwen_image_21_modular          - Default: Qwen/Qwen-Image-2.1
 - ✅ qwen_image_21_turbo_modular    - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_modular_edit      - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_modular_edit - Default: Qwen/Qwen-Image-2.1-Turbo
 - ✅ qwen_image_edit_2511_lightning - Default: lightx2v/Qwen-Image-Edit-2511-Lightning
 - ✅ qwen_image_edit_2511           - Default: Qwen/Qwen-Image-Edit-2511
 - ✅ qwen_image_edit_lightning      - Default: lightx2v/Qwen-Image-Lightning
@@ -144,6 +146,8 @@ python3 -m cache_dit.generate qwen_image_21_edit --cache # 40 steps, needs cfg b
 python3 -m cache_dit.generate qwen_image_21_turbo_edit --cache
 python3 -m cache_dit.generate qwen_image_21_modular --cache # diffusers modular pipeline
 python3 -m cache_dit.generate qwen_image_21_turbo_modular --cache
+python3 -m cache_dit.generate qwen_image_21_modular_edit --cache
+python3 -m cache_dit.generate qwen_image_21_turbo_modular_edit --cache
 ```
 
 ## Custom Model Path
