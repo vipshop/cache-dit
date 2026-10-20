@@ -173,6 +173,64 @@ def flux3_example(args, **kwargs) -> Example:
   caches nothing (measured diffs are `0.20–0.80`); `Fn=4, warmup=4, threshold=0.30` caches
   `[5, 7, 9, 11, 13]` of 16 steps.
 
+### 4.1 Optional prompt-rewrite stages (FLUX.3 `pup` and friends)
+
+Modern pipelines increasingly ship an extra LLM/VLM stage that rewrites `prompt` into a long caption
+before the text encoder: FLUX.3's `prompt_upsampler` (a separate `black-forest-labs/flux-3-image-klein-pup`
+checkpoint, `Qwen3_5ForConditionalGeneration`), and equivalents under other names (`prompt_enhancer`,
+`prompt_expander`, `rewriter`, ...). Treat it as its own decision, not as part of the DiT work.
+
+**How to detect it.** Grep the block specs for components without a source path:
+
+```bash
+grep -rn "expected_components" -A 6 diffusers/src/diffusers/modular_pipelines/<family>/
+```
+
+A `ComponentSpec(name, cls)` with no `pretrained_model_name_or_path` is never loaded by
+`load_components()` (the main model's `modular_model_index.json` does not list it either), so the
+component stays `None` and the full auto blocks crash on the first call:
+
+```
+AttributeError: 'NoneType' object has no attribute 'apply_chat_template'
+```
+
+**Choose a policy and record it in the example.**
+
+* **Benchmark mode (what `flux3` / `flux3_edit` do): pop the step**, so `prompt` in == prompt
+  encoded. This is mandatory for comparisons: the rewriter changes the *input distribution*, so
+  cached/quantized/parallel runs would otherwise not see the same prompt, and a 9B VLM decoding up to
+  3584 tokens adds seconds and ~18 GB of residency that dwarf any DiT optimization.
+
+  ```python
+  def _model_drop_unused_step(pipe) -> None:
+    # `pipe.blocks` returns a deepcopy: pop from the live `_blocks` tree
+    pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
+    pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
+  ```
+
+* **Production mode: inject the components** and keep the step (it is a normal `Module` pair on the
+  pipeline, moved by `pipe.to()`):
+
+  ```python
+  pipe.update_components(
+    prompt_upsampler=Qwen3_5ForConditionalGeneration.from_pretrained(
+      pup_dir, dtype=torch.bfloat16, device_map="auto").eval(),
+    prompt_upsampler_processor=AutoProcessor.from_pretrained(pup_dir),
+  )
+  ```
+
+  Gate it behind an explicit flag and report its cost separately: `--parallel-text` only covers the
+  pipeline's `text_encoder`, so a `prompt_upsampler` stays replicated on every rank, and layerwise
+  offload only streams what `components` exposes (it does offload it, but as another slow stage).
+
+**Notes specific to FLUX.3's upsampler.** `max_new_tokens` defaults to 3584 with greedy decoding
+(`do_sample=False`, `enable_thinking=False`); the system prompts are baked into the block
+(`SYSTEM_PROMPTS[mode]`), with the mode picked from the arguments (`t2i` / `i2i` / `t2i_bbox` /
+`i2i_bbox`), so the in-pipeline path does not need the pup repo's `system_prompts.json` — only the
+model card's standalone `upsample()` helper does. The distilled checkpoint was trained on those long
+captions, so with the step popped, feed a long hand-written caption (ours is a 250-token scene
+description) instead of a short request.
+
 ## 5. Parallelism on a modular pipeline
 
 | Feature | Status | Notes |
@@ -267,6 +325,8 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
       (and a non-divisible resolution with --ulysses-anything)
 - [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
       -> peak memory drops, image stays bit-exact vs baseline
+- [ ] optional prompt-rewrite stage: policy decided and recorded (pop for benchmarks, inject for
+      production), and the prompt used for comparisons is identical across every config
 - [ ] python3 -m pytest tests/api/test_modular_pipeline.py -q
       (guards the forward-signature preservation and the TP FFN rearrangement)
 ```
@@ -274,7 +334,8 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 ## 7. FLUX.3 case study (numbers)
 
 Model: `black-forest-labs/flux-3-image-klein` (distilled, `flow_map=True`, 16 steps, no CFG),
-bf16, 1024×1024, RTX PRO 5000 72GB. `prompt_upsampler` popped (it is a separate checkpoint).
+bf16, 1024×1024, RTX PRO 5000 72GB. `prompt_upsampler` popped (it is a separate checkpoint, see
+§4.1) and every panel is fed the same long hand-written caption.
 
 Single GPU, T2I, CLI:
 
