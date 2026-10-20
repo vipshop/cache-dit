@@ -66,6 +66,8 @@ try:
 except ImportError:
   BlockAdapter = None
 
+from ..utils import is_modular_pipeline
+
 try:
   from accelerate.hooks import AlignDevicesHook as _AccelerateAlignDevicesHook
   from accelerate.hooks import CpuOffload as _AccelerateCpuOffload
@@ -519,6 +521,26 @@ def _infer_module_state_device(module: nn.Module) -> torch.device:
   return torch.device("cpu")
 
 
+def _supports_tensor_state_mirror(module: nn.Module) -> bool:
+  """Whether a target can be onload/offloaded by swapping ``parameter.data``.
+
+  The pinned CPU mirror stages tensors on dedicated copy streams and binds them back with a
+  cross-device ``parameter.data = ...`` assignment. That only works for plain tensors: wrapper
+  subclasses keep device bookkeeping of their own (torchao ``Float8Tensor`` does not even implement
+  ``aten.empty_like`` during packing, and reading ``.data`` after a cross-device bind raises
+  ``Attempted to set the storage of a tensor on device cuda:0 to a storage on different device
+  cpu``; DTensor fails the same way). Those targets fall back to a whole-module
+  ``module.to(device)`` move instead.
+
+  :param module: Candidate offload target.
+  :returns: Whether the pinned tensor-state mirror can be used for this target.
+  """
+  for kind, name, _tensor, _requires_grad in _iter_direct_state_entries(module):
+    if type(_get_direct_state_tensor(module, kind=kind, name=name)) is not torch.Tensor:
+      return False
+  return True
+
+
 @dataclasses.dataclass
 class _LayerwiseTensorState:
   """Pinned CPU mirror entry for a single parameter or buffer of a target module.
@@ -728,8 +750,9 @@ def _collect_public_offload_roots(root_or_adapter: Any) -> list[tuple[str, nn.Mo
   """Discover root ``nn.Module`` instances from a pipeline-like object.
 
   Supports plain ``nn.Module`` (returns itself), ``BlockAdapter`` (uses ``transformer``, possibly
-  flattened), ``DiffusionPipeline`` (uses ``components``), or any object exposing modules through
-  ``__dict__`` attributes. Order is preserved and duplicates are de-duplicated by ``id``.
+  flattened), ``DiffusionPipeline`` / ``ModularPipeline`` (uses the ``components`` mapping), or any
+  object exposing modules through ``__dict__`` attributes. Order is preserved and duplicates are
+  de-duplicated by ``id``.
 
   :param root_or_adapter: User-provided source object.
   :returns: List of ``(name, module)`` pairs in discovery order.
@@ -753,7 +776,11 @@ def _collect_public_offload_roots(root_or_adapter: Any) -> list[tuple[str, nn.Mo
       return roots
     root_or_adapter = getattr(root_or_adapter, "pipe", root_or_adapter)
 
-  if _is_diffusion_pipeline_instance(root_or_adapter):
+  if _is_diffusion_pipeline_instance(root_or_adapter) or is_modular_pipeline(root_or_adapter):
+    # A modular pipeline owns the same component names (`transformer`, `text_encoder`, `vae`, ...)
+    # but is not a `DiffusionPipeline`, so it has to be handled explicitly: resolve the roots from
+    # the public `components` mapping (like a diffusion pipeline does) instead of depending on the
+    # internal `__dict__` layout.
     components = getattr(root_or_adapter, "components", None)
     if isinstance(components, dict):
       for name, module in components.items():
@@ -1402,7 +1429,13 @@ class LayerwiseOffloadHandle:
     """
 
     if self.async_transfer:
-      if not target.return_devices:
+      if not target.return_devices and not target.tensor_states:
+        # Targets without a pinned mirror (torchao quantized weights, or a leaf that only owns
+        # submodules) cannot be staged entry by entry: move the module whole instead, otherwise the
+        # async path would leave its weights on the offload device and forward would fail.
+        self._ensure_target_on_onload_device(target)
+        self._prefetch_bucket_targets(target)
+      elif not target.return_devices:
         is_prefetched = (target.pending_onload_event is not None
                          or target.index in self._ready_onload_targets)
         if is_prefetched:
@@ -1453,9 +1486,11 @@ class LayerwiseOffloadHandle:
     return_device = (target.return_devices.pop() if target.return_devices else self.offload_device)
     output = _move_tree_to_device(output, return_device, non_blocking=self.non_blocking)
     if not target.return_devices and not target.persistent:
-      if self.async_transfer:
+      if self.async_transfer and target.tensor_states:
         self._schedule_target_offload(target)
       else:
+        # Mirror-less targets (quantized wrapper tensors / leaves without direct state) have to be
+        # moved whole; `_schedule_target_offload` only knows how to sync mirror entries back.
         self._release_target_to_offload_device(target)
     return output
 
@@ -1929,7 +1964,7 @@ def _apply_layerwise_offload(
   targets = []
   for index, (name, submodule) in enumerate(resolved_targets):
     is_persistent = index in persistent_target_indices
-    if use_cpu_tensor_state_mirror:
+    if use_cpu_tensor_state_mirror and _supports_tensor_state_mirror(submodule):
       target = _prepare_async_target(submodule, index=index, name=name)
       target.persistent = is_persistent
     else:
@@ -2002,9 +2037,11 @@ def _apply_layerwise_offload(
     for target in targets:
       if target.persistent:
         continue
-      if async_transfer or target.tensor_states:
+      if target.tensor_states:
         handle._materialize_offload_sync(target)
       elif not target.tie_deduped:
+        # No pinned mirror (quantized wrapper tensors / leaf without direct state): move it whole,
+        # otherwise the eager pass would leave this target resident on the onload device.
         _move_module_state(
           target.module,
           resolved_offload_device,

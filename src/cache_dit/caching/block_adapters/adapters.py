@@ -37,6 +37,34 @@ def _relaxed_assert(
                    "in BlockAdapter.")
 
 
+# NOTE: The registry returns the first class-name prefix that matches, so "Flux3" must be
+# registered before "Flux" ("Flux3*" class names also start with "Flux").
+@BlockAdapterRegister.register("Flux3")
+def flux3_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import Flux3Transformer2DModel
+
+  _relaxed_assert(pipe.transformer, Flux3Transformer2DModel)
+
+  # FLUX.3 first runs one per-mode block stack per token mode (text / image / reference image),
+  # then a single joint stack over [text, image(+reference)] tokens. The joint stack
+  # `single_transformer_blocks` is the one cached: it carries the whole sequence and holds most of
+  # the FLOPs, while the per-mode stacks are recomputed every step so that the cached joint
+  # residuals stay anchored to the current per-mode features. See `docs/` for the modular pipeline
+  # template.
+  guider = getattr(pipe, "guider", None)
+  has_separate_cfg = bool(guider is not None and getattr(guider, "num_conditions", 1) > 1)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.single_transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_1,
+    check_forward_pattern=True,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Flux")
 def flux_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import FluxTransformer2DModel

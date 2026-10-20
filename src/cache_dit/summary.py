@@ -14,6 +14,7 @@ from .caching import FakeDiffusionPipeline
 from .distributed import ParallelismConfig
 from .quantization import QuantizeConfig
 from .caching import load_configs
+from .utils import is_pipeline
 from .logger import init_logger
 
 logger = init_logger(__name__)
@@ -67,7 +68,7 @@ def summary(
   # DiffusionPipeline or transformer moudle, which may contain cached,
   # parallelism and quantization stats.
   if not isinstance(adapter_or_others, BlockAdapter):
-    if not isinstance(adapter_or_others, DiffusionPipeline):
+    if not is_pipeline(adapter_or_others):
       transformer = adapter_or_others  # transformer-only
       transformer_2 = None
     else:
@@ -187,7 +188,7 @@ def strify(
     stats = summary(adapter_or_others, logging=False)[-1]
     cache_options = stats.cache_options
     accumulated_cached_steps = stats.accumulated_cached_steps
-  elif isinstance(adapter_or_others, DiffusionPipeline):
+  elif is_pipeline(adapter_or_others):
     stats = summary(adapter_or_others, logging=False)[-1]
     cache_options = stats.cache_options
     accumulated_cached_steps = stats.accumulated_cached_steps

@@ -3,6 +3,7 @@ import time
 import torch
 import builtins as __builtin__
 import contextlib
+import functools
 from typing import Tuple, List, Union, Optional, Any
 from diffusers import DiffusionPipeline
 
@@ -18,6 +19,54 @@ logger = init_logger(__name__)
 # parallelism and quantization dispatching to determine which modules
 # to apply parallelism or quantization to, and to avoid applying parallelism
 # or quantization to modules that are already parallelized or quantized.
+@functools.lru_cache(maxsize=1)
+def _modular_pipeline_cls() -> Optional[type]:
+  """Resolve the diffusers `ModularPipeline` class.
+
+  :returns: The class, or None when the installed diffusers has no modular pipelines.
+  """
+  try:
+    from diffusers import ModularPipeline
+  except ImportError:
+    return None
+  return ModularPipeline
+
+
+def is_modular_pipeline(pipe_or_module: Any) -> bool:
+  """Check whether the given object is a diffusers `ModularPipeline`.
+
+  Modular pipelines (e.g. FLUX.3) are plain Python objects, not `torch.nn.Module` nor
+  `DiffusionPipeline`, but they own the same components (`transformer`, `text_encoder`, `vae`)
+  and are callable like a pipeline. All pipeline-level dispatch in cache-dit must treat them
+  the same way as `DiffusionPipeline`.
+
+  :param pipe_or_module: Object to inspect.
+  :returns: Whether the object is a modular pipeline.
+  """
+  modular_pipeline_cls = _modular_pipeline_cls()
+  return modular_pipeline_cls is not None and isinstance(pipe_or_module, modular_pipeline_cls)
+
+
+def is_pipeline(pipe_or_module: Any) -> bool:
+  """Check whether the given object is a pipeline, standard or modular.
+
+  :param pipe_or_module: Object to inspect.
+  :returns: Whether the object is a `DiffusionPipeline` or a `ModularPipeline`.
+  """
+  return isinstance(pipe_or_module, DiffusionPipeline) or is_modular_pipeline(pipe_or_module)
+
+
+def resolve_pipe(pipe_or_adapter: Any) -> Any:
+  """Resolve the pipeline object from a pipeline, a modular pipeline or a `BlockAdapter`.
+
+  :param pipe_or_adapter: Pipeline, modular pipeline or `BlockAdapter`.
+  :returns: The pipeline object, or None if it can not be resolved.
+  """
+  if is_pipeline(pipe_or_adapter):
+    return pipe_or_adapter
+  return getattr(pipe_or_adapter, "pipe", None)
+
+
 def _is_text_encoder(module: torch.nn.Module) -> bool:
   _import_module = module.__class__.__module__
   # Including the cases for normal text encoder and vision-language
@@ -77,13 +126,10 @@ def check_text_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_text_encoder(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   if hasattr(pipe, "text_encoder") and getattr(pipe, "text_encoder") is not None:
     return True
   # For some pipelines (e.g., FLUX), the text encoder may have different names.
@@ -100,13 +146,10 @@ def check_controlnet(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_controlnet(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   if hasattr(pipe, "controlnet") and getattr(pipe, "controlnet") is not None:
     return True
   return False
@@ -118,13 +161,10 @@ def check_auto_encoder(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_auto_encoder(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   if hasattr(pipe, "vae") and getattr(pipe, "vae") is not None:
     return True
   return False
@@ -136,13 +176,10 @@ def check_parallelized(module: torch.nn.Module | DiffusionPipeline | Any) -> boo
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_parallelized(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   for attr_name in dir(pipe):
     attr = getattr(pipe, attr_name)
     if isinstance(attr, torch.nn.Module) and _is_parallelized(attr):
@@ -156,13 +193,10 @@ def check_quantized(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_quantized(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   for attr_name in dir(pipe):
     attr = getattr(pipe, attr_name)
     if isinstance(attr, torch.nn.Module) and _is_quantized(attr):
@@ -176,13 +210,10 @@ def check_cached(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_cached(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   for attr_name in dir(pipe):
     attr = getattr(pipe, attr_name)
     if isinstance(attr, torch.nn.Module) and _is_cached(attr):
@@ -196,13 +227,10 @@ def check_patched(module: torch.nn.Module | DiffusionPipeline | Any) -> bool:
   :param module: Module to process.
   :returns: Whether the requested condition is satisfied.
   """
-  if isinstance(module, torch.nn.Module) and not isinstance(module, DiffusionPipeline):
+  if isinstance(module, torch.nn.Module) and not is_pipeline(module):
     return _is_patched(module)
 
-  if not isinstance(module, DiffusionPipeline):
-    pipe = getattr(module, "pipe", None)
-  else:
-    pipe = module
+  pipe = resolve_pipe(module)
   for attr_name in dir(pipe):
     attr = getattr(pipe, attr_name)
     if isinstance(attr, torch.nn.Module) and _is_patched(attr):
@@ -259,10 +287,7 @@ def parse_extra_modules(
   :returns: A list of parsed extra modules as actual module objects. If a module name is not found
     in the pipeline, it will be skipped with a warning.
   """
-  if not isinstance(pipe_or_adapter, DiffusionPipeline):
-    pipe = getattr(pipe_or_adapter, "pipe", None)
-  else:
-    pipe = pipe_or_adapter
+  pipe = resolve_pipe(pipe_or_adapter)
 
   if not extra_modules or pipe is None:  # empty list
     return []

@@ -1,8 +1,13 @@
 """Adapted from diffusers' forward hook management primitives for cache-dit CP."""
 import functools
+import inspect
 from typing import Any
 
 import torch
+
+from ...logger import init_logger
+
+logger = init_logger(__name__)
 
 
 def unwrap_module(module: torch.nn.Module) -> torch.nn.Module:
@@ -85,6 +90,15 @@ class HookRegistry:
 
     forward = self._module_ref.forward
 
+    # Keep the wrapped forward signature discoverable. Modular pipelines (e.g. FLUX.3) build the
+    # transformer kwargs by inspecting `transformer.forward`, so a `(*args, **kwargs)` wrapper
+    # silently drops required inputs such as `img_ids`.
+    try:
+      forward_signature = inspect.signature(forward)
+    except (TypeError, ValueError) as e:
+      logger.debug(f"Failed to preserve the forward signature of {type(self._module_ref)}: {e}")
+      forward_signature = None
+
     fn_ref = HookFunctionReference()
     fn_ref.pre_forward = hook.pre_forward
     fn_ref.post_forward = hook.post_forward
@@ -96,8 +110,12 @@ class HookRegistry:
         functools.partial(hook.new_forward, self._module_ref), hook.new_forward)
 
     rewritten_forward = create_new_forward(fn_ref)
-    self._module_ref.forward = functools.update_wrapper(
+    patched_forward = functools.update_wrapper(
       functools.partial(rewritten_forward, self._module_ref), rewritten_forward)
+    # Must be set after `update_wrapper`, which merges the wrapped function's `__dict__`.
+    if forward_signature is not None:
+      patched_forward.__signature__ = forward_signature
+    self._module_ref.forward = patched_forward
 
     hook.fn_ref = fn_ref
     self.hooks[name] = hook

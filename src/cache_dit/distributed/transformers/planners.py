@@ -59,6 +59,8 @@ def _activate_cp_planners():
   """Register all built-in context-parallel transformer planners."""
   FluxContextParallelismPlanner = _safe_import(  # noqa: F841
     ".flux", "FluxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  Flux3ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".flux3", "Flux3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   QwenImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".qwen_image", "QwenImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   WanContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -143,6 +145,8 @@ def _activate_tp_planners():
     ".flux", "FluxTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Flux2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".flux2", "Flux2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  Flux3TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".flux3", "Flux3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   HunyuanDiTTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".hunyuan_dit", "HunyuanDiTTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Kandinsky5TensorParallelismPlanner = _safe_import(  # noqa: F841

@@ -16,6 +16,8 @@ from ..quantization import QuantizeConfig
 from ..quantization import quantize
 from ..utils import check_controlnet
 from ..utils import parse_extra_modules
+from ..utils import is_pipeline
+from ..utils import resolve_pipe
 from ..logger import init_logger
 from ..attention import set_attn_backend
 from ..attention import AttnBackendSelector
@@ -340,7 +342,7 @@ def _enable_cache_impl(
     if isinstance(
         pipe_or_adapter,
       (DiffusionPipeline, BlockAdapter, torch.nn.Module, ModelMixin),
-    ):
+    ) or is_pipeline(pipe_or_adapter):
       pipe_or_adapter = CachedAdapter.apply(
         pipe_or_adapter,
         **context_kwargs,
@@ -376,7 +378,7 @@ def _enable_cache_impl(
   # cache to avoid hooks conflict.
   transformers = []
   if parallelism_config is not None or quantize_config is not None:
-    if isinstance(pipe_or_adapter, DiffusionPipeline):
+    if is_pipeline(pipe_or_adapter):
       adapter = BlockAdapterRegister.get_adapter(pipe_or_adapter,
                                                  skip_post_init=cache_config is None)
       if adapter is None:
@@ -406,8 +408,7 @@ def _enable_cache_impl(
       logger.warning("Multiple transformers are detected in the BlockAdapter, all "
                      "transformers will be enabled for parallelism or quantization.")
 
-  pipe = (pipe_or_adapter if isinstance(pipe_or_adapter, DiffusionPipeline) else getattr(
-    pipe_or_adapter, "pipe", None))
+  pipe = resolve_pipe(pipe_or_adapter)
 
   # Enable parallelism if parallelism_config is provided.
   if parallelism_config is not None:

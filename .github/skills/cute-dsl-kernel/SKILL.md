@@ -25,7 +25,7 @@ Do not use this skill for:
 
 - CUTLASS or CuTe C++ template work as the primary task; use `cutlass-cpp-kernel`
 - generic CUDA/PTX documentation lookup with no CuTe DSL angle; use `cuda-cpp-kernel`
-- repository integration plumbing by itself; pair with `operator-migration`
+- repository integration plumbing by itself; pair with `cache-dit-operator-migration`
 
 ## Core Rule
 
@@ -170,7 +170,7 @@ For cache-dit or other repositories:
 1. preserve the external operator contract first
 2. keep the integration layer explicit rather than burying it inside the kernel definition
 3. document any generated artifact layout, launcher assumptions, or runtime dependencies
-4. if repository-level registration or packaging changes are needed, pair this skill with `operator-migration`
+4. if repository-level registration or packaging changes are needed, pair this skill with `cache-dit-operator-migration`
 
 ## Rewrite Guidance
 

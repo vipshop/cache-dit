@@ -24,6 +24,11 @@ STOP — Have you identified the new model's transformer architecture?
          - The ModuleList name(s) containing transformer blocks (e.g., transformer_blocks)
          - The block forward() signature (inputs and outputs)
   YES → Proceed to Cache (`./references/cache.md`) and CLI (`./references/cli.md`) in parallel.
+
+STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3)?
+  (pipe is NOT a DiffusionPipeline / nn.Module; its steps live in ModularPipelineBlocks)
+  YES → Read `./references/modular_pipeline.md` FIRST (core plumbing, which block list to cache,
+         CLI template, CP/TP status), then continue with the phases below.
 ```
 
 **Hard rules:**
@@ -139,6 +144,8 @@ flowchart TD
 
 | Situation | Section |
 |---|---|
+| **The model is a diffusers `ModularPipeline` (e.g. FLUX.3): `pipe` is neither a `DiffusionPipeline` nor an `nn.Module`** | `./references/modular_pipeline.md` |
+| The pipeline has an optional prompt-rewrite / prompt-upsampling stage (FLUX.3 `pup`, ...) | `./references/modular_pipeline.md` §4.1 |
 | Choosing the block I/O pattern | `./references/cache.md` and the ForwardPattern table below |
 | Block loop calls blocks with keyword args, or has extra ops inside the loop | `./references/cache.md` PatchFunctor pitfalls |
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | `./references/cache.md` advanced PatchFunctor cases |
@@ -171,6 +178,8 @@ These are the traps that pass without crashing but produce wrong images. Each is
 5. **GQA attention TP via `Replicate` is *correct* but often *slower* than a single GPU** (all-gather on Q dominates). Benchmark against FFN-only TP before shipping. → `./references/tp.md` GQA strategy
 6. **DTensor-unsafe fused kernels** (flash_attn SwiGLU, triton RMSNorm) crash with illegal-memory-access under TP → patch them to PyTorch ops first. → `./references/tp.md` DTensor-unsafe ops
 7. **Choosing pure patch-based CP when hybrid (hook + method patch) suffices.** If the ONLY obstacle is a method like `get_rotary_pos_embed` or `pos_embed` that returns a sequence-length-dependent tensor not reachable by hooks, patch that ONE method — do NOT patch the entire `forward()`. Pure patch-based CP is a maintenance burden that should never be green-lit without proving hybrid is truly impossible. → `./references/cp.md` implementation approaches and hybrid CP
+8. **Modular pipeline: dropping required transformer kwargs.** A `ModularPipeline` denoise step builds the transformer kwargs from `inspect.signature(transformer.forward)`. Cache-dit replaces `forward`, so the replacement must carry the original `__signature__` — otherwise `img_ids` / `txt_ids` / `image_cond_*` are silently dropped and the first denoise step raises `TypeError: ... missing N required positional arguments`. → `./references/modular_pipeline.md` §3.1
+9. **Optional prompt-rewrite / prompt-enhancement stages.** Many pipelines carry an extra LLM/VLM step that rewrites `prompt` into a long caption (FLUX.3 `prompt_upsampler`/`pup`, and similar steps in other families). Its components often have **no `pretrained_model_name_or_path`**, so `load_components()` leaves them `None` and the full pipeline crashes; and even when loaded it changes the *input distribution*, dominates the measured latency and is not covered by `--parallel-text` (that targets `text_encoder`). Decide explicitly: pop the step for benchmarking (fixed prompt in == prompt encoded) or inject the components for production, and record which one the example uses. → `./references/modular_pipeline.md` §4.1
 
 ### 0.6 Integration TODO List Template
 
@@ -514,6 +523,7 @@ Read these only when the current phase needs them:
 
 | Phase | Reference | Read when |
 |---|---|---|
+| Modular pipeline | [`./references/modular_pipeline.md`](./references/modular_pipeline.md) | The model ships only as a diffusers `ModularPipeline` (FLUX.3): core plumbing, which block list to cache, CLI template, CP/TP status, verification checklist. |
 | Cache | [`./references/cache.md`](./references/cache.md) | Implementing `BlockAdapter`, selecting `ForwardPattern`, handling third-party models, or writing `PatchFunctor`. |
 | CP | [`./references/cp.md`](./references/cp.md) | Implementing hook-based or hybrid CP, UAA, attention processor patches, or mask permutation fixes. |
 | TP | [`./references/tp.md`](./references/tp.md) | Implementing TP planners, `shard_div_attr`, GQA handling, fused QKV, `Replicate()`, or DTensor-unsafe op patches. |

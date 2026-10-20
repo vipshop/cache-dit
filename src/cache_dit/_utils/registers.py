@@ -16,6 +16,7 @@ from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..summary import summary
+from ..utils import is_modular_pipeline
 from ..logger import init_logger
 
 from .utils import (
@@ -366,6 +367,19 @@ class ExampleInitConfig:
   # For third-party models that require trust_remote_code
   trust_remote_code: bool = False
 
+  @property
+  def is_modular_pipeline(self) -> bool:
+    """Whether the target pipeline is a diffusers `ModularPipeline`.
+
+    :returns: Whether `pipeline_class` is a `ModularPipeline` subclass.
+    """
+    try:
+      from diffusers import ModularPipeline
+    except ImportError:  # diffusers without modular pipelines
+      return False
+    return (isinstance(self.pipeline_class, type)
+            and issubclass(self.pipeline_class, ModularPipeline))
+
   def __post_init__(self):
     if not self.bnb_4bit_components:
       self.bnb_4bit_components = ["text_encoder"]
@@ -379,9 +393,22 @@ class ExampleInitConfig:
   def get_pipe(self, args: argparse.Namespace, **kwargs) -> DiffusionPipeline:
     if self.pipeline_class is None:
       raise ValueError("pipeline_class must be provided to get the pipeline instance.")
+    model_path = self.model_name_or_path if args.model_path is None else args.model_path
+    if self.is_modular_pipeline:
+      # diffusers modular pipelines load the pipeline class from the model config first, then
+      # load the components separately (`load_components`), instead of one-shot `from_pretrained`.
+      pipe = self.pipeline_class.from_pretrained(
+        model_path,
+        trust_remote_code=self.trust_remote_code,
+      )
+      pipe.load_components(dtype=self.torch_dtype)
+      if self.post_init_hook is not None:
+        self.post_init_hook(pipe, **kwargs)
+      return pipe
+
     pipeline_quantization_config = self._pipeline_quantization_config(args)
     pipe = self.pipeline_class.from_pretrained(
-      self.model_name_or_path if args.model_path is None else args.model_path,
+      model_path,
       torch_dtype=self.torch_dtype,
       quantization_config=pipeline_quantization_config,
       device_map="balanced" if args.device_map_balance else None,
@@ -559,7 +586,7 @@ class Example:
       warmup_kwargs = self.new_generator(dict(input_kwargs), self.args, warmup=True)
       if self.args.warmup_num_inference_steps is not None:
         warmup_kwargs["num_inference_steps"] = self.args.warmup_num_inference_steps
-      _ = pipe(**warmup_kwargs)
+      _ = self.call_pipe(pipe, warmup_kwargs)
       maybe_finalize_deferred_svdq_pipe_move(pipe)
     if self.args.warmup > 0:
       warmup_time = (time.time() - start_time) / self.args.warmup
@@ -576,14 +603,14 @@ class Example:
       with profiler:
         for _ in range(self.args.repeat):
           step_kwargs = self.new_generator(dict(input_kwargs), self.args)
-          output = pipe(**step_kwargs)
+          output = self.call_pipe(pipe, step_kwargs)
           maybe_finalize_deferred_svdq_pipe_move(pipe)
       if self.rank == 0:
         logger.info(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
     else:
       for _ in range(self.args.repeat):
         step_kwargs = self.new_generator(dict(input_kwargs), self.args)
-        output = pipe(**step_kwargs)
+        output = self.call_pipe(pipe, step_kwargs)
         maybe_finalize_deferred_svdq_pipe_move(pipe)
     if self.args.repeat > 0:
       inference_time = (time.time() - start_time) / self.args.repeat
@@ -611,7 +638,8 @@ class Example:
     )
 
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
-      output_data.image = (output.images[0] if isinstance(output.images, list) else output.images)
+      images = output.images if hasattr(output, "images") else output
+      output_data.image = images[0] if isinstance(images, list) else images
     elif self.init_config.task_type in [
         ExampleType.T2V,
         ExampleType.I2V,
@@ -633,6 +661,21 @@ class Example:
       self.output_data.save(self.args)
 
     maybe_destroy_distributed()
+
+  def call_pipe(self, pipe, kwargs: Dict[str, Any]):
+    """Run one inference, asking a modular pipeline for the output it should return.
+
+    :param pipe: Pipeline instance.
+    :param kwargs: Inference inputs.
+    :returns: The pipeline output.
+    """
+    if not is_modular_pipeline(pipe):
+      return pipe(**kwargs)
+    # diffusers modular pipelines return the whole `PipelineState` unless `output` is given
+    kwargs = dict(kwargs)
+    if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
+      kwargs["output"] = "images"
+    return pipe(**kwargs)
 
   def new_generator(
     self,

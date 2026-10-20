@@ -36,6 +36,33 @@ qwenimage_adapter = _safe_import(".adapters", "qwenimage_adapter")
 ```
 
 
+## Modular Pipelines (e.g. FLUX.3)
+
+Some new models only ship as a diffusers <span style="color:#c77dff;">modular pipeline</span>
+(`ModularPipeline` + `ModularPipelineBlocks`, e.g. `Flux3DistilledModularPipeline`). There, `pipe`
+is neither a `DiffusionPipeline` nor a `torch.nn.Module`, so the pipeline-level paths need a small
+amount of extra care:
+
+- All pipeline dispatch resolves the pipe through `cache_dit.utils.is_pipeline()` /
+  `_resolve_pipe()`, so no per-model change is needed for `enable_cache`, `summary` and
+  `parse_extra_modules`.
+- A modular denoise step builds the transformer kwargs by inspecting
+  `transformer.forward`; cache-dit therefore keeps the original `__signature__` when it patches
+  `forward` (`CachedAdapter.mock_transformer`). Do not remove it: required inputs such as `img_ids`
+  would be silently dropped.
+- Register the BlockAdapter under the transformer class name prefix, and remember that the registry
+  returns the **first** matching prefix (`"Flux3"` must be registered before `"Flux"`).
+- In `ExampleInitConfig`, `pipeline_class=Flux3DistilledModularPipeline` is loaded with
+  `from_pretrained` + `load_components(dtype=...)`, and the example is called with
+  `output="images"`.
+
+Reference implementation: `flux3_adapter` in
+[caching/block_adapters/adapters.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/adapters.py),
+the `flux3` / `flux3_edit` examples in
+[\_utils/examples.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utils/examples.py),
+and the TP planner in
+[distributed/transformers/flux3.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/flux3.py).
+
 ## Context Parallelism
 
 In order to support <span style="color:#c77dff;">context parallelism</span> for new model, we have to register it's ContextParallelismPlanner at [context_parallelism](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers) and use `_safe_import` func to import it at [cp_planners.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/planners.py). For example:

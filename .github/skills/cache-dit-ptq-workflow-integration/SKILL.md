@@ -1,5 +1,5 @@
 ---
-name: ptq-workflow-integration
+name: cache-dit-ptq-workflow-integration
 description: 'Use when integrating a new PTQ workflow into cache-dit; designing quantize/load API shape, backend-specific config validation, save/load manifests, benchmark and regression tests, or reviewing a PTQ integration plan. Uses the SVDQ PTQ integration only as a style and coverage reference. Do not copy the SVDQ implementation mechanically.'
 argument-hint: 'Describe the PTQ algorithm or backend, target public API, calibration flow, serialization requirements, target models, and required validation layers.'
 user-invocable: true

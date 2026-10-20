@@ -48,6 +48,8 @@ __all__ = [
   "helios_t2v_distill_example",
   "cosmos3_omni_example",
   "flux2_klein_kv_edit_example",
+  "flux3_example",
+  "flux3_edit_example",
   "boogu_image_edit_example",
   "ernie_image_example",
   "ernie_image_turbo_example",
@@ -71,6 +73,7 @@ _env_path_mapping = {
   "FLUX_2_KLEIN_9B_DIR": "black-forest-labs/FLUX.2-klein-9B",
   "FLUX_2_KLEIN_BASE_9B_DIR": "black-forest-labs/FLUX.2-klein-base-9B",
   "FLUX_2_KLEIN_9B_KV_DIR": "black-forest-labs/FLUX.2-klein-9b-kv",
+  "FLUX_3_DIR": "black-forest-labs/flux-3-image-klein",
   "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
   "LTX2_DIR": "Lightricks/LTX-2",
   "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
@@ -382,6 +385,112 @@ def flux2_klein_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       num_inference_steps=num_inference_steps,
       guidance_scale=guidance_scale,
       image=[image1] if FLUX2_SKIP_INPUT_IMAGE2 else [image1, image2],
+    ),
+  )
+
+
+def _flux3_drop_prompt_upsampler(pipe) -> None:
+  """Drop the (separate) prompt upsampler step so `prompt` is encoded as given.
+
+  The upsampler is a different checkpoint (`black-forest-labs/flux-3-image-klein-pup`, a ~9B VLM),
+  not part of the FLUX.3 model itself, so it is unloaded as well instead of taking device memory.
+  `pipe.blocks` returns a deepcopy, so pop from the live `_blocks` tree.
+
+  :param pipe: FLUX.3 modular pipeline.
+  """
+  pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
+  pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
+
+
+def _flux3_cache_config(
+  args: argparse.Namespace,
+  max_warmup_steps: int = 4,
+) -> Optional[DBCacheConfig]:
+  """DBCache config tuned for the 16-step distilled FLUX.3 transformer.
+
+  Only `single_transformer_blocks` (the joint stack) is cached, so `Fn_compute_blocks` is small and
+  the residual threshold is higher than the generic default: consecutive steps of a 16-step
+  flow-map model move further apart than those of a 50-step model. Image editing reuses the
+  reference tokens and moves less per step, so it caches earlier steps and needs a longer warmup to
+  keep the high-frequency detail (SSIM) intact.
+
+  :param args: CLI arguments.
+  :param max_warmup_steps: Steps always computed before caching is allowed.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  steps = 16 if args.num_inference_steps is None else args.num_inference_steps
+  return DBCacheConfig(
+    Fn_compute_blocks=4,
+    Bn_compute_blocks=0,
+    max_warmup_steps=min(max_warmup_steps, max(1, steps // 2)),
+    num_inference_steps=steps,
+    # no classifier-free guidance for the step-distilled (flow-map) checkpoint
+    enable_separate_cfg=False,
+    residual_diff_threshold=0.30,
+  )
+
+
+@ExampleRegister.register("flux3", default="black-forest-labs/flux-3-image-klein")
+def flux3_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import Flux3DistilledModularPipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("black-forest-labs/flux-3-image-klein"),
+      pipeline_class=Flux3DistilledModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      post_init_hook=_flux3_drop_prompt_upsampler,
+      extra_optimize_kwargs={
+        "cache_config": _flux3_cache_config(args),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        'A chunky knitted diorama: three white cable-knit icebergs with tiny pale blue houses, '
+        'a cream banner embroidered "KNITTED ICEBERG VILLAGE", a giant magenta knitted whale tail '
+        "bursting from a yarn sea"),
+      height=1024,
+      width=1024,
+      num_inference_steps=16,
+    ),
+  )
+
+
+@ExampleRegister.register("flux3_edit", default="black-forest-labs/flux-3-image-klein")
+def flux3_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import Flux3DistilledModularPipeline
+
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  if _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR, "examples/data/edit2509_2.jpg"))
+  else:
+    image = load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/edit2509_2.jpg")
+  image = image.resize((width, height))
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,  # Image Editing to Image
+      model_name_or_path=_path("black-forest-labs/flux-3-image-klein"),
+      pipeline_class=Flux3DistilledModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      post_init_hook=_flux3_drop_prompt_upsampler,
+      extra_optimize_kwargs={
+        "cache_config": _flux3_cache_config(args, max_warmup_steps=8),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=("The same bear, now sitting in a chunky knitted diorama of a snowy village at night, "
+              "tiny pale blue houses behind it and embroidered stars above the peaks"),
+      height=height,
+      width=width,
+      num_inference_steps=16,
+      image=[image],
     ),
   )
 
