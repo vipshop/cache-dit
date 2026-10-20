@@ -787,6 +787,21 @@ def _qwen_image_21_edit_image(
     "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/raw/main/assets/turbo-boat-input.png")
 
 
+def _qwen_image_21_modular_cfg_guider(pipe) -> None:
+  """Replace the modular pipeline's guider with a CFG one.
+
+  `ModularPipeline.__call__` does not route `guidance_scale` into a component config, so the
+  default guider of the modular pipeline always samples without guidance. The image-conditioned
+  workflow needs the replacement to actually run the negative branch.
+
+  :param pipe: The freshly constructed modular pipeline.
+  """
+
+  from diffusers import ClassifierFreeGuidance
+
+  pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.0))
+
+
 _QWEN_IMAGE_21_PROMPT = (
   "A capybara wearing a wizard hat, reading a book by candlelight, oil painting")
 _QWEN_IMAGE_21_EDIT_PROMPT = (
@@ -983,6 +998,8 @@ def qwen_image_21_modular_edit_example(args: argparse.Namespace, **kwargs) -> Ex
       pipeline_class=QwenImage21ModularPipeline,
       bnb_4bit_components=[],
       modular_blocks_factory=QwenImage21AutoBlocks,
+      # the modular guider defaults to guidance_scale=1.0, i.e. no negative branch
+      post_init_hook=_qwen_image_21_modular_cfg_guider,
       extra_optimize_kwargs={
         "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=True,
                                                     distilled=False),
@@ -994,7 +1011,6 @@ def qwen_image_21_modular_edit_example(args: argparse.Namespace, **kwargs) -> Ex
       height=1024,
       width=1024,
       num_inference_steps=steps,
-      true_cfg_scale=4.0,  # separate cfg: the modular guider runs pred_cond / pred_uncond
       image=[_qwen_image_21_edit_image(args, model_path_or_name)],
     ),
   )
