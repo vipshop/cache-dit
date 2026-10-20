@@ -92,7 +92,7 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | Other | LucyEdit | [`WanTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py)  | 1 | ✔️/✔️/✔️/✔️ |
 
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead); <b>—</b>: not verified yet<br>
-FLUX.3 runs as a diffusers modular pipeline: parallelism covers TP / TE-P / VAE-P only (its per-mode token streams cannot be split contiguously for CP); quantization is verified with torchao fp8 per-row (258 linear layers) combined with torch.compile; layerwise offload is not verified. </i>
+FLUX.3 runs as a diffusers modular pipeline: parallelism covers CP (Ulysses / Ring, incl. UAA) + TP + TE-P + VAE-P; quantization is verified with torchao fp8 per-row (258 linear layers) combined with torch.compile; layerwise offload is not verified. </i>
 
 </div>
 

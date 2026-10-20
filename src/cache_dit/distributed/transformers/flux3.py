@@ -1,16 +1,13 @@
-"""FLUX.3 transformer distributed parallelism planner (TP).
+"""FLUX.3 transformer distributed parallelism planners (CP + TP).
 
 FLUX.3 has four block stacks that share one block layout (`Flux3ModeTransformerBlock` for the three
 per-token-mode streams, `Flux3SingleTransformerBlock` for the joint stack), so TP shards all of them
 with the same layer plan.
 
-Context parallelism is intentionally not implemented: the joint stack attends over
-`cat([text, image(, reference)])`, but the per-mode stacks that feed it run on three separate
-streams of different lengths (text is right-padded to a multiple of 80, the image grid is
-`H/16 x W/16`, the references are their own grids). A contiguous Ulysses split of the joint
-sequence would cut across the mode boundary, so every rank would need a different, padded local
-layout of all three streams, plus matching splits of `joint_rotary_emb` and the per-mode
-modulations. That requires reassembling the whole forward, which the hook-based CP design rules out.
+The two planners follow the two different shapes of the model. TP shards the weights of every block
+stack. CP shards the token streams of the root forward only; see
+`Flux3ContextParallelismPlanner` for why a root split is enough although every block rebuilds the
+joint sequence with `torch.cat`.
 """
 
 from typing import Dict, List, Tuple
@@ -25,6 +22,11 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
+from ..core import (
+  _ContextParallelInput,
+  _ContextParallelModelPlan,
+  _ContextParallelOutput,
+)
 from ..utils import shard_div_attr
 from .register import (
   ContextParallelismPlanner,
@@ -36,15 +38,44 @@ from .register import (
 
 @ContextParallelismPlannerRegister.register("Flux3Transformer2DModel")
 class Flux3ContextParallelismPlanner(ContextParallelismPlanner):
-  """Placeholder planner: FLUX.3 cannot be context-parallelized (see the module docstring)."""
+  """Context parallelism planner for `Flux3Transformer2DModel`.
 
-  def _apply(self, transformer: torch.nn.Module, parallelism_config, **kwargs):
-    raise ValueError(
-      "FLUX.3 does not support context parallelism: its joint stack attends over "
-      "cat([text, image(, reference)]) while the per-mode stacks that feed it run on three "
-      "separate streams of different lengths, so the joint sequence cannot be split contiguously "
-      "across ranks with a hook-based plan. Use tensor parallelism (--parallel tp) or more GPUs "
-      "instead.")
+  The split is a single root split: the three token streams (`encoder_hidden_states` = text mode,
+  `hidden_states` = image mode, `image_cond_hidden_states` = reference mode) and their position-id
+  tables are sharded along the sequence dim, and the velocity prediction is gathered at `proj_out`.
+
+  This is sound even though every block rebuilds the joint sequence with `torch.cat` (the joint
+  stack attends over `cat([text, image(, reference)])` and the block itself over
+  `cat([text, content])`): attention has no mask and RoPE is applied per token from the ids, so a
+  block's attention over the *union* of the ranks' contiguous chunks equals the full-sequence
+  attention. A rank's content is a per-stream subsequence concatenated in the block's own order
+  (`[text_c_i, image_c_i, reference_c_i]`), not a slice of the global order, which is exactly why
+  the order-invariance of the unmasked attention matters. The per-mode modulations are per-token
+  broadcasts of one timestep embedding and are recomputed from the local lengths.
+  """
+
+  def _apply(
+    self,
+    transformer: torch.nn.Module,
+    parallelism_config,
+    **kwargs,
+  ) -> "_ContextParallelModelPlan":
+    if getattr(parallelism_config, "ulysses_async", False):
+      raise ValueError("Async Ulysses (`--ulysses-async`) is not supported for "
+                       "Flux3Transformer2DModel yet: the async registry has no patch for its "
+                       "attention processor. Drop the flag or use another model.")
+    _cp_plan = {
+      "": {
+        "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+        "encoder_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+        "image_cond_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+        "img_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+        "txt_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+        "image_cond_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+      },
+      "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    return _cp_plan
 
 
 @TensorParallelismPlannerRegister.register("Flux3Transformer2DModel")

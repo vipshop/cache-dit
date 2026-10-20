@@ -35,24 +35,29 @@ class _ModuleForwardMetadata:
   _cls: Type | None = None
 
   def get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
-    """Resolve one forward parameter from positional and keyword args."""
+    """Resolve one forward parameter from positional and keyword args.
+
+    A planned parameter that the caller did not provide is reported as `None` instead of raising:
+    optional inputs are absent by design for some workflows (e.g. a text-to-image call of an
+    image-to-image capable transformer omits `image_cond_hidden_states`), and a modular pipeline
+    passes every provided input as a keyword argument, so there is no positional prefix to index.
+
+    :param identifier: Forward parameter name.
+    :param args: Positional arguments of the current call.
+    :param kwargs: Keyword arguments of the current call.
+    :returns: A tuple `(value, is_kwarg, positional_index)`.
+    """
 
     kwargs = kwargs or {}
 
     if identifier in kwargs:
       return kwargs[identifier], True, None
 
-    if self.cached_parameter_indices is not None:
-      index = self.cached_parameter_indices.get(identifier)
-      if index is None:
-        raise ValueError(f"Parameter '{identifier}' not found in cached indices.")
-      return args[index], False, index
-
-    if self._cls is None:
-      raise ValueError("Model class is not set for metadata.")
-
-    parameters = list(inspect.signature(self._cls.forward).parameters.keys())[1:]
-    self.cached_parameter_indices = {param: index for index, param in enumerate(parameters)}
+    if self.cached_parameter_indices is None:
+      if self._cls is None:
+        raise ValueError("Model class is not set for metadata.")
+      parameters = list(inspect.signature(self._cls.forward).parameters.keys())[1:]
+      self.cached_parameter_indices = {param: index for index, param in enumerate(parameters)}
 
     if identifier not in self.cached_parameter_indices:
       raise ValueError(
@@ -60,7 +65,10 @@ class _ModuleForwardMetadata:
 
     index = self.cached_parameter_indices[identifier]
     if index >= len(args):
-      raise ValueError(f"Expected {index} arguments but got {len(args)}.")
+      logger.warning_once(f"Planned context parallel input '{identifier}' was not provided by this "
+                          "call, its split is skipped. Make sure the model does not derive the "
+                          "same tensor internally from local (already sharded) state.")
+      return None, False, None
 
     return args[index], False, index
 

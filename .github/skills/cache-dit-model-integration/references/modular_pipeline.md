@@ -178,20 +178,62 @@ def flux3_example(args, **kwargs) -> Example:
 | Feature | Status | Notes |
 |---|---|---|
 | TP | works | `pipe.transformer` is collected through the adapter; add a `TensorParallelismPlanner` under the exact transformer class name (`"Flux3Transformer2DModel"`) |
+| CP | works | one **root split** covers FLUX.3's three token streams; see below |
 | TE-P | works | the planner is selected by the text-encoder class (`"Qwen3VLForConditionalGeneration"`); `parse_extra_modules(pipe, ...)` resolves the modular pipe through `_resolve_pipe()` |
 | VAE-P | works | selected by the VAE class (`"AutoencoderKLFlux2"`) |
-| CP | **not supported for FLUX.3** | see below |
 
-CP analysis (FLUX.3): the joint stack attends over `cat([text, image(, reference)])`, but the
-per-mode stacks that feed it run on three separate streams of *different* lengths (text padded to a
-multiple of 80, image `H/16 x W/16`, each reference its own grid). A contiguous Ulysses split of the
-joint sequence would cut across the mode boundary, so every rank would need its own padded local
-layout of all three streams plus matching splits of `joint_rotary_emb`, `txt_single_mod`,
-`content_mod` and the per-mode `*_early_mod`. That means reassembling the whole forward — which the
-hook-based CP design rules out. Reach for TP (and multiple GPUs) instead.
+### 5.1 CP: why one root split is enough although every block rebuilds `torch.cat`
 
-A stub `Flux3ContextParallelismPlanner` is registered so `--parallel ulysses` / `ring` fail fast
-with that explanation instead of a generic "No planner registered under name".
+FLUX.3 keeps three token streams with different lengths (text padded to a multiple of 80, image
+`H/16 x W/16`, each reference its own grid), and every block re-assembles the sequence locally:
+
+* joint stack: `content_states = cat([image, reference])`, then the block does
+  `combined = cat([text, content])` and `torch.split(output, [text_len, content_len])`;
+* per-mode stacks: one stream each.
+
+A root split therefore hands each rank a **contiguous chunk of each stream**, so after the local
+`cat` a rank holds `[text_c_i, image_c_i, reference_c_i]` — a *permuted* slice of the global order
+`[text, image, reference]`. That is harmless because
+
+* attention has **no mask** (softmax over the key set is order-invariant), and
+* RoPE is applied **per token from the ids** before the all-to-all, so every token carries its own
+  position.
+
+The union of the ranks' local chunks is exactly the global token set, so each block's attention
+equals full-sequence attention; the inverse all-to-all restores the local layout, which is what the
+in-block `torch.split`, the residual adds and the final
+`content_states[:, :image_seq_len]` slice need. The per-mode modulations are per-token broadcasts of
+one timestep embedding, so they are simply recomputed from the local lengths.
+
+```python
+_cp_plan = {
+  "": {
+    "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+    "encoder_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+    "image_cond_hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),
+    "img_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+    "txt_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+    "image_cond_ids": _ContextParallelInput(split_dim=0, expected_dims=2),
+  },
+  "proj_out": _ContextParallelOutput(gather_dim=1, expected_dims=3),
+}
+```
+
+Two **engine** limitations had to be fixed first — both hit any modular model, not FLUX.3:
+
+1. `_ModuleForwardMetadata.get_parameter_from_args_kwargs` raised
+   `ValueError: Expected N arguments but got 0` when a planned input was absent. A modular step
+   passes every input as a keyword argument and legitimately omits workflow-specific ones
+   (`image_cond_*` for text-to-image), so an absent planned input must resolve to `None` (skip the
+   split) instead of raising.
+2. `HookRegistry.register_hook` replaced `forward` with a `(*args, **kwargs)` wrapper, which
+   collapsed the signature the modular step introspects → `missing 2 required positional arguments:
+   'img_ids' and 'txt_ids'`. It now forwards the previous `__signature__`, same rule as
+   `CachedAdapter.mock_transformer`.
+
+Non-divisible stream lengths (e.g. `H/16 x W/16` odd, so `1089 % cp_size != 0`) need
+`--ulysses-anything`; without it the split fails with "Tensor size along dimension to be sharded
+must be divisible by mesh size".
 
 TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 
@@ -221,6 +263,8 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 - [ ] I2I path (reference image) with the same adapter
 - [ ] cache_dit.summary(pipe) / --cache-summary prints the stats
 - [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache
+- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel ulysses
+      (and a non-divisible resolution with --ulysses-anything)
 - [ ] python3 -m pytest tests/api/test_modular_pipeline.py -q
       (guards the forward-signature preservation and the TP FFN rearrangement)
 ```
@@ -265,6 +309,16 @@ night"): 10.47 s → 6.77 s (1.55×), 8/16 steps cached, PSNR 39.03 / SSIM 0.996
 | TP + TE-P | 3.07 s | 36.22 / 0.9600 |
 | TP + VAE-P | 3.03 s | 42.02 / 0.9940 (bit-identical to TP) |
 | TP + cache | 2.43 s (2.02× vs 1 GPU) | 34.09 / 0.9552 (vs TP baseline) |
+| CP Ulysses (2 GPU) | 3.20 s (1.53×) | 40.13 / 0.9899 (vs 1 GPU baseline) |
+| CP Ring (2 GPU) | 2.95 s (1.66×) | 38.48 / 0.9816 |
+| CP Ulysses + cache | 2.54 s (1.93×) | 33.95 / 0.9527 |
+| CP Ulysses, I2I (`flux3_edit`) | 6.58 s (1.58× vs 10.42 s) | 40.28 / 0.9849 |
+| CP Ulysses + UAA, 528×528 (1089 image tokens) | 1.08 s | 46.28 / 0.9987 (vs 1 GPU 528×528) |
+
+On 2 GPUs CP and TP land at a similar throughput (1.53–1.66× vs 1.62×). Pick CP when the token
+streams dominate memory (it shards the sequence of all three streams, including the long text
+stream); pick TP when the weights dominate. `parallelism_config` also allows combining them
+(`--parallel ulysses_tp` / `ring_tp`), which is untested for FLUX.3.
 
 ### 7.1 Quantization: fp8 per-row + compile
 
