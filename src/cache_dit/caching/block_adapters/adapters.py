@@ -162,6 +162,33 @@ def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("MiniMaxH3")
+def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import MiniMaxH3Transformer3DModel
+
+  # One checkpoint repository holds both partitions: `transformer` drives the `t2va` / `fl2va`
+  # workflows and `transformer_ref` the `ref2va` one, and a workflow loads only its own.
+  transformer = getattr(pipe, "transformer", None)
+  if transformer is None:
+    transformer = pipe.transformer_ref
+  _relaxed_assert(transformer, MiniMaxH3Transformer3DModel)
+
+  # MiniMax-H3 denoises **one packed sequence** — text, keyframe, audio and video rows — through a
+  # single stack of blocks, and the checkpoint is guidance-distilled, so every step is exactly one
+  # forward pass. Only the block stack is cached: `token_refiner` runs once per step over the text
+  # stream alone and carries no AdaLN parameters, so caching it would only add noise to the
+  # residual statistics.
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import (

@@ -326,6 +326,16 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
   return resolved
 
 
+# Layers skipped by default: embeddings and modulation tables are tiny, and quantizing them costs
+# far more accuracy than it saves memory.
+DEFAULT_EXCLUDE_LAYERS = (
+  "embedder",
+  "embed",
+  "modulation",
+  "mod",
+)
+
+
 @dataclasses.dataclass
 class QuantizeConfig:
   """Unified quantization configuration for cache-dit workflows.
@@ -353,12 +363,8 @@ class QuantizeConfig:
   # e.g, they are already very small and quantization may cause significant
   # accuracy drop, or they are not supported to be quantized due to some
   # technical reasons, etc.
-  exclude_layers: Optional[list] = dataclasses.field(default_factory=lambda: [
-    "embedder",
-    "embed",
-    "modulation",
-    "mod",
-  ])
+  exclude_layers: Optional[list] = dataclasses.field(
+    default_factory=lambda: list(DEFAULT_EXCLUDE_LAYERS))
   # Quantize the _repeated_ blocks in the transformer (Diffusers).
   regional_quantize: bool = True  # name 'regional', vs regional compile.
   # For models outside of diffusers, users can specify the repeated blocks
@@ -449,6 +455,10 @@ class QuantizeConfig:
   verbose: bool = False
 
   def __post_init__(self):
+    # A caller that always forwards the field (a CLI does) passes `None` for "use the defaults";
+    # every consumer iterates this list, so normalize it here instead of at each call site.
+    if self.exclude_layers is None:
+      self.exclude_layers = list(DEFAULT_EXCLUDE_LAYERS)
     raw_svdq_kwargs = dict(self.svdq_kwargs) if isinstance(self.svdq_kwargs,
                                                            dict) else self.svdq_kwargs
     if isinstance(self.quant_type, str):

@@ -367,13 +367,19 @@ class QuantizeAOContext:
       self.regional_quantize = False
 
     if self.module_ref is not None and self.is_float8_per_row():
-      # assert the dtype of module's is bfloat16
+      # Per-row float8 needs bfloat16 weights. Checkpoints that keep a few projections in
+      # float32 (`_keep_in_fp32_modules`, e.g. MiniMax-H3's `proj_in` / `proj_out` /
+      # `time_embedder`) cannot be quantized there, so those layers have to be excluded rather
+      # than crash the whole run: an excluded layer keeps its own dtype and dtype cast.
       for name, submod in self.module_ref.named_modules():
-        if isinstance(submod, torch.nn.Linear):
-          assert submod.weight.dtype == torch.bfloat16, (
-            f"Per-row quantization is only supported for linear layers with "
-            f"weight dtype of bfloat16, but found dtype {submod.weight.dtype} "
-            f"in layer {name}.")
+        if not isinstance(submod, torch.nn.Linear):
+          continue
+        if self.is_exclude_layer(name):
+          continue
+        assert submod.weight.dtype == torch.bfloat16, (
+          f"Per-row quantization is only supported for linear layers with "
+          f"weight dtype of bfloat16, but found dtype {submod.weight.dtype} "
+          f"in layer {name}. Add it to `exclude_layers` to keep it in its own dtype.")
 
     # Merged the fallback layers into the precision plan if precision_plan is specified,
     # to make sure those layers will be quantized with the fallback quantization type.

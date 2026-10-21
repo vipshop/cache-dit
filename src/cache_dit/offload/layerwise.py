@@ -334,6 +334,43 @@ def _move_module_state(module: nn.Module, device: torch.device, *, non_blocking:
   module.to(device=device, non_blocking=non_blocking)
 
 
+class _LayerwiseExecutionDeviceHook:
+  """Stand-in for an accelerate offload hook that only advertises the execution device.
+
+  `DiffusionPipeline._execution_device` — and every modular pipeline that creates step tensors for
+  itself — reads the device from accelerate's offload hooks. Once cache-dit streams a component by
+  itself there is no accelerate hook, so the pipeline falls back to the residency device (CPU) and
+  builds its latents there. This marker carries the single attribute that contract reads, plus the
+  two methods `accelerate.remove_hook_from_module` calls, and nothing else: it installs no wrapper
+  and changes no forward.
+  """
+
+  def __init__(self, execution_device: torch.device):
+    self.execution_device = torch.device(execution_device)
+
+  def init_hook(self, module: nn.Module) -> nn.Module:
+    """Return the module unchanged, mirroring accelerate's hook protocol."""
+    return module
+
+  def detach_hook(self, module: nn.Module) -> nn.Module:
+    """Return the module unchanged, mirroring accelerate's hook protocol."""
+    return module
+
+
+def _mark_execution_device(module: nn.Module, device: torch.device) -> None:
+  """Advertise where an offloaded root runs, unless something else already does.
+
+  A real accelerate offload hook is left untouched: it stays authoritative, and cache-dit refuses
+  to stream a module that already has one.
+
+  :param module: Offload root that was just wrapped.
+  :param device: Device its forward now runs on.
+  """
+  existing = getattr(module, "_hf_hook", None)
+  if existing is None or isinstance(existing, _LayerwiseExecutionDeviceHook):
+    module._hf_hook = _LayerwiseExecutionDeviceHook(device)
+
+
 def _find_offload_related_hf_hook(module: nn.Module) -> tuple[str, Any] | None:
   """Find an existing HuggingFace ``accelerate`` offload hook attached to any submodule.
 
@@ -519,6 +556,51 @@ def _infer_module_state_device(module: nn.Module) -> torch.device:
   for _kind, _name, tensor, _requires_grad in _iter_direct_state_entries(module):
     return tensor.device
   return torch.device("cpu")
+
+
+def _move_unmanaged_direct_state(
+  root_module: nn.Module,
+  *,
+  targets: list,
+  device: torch.device,
+) -> None:
+  """Move the **orphan** parameter and buffer state of a fully streamed root onto ``device``.
+
+  Discovery selects children-free modules, so a tensor that hangs directly on a *non-leaf* module
+  belongs to no target — the `register_tokens` of MiniMax-H3's ViT-style VAE decoder, for instance,
+  sits on a module that owns a whole block stack. Once layerwise offload is installed the caller
+  skips `module.to(device)`, so without this move such a tensor stays on the offload device and the
+  first forward that reads it fails with a device mismatch.
+
+  Only non-leaf modules are considered. A leaf module that was **not** selected (the narrow
+  `module_names=[...]` case the offload guide documents) is the caller's explicit choice to keep
+  offloaded, so its weights must stay where they are.
+
+  :param root_module: Module the offload handle is being installed on.
+  :param targets: Resolved targets, whose own state is managed by the handle.
+  :param device: Device the unmanaged state has to live on.
+  """
+  target_ids = {id(target.module) for target in targets}
+  for module in root_module.modules():
+    if id(module) in target_ids:
+      continue
+    if next(module.children(), None) is None:
+      continue
+    for kind, name, _tensor, requires_grad in _iter_direct_state_entries(module):
+      # Read `parameter.data` rather than the `Parameter` wrapper, the same way the mirror path
+      # does, so a wrapper subclass (quantized or DTensor state) is left alone.
+      tensor = _get_direct_state_tensor(module, kind=kind, name=name)
+      if type(tensor) is not torch.Tensor or tensor.device == device:
+        continue
+      if tensor.device.type == "meta":
+        continue
+      _assign_direct_state_tensor(
+        module,
+        kind=kind,
+        name=name,
+        tensor=tensor.to(device),
+        requires_grad=requires_grad,
+      )
 
 
 def _supports_tensor_state_mirror(module: nn.Module) -> bool:
@@ -1577,6 +1659,11 @@ class LayerwiseOffloadHandle:
 
     self._removed = True
     _detach_layerwise_offload_handle(self.root_module, self)
+    # Dropping the execution-device marker is part of removal: leaving it behind would keep telling
+    # a pipeline that this root still runs on the onload device.
+    if (not _get_registered_layerwise_offload_handles(self.root_module)
+        and isinstance(getattr(self.root_module, "_hf_hook", None), _LayerwiseExecutionDeviceHook)):
+      delattr(self.root_module, "_hf_hook")
 
 
 def _prepare_async_target(module: nn.Module, *, index: int, name: str) -> _LayerwiseTarget:
@@ -1775,6 +1862,8 @@ def remove_layerwise_offload(
 
   handles = list(get_layerwise_offload_handles(root_module))
   for handle in handles:
+    # `remove()` also retires the execution-device marker once the root has no handle left, which
+    # is why a root carrying several handles (the AdaLN split) needs nothing extra here.
     handle.remove(offload=offload)
   return len(handles)
 
@@ -1833,6 +1922,7 @@ def _apply_public_layerwise_offload(
         persistent_bins=persistent_bins,
         root_display_name=root_name if root_name else None,
       ))
+    _mark_execution_device(resolved_root_module, torch.device(onload_device))
     root_names.append(root_name)
 
   if len(handles) == 1:
@@ -1980,6 +2070,9 @@ def _apply_layerwise_offload(
   # Tied weights (shared parameter objects across targets) break per-target
   # residency bookkeeping; dedupe them before the handle snapshots metadata.
   _dedupe_shared_target_states(targets)
+  # Whatever no target owns never comes back from a later `pipe.to()`, because installing
+  # layerwise offload makes the caller skip it.
+  _move_unmanaged_direct_state(root_module, targets=targets, device=resolved_onload_device)
 
   handles: list[Any] = []
   handle = LayerwiseOffloadHandle(

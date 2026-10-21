@@ -3,12 +3,15 @@ from typing import Optional
 
 import torch
 
+from ...logger import init_logger
 from .register import (
   _AttnBackend,
   _AttnBackendRegistry,
   _context_parallel_attention,
   _ContextParallelConfig,
 )
+
+logger = init_logger(__name__)
 
 try:
   from ffpa_attn import CUDABackend, ffpa_attn_func
@@ -350,15 +353,27 @@ def _ffpa_attn_core(
     # fast path: the backend is a cached shared object, so every fallback
     # below restores the HND layout it passes.
     backend.tensor_layout = "NHD"
-    return ffpa_attn_func(
-      query,
-      key,
-      value,
-      is_causal=is_causal,
-      scale=scale,
-      enable_gqa=enable_gqa,
-      forward_backend=backend,
-    )
+    try:
+      return ffpa_attn_func(
+        query,
+        key,
+        value,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+        forward_backend=backend,
+      )
+    except TypeError as exc:
+      # `_ffpa_attn_forward`'s inference gates decline some shapes (short packed
+      # sequences, for instance) and `ffpa_attn_func` then raises instead of
+      # falling back, because NHD storage is only valid on the fast path. The HND
+      # permute below is the same math with one extra transpose, so take it.
+      if "requires the inference fast path" not in str(exc):
+        raise
+      logger.info(
+        "FFPA declined the NHD fast path for this shape (seq_len=%s, head_dim=%s): "
+        "falling back to the HND permute.", query.size(1), query.size(-1))
+      backend.tensor_layout = "HND"
   if nhd_native and _is_qkv_contiguous(query, key, value):
     backend.tensor_layout = "HND"
     q = query.permute(0, 2, 1, 3)
@@ -457,6 +472,29 @@ def _ffpa_attention_impl(
   if ffpa_attn_func is None:
     raise RuntimeError(
       "FFPA attention backend is not available. Please install `ffpa-attn` to use it.")
+  if query.dtype not in (torch.float16, torch.bfloat16):
+    # The FFPA kernels only read fp16 / bf16. A pipeline-wide backend setting also reaches
+    # components that run in float32 (MiniMax-H3's video VAE decoder does), and those are better
+    # served by SDPA than by a hard failure at decode time.
+    if _cp_config is not None:
+      # Plain SDPA has no idea about the other ranks' shards: it would quietly return a
+      # local-sequence result instead of the global one.
+      raise ValueError("FFPA's SDPA fallback for non-fp16/bf16 inputs does not support context "
+                       "parallelism; run the float32 component without a context-parallel plan.")
+    sdpa_mask = attn_mask
+    if sdpa_mask is not None and sdpa_mask.dim() == 3:
+      # `[B, Nq, Nkv]` broadcast as `[1, B, Nq, Nkv]` would be wrong unless B == heads.
+      sdpa_mask = sdpa_mask.unsqueeze(1)
+    return torch.nn.functional.scaled_dot_product_attention(
+      query.transpose(1, 2),
+      key.transpose(1, 2),
+      value.transpose(1, 2),
+      attn_mask=sdpa_mask,
+      dropout_p=dropout_p,
+      is_causal=is_causal,
+      scale=scale,
+      enable_gqa=enable_gqa,
+    ).transpose(1, 2)
   capability = _require_supported_cuda(query, enable_fp4=enable_fp4)
   # NHD fast path: sm_120 only (the NHD O-store branch lives in the sm_120
   # CUTE_TMA family; the `>=` mirrors the upstream `prop->major >= 12`
