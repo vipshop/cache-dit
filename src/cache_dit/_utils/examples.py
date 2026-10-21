@@ -66,6 +66,7 @@ __all__ = [
   "bria_fibo_example",
   "anyflow_t2v_example",
   "anyflow_far_example",
+  "minimax_h3_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -122,6 +123,7 @@ _env_path_mapping = {
   "JOY_EDIT_IMAGE_DIR": "jdopensource/JoyAI-Image-Edit-Diffusers",
   "ANY_FLOW_DIR": "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
+  "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -2272,6 +2274,113 @@ def anyflow_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
       num_frames=num_frames,
       num_inference_steps=num_inference_steps,
       guidance_scale=1.0,
+    ),
+  )
+
+
+def _minimax_h3_drop_lm_head(pipe) -> None:
+  """Drop the LM head of the Qwen3-VL conditioner.
+
+  MiniMax-H3 conditions on the residual stream read after the 50th decoder layer, so the
+  `lm_head` projection is never executed; dropping it frees about 1.5 GiB of the 63 GiB
+  conditioner.
+
+  :param pipe: MiniMax-H3 modular pipeline.
+  """
+  text_encoder = getattr(pipe, "text_encoder", None)
+  if text_encoder is not None and getattr(text_encoder, "lm_head", None) is not None:
+    text_encoder.lm_head = None
+
+
+def _minimax_h3_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig]:
+  """DBCache config for the 50-step guidance-distilled MiniMax-H3 transformer.
+
+  Only the block stack is cached, so `Fn_compute_blocks` stays small and one block at the tail is
+  recomputed as a scaler. Every block rebuilds its AdaLN modulation from the current timestep, so
+  consecutive steps move further apart than in a fixed-modulation image model: only one
+  consecutive step is ever reused, and the threshold and warmup come from the CLI because they are
+  the knobs worth sweeping per request.
+
+  :param args: CLI arguments.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, max(1, steps // 2)),
+    num_inference_steps=steps,
+    # guidance is distilled into the weights: one forward pass per step, no uncond branch
+    enable_separate_cfg=False,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=1,
+  )
+
+
+@ExampleRegister.register("minimax_h3", default="MiniMaxAI/MiniMax-H3")
+def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA (joint text to video + audio) with MiniMax-H3.
+
+  The repository holds two checkpoint partitions: `transformer/` for `t2va` / `fl2va` and the
+  larger `transformer_ref/` for `ref2va`. `modular_workflow` prunes the blocks to `t2va`, so
+  `load_components` pulls only the 62 GiB transformer and leaves the `ref2va` partition on disk.
+
+  Neither the 62 GiB transformer nor the 63 GiB Qwen3-VL conditioner fits on a 72 GiB device
+  together with the model's activations. `--adaln-host-residency` is the tightest fit: it keeps the
+  transformer resident minus its 24 GiB of AdaLN tables and streams the conditioner, which peaks at
+  about 49 GiB. `--module-layerwise-cpu-offload` streams both components instead, and
+  `--parallel tp`/`ulysses` spreads the weights over several devices.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3 t2va example.
+  """
+  from diffusers import MiniMaxH3ModularPipeline
+
+  if args.quantize and not getattr(args, "quantize_exclude_layers", None):
+    args.quantize_exclude_layers = [
+      # The checkpoint ships these in float32 (`_keep_in_fp32_modules`), which torchao's per-row
+      # float8 path rejects, and they are a rounding-error guard rather than a memory cost.
+      "proj_in",
+      "audio_proj_in",
+      "proj_out",
+      "audio_proj_out",
+      "time_embedder",
+      "rope",
+      # Every token of every step reads the same per-block AdaLN table, so a quantization error
+      # there is applied coherently across the whole sampling trajectory instead of averaging out.
+      # The output norm modulates the sequence the same way.
+      "adaln_proj",
+      "norm_out",
+    ]
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("MiniMaxAI/MiniMax-H3", args=args),
+      pipeline_class=MiniMaxH3ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_workflow="t2va",
+      # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
+      modular_component_dtypes={
+        "transformer": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      post_init_hook=_minimax_h3_drop_lm_head,
+      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args)},
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        "A red fox trotting through a snowy pine forest at dawn, soft rim light, shallow depth "
+        "of field, cinematic."),
+      height=448,
+      width=768,
+      num_frames=124,
+      num_inference_steps=50,
     ),
   )
 

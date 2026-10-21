@@ -139,3 +139,26 @@ python3 -m cache_dit.generate flux \
 ```
 
 This will enable cache-dit's layerwise CPU offload for `nn.Module` components or pipeline. The text encoder is configured with a more conservative offload strategy since it is usually less expensive to offload and reload its weights on demand (only call once per denoising loop), while the transformer (call multiple times per denoising loop) module is configured with a more aggressive strategy that keeps more buckets resident and also allows a deeper async prefetch window. Adjust the offload parameters as needed to find the best latency/memory balance for your specific model and hardware.
+
+## AdaLN Host Residency
+
+`--adaln-host-residency` is a narrower mode for models whose transformer spends a large share of
+its weights on per-block AdaLN modulation tables. MiniMax-H3 is the motivating case: 50 blocks of
+`Linear(2688, 6 * 5376 * 3)` are 24.2 GiB of its 62 GiB transformer. Streaming the whole transformer
+per step (as `--layerwise-offload` does) therefore copies all 62 GiB host-to-device on every step.
+
+Instead, the transformer moves to the device once, only the AdaLN tables are streamed from a pinned
+host mirror, and the text encoder keeps the full layerwise path:
+
+```bash
+python3 -m cache_dit.generate minimax_h3 \
+  --adaln-host-residency \
+  --steps 50 --height 448 --width 768
+```
+
+The transformer stays resident minus its AdaLN tables (~38 GiB for MiniMax-H3), so the per-step
+host-to-device traffic drops by that share. Under `--parallel tp` the tables are already sharded
+across the ranks, so the mode degenerates to streaming the text encoder only. `--compile` / `--cuda-graph` are only rejected while the AdaLN tables are actually streamed — the
+streamed tensors change device every step — so a quantized (`--quantize`) or tensor-parallel
+(`--parallel tp`) run composes with them, and then only the text encoder is streamed.
+`--device-map-balance` is rejected outright.

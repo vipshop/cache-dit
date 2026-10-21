@@ -150,7 +150,11 @@ class BlockAdapter:
           logger.info(f"Found transformer NOT from diffusers: {transformer.__module__} "
                       "disable check_forward_pattern by default.")
 
-    if getattr(self.transformer, "_hf_hook", None) is not None:
+    # Only a real accelerate offload hook rewrites the forward signature. cache-dit's layerwise
+    # offload also tags `_hf_hook` on the module it streams, to advertise the execution device, but
+    # it leaves `forward` intact, so that marker must not disable the pattern check.
+    _hf_hook = getattr(self.transformer, "_hf_hook", None)
+    if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
       logger.warning("_hf_hook is not None, force skip pattern check!")
       self.check_forward_pattern = False
       self.check_num_outputs = False

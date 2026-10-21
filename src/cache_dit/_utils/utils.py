@@ -30,6 +30,7 @@ from ..offload import _parse_byte_size_arg
 from ..offload import layerwise_cpu_offload
 from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
+from ..quantization.config import DEFAULT_EXCLUDE_LAYERS
 
 from ..summary import strify as summary_strify
 from ..utils import is_modular_pipeline
@@ -450,6 +451,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Disable quantization for repeated blocks in transformer",
+  )
+  parser.add_argument(
+    "--quantize-exclude-layers",
+    nargs="+",
+    default=None,
+    help=("Layer names (substring match) to leave out of transformer quantization, e.g. "
+          "`--quantize-exclude-layers adaln_proj norm_out` for MiniMax-H3, whose per-block AdaLN "
+          "tables are shared by every token at every step and whose quantization error would add "
+          "up coherently over the trajectory."),
   )
   parser.add_argument(
     "--disable-per-tensor-fallback",
@@ -965,6 +975,19 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help=("Enable cache-dit generic sequential CPU offload for nn.Module components. This is "
           "intended for custom non-diffusers modules and is mutually exclusive with the diffusers "
           "pipeline offload switches."),
+  )
+  offload_group.add_argument(
+    "--adaln-host-residency",
+    dest="adaln_host_residency",
+    action="store_true",
+    default=False,
+    help=("Keep the transformer resident on the device but stream its AdaLN modulation tables "
+          "(`adaln_proj`) from a pinned host mirror, and stream the text encoder as usual. "
+          "Intended for joint video + audio models whose AdaLN tables are a large share of the "
+          "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
+          "resident footprint and the per-step host-to-device traffic. `--compile` / "
+          "--cuda-graph` are only rejected while the AdaLN tables are actually streamed, i.e. "
+          "without `--quantize` or `--parallel tp`."),
   )
   parser.add_argument(
     "--layerwise-async-transfer",
@@ -1931,6 +1954,25 @@ def maybe_compile_vae(
   return pipe_or_adapter
 
 
+def _resolve_cli_quantize_exclude_layers(args) -> Optional[List[str]]:
+  """Merge `--quantize-exclude-layers` with the default exclusion table.
+
+  The flag adds patterns instead of replacing the table: the defaults guard embeddings and
+  modulation tables, which cost far more accuracy than the memory they save, and a model-specific
+  list (MiniMax-H3 keeps its float32 projections and per-token AdaLN tables out) must not silently
+  drop them.
+
+  :param args: CLI arguments.
+  :returns: The merged patterns, or None when the flag is absent.
+  """
+  extra = getattr(args, "quantize_exclude_layers", None)
+  if not extra:
+    return None
+  merged = list(DEFAULT_EXCLUDE_LAYERS)
+  merged.extend(name for name in extra if name not in merged)
+  return merged
+
+
 def maybe_quantize_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
@@ -2001,6 +2043,7 @@ def maybe_quantize_transformer(
               quant_type=args.quantize_type,
               regional_quantize=not args.disable_regional_quantize,
               per_tensor_fallback=not args.disable_per_tensor_fallback,
+              exclude_layers=_resolve_cli_quantize_exclude_layers(args),
               svdq_kwargs=_resolve_cli_svdq_kwargs(),
               verbose=args.quantize_verbose,
             ),
@@ -2026,6 +2069,7 @@ def maybe_quantize_transformer(
               quant_type=args.quantize_type,
               regional_quantize=not args.disable_regional_quantize,
               per_tensor_fallback=not args.disable_per_tensor_fallback,
+              exclude_layers=_resolve_cli_quantize_exclude_layers(args),
               svdq_kwargs=_resolve_cli_svdq_kwargs(),
               verbose=args.quantize_verbose,
             ),
@@ -2429,6 +2473,124 @@ def _apply_layerwise_cpu_offload(
   return bool(handles) or skipped_due_to_existing_offload
 
 
+def _adaln_offload_target_names(transformer: torch.nn.Module) -> list[str]:
+  """Names of the AdaLN modulation projections of a transformer.
+
+  :param transformer: Transformer module to scan.
+  :returns: Qualified names of every `Linear` that sits under an `adaln_proj` submodule.
+  """
+  return [
+    name for name, module in transformer.named_modules()
+    if isinstance(module, torch.nn.Linear) and "adaln_proj" in name
+  ]
+
+
+def maybe_adaln_host_residency(
+  args,
+  pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
+) -> bool:
+  """Stream only the AdaLN tables of the transformer and keep the rest of it resident.
+
+  Every block of a joint video + audio DiT rebuilds its modulation from the current timestep, and
+  those tables can be a large share of the transformer (24.2 GiB of MiniMax-H3's 62 GiB). Moving the
+  whole transformer in and out on every step, as `--module-layerwise-cpu-offload` does, copies every
+  weight of the model per step; streaming only the AdaLN tables pays for their share and leaves the
+  attention / FFN weights resident. The text encoder, which does not fit either way, stays on the
+  full layerwise path, and the remaining components simply move to the device.
+
+  :param args: CLI arguments with the `layerwise_*` options.
+  :param pipe_or_adapter: Pipeline or adapter to modify in place.
+  :returns: Whether AdaLN host residency is now installed.
+  """
+
+  if not getattr(args, "adaln_host_residency", False):
+    return False
+  if getattr(args, "device_map_balance", False):
+    raise ValueError("--adaln-host-residency cannot be combined with --device-map-balance.")
+
+  _, device = get_rank_device()
+  targets = _resolve_generic_offload_targets(pipe_or_adapter)
+  if not targets:
+    raise ValueError("--adaln-host-residency found no nn.Module components to manage.")
+
+  # Tensor parallelism already divides the AdaLN tables across the ranks, and a sharded table is a
+  # DTensor, which the offload mirror cannot stream per tensor: it would fall back to moving the
+  # whole module on every block. A quantized transformer is small enough to stay resident, so
+  # streaming a bf16 AdaLN table out of it would cost more than it saves. In both cases only the
+  # text encoder is streamed.
+  tp_enabled = "tp" in (getattr(args, "parallel_type", "") or "")
+  keep_transformer_resident = tp_enabled or getattr(args, "quantize", False)
+  if ((getattr(args, "compile", False) or getattr(args, "cuda_graph", False))
+      and not keep_transformer_resident):
+    # Only the streamed variant is traced: Dynamo cannot trace the per-step device move of the
+    # AdaLN tables. With a resident transformer this mode leaves the transformer untouched, so it
+    # composes with `--compile` exactly like a plain `--quantize` run does.
+    raise ValueError("--adaln-host-residency cannot be combined with --compile or --cuda-graph "
+                     "unless the transformer stays resident (`--quantize` or `--parallel tp`).")
+
+  def _is_transformer(name: str, module: torch.nn.Module) -> bool:
+    if name.startswith("transformer"):
+      return True
+    # A bare transformer handed to the CLI resolves to a single ("module", module) target
+    return len(targets) == 1 and name == "module" and bool(_adaln_offload_target_names(module))
+
+  # The transformer has to be on the device before any handle is installed: the pinned host mirror
+  # rebinds `parameter.data`, so a `module.to()` afterwards would copy those tables back and leave
+  # the mirror stale. `--parallel tp` only places the sharded projections, so the replicated parts
+  # (`proj_in`, `token_refiner`, the rope buffer) still need this move.
+  for name, module in targets:
+    if _is_transformer(name, module):
+      module.to(device)
+
+  installed = False
+  for name, module in targets:
+    if not _is_transformer(name, module):
+      continue
+    if keep_transformer_resident:
+      logger.info(
+        "Keeping the transformer %s resident (%s): streaming the text encoder only.", name,
+        "tensor parallelism already shards its AdaLN tables"
+        if tp_enabled else "quantized weights are small enough to stay on the device")
+      installed = True
+      continue
+    target_names = _adaln_offload_target_names(module)
+    if not target_names:
+      continue
+    logger.info(
+      "Enabling cache-dit AdaLN host residency for module %s: streaming %d modulation tables ...",
+      name,
+      len(target_names),
+    )
+    layerwise_cpu_offload(
+      module,
+      module_names=target_names,
+      **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+    )
+    installed = True
+
+  if not installed:
+    raise ValueError("--adaln-host-residency needs a transformer with `adaln_proj` modulation "
+                     "tables (or, under TP, any transformer); none of the resolved components has "
+                     "one.")
+
+  for name, module in targets:
+    if _is_transformer(name, module):
+      continue
+    if _is_text_encoder_offload_target(name):
+      logger.info(
+        "Enabling cache-dit layerwise CPU offload for module %s: %s ...",
+        name,
+        module.__class__.__name__,
+      )
+      layerwise_cpu_offload(
+        module,
+        **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+      )
+    else:
+      module.to(device)
+  return True
+
+
 def maybe_generic_module_offload(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
@@ -2600,9 +2762,11 @@ def maybe_apply_optimization(
 
   # CPU Offload
   _, device = get_rank_device()
+  used_adaln_host_residency = maybe_adaln_host_residency(args, pipe_or_adapter)
   used_diffusers_cpu_offload = maybe_cpu_offload(args, pipe_or_adapter)
   used_generic_module_offload = maybe_generic_module_offload(args, pipe_or_adapter)
-  if not used_diffusers_cpu_offload and not used_generic_module_offload:
+  if (not used_adaln_host_residency and not used_diffusers_cpu_offload
+      and not used_generic_module_offload):
     # Set device if no cpu offload
     if isinstance(pipe_or_adapter, BlockAdapter):
       pipe = pipe_or_adapter.pipe
@@ -2645,6 +2809,8 @@ def strify(args, pipe_or_stats):
   if args.parallel_controlnet:
     if "_CNP" not in base_str:
       base_str += "_CNP"  # ControlNet Parallelism
+  if getattr(args, "adaln_host_residency", False):
+    base_str += "_ADALN"  # AdaLN tables streamed, transformer resident
   if args.attn is not None:
     base_str += f"_{args.attn.strip('_')}"
   if getattr(args, "ffpa_hybrid_n_early", None) is not None:

@@ -529,10 +529,12 @@ def supported_matrix() -> str | None:
       "Wan",
       "LTX",
       "VisualCloze",
+      "MiniMaxH3",
     ]
     _pipelines_supported_tensor_parallelism += [
       "Wan",
       "VisualCloze",
+      "MiniMaxH3",
     ]
 
     # Generate the supported matrix, markdown table format

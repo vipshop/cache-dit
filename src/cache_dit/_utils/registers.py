@@ -35,6 +35,7 @@ logger = init_logger(__name__)
 
 class ExampleType(Enum):
   T2V = "T2V - Text to Video"
+  T2VA = "T2VA - Text to Video with Audio"
   I2V = "I2V - Image to Video"
   T2I = "T2I - Text to Image"
   IE2I = "IE2I - Image Editing to Image"
@@ -242,6 +243,11 @@ class ExampleOutputData:
     None  # Single PIL Images or list of PIL Images
   )
   video: Optional[List[Image.Image]] = None  # List of PIL Images or video frames
+  # Generated soundtrack, when the model produces one (e.g. joint video + audio models)
+  audio: Optional[torch.Tensor] = None  # of shape (channels, num_samples)
+  audio_sampling_rate: Optional[int] = None
+  # Native frame rate of the model, used instead of `args.saved_fps` when set
+  video_fps: Optional[float] = None
   # Performance metrics
   load_time: Optional[float] = None
   warmup_time: Optional[float] = None
@@ -272,7 +278,39 @@ class ExampleOutputData:
           logger.info(f"Image {i} saved to {img_save_path}")
 
     if self.video is not None:
-      export_to_video(self.video, save_path, fps=args.saved_fps)
+      fps = self.video_fps if self.video_fps is not None else args.saved_fps
+      # `encode_video` needs both the waveform and its rate; a model that reports only one of them
+      # falls back to the video-only writer instead of failing after a long inference.
+      encoder = None
+      if self.audio is not None:
+        if self.audio_sampling_rate is None:
+          logger.warning("Audio was generated but no sampling rate was reported: writing the video "
+                         "stream only.")
+        else:
+          try:
+            from diffusers.utils.export_utils import encode_video
+
+            encoder = encode_video
+          except ImportError:
+            logger.warning("This diffusers version has no `encode_video`: writing the video stream "
+                           "only, the soundtrack is dropped.")
+      if encoder is not None:
+        try:
+          encoder(
+            video=self.video,
+            fps=fps,
+            output_path=save_path,
+            audio=self.audio,
+            audio_sample_rate=self.audio_sampling_rate,
+          )
+        except ImportError:
+          # `encode_video` needs PyAV, which is not a cache-dit dependency and is only imported
+          # when the muxing path actually runs.
+          logger.warning("PyAV is not available to mux the soundtrack: writing the video stream "
+                         "only.")
+          export_to_video(self.video, save_path, fps=fps)
+      else:
+        export_to_video(self.video, save_path, fps=fps)
       logger.info(f"Video saved to {save_path}")
 
   def _default_save_path(self) -> Optional[str]:
@@ -369,6 +407,13 @@ class ExampleInitConfig:
   # Modular pipelines only: factory of the pipeline blocks. Needed for checkpoints whose repo has no
   # `modular_model_index.json` (e.g. Qwen-Image 2.1), so `from_pretrained` cannot resolve the blocks.
   modular_blocks_factory: Optional[Callable[[], Any]] = None
+  # Modular pipelines only: workflow whose execution blocks, and therefore whose components, are
+  # loaded. Repositories that hold several checkpoint partitions (MiniMax-H3 keeps `transformer/`
+  # and `transformer_ref/`) would otherwise load every partition.
+  modular_workflow: Optional[str] = None
+  # Modular pipelines only: per-component loading dtype, e.g. `{"transformer": torch.bfloat16,
+  # "default": torch.float32}` for a checkpoint whose VAEs ship float32.
+  modular_component_dtypes: Optional[Dict[str, Any]] = None
 
   @property
   def is_modular_pipeline(self) -> bool:
@@ -412,7 +457,15 @@ class ExampleInitConfig:
           model_path,
           trust_remote_code=self.trust_remote_code,
         )
-      pipe.load_components(dtype=self.torch_dtype)
+      # `workflow` belongs to `load_components`: passing it to `from_pretrained` as well would
+      # prune the blocks twice, and the pruned tree no longer declares its `_workflow_map`.
+      load_kwargs: Dict[str, Any] = {
+        "dtype":
+        self.modular_component_dtypes if self.modular_component_dtypes else self.torch_dtype,
+      }
+      if self.modular_workflow is not None:
+        load_kwargs["workflow"] = self.modular_workflow
+      pipe.load_components(**load_kwargs)
       if self.post_init_hook is not None:
         self.post_init_hook(pipe, **kwargs)
       return pipe
@@ -651,6 +704,26 @@ class Example:
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       images = output.images if hasattr(output, "images") else output
       output_data.image = images[0] if isinstance(images, list) else images
+    elif self.init_config.task_type == ExampleType.T2VA:
+      # A modular pipeline returns the selected state values, i.e. a dict, not a `BaseOutput`.
+      if isinstance(output, dict):
+        videos = output["videos"]
+        audio = output.get("audio")
+        sampling_rate = output.get("sampling_rate")
+      else:
+        videos = getattr(output, "videos", None)
+        audio = getattr(output, "audio", None)
+        sampling_rate = getattr(output, "sampling_rate", None)
+      if videos is None:
+        raise ValueError("T2VA expects the pipeline to return `videos`, got "
+                         f"{type(output).__name__}.")
+      output_data.video = videos[0] if isinstance(videos, (list, tuple)) else videos
+      if audio is not None:
+        # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
+        output_data.audio = audio[0] if audio.dim() == 3 else audio
+        output_data.audio_sampling_rate = sampling_rate
+      # Keep the native rate: MiniMax-H3 generates at 24 fps and the soundtrack is cut to match.
+      output_data.video_fps = getattr(pipe, "fps", None)
     elif self.init_config.task_type in [
         ExampleType.T2V,
         ExampleType.I2V,
@@ -686,6 +759,9 @@ class Example:
     kwargs = dict(kwargs)
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       kwargs["output"] = "images"
+    elif self.init_config.task_type == ExampleType.T2VA:
+      # Joint video + audio models return both streams plus the rate the soundtrack runs at.
+      kwargs["output"] = ["videos", "audio", "sampling_rate"]
     return pipe(**kwargs)
 
   def new_generator(
