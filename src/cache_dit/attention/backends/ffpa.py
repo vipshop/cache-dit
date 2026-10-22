@@ -370,9 +370,15 @@ def _ffpa_attn_core(
       # permute below is the same math with one extra transpose, so take it.
       if "requires the inference fast path" not in str(exc):
         raise
-      logger.info(
-        "FFPA declined the NHD fast path for this shape (seq_len=%s, head_dim=%s): "
-        "falling back to the HND permute.", query.size(1), query.size(-1))
+      # The layout is not the problem: the fast path also requires enough rows
+      # (`8 <= Nq < 512 or Nkv < 512` returns None upstream), so a short stream
+      # takes the permute even though its storage is perfectly NHD. That repeats
+      # once per block per step, so the report is keyed by shape and emitted once.
+      logger.warning_once(
+        "FFPA declined the NHD fast path for this shape (seq_len=%s, head_dim=%s): falling back to "
+        "the HND permute. The guard is the row count, not the layout — the persist-D kernels want "
+        "at least 512 query and key rows — so a short stream pays a transpose on tiny tensors and "
+        "nothing else.", query.size(1), query.size(-1))
       backend.tensor_layout = "HND"
   if nhd_native and _is_qkv_contiguous(query, key, value):
     backend.tensor_layout = "HND"

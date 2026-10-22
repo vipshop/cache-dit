@@ -26,6 +26,7 @@ from ..caching import (
   load_parallelism_config,
 )
 from ..utils import resolve_pipe
+from ..utils import resolve_transformer
 from ..offload import _default_module_filter
 from ..offload import _find_offload_related_hf_hook
 from ..offload import _parse_byte_size_arg
@@ -1817,12 +1818,14 @@ def maybe_compile_transformer(
     else:
       pipe = pipe_or_adapter
 
-    if hasattr(pipe, "transformer"):
-      transformer = getattr(pipe, "transformer", None)
+    # A pipeline may expose its denoising transformer under another name: MiniMax-H3 loads
+    # `transformer_ref` for the `ref2va` workflow, and only ever one of the two exists.
+    transformer_name, transformer = resolve_transformer(pipe)
+    if transformer is not None:
       if _should_defer_few_shot_compile(args, transformer):
-        _register_deferred_few_shot_compile_callback(args, pipe, transformer, "transformer")
+        _register_deferred_few_shot_compile_callback(args, pipe, transformer, transformer_name)
       else:
-        _compile_transformer_module(args, pipe, transformer, "transformer")
+        _compile_transformer_module(args, pipe, transformer, transformer_name)
     else:
       logger.warning("compile is set but no transformer found in the pipeline.")
 

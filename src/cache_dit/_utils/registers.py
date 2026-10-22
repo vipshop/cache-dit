@@ -155,6 +155,10 @@ class ExampleInputData:
   # copies every value and turns a reference dataclass into a plain dict that the pipeline can no
   # longer read. Set it through `set_references`; `data()` forwards the objects unchanged.
   references: ClassVar[Any] = None
+  # Set by `Example.prepare_input_data` from the task type. A workflow that does not take references
+  # must not decode them either — the flags are global, and decoding a video or importing the
+  # reference loaders would fail a run that never asked for them.
+  allow_references: ClassVar[bool] = True
 
   def set_references(self, references: Any) -> "ExampleInputData":
     """Attach reference media for a reference-conditioned pipeline.
@@ -173,17 +177,20 @@ class ExampleInputData:
     skip_image_resize = data.pop("skip_image_resize", False)
     # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
     # forwarded separately, after the arg overrides.
-    references = getattr(self, "references", None)
+    allow_references = getattr(self, "allow_references", True)
+    references = getattr(self, "references", None) if allow_references else None
     # Decoding reference media is expensive (a video is decoded frame by frame), and `data()` is
     # called twice per run — once for the inference and once for the summary. Cache by the flags so
     # the media is decoded once.
-    cache_key = tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS)
-    cached = getattr(self, "_references_from_args_cache", None)
-    if cached is not None and cached[0] == cache_key:
-      references_from_args = cached[1]
-    else:
-      references_from_args = _references_from_args(args)
-      self._references_from_args_cache = (cache_key, references_from_args)
+    references_from_args = None
+    if allow_references:
+      cache_key = tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS)
+      cached = getattr(self, "_references_from_args_cache", None)
+      if cached is not None and cached[0] == cache_key:
+        references_from_args = cached[1]
+      else:
+        references_from_args = _references_from_args(args)
+        self._references_from_args_cache = (cache_key, references_from_args)
     # Flatten extra_args and merge into main dict
     extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
     extra_args = extra_args if extra_args is not None else {}
@@ -783,14 +790,17 @@ class Example:
     return True
 
   def prepare_input_data(self):
-    input_kwargs = self.input_data.data(self.args)
-    # `--reference-*-path` is a global flag, so it also has to be dropped for the workflows that do
-    # not take references: a regular pipeline would raise `TypeError` on the extra kwarg, and a
-    # modular one would only warn and drop it.
-    if "references" in input_kwargs and self.init_config.task_type is not ExampleType.REF2VA:
-      input_kwargs.pop("references")
+    # `--reference-*-path` is a global flag, and building references decodes media, so the decision
+    # is taken here — before `data()` reads the flags — instead of rejecting the result afterwards:
+    # a workflow that does not take references ignores them, and one that does not even have the
+    # reference loaders installed never tries to import them.
+    allow_references = self.init_config.task_type is ExampleType.REF2VA
+    self.input_data.allow_references = allow_references
+    if not allow_references and any(
+        getattr(self.args, attr, None) for attr, _ in _REFERENCE_PATH_ARGS):
       logger.warning("Ignoring reference media: %s does not take references.",
                      self.init_config.task_type.name)
+    input_kwargs = self.input_data.data(self.args)
     default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
     extra_optimize_kwargs = self.init_config.extra_optimize_kwargs
     extra_optimize_kwargs["default_num_inference_steps"] = default_num_inference_steps
@@ -798,11 +808,12 @@ class Example:
 
   def run(self) -> None:
     self.check_valid()
+    # Inputs are built and validated before the model load: a bad combination should fail in a
+    # second, not after 100+ GiB of weights are on the device.
+    input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
     start_time = time.time()
     pipe = self.init_config.get_pipe(self.args)
     load_time = time.time() - start_time
-
-    input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
 
     maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
 

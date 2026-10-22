@@ -759,3 +759,66 @@ def test_ffpa_cp_with_attn_mask_raises(name: str):
       attn_mask=mask,
       cp_config=_ContextParallelConfig(ulysses_degree=2),
     )
+
+
+def test_nhd_fallback_warns_once_per_shape(monkeypatch, caplog):
+  """A short stream reports the HND permute once per shape, not once per block and step."""
+  from types import SimpleNamespace
+
+  from cache_dit import logger as cache_dit_logger
+  from cache_dit.attention.backends import ffpa as ffpa_backend
+
+  backend = SimpleNamespace(tensor_layout="HND", is_nhd_supported=lambda head_dim: True)
+  seen = []
+
+  def _decline_nhd(query, key, value, **kwargs):
+    seen.append(backend.tensor_layout)
+    if backend.tensor_layout == "NHD":
+      raise TypeError("tensor_layout='NHD' requires the inference fast path: forward-only")
+    return torch.zeros_like(query)
+
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", _decline_nhd)
+  # `warning_once` is keyed by logger + message and lives for the process, so start clean
+  cache_dit_logger._warning_once_messages.clear()
+
+  q = torch.randn(2, 48, 4, 128)
+  caplog.set_level("WARNING", logger=ffpa_backend.logger.name)
+  # the NHD gate is inference-only (`not torch.is_grad_enabled()`), like a pipeline run
+  with torch.no_grad():
+    for _ in range(3):
+      out = ffpa_backend._ffpa_attn_core(q,
+                                         q,
+                                         q,
+                                         None,
+                                         False,
+                                         None,
+                                         False,
+                                         backend,
+                                         nhd_native=True)
+
+  # every call tried NHD first, then fell back to the HND permute
+  assert seen == ["NHD", "HND"] * 3
+  assert tuple(out.shape) == tuple(q.shape)
+  # one warning for the shape, then silence: the fallback repeats every block and every step
+  reported = [record for record in caplog.records if "declined the NHD fast path" in record.message]
+  assert len(reported) == 1, [record.message for record in reported]
+  assert reported[0].levelname == "WARNING"
+
+
+def test_nhd_fallback_still_raises_on_other_type_errors(monkeypatch):
+  """Only the documented gate is swallowed; a real argument error must surface."""
+  from types import SimpleNamespace
+
+  import pytest as _pytest
+
+  from cache_dit.attention.backends import ffpa as ffpa_backend
+
+  backend = SimpleNamespace(tensor_layout="HND", is_nhd_supported=lambda head_dim: True)
+
+  def _boom(*args, **kwargs):
+    raise TypeError("unexpected keyword argument 'enable_gqa'")
+
+  monkeypatch.setattr(ffpa_backend, "ffpa_attn_func", _boom)
+  q = torch.randn(2, 48, 4, 128)
+  with _pytest.raises(TypeError, match="unexpected keyword"), torch.no_grad():
+    ffpa_backend._ffpa_attn_core(q, q, q, None, False, None, False, backend, nhd_native=True)

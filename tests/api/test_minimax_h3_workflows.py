@@ -60,6 +60,9 @@ def _data_args(**overrides) -> argparse.Namespace:
     generator_device=None,
     seed=None,
     extra_input_kwargs=None,
+    # `Example.__init__` asks the distributed helpers whether this run is parallel
+    parallel_type=None,
+    config_path=None,
   )
   values.update(overrides)
   return argparse.Namespace(**values)
@@ -349,3 +352,82 @@ def test_text_only_conditioner_has_no_vision_tower():
   conditioner.model = torch.nn.Module()
   conditioner.model.layers = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
   assert _keep_vision_tower_resident(conditioner, torch.device("cpu")) is None
+
+
+def test_reference_flags_are_ignored_by_a_workflow_that_takes_none(monkeypatch):
+  """A global flag must not decode media (or import loaders) for a task that has no references."""
+  from cache_dit._utils import registers as registers_mod
+
+  def _explode(*args, **kwargs):
+    raise AssertionError("references must not be built for a workflow that takes none")
+
+  monkeypatch.setattr(registers_mod, "_references_from_args", _explode)
+  inputs = ExampleInputData().set_references(["sentinel"])
+  inputs.allow_references = False
+
+  data = inputs.data(_data_args(reference_image_path=["a.png"]))
+  assert "references" not in data
+
+  # `prepare_input_data` is what sets the flag, from the task type
+  example = Example(
+    args=_data_args(reference_image_path=["a.png"]),
+    init_config=SimpleNamespace(task_type=ExampleType.T2VA, extra_optimize_kwargs={}),
+    input_data=ExampleInputData(),
+  )
+  kwargs, _ = example.prepare_input_data()
+  assert "references" not in kwargs
+
+
+def test_fl2va_defaults_skip_the_demo_asset_when_overridden(tmp_path, monkeypatch):
+  """Passing both frames must not resolve (or download) the bundled pair at all."""
+  from cache_dit._utils import examples as examples_mod
+
+  def _explode(name: str):
+    raise AssertionError(f"demo asset '{name}' must not be resolved when an override is given")
+
+  monkeypatch.setattr(examples_mod, "_minimax_h3_demo_asset", _explode)
+  args = _data_args(image_path=_write_image(tmp_path, "first.png"),
+                    last_image_path=_write_image(tmp_path, "last.png"))
+  args.quantize = False
+  example = examples_mod.minimax_h3_fl2va_example(args)
+  data = example.input_data.data(args)
+  assert isinstance(data["image"], Image.Image)
+  assert isinstance(data["last_image"], Image.Image)
+
+
+def test_ref2va_defaults_skip_the_demo_media_when_overridden(tmp_path, monkeypatch):
+  """A reference override replaces the bundled pair before it is decoded."""
+  pytest.importorskip("av")
+  from cache_dit._utils import examples as examples_mod
+
+  def _explode(name: str):
+    raise AssertionError(f"demo asset '{name}' must not be resolved when references are given")
+
+  monkeypatch.setattr(examples_mod, "_minimax_h3_demo_asset", _explode)
+  args = _data_args(reference_image_path=[_write_image(tmp_path, "ref.png")])
+  args.quantize = False
+  example = examples_mod.minimax_h3_ref2va_example(args)
+  data = example.input_data.data(args)
+  assert len(data["references"]) == 1
+
+
+def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
+  """`ref2va` has no `transformer`, so a compile that only looks for one would silently no-op."""
+  from cache_dit._utils import utils as utils_mod
+
+  compiled = []
+  monkeypatch.setattr(utils_mod, "set_compile_configs", lambda **kwargs: None)
+  monkeypatch.setattr(utils_mod, "_should_defer_few_shot_compile", lambda args, module: False)
+  monkeypatch.setattr(utils_mod, "_compile_transformer_module",
+                      lambda args, pipe, module, name: compiled.append(name))
+
+  transformer_ref = torch.nn.Linear(2, 2)
+  pipe = SimpleNamespace(transformer_ref=transformer_ref)
+  args = _data_args()
+  args.compile = True
+  args.svdq_few_shot_compile = False
+  args.cuda_graph = False
+  args.ulysses_anything = False
+
+  utils_mod.maybe_compile_transformer(args, pipe)
+  assert compiled == ["transformer_ref"]

@@ -2479,8 +2479,10 @@ def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
 
   _minimax_h3_quantize_exclusions(args)
 
-  def _load(name: str):
-    return load_image(_minimax_h3_demo_asset(name)).convert("RGB")
+  def _load(name: str, override):
+    # Only resolve a default when the caller did not supply that frame: an override replaces it
+    # entirely, and a checkout-less install would otherwise download artwork it never uses.
+    return None if override is not None else load_image(_minimax_h3_demo_asset(name)).convert("RGB")
 
   return Example(
     args=args,
@@ -2503,8 +2505,8 @@ def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
       prompt=(
         "The astronaut crosses the lunar surface as the camera pushes in towards the crater rim, "
         "dust drifting in the low gravity, earthrise on the horizon, cinematic."),
-      image=_load("first_frame.png"),
-      last_image=_load("last_frame.png"),
+      image=_load("first_frame.png", args.image_path),
+      last_image=_load("last_frame.png", getattr(args, "last_image_path", None)),
       skip_image_resize=True,
       height=448,
       width=768,
@@ -2536,6 +2538,26 @@ def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
 
   _minimax_h3_quantize_exclusions(args)
 
+  input_data = ExampleInputData(
+    prompt=(
+      "The astronaut from the reference image steps out of the lander and follows the hiker's "
+      "trail across the lunar surface, dust drifting in the low gravity, earthrise on the "
+      "horizon, cinematic."),
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=50,
+  )
+  # `--reference-*-path` replaces the whole list, and constructing a reference decodes its media, so
+  # the bundled pair is only built when the caller did not bring their own.
+  if not any(
+      getattr(args, attr, None)
+      for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
+    input_data.set_references([
+      MiniMaxH3ImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
+      MiniMaxH3VideoReference.from_file(_minimax_h3_demo_asset("reference_video.mp4")),
+    ])
+
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -2553,19 +2575,7 @@ def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
       post_init_hook=_minimax_h3_drop_lm_head,
       extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args, "ref2va")},
     ),
-    input_data=ExampleInputData(
-      prompt=(
-        "The astronaut from the reference image steps out of the lander and follows the hiker's "
-        "trail across the lunar surface, dust drifting in the low gravity, earthrise on the "
-        "horizon, cinematic."),
-      height=448,
-      width=768,
-      num_frames=124,
-      num_inference_steps=50,
-    ).set_references([
-      MiniMaxH3ImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
-      MiniMaxH3VideoReference.from_file(_minimax_h3_demo_asset("reference_video.mp4")),
-    ]),
+    input_data=input_data,
   )
 
 
