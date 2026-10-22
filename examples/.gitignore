@@ -168,6 +168,7 @@ report*.html
 *.mp4
 # Demo frames the CLI examples load by default: they are inputs, not outputs.
 !data/minimax_h3/*.png
+!data/minimax_h3/*.mp4
 tmp*
 *.safetensors
 ptq/FLUX.2-klein*

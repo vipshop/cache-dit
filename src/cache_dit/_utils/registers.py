@@ -7,7 +7,7 @@ import dataclasses
 from PIL import Image
 from enum import Enum
 import numpy as np
-from typing import Dict, Any, Union, Optional, List, Callable
+from typing import Dict, Any, Union, Optional, List, Callable, ClassVar
 from diffusers.utils import export_to_video, load_image
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
@@ -44,13 +44,66 @@ class ExampleType(Enum):
   # Same first/last-frame conditioning as FLF2V, but the pipeline also generates a soundtrack, so
   # the output parse has to go through the audio-video path instead of `output.frames`.
   FL2VA = "FL2VA - First Last Frames to Video with Audio"
+  # Reference-conditioned: image / video / audio references plus a prompt.
+  REF2VA = "REF2VA - Reference to Video with Audio"
 
 
 # Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
 # asks a modular pipeline for those state keys) and `run` (which parses them) must agree on this
 # set: a mismatch leaves `output` as the whole `PipelineState`, and the parse step then fails only
 # after the full inference has already run.
-_AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA})
+_AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA, ExampleType.REF2VA})
+
+# `--reference-*-path` flags and the diffusers class that loads them. Order is semantic: a pipeline
+# consumes references in the order it receives them.
+_REFERENCE_PATH_ARGS = (
+  ("reference_image_path", "MiniMaxH3ImageReference"),
+  ("reference_video_path", "MiniMaxH3VideoReference"),
+  ("reference_audio_path", "MiniMaxH3AudioReference"),
+)
+
+
+def _references_from_args(args: argparse.Namespace) -> Optional[list]:
+  """Build reference objects from the `--reference-*-path` flags.
+
+  :param args: CLI arguments.
+  :returns: The reference objects in image -> video -> audio order, or None when no flag is set.
+  :raises ImportError: When the installed diffusers has no reference classes for this model.
+  """
+  selected = [(attr, cls_name) for attr, cls_name in _REFERENCE_PATH_ARGS
+              if getattr(args, attr, None)]
+  if not selected:
+    return None
+  import diffusers
+
+  # The reference data classes come from the pipeline package when the installed diffusers has
+  # them; an older release only exposes some of them at the top level.
+  try:
+    from diffusers.modular_pipelines import minimax_h3 as _h3_references
+  except ImportError:  # pragma: no cover - older diffusers
+    _h3_references = None
+
+  references = []
+  for attr, cls_name in selected:
+    reference_cls = getattr(_h3_references, cls_name, None)
+    if reference_cls is None:
+      reference_cls = getattr(diffusers, cls_name, None)
+    if reference_cls is None:
+      raise ImportError(f"`{cls_name}` is not exposed by the installed diffusers, so "
+                        f"--{attr.replace('_', '-')} cannot be used. Pass `references` "
+                        "programmatically instead.")
+    paths = getattr(args, attr)
+    if isinstance(paths, str):
+      # A programmatic caller may pass a single path; iterating it would walk the characters.
+      paths = [paths]
+    for path in paths:
+      references.append(reference_cls.from_file(path))
+  if references and all(getattr(reference, "kind", None) == "audio" for reference in references):
+    # Fail here rather than after the 60 GiB conditioner has been loaded: the setup step rejects a
+    # soundtrack that has no visual reference to go with it.
+    raise ValueError("An audio reference has to be paired with at least one image or video "
+                     "reference.")
+  return references
 
 
 @dataclasses.dataclass
@@ -97,12 +150,40 @@ class ExampleInputData:
   # Some extra args, e.g, editing model specific inputs
   extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
+  # Reference media for reference-conditioned pipelines (MiniMax-H3 `ref2va`). Declared as a
+  # `ClassVar` — i.e. **not** a field — on purpose: `data()` runs `dataclasses.asdict`, which deep
+  # copies every value and turns a reference dataclass into a plain dict that the pipeline can no
+  # longer read. Set it through `set_references`; `data()` forwards the objects unchanged.
+  references: ClassVar[Any] = None
+
+  def set_references(self, references: Any) -> "ExampleInputData":
+    """Attach reference media for a reference-conditioned pipeline.
+
+    :param references: List of pipeline-specific reference objects, e.g. `MiniMaxH3ImageReference`.
+    :returns: This instance, so the call can wrap the constructor.
+    """
+    self.references = list(references)
+    return self
+
   def data(self, args: argparse.Namespace) -> Dict[str, Any]:
     data = dataclasses.asdict(self)
     # `asdict` keeps falsy values, so a field that only steers this builder has to leave before the
     # `is not None` filter below: forwarding `skip_image_resize=False` to the pipeline would be a
     # `TypeError` for models that never declare it.
     skip_image_resize = data.pop("skip_image_resize", False)
+    # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
+    # forwarded separately, after the arg overrides.
+    references = getattr(self, "references", None)
+    # Decoding reference media is expensive (a video is decoded frame by frame), and `data()` is
+    # called twice per run — once for the inference and once for the summary. Cache by the flags so
+    # the media is decoded once.
+    cache_key = tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS)
+    cached = getattr(self, "_references_from_args_cache", None)
+    if cached is not None and cached[0] == cache_key:
+      references_from_args = cached[1]
+    else:
+      references_from_args = _references_from_args(args)
+      self._references_from_args_cache = (cache_key, references_from_args)
     # Flatten extra_args and merge into main dict
     extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
     extra_args = extra_args if extra_args is not None else {}
@@ -189,6 +270,10 @@ class ExampleInputData:
     # Remove redundant keys from input data
     input_data.pop("seed", None)
     input_data.pop("gen_device", None)
+    if references_from_args:
+      input_data["references"] = references_from_args
+    elif references:
+      input_data["references"] = references
     return input_data
 
   def new_generator(
@@ -219,6 +304,9 @@ class ExampleInputData:
         summary_str += f"- {k}: {v}\n"
       elif k in ["height", "width", "num_inference_steps", "num_frames"]:
         summary_str += f"- {k}: {v}\n"
+      elif k == "references":
+        count = len(v) if isinstance(v, (list, tuple)) else 1
+        summary_str += f"- {k}: {count} item(s)\n"
       elif k in ["image", "mask_image", "control_image", "control_mask", "last_image"]:
         if isinstance(v, Image.Image):
           W, H = v.size
@@ -696,6 +784,13 @@ class Example:
 
   def prepare_input_data(self):
     input_kwargs = self.input_data.data(self.args)
+    # `--reference-*-path` is a global flag, so it also has to be dropped for the workflows that do
+    # not take references: a regular pipeline would raise `TypeError` on the extra kwarg, and a
+    # modular one would only warn and drop it.
+    if "references" in input_kwargs and self.init_config.task_type is not ExampleType.REF2VA:
+      input_kwargs.pop("references")
+      logger.warning("Ignoring reference media: %s does not take references.",
+                     self.init_config.task_type.name)
     default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
     extra_optimize_kwargs = self.init_config.extra_optimize_kwargs
     extra_optimize_kwargs["default_num_inference_steps"] = default_num_inference_steps

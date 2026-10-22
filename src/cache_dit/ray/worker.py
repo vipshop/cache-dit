@@ -13,6 +13,7 @@ from diffusers.models.modeling_utils import ModelMixin
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
 from ..quantization import QuantizeConfig
+from ..utils import assign_transformer, resolve_transformer
 from ._tree import cpu_tensor_tree
 from ._tree import device_tensor_tree
 from .dist import destroy_worker_process_group
@@ -319,7 +320,10 @@ class RayPipelineWorker:
         component.to(self.device)
     self.pipe = pipe
     self.pipe.set_progress_bar_config(disable=True)
-    self.pipe.transformer.eval()
+    transformer_name, transformer = resolve_transformer(self.pipe)
+    if transformer is None:
+      raise ValueError("The pipeline has no transformer to set up.")
+    transformer.eval()
     par_config = (self.parallelism_config
                   if not self.parallelism_config._ray_skip_native_parallelism else None)
     if self.cache_context_kwargs or par_config is not None or self.quantize_config is not None:
@@ -331,10 +335,15 @@ class RayPipelineWorker:
         attention_backend=self.parallelism_config.attention_backend,
         **(self.cache_context_kwargs or {}),
       )
-    self.pipe.transformer = _maybe_compile_transformer(
-      self.pipe.transformer,
-      self.parallelism_config,
-    )
+    # Re-resolve after the optimization above: parallelism and quantization are free to hand back a
+    # different module, and compiling the pre-optimization object would silently drop their result.
+    transformer_name, transformer = resolve_transformer(self.pipe)
+    if transformer is not None:
+      assign_transformer(
+        self.pipe,
+        _maybe_compile_transformer(transformer, self.parallelism_config),
+        name=transformer_name,
+      )
     return self.device_info()
 
   def load_pipeline_from_pretrained(
@@ -450,7 +459,10 @@ class RayPipelineWorker:
         component.to(self.device)
     self.pipe = pipe
     self.pipe.set_progress_bar_config(disable=True)
-    self.pipe.transformer.eval()
+    transformer_name, transformer = resolve_transformer(self.pipe)
+    if transformer is None:
+      raise ValueError("The pipeline has no transformer to set up.")
+    transformer.eval()
     par_config = (self.parallelism_config
                   if not self.parallelism_config._ray_skip_native_parallelism else None)
     if self.cache_context_kwargs or par_config is not None or self.quantize_config is not None:
@@ -462,10 +474,15 @@ class RayPipelineWorker:
         attention_backend=self.parallelism_config.attention_backend,
         **(self.cache_context_kwargs or {}),
       )
-    self.pipe.transformer = _maybe_compile_transformer(
-      self.pipe.transformer,
-      self.parallelism_config,
-    )
+    # Re-resolve after the optimization above: parallelism and quantization are free to hand back a
+    # different module, and compiling the pre-optimization object would silently drop their result.
+    transformer_name, transformer = resolve_transformer(self.pipe)
+    if transformer is not None:
+      assign_transformer(
+        self.pipe,
+        _maybe_compile_transformer(transformer, self.parallelism_config),
+        name=transformer_name,
+      )
     return self.device_info()
 
   def ready(self) -> int:

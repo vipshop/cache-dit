@@ -162,6 +162,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help=("Path of the *last* frame for first/last-frame conditioning (MiniMax-H3 `fl2va`, which "
           "takes `image` and `last_image` together)"),
   )
+  for _flag, _kind in (
+    ("--reference-image-path", "image"),
+    ("--reference-video-path", "video"),
+    ("--reference-audio-path", "audio"),
+  ):
+    parser.add_argument(
+      _flag,
+      nargs="+",
+      default=None,
+      help=(f"Path(s) of {_kind} reference(s) for a reference-conditioned model (MiniMax-H3 "
+            "`ref2va`). References are consumed in image -> video -> audio order"),
+    )
   # Acceleration Config path
   parser.add_argument(
     "--config-path",

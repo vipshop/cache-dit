@@ -69,6 +69,7 @@ __all__ = [
   "anyflow_far_example",
   "minimax_h3_example",
   "minimax_h3_fl2va_example",
+  "minimax_h3_ref2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -2510,6 +2511,61 @@ def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
       num_frames=124,
       num_inference_steps=50,
     ),
+  )
+
+
+@ExampleRegister.register("minimax_h3_ref2va", default="MiniMaxAI/MiniMax-H3")
+def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Ref2Va (reference image / video / audio to video + audio) with MiniMax-H3.
+
+  `ref2va` is the third checkpoint partition: this workflow loads `transformer_ref/` instead of
+  `transformer/`, so it is never in memory at the same time as the `t2va` / `fl2va` weights.
+  References are consumed in the order they are given and packed in front of the target sequence as
+  read-only rows; they do not bind the generated geometry, which comes from `height` / `width`, and
+  a reference video is cut to the requested duration rather than the other way round.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3 ref2va example.
+  """
+  from diffusers import MiniMaxH3ModularPipeline
+  # The reference data classes are exported by the pipeline package, not by `diffusers` itself.
+  from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3ImageReference,
+    MiniMaxH3VideoReference,
+  )
+
+  _minimax_h3_quantize_exclusions(args)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.REF2VA,
+      model_name_or_path=_path("MiniMaxAI/MiniMax-H3", args=args),
+      pipeline_class=MiniMaxH3ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_workflow="ref2va",
+      # The two VAEs ship float32; only the conditioner and the reference transformer are bfloat16.
+      modular_component_dtypes={
+        "transformer_ref": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      post_init_hook=_minimax_h3_drop_lm_head,
+      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args, "ref2va")},
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        "The astronaut from the reference image steps out of the lander and follows the hiker's "
+        "trail across the lunar surface, dust drifting in the low gravity, earthrise on the "
+        "horizon, cinematic."),
+      height=448,
+      width=768,
+      num_frames=124,
+      num_inference_steps=50,
+    ).set_references([
+      MiniMaxH3ImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
+      MiniMaxH3VideoReference.from_file(_minimax_h3_demo_asset("reference_video.mp4")),
+    ]),
   )
 
 

@@ -73,7 +73,38 @@ def _write_image(tmp_path, name: str, size=(80, 40)) -> str:
 
 def test_fl2va_belongs_to_the_audio_video_tasks():
   """`call_pipe` and `run` share this set, so a new enum member has to be wired here."""
-  assert _AUDIO_VIDEO_TASKS == frozenset({ExampleType.T2VA, ExampleType.FL2VA})
+  assert _AUDIO_VIDEO_TASKS == frozenset({ExampleType.T2VA, ExampleType.FL2VA, ExampleType.REF2VA})
+
+
+def test_references_survive_the_input_data_round_trip():
+  """`references` must not go through `asdict`, which would flatten them into plain dicts."""
+  marker = object()
+  data = ExampleInputData().set_references([marker]).data(_data_args())
+  assert data["references"][0] is marker
+
+
+def test_reference_paths_are_loaded_in_pipeline_order(tmp_path):
+  """`--reference-*-path` builds the media objects, in image -> video -> audio order."""
+  pytest.importorskip("av")
+  image = _write_image(tmp_path, "ref.png")
+  data = ExampleInputData().data(
+    _data_args(reference_image_path=[image, image],
+               reference_video_path=[_reference_video_asset()]))
+  kinds = [reference.kind for reference in data["references"]]
+  # exact order, so a reversed implementation cannot pass by having both kinds present
+  assert kinds == ["image", "image", "video"]
+
+
+def test_ref2va_has_its_own_conservative_preset():
+  config = _minimax_h3_cache_config(_cache_args(), "ref2va")
+  assert config.residual_diff_threshold == _MINIMAX_H3_CACHE_THRESHOLDS["ref2va"]
+  assert config.residual_diff_threshold < _MINIMAX_H3_CACHE_THRESHOLDS["fl2va"]
+  assert config.max_continuous_cached_steps == 1
+
+
+def test_unknown_workflow_has_no_cache_preset():
+  with pytest.raises(ValueError, match="cache preset"):
+    _minimax_h3_cache_config(_cache_args(), "v2v")
 
 
 def test_call_pipe_requests_audio_video_state(monkeypatch):
@@ -110,6 +141,13 @@ def test_skip_image_resize_never_reaches_the_pipeline(tmp_path):
   """`asdict` keeps `False`, and the `is not None` filter would forward it as a kwarg."""
   data = ExampleInputData(skip_image_resize=False).data(_data_args())
   assert "skip_image_resize" not in data
+
+
+def _reference_video_asset() -> str:
+  """Path of the bundled reference clip, used by the reference-path test."""
+  from cache_dit._utils.examples import _minimax_h3_demo_asset
+
+  return _minimax_h3_demo_asset("reference_video.mp4")
 
 
 def _cache_args(**overrides) -> argparse.Namespace:

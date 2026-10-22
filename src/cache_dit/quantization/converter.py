@@ -23,6 +23,7 @@ import sys
 import torch
 
 from ..logger import init_logger
+from ..utils import assign_transformer, resolve_transformer
 
 logger = init_logger(__name__)
 
@@ -159,11 +160,21 @@ def entrypoint(argv: list[str] | None = None) -> None:
   )
 
   # --- Quantize and serialize ---
-  memory_before_gib = _module_memory_gib(pipe.transformer)
-  logger.info("Transformer memory before quantize: %.2f GiB", memory_before_gib)
-  logger.info("Quantizing transformer (%s) and saving to %s ...", quant_type, save_dir)
-  pipe.transformer = quantize(pipe.transformer, config)
-  memory_after_gib = _module_memory_gib(pipe.transformer)
+  # A pipeline may keep its denoising transformer under another name (MiniMax-H3 loads
+  # `transformer_ref` for the `ref2va` workflow), so read and write the partition it actually has.
+  # Note that this offline CLI loads a plain `DiffusionPipeline`, which has no workflow concept: for
+  # a repository that holds several partitions it quantizes the primary one (`transformer`).
+  transformer_name, transformer = resolve_transformer(pipe)
+  if transformer is None:
+    raise ValueError("The pipeline has no transformer to quantize.")
+  memory_before_gib = _module_memory_gib(transformer)
+  logger.info("Transformer '%s' memory before quantize: %.2f GiB", transformer_name,
+              memory_before_gib)
+  logger.info("Quantizing transformer '%s' (%s) and saving to %s ...", transformer_name, quant_type,
+              save_dir)
+  transformer = quantize(transformer, config)
+  assign_transformer(pipe, transformer, name=transformer_name)
+  memory_after_gib = _module_memory_gib(transformer)
   logger.info("Transformer memory after quantize: %.2f GiB (%.1fx reduction)", memory_after_gib,
               memory_before_gib / memory_after_gib)
 
