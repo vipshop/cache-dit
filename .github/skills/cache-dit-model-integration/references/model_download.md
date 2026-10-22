@@ -71,6 +71,28 @@ ls /workspace/dev/vipdev/hf_models/Qwen-Image-2.1   # expect model_index.json / 
 export QWEN_IMAGE_21_DIR=/workspace/dev/vipdev/hf_models/Qwen-Image-2.1      # see ./testing.md, ./cli.md
 ```
 
+### Step 4 — register the model dir in `init_env.sh` (dev convenience, NOT part of the integration workflow)
+
+Do this right after every successful download. It is pure bookkeeping: later shells and ad-hoc scripts get the path for free instead of re-exporting it by hand. It does not affect the integration phases, tests, or acceptance criteria.
+
+Add **two** lines to `/workspace/dev/vipshop/cache-dit/init_env.sh`:
+
+```bash
+# 1) export, grouped with the other exports of the same model family
+export QWEN_IMAGE_21_DIR=/workspace/dev/vipdev/hf_models/Qwen-Image-2.1
+
+# 2) matching echo, appended to the "Environment Variables" echo block near the bottom
+echo "QWEN_IMAGE_21_DIR: $QWEN_IMAGE_21_DIR"
+```
+
+Rules:
+
+- **Name**: repo/dir name uppercased with `.` / `-` → `_`, plus the `_DIR` suffix (`FLUX.2-klein-9B` → `FLUX_2_KLEIN_9B_DIR`). If the model is already wired in `./cli.md` / `_env_path_mapping`, reuse **that exact name** so the CLI default and `init_env.sh` stay in sync.
+- **Value**: the **directory under `/workspace/dev/vipdev/hf_models/`**, never the repo id.
+- **Placement**: put the export next to the same-family exports (image / video / nunchaku-quantized / eval), not at the end of the file.
+- **Echo**: insert after the last `echo` of that family's block (e.g. next to `echo "QWEN_IMAGE_2512_DIR: ..."`); the file keeps exports and echoes in the same order.
+- **Dedupe**: `grep -n '<NAME>' init_env.sh` before adding — the file already contains a duplicate (`ALLEGRO_DIR` appears twice); do not add a third.
+
 ## D.2 Fallback Flow — HuggingFace via hf-mirror.com (field-verified)
 
 Direct HF is blocked from this network (`curl https://huggingface.co` times out), but the mirror endpoint is **field-verified (2026-10-22, `Qwen/Qwen-Image-2.1`, 17.6 GB)**. Use this flow for HF-only weights (e.g. `NucleusAI/NucleusMoE-Image`, which has no ModelScope mirror); prefer D.1 when the model is on ModelScope.
@@ -84,6 +106,7 @@ HF_ENDPOINT=https://hf-mirror.com hf download Qwen/Qwen-Image-2.1 --local_dir ./
 - A benign `Exception ignored in: module 'threading'` warning may appear mid-download (hub worker threads); the download continues and completes — ignore it unless files are missing at the end.
 - `hf download` is the current huggingface_hub CLI; the legacy `huggingface-cli download` alias still works but is deprecated.
 - Same options as ModelScope's CLI conceptually: `--include` / `--exclude` globs, `--revision`, resume on re-run.
+- Both flows converge afterwards: run **D.1 Step 3** (verify + env var) and **D.1 Step 4** (register in `init_env.sh`).
 
 ## D.3 Conventions and Pitfalls
 
@@ -91,3 +114,4 @@ HF_ENDPOINT=https://hf-mirror.com hf download Qwen/Qwen-Image-2.1 --local_dir ./
 - **Prefer `-Diffusers`-suffix weight repos** when a model ships both original and diffusers layouts (e.g. `Wan-AI/Wan2.2-Animate-2-14B-Diffusers`) — cache-dit and diffusers load the diffusers layout.
 - Some large repos host multiple formats side by side; use `--exclude` to skip the format you do not need instead of downloading everything.
 - After download, re-check `model_index.json` exists for diffusers-format repos — its absence usually means you grabbed the original-format repo.
+- **Always finish with Step 4**: register the new dir in `/workspace/dev/vipshop/cache-dit/init_env.sh` (export + echo). Dev convenience only — never a gate for the integration phases, but skipping it means re-exporting the path in every new shell.
