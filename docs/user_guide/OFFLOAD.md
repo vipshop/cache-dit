@@ -162,3 +162,9 @@ across the ranks, so the mode degenerates to streaming the text encoder only. `-
 streamed tensors change device every step — so a quantized (`--quantize`) or tensor-parallel
 (`--parallel tp`) run composes with them, and then only the text encoder is streamed.
 `--device-map-balance` is rejected outright.
+
+A vision-language conditioner is streamed with one exception: the vision tower stays on the device
+whenever the workflow conditions on frames or videos (`fl2va`, `ref2va`), and it is streamed as usual
+for text-only workflows. A streamed tower breaks because its forward reads `self.pos_embed.weight.
+device` from a plain method to place its interpolation constants, so those constants end up on the
+offload device and the first `hidden_states + pos_embeds` fails with a device mismatch.

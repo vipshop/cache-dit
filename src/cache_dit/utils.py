@@ -67,6 +67,61 @@ def resolve_pipe(pipe_or_adapter: Any) -> Any:
   return getattr(pipe_or_adapter, "pipe", None)
 
 
+# Attribute names a pipeline can use for its denoising transformer. MiniMax-H3 keeps two
+# checkpoint partitions and loads exactly one of them (`transformer/` for `t2va` / `fl2va`,
+# `transformer_ref/` for `ref2va`), so the second name is a substitute, never an extra component.
+TRANSFORMER_ATTR_NAMES = ("transformer", "transformer_ref")
+
+
+def resolve_transformer(pipe_or_adapter: Any) -> Tuple[Optional[str], Any]:
+  """Resolve the denoising transformer of a pipeline or adapter, with the attribute it came from.
+
+  Callers that only read the module can use `pipe.transformer` directly; this helper exists for the
+  pipelines that only have a differently named partition, and for the callers that have to write the
+  module back — assigning `pipe.transformer` on a `ModularPipeline` that owns `transformer_ref`
+  would silently create a second, unused attribute.
+
+  :param pipe_or_adapter: Pipeline, modular pipeline, `BlockAdapter` or bare `nn.Module`.
+  :returns: ``(attribute_name, module)``; the name is None for a bare module, and both are
+    ``(None, None)`` when nothing matches.
+  """
+  # `resolve_pipe` returns None for anything that is not a (modular) pipeline, and the callers also
+  # pass bare objects that merely carry the attribute, so fall back to the object itself.
+  pipe = resolve_pipe(pipe_or_adapter)
+  if pipe is None:
+    pipe = pipe_or_adapter
+  for name in TRANSFORMER_ATTR_NAMES:
+    module = getattr(pipe, name, None)
+    if module is not None:
+      return name, module
+  # A caller holding the transformer itself (the transformer-only adapter path) gets it back with
+  # no attribute name; this is a last resort so a wrapper module that *owns* a transformer is still
+  # resolved through its attribute above.
+  if isinstance(pipe_or_adapter, torch.nn.Module):
+    return None, pipe_or_adapter
+  return None, None
+
+
+def assign_transformer(pipe: Any, module: torch.nn.Module, name: Optional[str] = None) -> str:
+  """Store a (possibly replaced) transformer back on ``pipe`` under the right attribute name.
+
+  :param pipe: Pipeline that owns the transformer.
+  :param module: Transformer to store.
+  :param name: Attribute to use; resolved from ``pipe`` when omitted.
+  :returns: The attribute name that was written.
+  :raises AttributeError: When the pipeline has no such attribute, which would otherwise create a
+    second, unused partition next to the one the denoise step reads.
+  """
+  resolved_name, _ = resolve_transformer(pipe)
+  target = name or resolved_name or TRANSFORMER_ATTR_NAMES[0]
+  if not hasattr(pipe, target):
+    raise AttributeError(f"{type(pipe).__name__} has no '{target}' attribute to replace; pass the "
+                         f"name of the partition it actually loaded "
+                         f"({', '.join(TRANSFORMER_ATTR_NAMES)}).")
+  setattr(pipe, target, module)
+  return target
+
+
 def _is_text_encoder(module: torch.nn.Module) -> bool:
   _import_module = module.__class__.__module__
   # Including the cases for normal text encoder and vision-language

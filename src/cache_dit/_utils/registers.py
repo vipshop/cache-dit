@@ -41,6 +41,16 @@ class ExampleType(Enum):
   IE2I = "IE2I - Image Editing to Image"
   FLF2V = "FLF2V - First Last Frames to Video"
   VACE = "VACE - Video All-in-one Creation and Editing"
+  # Same first/last-frame conditioning as FLF2V, but the pipeline also generates a soundtrack, so
+  # the output parse has to go through the audio-video path instead of `output.frames`.
+  FL2VA = "FL2VA - First Last Frames to Video with Audio"
+
+
+# Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
+# asks a modular pipeline for those state keys) and `run` (which parses them) must agree on this
+# set: a mismatch leaves `output` as the whole `PipelineState`, and the parse step then fails only
+# after the full inference has already run.
+_AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA})
 
 
 @dataclasses.dataclass
@@ -62,6 +72,12 @@ class ExampleInputData:
   # Specific inputs for image editing
   image: Optional[Union[List[Image.Image], Image.Image]] = None
   mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
+  # Specific inputs for first/last-frame conditioning, e.g. MiniMax-H3 `fl2va`
+  last_image: Optional[Image.Image] = None
+  # Skip the client-side resize of `image` / `last_image`. A pipeline that derives its canvas from
+  # the source aspect ratio and crops or stretches the conditioning frame itself (MiniMax-H3's
+  # resize step) would otherwise resample twice, which changes the composition it asked for.
+  skip_image_resize: bool = False
   # Specific inputs for video generation, e.g, Wan VACE
   video: Optional[List[Image.Image]] = None
   mask: Optional[List[Image.Image]] = None
@@ -83,6 +99,10 @@ class ExampleInputData:
 
   def data(self, args: argparse.Namespace) -> Dict[str, Any]:
     data = dataclasses.asdict(self)
+    # `asdict` keeps falsy values, so a field that only steers this builder has to leave before the
+    # `is not None` filter below: forwarding `skip_image_resize=False` to the pipeline would be a
+    # `TypeError` for models that never declare it.
+    skip_image_resize = data.pop("skip_image_resize", False)
     # Flatten extra_args and merge into main dict
     extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
     extra_args = extra_args if extra_args is not None else {}
@@ -108,32 +128,48 @@ class ExampleInputData:
       input_data["num_inference_steps"] = args.num_inference_steps
     if args.num_frames is not None:
       input_data["num_frames"] = args.num_frames
+    # Determine resize target: explicit --input-height/--input-width first,
+    # then fall back to output height/width.
+    input_height = getattr(args, "input_height", None)
+    input_width = getattr(args, "input_width", None)
+    resize_h = input_height if input_height is not None else input_data.get("height")
+    resize_w = input_width if input_width is not None else input_data.get("width")
+
+    def _prepare(image: Image.Image) -> Image.Image:
+      # `skip_image_resize` leaves the geometry to the pipeline: MiniMax-H3 derives its canvas from
+      # the source aspect ratio and stretches the first frame / cover-crops the last one itself, so
+      # resizing here would resample twice and change the composition it asked for.
+      if skip_image_resize or resize_h is None or resize_w is None:
+        return image
+      return image.resize((resize_w, resize_h))
+
+    if skip_image_resize and (getattr(args, "mask_image_path", None) is not None
+                              or input_data.get("mask_image") is not None):
+      # The mask has to line up with the image pixel for pixel, so leaving one of them to the
+      # pipeline and resizing the other here would silently mismatch them.
+      raise ValueError("`skip_image_resize` also leaves the mask geometry to the pipeline, which "
+                       "this CLI cannot express: drop the mask, or resize both here.")
+
     if args.image_path is not None:
-      if "image" in input_data:
-        if isinstance(input_data["image"], list):
-          if len(input_data["image"]) > 1:
-            logger.warning("Overriding multiple input images with a single image "
-                           "from args.image_path.")
-      # Determine resize target: explicit --input-height/--input-width first,
-      # then fall back to output height/width.
-      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
-      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
-      if isinstance(input_data["image"], list):
-        input_data["image"] = [load_image(args.image_path).convert("RGB")]
-        if resize_h is not None and resize_w is not None:
-          input_data["image"] = [img.resize((resize_w, resize_h)) for img in input_data["image"]]
+      image = load_image(args.image_path).convert("RGB")
+      if isinstance(input_data.get("image"), list):
+        if len(input_data["image"]) > 1:
+          logger.warning("Overriding multiple input images with a single image "
+                         "from args.image_path.")
+        input_data["image"] = [_prepare(image)]
       else:
-        input_data["image"] = load_image(args.image_path).convert("RGB")
-        if resize_h is not None and resize_w is not None:
-          input_data["image"] = input_data["image"].resize((resize_w, resize_h))
+        input_data["image"] = _prepare(image)
+    last_image_path = getattr(args, "last_image_path", None)
+    if last_image_path is not None:
+      # First/last-frame conditioning takes the trailing frame as its own argument (`last_image`),
+      # so it must not be folded into `image`.
+      input_data["last_image"] = _prepare(load_image(last_image_path).convert("RGB"))
     if args.mask_image_path is not None:
       if "mask_image" in input_data:
         if isinstance(input_data["mask_image"], list):
           if len(input_data["mask_image"]) > 1:
             logger.warning("Overriding multiple input mask images with a single mask "
                            "image from args.mask_image_path.")
-      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
-      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
       if isinstance(input_data["mask_image"], list):
         input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
         if resize_h is not None and resize_w is not None:
@@ -183,7 +219,7 @@ class ExampleInputData:
         summary_str += f"- {k}: {v}\n"
       elif k in ["height", "width", "num_inference_steps", "num_frames"]:
         summary_str += f"- {k}: {v}\n"
-      elif k in ["image", "mask_image", "control_image", "control_mask"]:
+      elif k in ["image", "mask_image", "control_image", "control_mask", "last_image"]:
         if isinstance(v, Image.Image):
           W, H = v.size
           summary_str += f"- {k}: Single Image ({H}x{W})\n"
@@ -597,6 +633,44 @@ def _is_function_or_method(component: Any) -> bool:
   return is_basic_func and not is_excluded_instance and not is_method
 
 
+def parse_audio_video_output(
+  output: Any,
+  task_type: ExampleType,
+  native_fps: Optional[float] = None,
+) -> Dict[str, Any]:
+  """Parse the output of a task that returns a video stream plus an optional soundtrack.
+
+  A modular pipeline returns the state values it was asked for, i.e. a dict, while a regular
+  pipeline returns an object with attributes; both shapes are accepted so the same task type works
+  on either.
+
+  :param output: Pipeline output.
+  :param task_type: Task being parsed, used in the error message.
+  :param native_fps: Frame rate the model generates at, kept for the writer.
+  :returns: `video` / `audio` / `audio_sampling_rate` / `video_fps` keys.
+  :raises ValueError: When the output carries no `videos` entry.
+  """
+  if isinstance(output, dict):
+    videos = output["videos"]
+    audio = output.get("audio")
+    sampling_rate = output.get("sampling_rate")
+  else:
+    videos = getattr(output, "videos", None)
+    audio = getattr(output, "audio", None)
+    sampling_rate = getattr(output, "sampling_rate", None)
+  if videos is None:
+    raise ValueError(f"{task_type.name} expects the pipeline to return `videos`, got "
+                     f"{type(output).__name__}.")
+  return {
+    "video": videos[0] if isinstance(videos, (list, tuple)) else videos,
+    # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
+    "audio": audio[0] if audio is not None and audio.dim() == 3 else audio,
+    "audio_sampling_rate": sampling_rate if audio is not None else None,
+    # Keep the native rate: the soundtrack is cut to match it.
+    "video_fps": native_fps,
+  }
+
+
 class Example:
 
   def __init__(
@@ -704,26 +778,14 @@ class Example:
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       images = output.images if hasattr(output, "images") else output
       output_data.image = images[0] if isinstance(images, list) else images
-    elif self.init_config.task_type == ExampleType.T2VA:
-      # A modular pipeline returns the selected state values, i.e. a dict, not a `BaseOutput`.
-      if isinstance(output, dict):
-        videos = output["videos"]
-        audio = output.get("audio")
-        sampling_rate = output.get("sampling_rate")
-      else:
-        videos = getattr(output, "videos", None)
-        audio = getattr(output, "audio", None)
-        sampling_rate = getattr(output, "sampling_rate", None)
-      if videos is None:
-        raise ValueError("T2VA expects the pipeline to return `videos`, got "
-                         f"{type(output).__name__}.")
-      output_data.video = videos[0] if isinstance(videos, (list, tuple)) else videos
-      if audio is not None:
-        # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
-        output_data.audio = audio[0] if audio.dim() == 3 else audio
-        output_data.audio_sampling_rate = sampling_rate
-      # Keep the native rate: MiniMax-H3 generates at 24 fps and the soundtrack is cut to match.
-      output_data.video_fps = getattr(pipe, "fps", None)
+    elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
+      parsed = parse_audio_video_output(output,
+                                        self.init_config.task_type,
+                                        native_fps=getattr(pipe, "fps", None))
+      output_data.video = parsed["video"]
+      output_data.audio = parsed["audio"]
+      output_data.audio_sampling_rate = parsed["audio_sampling_rate"]
+      output_data.video_fps = parsed["video_fps"]
     elif self.init_config.task_type in [
         ExampleType.T2V,
         ExampleType.I2V,
@@ -759,7 +821,7 @@ class Example:
     kwargs = dict(kwargs)
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       kwargs["output"] = "images"
-    elif self.init_config.task_type == ExampleType.T2VA:
+    elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
       # Joint video + audio models return both streams plus the rate the soundtrack runs at.
       kwargs["output"] = ["videos", "audio", "sampling_rate"]
     return pipe(**kwargs)

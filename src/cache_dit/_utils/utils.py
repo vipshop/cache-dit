@@ -25,6 +25,8 @@ from ..caching import (
   load_configs,
   load_parallelism_config,
 )
+from ..utils import resolve_pipe
+from ..offload import _default_module_filter
 from ..offload import _find_offload_related_hf_hook
 from ..offload import _parse_byte_size_arg
 from ..offload import layerwise_cpu_offload
@@ -36,6 +38,10 @@ from ..summary import strify as summary_strify
 from ..utils import is_modular_pipeline
 
 logger = init_logger(__name__)
+
+# Default of `--residual-diff-threshold`. Model-specific cache presets treat "the flag still holds
+# this value" as "the user did not touch it", so the literal has to live in one place.
+DEFAULT_RESIDUAL_DIFF_THRESHOLD = 0.12
 
 
 class MemoryTracker:
@@ -148,6 +154,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=str,
     default=None,
     help="Override mask image path if provided",
+  )
+  parser.add_argument(
+    "--last-image-path",
+    type=str,
+    default=None,
+    help=("Path of the *last* frame for first/last-frame conditioning (MiniMax-H3 `fl2va`, which "
+          "takes `image` and `last_image` together)"),
   )
   # Acceleration Config path
   parser.add_argument(
@@ -305,8 +318,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--residual-diff-threshold",
     "--rdt",
     type=float,
-    default=0.12,
-    help="CacheDiT residual diff threshold",
+    default=DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+    help=("CacheDiT residual diff threshold. A model with per-workflow cache presets treats this "
+          "default as 'not set' and uses its own starting point; any other value wins"),
   )
   parser.add_argument(
     "--max-warmup-steps",
@@ -2335,6 +2349,122 @@ def _is_text_encoder_offload_target(name: str) -> bool:
           or name == "vision_language_encoder")
 
 
+# Attribute names a vision-language conditioner can use for its vision tower.
+_VISION_TOWER_ATTRS = ("visual", "vision_tower", "vision_model")
+
+
+def _keep_vision_tower_resident(
+  module: torch.nn.Module,
+  device: torch.device,
+) -> Optional[str]:
+  """Move a conditioner's vision tower onto ``device`` and return its qualified name.
+
+  A vision tower is small next to the language stack but cannot be streamed: its forward builds the
+  interpolation constants from `self.pos_embed.weight.device` inside a plain method
+  (`Qwen3VLVisionModel.fast_pos_embed_interpolate`), so a streamed tower puts them on the offload
+  device and the first `hidden_states + pos_embeds` fails with a device mismatch. Keeping the tower
+  resident and streaming only the decoder avoids that without touching the model.
+
+  :param module: Conditioner being streamed.
+  :param device: Device its forward runs on.
+  :returns: Qualified name prefix of the tower, or None when the module has no vision tower.
+  """
+  named_modules = dict(module.named_modules())
+  for holder_name, holder in (("", module), ("model", getattr(module, "model", None))):
+    if not isinstance(holder, torch.nn.Module):
+      continue
+    for attr in _VISION_TOWER_ATTRS:
+      tower = getattr(holder, attr, None)
+      if not isinstance(tower, torch.nn.Module):
+        continue
+      prefix = f"{holder_name}.{attr}" if holder_name else attr
+      if named_modules.get(prefix) is not tower:
+        # An aliased attribute: the name we would exclude is not the path the offload discovery
+        # walks, so the exclusion would silently do nothing.
+        logger.warning(
+          "Vision tower of %s is not reachable at '%s'; leaving it on the layerwise "
+          "path.", module.__class__.__name__, prefix)
+        continue
+      tower.to(device)
+      logger.info(
+        "Keeping the vision tower %s of %s resident on %s (%.2f GiB): it derives its "
+        "position-embedding constants from the parameter device, so a streamed tower would build "
+        "them on the offload device.",
+        prefix,
+        module.__class__.__name__,
+        device,
+        sum(p.numel() * p.element_size() for p in tower.parameters()) / 2 ** 30,
+      )
+      return prefix
+  return None
+
+
+def _stream_filter_excluding(prefix: str):
+  """Build a layerwise-offload predicate that keeps ``prefix`` and its subtree resident.
+
+  :param prefix: Qualified name of the subtree to keep on the device.
+  :returns: Predicate accepting the default leaf targets outside ``prefix``.
+  """
+  excluded = prefix
+
+  def _filter(name: str, child: torch.nn.Module) -> bool:
+    if name == excluded or name.startswith(excluded + "."):
+      return False
+    return _default_module_filter(name, child)
+
+  return _filter
+
+
+def _needs_vision_inputs(pipe_or_adapter: Any) -> bool:
+  """Whether the conditioner of this pipeline is going to receive images or videos.
+
+  The workflows that condition on frames (`fl2va`, `ref2va`) load an `image_processor`; the text-only
+  workflow does not, because its preprocessing blocks are pruned away with the workflow. When the
+  answer cannot be determined the tower is kept resident, which is the safe side.
+
+  :param pipe_or_adapter: Pipeline, modular pipeline or adapter.
+  :returns: Whether a vision tower has to stay resident.
+  """
+  pipe = resolve_pipe(pipe_or_adapter)
+  if pipe is None:
+    return True
+  for name in ("image_processor", "video_processor"):
+    if getattr(pipe, name, None) is not None:
+      return True
+  return False
+
+
+def _layerwise_kwargs_for(
+  args: argparse.Namespace,
+  *,
+  target_name: str,
+  module: torch.nn.Module,
+  onload_device: torch.device,
+  keep_vision_resident: bool,
+) -> dict[str, Any]:
+  """Layerwise-offload kwargs for one component, including the vision-tower carve-out.
+
+  Both streaming paths (`--module-layerwise-cpu-offload` and the conditioner of
+  `--adaln-host-residency`) go through here, so a vision-language conditioner behaves the same way
+  whichever switch the user picks.
+
+  :param args: CLI arguments with the `layerwise_*` options.
+  :param target_name: Component name the target was resolved under.
+  :param module: Component about to be streamed.
+  :param onload_device: Device its forward runs on.
+  :param keep_vision_resident: Whether a vision tower has to stay on the device.
+  :returns: Keyword arguments for `layerwise_cpu_offload`.
+  """
+  kwargs = _resolve_layerwise_target_kwargs(args,
+                                            target_name=target_name,
+                                            onload_device=onload_device)
+  if keep_vision_resident and _is_text_encoder_offload_target(target_name):
+    vision_prefix = _keep_vision_tower_resident(module, onload_device)
+    if vision_prefix is not None:
+      kwargs["module_filter"] = _stream_filter_excluding(vision_prefix)
+  return kwargs
+
+
 def _resolve_layerwise_target_arg(
   args: argparse.Namespace,
   *,
@@ -2468,7 +2598,13 @@ def _apply_layerwise_cpu_offload(
     handles.append(
       layerwise_cpu_offload(
         module,
-        **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+        **_layerwise_kwargs_for(
+          args,
+          target_name=name,
+          module=module,
+          onload_device=device,
+          keep_vision_resident=_needs_vision_inputs(pipe_or_adapter),
+        ),
       ))
   return bool(handles) or skipped_due_to_existing_offload
 
@@ -2584,7 +2720,13 @@ def maybe_adaln_host_residency(
       )
       layerwise_cpu_offload(
         module,
-        **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+        **_layerwise_kwargs_for(
+          args,
+          target_name=name,
+          module=module,
+          onload_device=device,
+          keep_vision_resident=_needs_vision_inputs(pipe_or_adapter),
+        ),
       )
     else:
       module.to(device)
