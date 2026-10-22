@@ -153,3 +153,62 @@ def test_orphan_state_is_not_migrated_back_on_removal():
   assert model.head.register_tokens.device.type == "cuda"
   # the targets do go back
   assert model.head.proj.weight.device.type == "cpu"
+
+
+class _AdalnStack(torch.nn.Module):
+  """A transformer-shaped module whose blocks own an `adaln_proj` modulation table."""
+
+  def __init__(self):
+    super().__init__()
+    self.transformer_blocks = torch.nn.ModuleList()
+    for _ in range(2):
+      block = torch.nn.Module()
+      block.adaln_proj = torch.nn.Linear(4, 8)
+      block.ffn = torch.nn.Linear(4, 4)
+      self.transformer_blocks.append(block)
+
+
+@CUDA
+def test_compile_is_allowed_while_the_adaln_tables_are_streamed(monkeypatch):
+  """`--compile` may stream: the copy runs in a `torch.compiler.disable`d hook, so it is a break."""
+  from cache_dit._utils import utils as utils_mod
+
+  installed = []
+  monkeypatch.setattr(utils_mod, "layerwise_cpu_offload",
+                      lambda module, **kwargs: installed.append(kwargs))
+
+  args = _residency_args(utils_mod)
+  args.compile = True
+
+  assert utils_mod.maybe_adaln_host_residency(args, _AdalnStack()) is True
+  # only the modulation tables are streamed, and the hook itself is compiled away from the graph
+  assert installed and len(installed[0]["module_names"]) == 2
+
+
+@CUDA
+@pytest.mark.parametrize("flag", ["compile_full_graph", "cuda_graph"])
+def test_full_graph_and_cuda_graph_are_still_rejected(monkeypatch, flag):
+  """`fullgraph` refuses the break, and a CUDA graph would replay the pointers the mirror
+  rebinds."""
+  from cache_dit._utils import utils as utils_mod
+
+  monkeypatch.setattr(utils_mod, "layerwise_cpu_offload", lambda module, **kwargs: None)
+  args = _residency_args(utils_mod)
+  args.compile = True
+  setattr(args, flag, True)
+
+  with pytest.raises(ValueError, match="stays resident"):
+    utils_mod.maybe_adaln_host_residency(args, _AdalnStack())
+
+
+def _residency_args(utils_mod):
+  """Real CLI defaults, so every `layerwise_*` knob the install path reads is present."""
+  args = utils_mod.get_base_args(parse=False).parse_args([])
+  args.adaln_host_residency = True
+  args.compile = False
+  args.compile_full_graph = False
+  args.cuda_graph = False
+  args.quantize = False
+  args.parallel_type = ""
+  args.device_map_balance = False
+  return args

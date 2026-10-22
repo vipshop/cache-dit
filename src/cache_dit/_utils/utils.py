@@ -1011,9 +1011,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "(`adaln_proj`) from a pinned host mirror, and stream the text encoder as usual. "
           "Intended for joint video + audio models whose AdaLN tables are a large share of the "
           "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
-          "resident footprint and the per-step host-to-device traffic. `--compile` / "
-          "--cuda-graph` are only rejected while the AdaLN tables are actually streamed, i.e. "
-          "without `--quantize` or `--parallel tp`."),
+          "resident footprint and the per-step host-to-device traffic. While the AdaLN tables are "
+          "actually streamed (i.e. without `--quantize` or `--parallel tp`) each per-block copy is "
+          "a graph break, so `--compile` still works but pays a smaller speedup; "
+          "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
   )
   parser.add_argument(
     "--layerwise-async-transfer",
@@ -2668,13 +2669,22 @@ def maybe_adaln_host_residency(
   # text encoder is streamed.
   tp_enabled = "tp" in (getattr(args, "parallel_type", "") or "")
   keep_transformer_resident = tp_enabled or getattr(args, "quantize", False)
-  if ((getattr(args, "compile", False) or getattr(args, "cuda_graph", False))
-      and not keep_transformer_resident):
-    # Only the streamed variant is traced: Dynamo cannot trace the per-step device move of the
-    # AdaLN tables. With a resident transformer this mode leaves the transformer untouched, so it
-    # composes with `--compile` exactly like a plain `--quantize` run does.
-    raise ValueError("--adaln-host-residency cannot be combined with --compile or --cuda-graph "
-                     "unless the transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "cuda_graph", False) and not keep_transformer_resident:
+    # CUDA Graph capture bakes the parameter pointers into the graph, and the host mirror rebinds
+    # `parameter.data` on every block, so the capture would replay stale device buffers.
+    raise ValueError("--adaln-host-residency cannot be combined with --cuda-graph unless the "
+                     "transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "compile_full_graph", False) and not keep_transformer_resident:
+    # `fullgraph=True` refuses the graph break the streaming hook causes by construction.
+    raise ValueError("--adaln-host-residency cannot be combined with --compile-full-graph unless "
+                     "the transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "compile", False) and not keep_transformer_resident:
+    # The device move happens inside the layerwise hooks, which are `torch.compiler.disable`d, so
+    # each streamed block shows up as a graph break instead of an error: the compiled region is
+    # everything around it. That still pays off — the attention / FFN bodies are the bulk of the
+    # block — but the win is smaller than for a resident transformer.
+    logger.info("Streaming the AdaLN tables of the transformer while compiling: the per-block "
+                "host-to-device copy is a graph break, so each block compiles around it.")
 
   def _is_transformer(name: str, module: torch.nn.Module) -> bool:
     if name.startswith("transformer"):
