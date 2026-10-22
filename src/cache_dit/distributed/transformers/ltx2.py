@@ -199,7 +199,7 @@ def _prepare_cp_attn_mask(
   represents the global sequence, so `target_length` is expanded back to the global sequence length
   and the mask is repeated with `attn.heads // world_size`.
 
-  :param processor: Attention processor carrying `_cp_config`.
+  :param processor: Attention processor, optionally carrying `_cp_config`.
   :param attn: The `LTX2Attention` module the mask belongs to.
   :param attention_mask: Additive text mask, `(batch, 1, text_len)`.
   :param sequence_length: Local sequence length of the masked stream.
@@ -209,7 +209,9 @@ def _prepare_cp_attn_mask(
   if attention_mask is None:
     return None
 
-  cp_config = processor._cp_config
+  # The class-level patch also covers processors the CP runtime never visited (e.g. pipelines that
+  # hold a second attention tree), which simply take the plain path.
+  cp_config = getattr(processor, "_cp_config", None)
   if cp_config is None or cp_config._world_size <= 1:
     attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
     return attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
@@ -273,7 +275,7 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
     dropout_p=0.0,
     is_causal=False,
     backend=self._attention_backend,
-    cp_config=self._cp_config,
+    cp_config=getattr(self, "_cp_config", None),
   )
   hidden_states = hidden_states.flatten(2, 3)
   hidden_states = hidden_states.to(query.dtype)
@@ -345,7 +347,7 @@ def __patch__LTX2PerturbedAttnProcessor__call__(
       dropout_p=0.0,
       is_causal=False,
       backend=self._attention_backend,
-      cp_config=self._cp_config,
+      cp_config=getattr(self, "_cp_config", None),
     )
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(query.dtype)

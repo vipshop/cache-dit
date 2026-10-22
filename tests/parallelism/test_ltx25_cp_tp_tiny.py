@@ -1,4 +1,8 @@
-"""Multi-rank parity test for the LTX-2.5 CP and TP paths (tiny model, no weights needed).
+"""Multi-rank parity test for the LTX-2.5 CP and TP plumbing (tiny model, no weights needed).
+
+Scope note: this validates the machinery on a 2-layer toy transformer. The real 48-layer
+checkpoint still diverges under Ulysses CP (see docs/supported_matrix/NVIDIA_GPU.md), so passing
+here does not mean LTX-2.5 CP is supported yet.
 
 LTX-2.5 blocks use `LTX2PerturbedAttnProcessor` (a standalone class, not a subclass of
 `LTX2AudioVideoAttnProcessor`) and per-head gates. If the CP planner patches only the former, or TP

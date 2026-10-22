@@ -24,9 +24,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image|✅|✅|✅|
 |LTX-2-I2V|✅|✅|✅|
 |LTX-2-T2V|✅|✅|✅|
-|LTX-2.5-DFR (8 steps)|✅|✅|✅|
-|LTX-2.5-T2V|✅|✅|✅|
-|LTX-2.5-I2V|✅|✅|✅|
+|LTX-2.5-DFR (8 steps)|✅|✖️|✅|
+|LTX-2.5-T2V|✅|✖️|✅|
+|LTX-2.5-I2V|✅|✖️|✅|
 |Qwen-Image-2512|✅|✅|✅|
 |Qwen-Image-2.1-Turbo (8 steps)|✅|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|✖️|
@@ -106,6 +106,13 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |stable-diffusion-3.5-large|✅|✖️|✅|
 |Amused-512|✅|✖️|✖️|
 |AuraFlow|✅|✖️|✖️|
+
+> **LTX-2.5 context parallelism** is not supported yet: the audiovisual transformer
+> (`LTX2VideoTransformer3DModel`) shards both the video and the audio stream, but the
+> audio-to-video / video-to-audio cross attention consumes the peer stream's local shard without a
+> K/V gather, so a 2-rank Ulysses run reproduces the schedule yet renders a different sample
+> (PSNR ≈ 9 dB against the single-GPU reference). Tensor parallelism is unaffected and verified
+> (PSNR 32 dB, SSIM 0.947 on 2 GPUs).
 
 ## Text Encoder & VAE Optimization
 
