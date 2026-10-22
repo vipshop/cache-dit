@@ -11,6 +11,7 @@ Before writing any code, confirm the following:
 ```
 STOP — Has the user provided BOTH of the following?
   1. A local model path (e.g., /workspace/dev/vipdev/hf_models/Krea-2-Turbo)
+     (if the weights are not downloaded yet, see `./references/model_download.md`)
   2. The model's pipeline/transformer code info:
      - Pipeline class name (e.g., Krea2Pipeline, or third-party like BooguImagePipeline)
      - Transformer class name (e.g., Krea2Transformer2DModel)
@@ -35,7 +36,7 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 
 - **⚠️ MANDATORY: Local model path and code info.** If the user has not explicitly provided (a) the local model path and (b) the pipeline/transformer class names with source file paths (diffusers or third-party), you **MUST** ask the user to specify them via ``vscode_askQuestions`` before any code changes.  Do NOT search the codebase or assume default paths — the user knows their setup best.
 - **⚠️ MANDATORY: Plan before code.** Before writing ANY implementation code, you **MUST**: (1) thoroughly analyze the model's pipeline and transformer source code, (2) create a detailed integration plan following this skill's workflow and read the relevant references (Cache → CP → TP → TE-P → VAE-P → CLI → Testing), (3) present the plan to the user for review and approval.  **Do NOT start implementing until the user explicitly approves the plan.**  This prevents wasted effort from incorrect assumptions about the model architecture.
-- ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow.
+- ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow. Download flows (ModelScope first, HF fallback): [`./references/model_download.md`](./references/model_download.md).
 - ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (garbled output).
 - For Python-only changes, `pip install -e "." --no-build-isolation` is sufficient; SVDQuant C++ compilation is NOT required.
 - **Do NOT alter core dependency versions** (torch, torchvision, transformers, diffusers, cache-dit, triton) in the `cdit` conda environment. Other dependencies may be installed only if they do not conflict with these.
@@ -144,6 +145,8 @@ flowchart TD
 
 | Situation | Section |
 |---|---|
+| **Picking the next model to integrate / checking the pending-model list** | `./references/rfc_pending_models.md` |
+| **Downloading model weights to the local model root** | `./references/model_download.md` |
 | **The model is a diffusers `ModularPipeline` (e.g. FLUX.3): `pipe` is neither a `DiffusionPipeline` nor an `nn.Module`** | `./references/modular_pipeline.md` |
 | The pipeline has an optional prompt-rewrite / prompt-upsampling stage (FLUX.3 `pup`, ...) | `./references/modular_pipeline.md` §4.1 |
 | Choosing the block I/O pattern | `./references/cache.md` and the ForwardPattern table below |
@@ -190,7 +193,7 @@ Copy this template into your plan, fill in model-specific details, and check off
 Phase 0 — Prerequisites
 
 ```
-- [ ] Model files downloaded to local path
+- [ ] Model files downloaded to local path (`./references/model_download.md` — ModelScope first, HF fallback)
 - [ ] Test image prepared (for IE2I / I2V models)
 - [ ] Diffusers source code read: pipeline __call__, transformer.forward(), block class
 - [ ] ForwardPattern identified (Pattern_0 through Pattern_5)
@@ -532,3 +535,5 @@ Read these only when the current phase needs them:
 | CLI | [`./references/cli.md`](./references/cli.md) | Registering `cache_dit.generate` examples and local model path environment variables. |
 | Install | [`./references/install.md`](./references/install.md) | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
 | Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks. |
+| Model download | [`./references/model_download.md`](./references/model_download.md) | Fetching model weights to `/workspace/dev/vipdev/hf_models/` — ModelScope first (`modelscope-hub` CLI), HF fallback. |
+| Pending models RFC | [`./references/rfc_pending_models.md`](./references/rfc_pending_models.md) | diffusers v0.38+ models not yet supported by cache-dit, ordered by integration difficulty, with per-model notes, exclusions, and status tracking. |
