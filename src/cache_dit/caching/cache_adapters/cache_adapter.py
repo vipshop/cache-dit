@@ -18,6 +18,7 @@ from ..cache_contexts import BasicCacheConfig
 from ..cache_contexts import CalibratorConfig
 from ..cache_blocks import UnifiedBlocks
 from ...utils import is_pipeline
+from ...utils import resolve_transformer
 from ...logger import init_logger
 
 try:
@@ -669,9 +670,12 @@ class CachedAdapter:
       pipe = pipe_or_adapter
       if _release_pipeline is not None:
         _release_pipeline(pipe)
-      if hasattr(pipe, "transformer"):
+      # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
+      # `transformer_ref` for `ref2va` — so read the partition that is actually there.
+      _, transformer = resolve_transformer(pipe)
+      if transformer is not None:
         if _release_transformer is not None:
-          _release_transformer(pipe.transformer)
+          _release_transformer(transformer)
       if hasattr(pipe, "transformer_2"):  # Wan 2.2
         if _release_transformer is not None:
           _release_transformer(pipe.transformer_2)

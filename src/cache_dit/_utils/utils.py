@@ -25,6 +25,7 @@ from ..caching import (
   load_configs,
   load_parallelism_config,
 )
+from ..utils import assign_transformer
 from ..utils import resolve_pipe
 from ..utils import resolve_transformer
 from ..offload import _default_module_filter
@@ -2060,31 +2061,29 @@ def maybe_quantize_transformer(
     else:
       pipe = pipe_or_adapter
 
-    if hasattr(pipe, "transformer"):
-      transformer = getattr(pipe, "transformer", None)
-      if transformer is not None:
-        transformer_cls_name = transformer.__class__.__name__
-        if isinstance(transformer, torch.nn.Module):
-          logger.info(f"Quantizing transformer module: {transformer_cls_name} to"
-                      f" {args.quantize_type} ...")
-          transformer = quantize(
-            transformer,
-            quantize_config=QuantizeConfig(
-              quant_type=args.quantize_type,
-              regional_quantize=not args.disable_regional_quantize,
-              per_tensor_fallback=not args.disable_per_tensor_fallback,
-              exclude_layers=_resolve_cli_quantize_exclude_layers(args),
-              svdq_kwargs=_resolve_cli_svdq_kwargs(),
-              verbose=args.quantize_verbose,
-            ),
-          )
-          setattr(pipe, "transformer", transformer)
-        else:
-          logger.warning(f"Cannot quantize transformer module: {transformer_cls_name} Not a"
-                         " torch.nn.Module.")
-      setattr(pipe, "transformer", transformer)
-    else:
+    # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
+    # `transformer_ref` for `ref2va` — and only ever one of the two exists.
+    transformer_name, transformer = resolve_transformer(pipe)
+    if transformer is None:
       logger.warning("quantize is set but no transformer found in the pipeline.")
+    elif not isinstance(transformer, torch.nn.Module):
+      logger.warning("Cannot quantize %s: %s is not a torch.nn.Module.", transformer_name,
+                     transformer.__class__.__name__)
+    else:
+      logger.info("Quantizing transformer module '%s' (%s) to %s ...", transformer_name,
+                  transformer.__class__.__name__, args.quantize_type)
+      transformer = quantize(
+        transformer,
+        quantize_config=QuantizeConfig(
+          quant_type=args.quantize_type,
+          regional_quantize=not args.disable_regional_quantize,
+          per_tensor_fallback=not args.disable_per_tensor_fallback,
+          exclude_layers=_resolve_cli_quantize_exclude_layers(args),
+          svdq_kwargs=_resolve_cli_svdq_kwargs(),
+          verbose=args.quantize_verbose,
+        ),
+      )
+      assign_transformer(pipe, transformer, name=transformer_name)
 
     if hasattr(pipe, "transformer_2"):
       transformer_2 = getattr(pipe, "transformer_2", None)

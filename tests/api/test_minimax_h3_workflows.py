@@ -431,3 +431,54 @@ def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
 
   utils_mod.maybe_compile_transformer(args, pipe)
   assert compiled == ["transformer_ref"]
+
+
+def test_quantize_targets_the_partition_the_pipeline_actually_has(monkeypatch):
+  """`ref2va` has no `transformer`; quantizing must not silently leave it bf16."""
+  from cache_dit._utils import utils as utils_mod
+
+  quantized = []
+  marker = torch.nn.Linear(2, 2)
+
+  def _fake_quantize(module, quantize_config=None):
+    quantized.append(module)
+    return marker
+
+  monkeypatch.setattr(utils_mod, "quantize", _fake_quantize)
+  args = utils_mod.get_base_args(parse=False).parse_args([])
+  args.quantize = True
+  args.quantize_type = "float8_per_row"
+  args.compile = False
+  args.cuda_graph = False
+
+  original = torch.nn.Linear(2, 2)
+  pipe = SimpleNamespace(transformer_ref=original)
+  utils_mod.maybe_quantize_transformer(args, pipe)
+
+  assert quantized == [original]
+  assert pipe.transformer_ref is marker
+
+
+def test_summary_reads_the_partition_the_pipeline_actually_has(monkeypatch):
+  """`strify` runs on every save, so a ref-only pipeline must not raise there."""
+  import importlib
+
+  # `cache_dit.summary` is both a module and a re-exported function, so import the module itself
+  summary_mod = importlib.import_module("cache_dit.summary")
+  monkeypatch.setattr(summary_mod, "is_pipeline", lambda obj: True)
+  stats = summary_mod.summary(SimpleNamespace(transformer_ref=torch.nn.Linear(2, 2)), logging=False)
+  # an untracked ref partition reports the empty default rather than raising
+  assert len(stats) == 1
+
+
+def test_cache_teardown_visits_the_partition_the_pipeline_actually_has(monkeypatch):
+  """`disable_cache` has to unpatch `transformer_ref.forward` as well."""
+  from cache_dit.caching.cache_adapters import cache_adapter as cache_adapter_mod
+
+  monkeypatch.setattr(cache_adapter_mod, "is_pipeline", lambda obj: True)
+  released = []
+  module = torch.nn.Linear(2, 2)
+  pipe = SimpleNamespace(transformer_ref=module)
+
+  cache_adapter_mod.CachedAdapter.release_hooks(pipe, _release_transformer=released.append)
+  assert released == [module]
