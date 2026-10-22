@@ -72,6 +72,9 @@ Available examples:
 - ✅ skyreels_v2                    - Default: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
 - ✅ ltx2_t2v                       - Default: Lightricks/LTX-2
 - ✅ ltx2_i2v                       - Default: Lightricks/LTX-2
+- ✅ ltx25_t2v                      - Default: Lightricks/LTX-2.5-Diffusers
+- ✅ ltx25_i2v                      - Default: Lightricks/LTX-2.5-Diffusers
+- ✅ ltx25_dfr                      - Default: Lightricks/LTX-2.5-Diffusers (DFR, 8 steps)
 - ✅ wan2.2_t2v                     - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 - ✅ wan2.1_t2v                     - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 - ✅ wan2.2_i2v                     - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers
@@ -111,6 +114,8 @@ python3 -m cache_dit.generate qwen_image_edit_lightning
 python3 -m cache_dit.generate qwen_image
 python3 -m cache_dit.generate ltx2_t2v --cache --cpu-offload
 python3 -m cache_dit.generate ltx2_i2v --cache --cpu-offload
+python3 -m cache_dit.generate ltx25_dfr --cache --cpu-offload   # DFR, schedules its own 8 sigmas
+python3 -m cache_dit.generate ltx25_t2v --cache --cpu-offload
 python3 -m cache_dit.generate skyreels_v2
 python3 -m cache_dit.generate wan2.2
 python3 -m cache_dit.generate zimage_turbo 

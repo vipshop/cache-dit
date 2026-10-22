@@ -42,6 +42,9 @@ __all__ = [
   "skyreels_v2_example",
   "ltx2_t2v_example",
   "ltx2_i2v_example",
+  "ltx25_t2v_example",
+  "ltx25_i2v_example",
+  "ltx25_dfr_example",
   "wan_example",
   "wan_i2v_example",
   "wan_vace_example",
@@ -88,6 +91,7 @@ _env_path_mapping = {
   "FLUX_3_DIR": "black-forest-labs/flux-3-image-klein",
   "OVIS_IMAGE_DIR": "AIDC-AI/Ovis-Image-7B",
   "LTX2_DIR": "Lightricks/LTX-2",
+  "LTX25_DIR": "Lightricks/LTX-2.5-Diffusers",
   "QWEN_IMAGE_DIR": "Qwen/Qwen-Image",
   "QWEN_IMAGE_2512_DIR": "Qwen/Qwen-Image-2512",
   "QWEN_IMAGE_21_DIR": "Qwen/Qwen-Image-2.1",
@@ -1249,6 +1253,175 @@ def ltx2_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
       num_inference_steps=40,
       guidance_scale=4.0,
       extra_input_kwargs={
+        "frame_rate": 24.0,
+      },
+    ),
+  )
+
+
+def _ltx25_cache_config(args: argparse.Namespace, steps: int) -> Optional[DBCacheConfig]:
+  """Build the DBCache config shared by the LTX-2.5 pipelines.
+
+  LTX-2.5 is distilled: the guided `LTX2Pipeline` still emits a conditional, an STG and a modality
+  pass per denoise step, but only the conditional pass goes through the cache (the other two change
+  the block semantics or the token geometry), and `LTX2DFRPipeline` emits exactly one pass per step
+  with no CFG, so `enable_separate_cfg` stays `False`. `num_inference_steps` is stated explicitly
+  because these pipelines schedule their own passes (`sigmas` for DFR) and the CLI cannot infer the
+  count; without it the cache context never refreshes when several passes are chained.
+
+  :param args: CLI arguments.
+  :param steps: Number of cached transformer calls in one pass.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  max_warmup_steps = args.max_warmup_steps
+  if steps <= 8:
+    # A distilled schedule is short; the default warmup would leave nothing to reuse.
+    max_warmup_steps = min(max_warmup_steps, 2)
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=max_warmup_steps,
+    num_inference_steps=steps,
+    enable_separate_cfg=False,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=args.max_continuous_cached_steps,
+  )
+
+
+@ExampleRegister.register("ltx25_t2v", default="Lightricks/LTX-2.5-Diffusers")
+def ltx25_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA (joint text to video + audio) with LTX-2.5.
+
+  `LTX2Pipeline` is the guided entry point: it runs classifier-free guidance, spatio-temporal
+  guidance and modality guidance, and returns both streams plus a soundtrack. The cache only
+  replays the conditional pass; the STG pass (per-block perturbation) and the modality pass
+  (isolated cross attention) are computed in full, which is what keeps the output identical to the
+  uncached run.
+
+  :param args: CLI arguments.
+  :returns: The LTX-2.5 t2v example.
+  """
+  from diffusers import LTX2Pipeline
+
+  model_name_or_path = _path("Lightricks/LTX-2.5-Diffusers", args=args)
+  steps = 30 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,  # Text to video + audio
+      model_name_or_path=model_name_or_path,
+      pipeline_class=LTX2Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      skip_components=["prompt_enhancer"],
+      extra_optimize_kwargs={"cache_config": _ltx25_cache_config(args, steps)},
+    ),
+    input_data=ExampleInputData(
+      prompt=("A cinematic tracking shot through a neon-lit rainy street at night. Reflections "
+              "shimmer on wet asphalt, holographic signs flicker, and steam rises from vents."),
+      negative_prompt=(
+        "shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, "
+        "motion smear, motion artifacts, fused fingers, bad anatomy, ugly, static."),
+      height=512,
+      width=768,
+      num_frames=121,
+      num_inference_steps=30,
+      guidance_scale=3.0,
+      extra_input_kwargs={
+        "frame_rate": 24.0,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("ltx25_i2v", default="Lightricks/LTX-2.5-Diffusers")
+def ltx25_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """I2VA (image + text to video + audio) with LTX-2.5.
+
+  :param args: CLI arguments.
+  :returns: The LTX-2.5 i2v example.
+  """
+  from diffusers import LTX2ImageToVideoPipeline
+
+  model_name_or_path = _path("Lightricks/LTX-2.5-Diffusers", args=args)
+  steps = 30 if args.num_inference_steps is None else args.num_inference_steps
+
+  height = 512 if args.height is None else args.height
+  width = 768 if args.width is None else args.width
+  if args.image_path is not None:
+    image = load_image(args.image_path)
+  else:
+    image = load_image(
+      "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
+    )
+  image = image.resize((width, height))
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,  # the soundtrack is dropped for the I2V task type
+      model_name_or_path=model_name_or_path,
+      pipeline_class=LTX2ImageToVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      skip_components=["prompt_enhancer"],
+      extra_optimize_kwargs={"cache_config": _ltx25_cache_config(args, steps)},
+    ),
+    input_data=ExampleInputData(
+      prompt=("A young girl stands calmly in the foreground, looking directly at the camera, "
+              "as a house fire rages in the background."),
+      negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+      image=image,
+      height=height,
+      width=width,
+      num_frames=121,
+      num_inference_steps=30,
+      guidance_scale=3.0,
+      extra_input_kwargs={
+        "frame_rate": 24.0,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("ltx25_dfr", default="Lightricks/LTX-2.5-Diffusers")
+def ltx25_dfr_example(args: argparse.Namespace, **kwargs) -> Example:
+  """One DFR (Diffusion Fidelity Rendering) pass with LTX-2.5.
+
+  `LTX2DFRPipeline` takes an explicit distilled sigma schedule instead of `num_inference_steps`
+  (8 steps, one transformer call per step, no CFG), so `--num-inference-steps` is not forwarded and
+  the cache config derives its step count from the schedule. DFR's `video_tiles` epilogue path
+  computes a token *subset* per call and is therefore not cacheable; keep `video_tiles` unset when
+  caching is enabled.
+
+  :param args: CLI arguments.
+  :returns: The LTX-2.5 DFR example.
+  """
+  from diffusers import LTX2DFRPipeline
+  from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+
+  model_name_or_path = _path("Lightricks/LTX-2.5-Diffusers", args=args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,  # DFR renders video + audio
+      model_name_or_path=model_name_or_path,
+      pipeline_class=LTX2DFRPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      skip_components=["prompt_enhancer"],
+      extra_optimize_kwargs={
+        "cache_config": _ltx25_cache_config(args, len(DISTILLED_SIGMA_VALUES))
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=("A tabby cat stretching in a sunlit window, dust motes drifting in the light"),
+      height=512,
+      width=768,
+      num_frames=121,
+      use_num_inference_steps=False,
+      extra_input_kwargs={
+        "sigmas": DISTILLED_SIGMA_VALUES,
         "frame_rate": 24.0,
       },
     ),

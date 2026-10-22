@@ -11,7 +11,10 @@ from torch.distributed.tensor.parallel import (
   RowwiseParallel,
   parallelize_module,
 )
-from diffusers.models.transformers.transformer_ltx2 import LTX2AudioVideoAttnProcessor
+from diffusers.models.transformers.transformer_ltx2 import (
+  LTX2AudioVideoAttnProcessor,
+  LTX2PerturbedAttnProcessor,
+)
 
 from ...logger import init_logger
 from ..config import ParallelismConfig
@@ -19,6 +22,51 @@ from ..utils import shard_div_attr
 from .register import TensorParallelismPlanner, TensorParallelismPlannerRegister
 
 logger = init_logger(__name__)
+
+# Attention modules inside `LTX2VideoTransformerBlock` that are head-sharded under TP.
+_SHARDED_ATTNS: Tuple[str, ...] = (
+  "attn1",
+  "attn2",
+  "audio_attn1",
+  "audio_attn2",
+  "audio_to_video_attn",
+  "video_to_audio_attn",
+)
+
+# LTX-2.5 checkpoints build blocks with `perturbed_attn=True`, which swaps in the standalone
+# `LTX2PerturbedAttnProcessor`; both must be handled by the TP planner.
+_LTX2_PROCESSORS: Tuple[type, ...] = (LTX2AudioVideoAttnProcessor, LTX2PerturbedAttnProcessor)
+
+
+def _ltx2_block_layer_plan(block: nn.Module) -> Dict[str, ParallelStyle]:
+  """Build the TP layer plan for one `LTX2VideoTransformerBlock`.
+
+  Every attention projection is column-sharded on the head axis and every output / FFN projection
+  row-sharded. Per-head gates (`gated_attn=True`, used by LTX-2.3/2.5) have to follow the same head
+  axis as `attn.heads`, otherwise each rank emits full-width gate logits while the processor
+  unflattens the attention output with the TP-sharded head count.
+
+  Modulation modules (`prompt_adaln`, `keyframes_abs_pos_embedding`) are deliberately left out:
+  TP only shards Linear weights, the residual stream keeps its full feature width, so their
+  activations must stay replicated.
+
+  :param block: One LTX-2 transformer block.
+  :returns: Mapping from parameter path to parallel style.
+  """
+  layer_plan: Dict[str, ParallelStyle] = {}
+  for attn_name in _SHARDED_ATTNS:
+    layer_plan[f"{attn_name}.to_q"] = ColwiseParallel()
+    layer_plan[f"{attn_name}.to_k"] = ColwiseParallel()
+    layer_plan[f"{attn_name}.to_v"] = ColwiseParallel()
+    layer_plan[f"{attn_name}.to_out.0"] = RowwiseParallel()
+    if getattr(getattr(block, attn_name), "to_gate_logits", None) is not None:
+      layer_plan[f"{attn_name}.to_gate_logits"] = ColwiseParallel()
+
+  layer_plan["ff.net.0.proj"] = ColwiseParallel()
+  layer_plan["ff.net.2"] = RowwiseParallel()
+  layer_plan["audio_ff.net.0.proj"] = ColwiseParallel()
+  layer_plan["audio_ff.net.2"] = RowwiseParallel()
+  return layer_plan
 
 
 class DistributedRMSNorm(nn.Module):
@@ -80,15 +128,23 @@ class ShardRotaryEmbProcessor:
 
   - interleaved RoPE: `cos`/`sin` are shaped `(B, T, D)` and shard along the last dimension.
   - split RoPE: `cos`/`sin` are shaped `(B, H, T, D/2)` and shard along the head dimension.
+
+  Both LTX-2 attention processors are supported. LTX-2.5 checkpoints set `perturbed_attn=True`,
+  whose `LTX2PerturbedAttnProcessor` is a standalone class (not a subclass of
+  `LTX2AudioVideoAttnProcessor`); its `perturbation_mask` / `all_perturbed` arguments are forwarded
+  unchanged, because `LTX2Attention.forward` filters kwargs by
+  `inspect.signature(processor.__call__)` and would silently drop them otherwise.
   """
 
-  def __init__(self, processor: LTX2AudioVideoAttnProcessor, tp_size: int, tp_rank: int):
+  def __init__(self, processor: Union[LTX2AudioVideoAttnProcessor, LTX2PerturbedAttnProcessor],
+               tp_size: int, tp_rank: int):
     self.processor = processor
     self.tp_size = tp_size
     self.tp_rank = tp_rank
 
   @classmethod
-  def from_attn_processor(cls, processor: LTX2AudioVideoAttnProcessor, tp_size: int,
+  def from_attn_processor(cls, processor: Union[LTX2AudioVideoAttnProcessor,
+                                                LTX2PerturbedAttnProcessor], tp_size: int,
                           tp_rank: int) -> "ShardRotaryEmbProcessor":
     return cls(processor=processor, tp_size=tp_size, tp_rank=tp_rank)
 
@@ -116,17 +172,21 @@ class ShardRotaryEmbProcessor:
     attention_mask: Optional[torch.Tensor] = None,
     query_rotary_emb=None,
     key_rotary_emb=None,
+    perturbation_mask: Optional[torch.Tensor] = None,
+    all_perturbed: Optional[bool] = None,
   ) -> torch.Tensor:
     query_rotary_emb = self._shard_rope(query_rotary_emb)
     key_rotary_emb = self._shard_rope(key_rotary_emb)
-    return self.processor(
-      attn,
-      hidden_states,
+    kwargs = dict(
       encoder_hidden_states=encoder_hidden_states,
       attention_mask=attention_mask,
       query_rotary_emb=query_rotary_emb,
       key_rotary_emb=key_rotary_emb,
     )
+    if isinstance(self.processor, LTX2PerturbedAttnProcessor):
+      kwargs["perturbation_mask"] = perturbation_mask
+      kwargs["all_perturbed"] = all_perturbed
+    return self.processor(attn, hidden_states, **kwargs)
 
 
 @TensorParallelismPlannerRegister.register("LTX2")
@@ -156,59 +216,16 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
 
     def prepare_block(block: nn.Module):
       # Shard heads for all attention modules inside the block
-      _shard_attention(block.attn1, "attn1")
-      _shard_attention(block.attn2, "attn2")
-      _shard_attention(block.audio_attn1, "audio_attn1")
-      _shard_attention(block.audio_attn2, "audio_attn2")
-      _shard_attention(block.audio_to_video_attn, "audio_to_video_attn")
-      _shard_attention(block.video_to_audio_attn, "video_to_audio_attn")
+      for attn_name in _SHARDED_ATTNS:
+        _shard_attention(getattr(block, attn_name), attn_name)
 
-      layer_plan = {
-        # video self-attn / text cross-attn
-        "attn1.to_q": ColwiseParallel(),
-        "attn1.to_k": ColwiseParallel(),
-        "attn1.to_v": ColwiseParallel(),
-        "attn1.to_out.0": RowwiseParallel(),
-        "attn2.to_q": ColwiseParallel(),
-        "attn2.to_k": ColwiseParallel(),
-        "attn2.to_v": ColwiseParallel(),
-        "attn2.to_out.0": RowwiseParallel(),
-        # audio self-attn / text cross-attn
-        "audio_attn1.to_q": ColwiseParallel(),
-        "audio_attn1.to_k": ColwiseParallel(),
-        "audio_attn1.to_v": ColwiseParallel(),
-        "audio_attn1.to_out.0": RowwiseParallel(),
-        "audio_attn2.to_q": ColwiseParallel(),
-        "audio_attn2.to_k": ColwiseParallel(),
-        "audio_attn2.to_v": ColwiseParallel(),
-        "audio_attn2.to_out.0": RowwiseParallel(),
-        # a2v / v2a cross-attn
-        "audio_to_video_attn.to_q": ColwiseParallel(),
-        "audio_to_video_attn.to_k": ColwiseParallel(),
-        "audio_to_video_attn.to_v": ColwiseParallel(),
-        "audio_to_video_attn.to_out.0": RowwiseParallel(),
-        "video_to_audio_attn.to_q": ColwiseParallel(),
-        "video_to_audio_attn.to_k": ColwiseParallel(),
-        "video_to_audio_attn.to_v": ColwiseParallel(),
-        "video_to_audio_attn.to_out.0": RowwiseParallel(),
-        # FFNs
-        "ff.net.0.proj": ColwiseParallel(),
-        "ff.net.2": RowwiseParallel(),
-        "audio_ff.net.0.proj": ColwiseParallel(),
-        "audio_ff.net.2": RowwiseParallel(),
-      }
+      layer_plan = _ltx2_block_layer_plan(block)
 
       parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
 
       # Shard qk norms
-      for attn in (
-          block.attn1,
-          block.attn2,
-          block.audio_attn1,
-          block.audio_attn2,
-          block.audio_to_video_attn,
-          block.video_to_audio_attn,
-      ):
+      for attn_name in _SHARDED_ATTNS:
+        attn = getattr(block, attn_name)
         attn.norm_q = DistributedRMSNorm.from_rmsnorm(tp_mesh, attn.norm_q)
         attn.norm_k = DistributedRMSNorm.from_rmsnorm(tp_mesh, attn.norm_k)
       return layer_plan
@@ -217,16 +234,9 @@ class LTX2VideoTensorParallelismPlanner(TensorParallelismPlanner):
     # NOTE: This assumes rotary embedding head counts align with attention heads (true for LTX-2 configs).
     layer_plans = []
     for _, block in transformer.transformer_blocks.named_children():
-      for attn_name in (
-          "attn1",
-          "attn2",
-          "audio_attn1",
-          "audio_attn2",
-          "audio_to_video_attn",
-          "video_to_audio_attn",
-      ):
+      for attn_name in _SHARDED_ATTNS:
         attn = getattr(block, attn_name)
-        if hasattr(attn, "processor") and isinstance(attn.processor, LTX2AudioVideoAttnProcessor):
+        if hasattr(attn, "processor") and isinstance(attn.processor, _LTX2_PROCESSORS):
           attn.processor = ShardRotaryEmbProcessor.from_attn_processor(
             processor=attn.processor,
             tp_size=tp_size,
