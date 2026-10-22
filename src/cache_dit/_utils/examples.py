@@ -17,6 +17,7 @@ from .registers import (
   ExampleInitConfig,
   ExampleRegister,
 )
+from .utils import DEFAULT_RESIDUAL_DIFF_THRESHOLD
 
 logger = init_logger(__name__)
 
@@ -67,6 +68,8 @@ __all__ = [
   "anyflow_t2v_example",
   "anyflow_far_example",
   "minimax_h3_example",
+  "minimax_h3_fl2va_example",
+  "minimax_h3_ref2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -2278,6 +2281,62 @@ def anyflow_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
   )
 
 
+# Demo assets for the conditioning workflows (`fl2va` needs a first and a last frame, `ref2va`
+# needs reference media). They live in the checkout under `examples/data/minimax_h3`; the
+# environment variable lets a caller point at a different copy, and a checkout that does not have
+# them (an installed package) falls back to the copy on the repository's main branch.
+_MINIMAX_H3_TEST_DATA_ENV = "MINIMAX_H3_TEST_DATA"
+_MINIMAX_H3_ASSET_SUBDIR = os.path.join("examples", "data", "minimax_h3")
+_MINIMAX_H3_ASSET_URL = "https://github.com/vipshop/cache-dit/raw/main/examples/data/minimax_h3"
+
+
+def _minimax_h3_demo_asset(name: str) -> str:
+  """Resolve a MiniMax-H3 demo asset to a path or URL.
+
+  :param name: File name inside the demo-asset directory, e.g. ``first_frame.png``.
+  :returns: Local path when the checkout (or `MINIMAX_H3_TEST_DATA`) has it, else its URL.
+  """
+  candidates = []
+  env_dir = os.environ.get(_MINIMAX_H3_TEST_DATA_ENV)
+  if env_dir:
+    candidates.append(env_dir)
+  # `src/cache_dit/_utils/examples.py` -> repository root, for an editable / in-tree install.
+  candidates.append(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..",
+                 _MINIMAX_H3_ASSET_SUBDIR))
+  if CACHE_DIT_DIR is not None:
+    candidates.append(os.path.join(CACHE_DIT_DIR, _MINIMAX_H3_ASSET_SUBDIR))
+  for directory in candidates:
+    candidate = os.path.normpath(os.path.join(directory, name))
+    if os.path.exists(candidate):
+      return candidate
+  return f"{_MINIMAX_H3_ASSET_URL}/{name}"
+
+
+def _minimax_h3_quantize_exclusions(args: argparse.Namespace) -> None:
+  """Install the MiniMax-H3 default quantization exclusions on ``args``.
+
+  :param args: CLI arguments, updated in place when the user did not pass the flag.
+  """
+  if not args.quantize or getattr(args, "quantize_exclude_layers", None):
+    return
+  args.quantize_exclude_layers = [
+    # The checkpoint ships these in float32 (`_keep_in_fp32_modules`), which torchao's per-row
+    # float8 path rejects, and they are a rounding-error guard rather than a memory cost.
+    "proj_in",
+    "audio_proj_in",
+    "proj_out",
+    "audio_proj_out",
+    "time_embedder",
+    "rope",
+    # Every token of every step reads the same per-block AdaLN table, so a quantization error
+    # there is applied coherently across the whole sampling trajectory instead of averaging out.
+    # The output norm modulates the sequence the same way.
+    "adaln_proj",
+    "norm_out",
+  ]
+
+
 def _minimax_h3_drop_lm_head(pipe) -> None:
   """Drop the LM head of the Qwen3-VL conditioner.
 
@@ -2292,21 +2351,51 @@ def _minimax_h3_drop_lm_head(pipe) -> None:
     text_encoder.lm_head = None
 
 
-def _minimax_h3_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig]:
+# The CLI default of `--residual-diff-threshold`; a value that differs from it is an explicit
+# request and wins over the per-workflow preset below.
+_MINIMAX_H3_DEFAULT_THRESHOLD = DEFAULT_RESIDUAL_DIFF_THRESHOLD
+
+# Per-workflow starting point for the residual threshold. The conditioning workflows pin their
+# conditioning rows every step, and those rows contribute ~nothing to the residual mean DBCache
+# compares against, so the same threshold accepts more steps than it does for `t2va`. The accepted
+# skips show up as a motion-phase lag: with the first and last frame anchored, mid-motion frames are
+# the ones that drift, which SSIM penalises heavily. The cliff sits between 0.022 and 0.030 (see the
+# PR description for the sweep), so `fl2va` starts where the accuracy bar still holds rather than
+# where the speedup peaks.
+_MINIMAX_H3_CACHE_THRESHOLDS = {
+  "t2va": _MINIMAX_H3_DEFAULT_THRESHOLD,
+  "fl2va": 0.022,
+  # `ref2va` packs the most pinned rows (a whole reference prefix, up to twelve blocks), so it is
+  # expected to need an equally strict start; it is measured with its own example.
+  "ref2va": 0.02,
+}
+
+
+def _minimax_h3_cache_config(
+  args: argparse.Namespace,
+  workflow: str = "t2va",
+) -> Optional[DBCacheConfig]:
   """DBCache config for the 50-step guidance-distilled MiniMax-H3 transformer.
 
   Only the block stack is cached, so `Fn_compute_blocks` stays small and one block at the tail is
   recomputed as a scaler. Every block rebuilds its AdaLN modulation from the current timestep, so
   consecutive steps move further apart than in a fixed-modulation image model: only one
-  consecutive step is ever reused, and the threshold and warmup come from the CLI because they are
-  the knobs worth sweeping per request.
+  consecutive step is ever reused. The threshold comes from `--residual-diff-threshold` when the
+  user set it, and from `_MINIMAX_H3_CACHE_THRESHOLDS[workflow]` otherwise.
 
   :param args: CLI arguments.
+  :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
   :returns: The DBCache config, or None when caching is disabled.
   """
   if not args.cache:
     return None
   steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+  if workflow not in _MINIMAX_H3_CACHE_THRESHOLDS:
+    raise ValueError(f"No MiniMax-H3 cache preset for workflow '{workflow}'; expected one of "
+                     f"{sorted(_MINIMAX_H3_CACHE_THRESHOLDS)}.")
+  threshold = args.residual_diff_threshold
+  if threshold == _MINIMAX_H3_DEFAULT_THRESHOLD:
+    threshold = _MINIMAX_H3_CACHE_THRESHOLDS[workflow]
   return DBCacheConfig(
     Fn_compute_blocks=1,
     Bn_compute_blocks=1,
@@ -2314,7 +2403,7 @@ def _minimax_h3_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig
     num_inference_steps=steps,
     # guidance is distilled into the weights: one forward pass per step, no uncond branch
     enable_separate_cfg=False,
-    residual_diff_threshold=args.residual_diff_threshold,
+    residual_diff_threshold=threshold,
     max_cached_steps=args.max_cached_steps,
     max_continuous_cached_steps=1,
   )
@@ -2339,22 +2428,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
   """
   from diffusers import MiniMaxH3ModularPipeline
 
-  if args.quantize and not getattr(args, "quantize_exclude_layers", None):
-    args.quantize_exclude_layers = [
-      # The checkpoint ships these in float32 (`_keep_in_fp32_modules`), which torchao's per-row
-      # float8 path rejects, and they are a rounding-error guard rather than a memory cost.
-      "proj_in",
-      "audio_proj_in",
-      "proj_out",
-      "audio_proj_out",
-      "time_embedder",
-      "rope",
-      # Every token of every step reads the same per-block AdaLN table, so a quantization error
-      # there is applied coherently across the whole sampling trajectory instead of averaging out.
-      # The output norm modulates the sequence the same way.
-      "adaln_proj",
-      "norm_out",
-    ]
+  _minimax_h3_quantize_exclusions(args)
 
   return Example(
     args=args,
@@ -2371,7 +2445,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
         "default": torch.float32,
       },
       post_init_hook=_minimax_h3_drop_lm_head,
-      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args)},
+      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args, "t2va")},
     ),
     input_data=ExampleInputData(
       prompt=(
@@ -2382,6 +2456,126 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
       num_frames=124,
       num_inference_steps=50,
     ),
+  )
+
+
+@ExampleRegister.register("minimax_h3_fl2va", default="MiniMaxAI/MiniMax-H3")
+def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """FL2VA (first/last frame + text to video + audio) with MiniMax-H3.
+
+  `modular_workflow="fl2va"` prunes the blocks so `load_components` pulls the `transformer/`
+  partition only; the `transformer_ref/` partition that `ref2va` needs is never touched. Both
+  conditioning frames become extra video rows of the packed sequence, so the cache, context and
+  tensor parallel plans of the `t2va` example apply unchanged.
+
+  The pipeline derives its canvas from the source aspect ratio and stretches the first frame /
+  cover-crops the last one itself, which is why `skip_image_resize` is set: resizing here as well
+  would resample the conditioning frames twice.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3 fl2va example.
+  """
+  from diffusers import MiniMaxH3ModularPipeline
+
+  _minimax_h3_quantize_exclusions(args)
+
+  def _load(name: str, override):
+    # Only resolve a default when the caller did not supply that frame: an override replaces it
+    # entirely, and a checkout-less install would otherwise download artwork it never uses.
+    return None if override is not None else load_image(_minimax_h3_demo_asset(name)).convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.FL2VA,
+      model_name_or_path=_path("MiniMaxAI/MiniMax-H3", args=args),
+      pipeline_class=MiniMaxH3ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_workflow="fl2va",
+      # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
+      modular_component_dtypes={
+        "transformer": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      post_init_hook=_minimax_h3_drop_lm_head,
+      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args, "fl2va")},
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        "The astronaut crosses the lunar surface as the camera pushes in towards the crater rim, "
+        "dust drifting in the low gravity, earthrise on the horizon, cinematic."),
+      image=_load("first_frame.png", args.image_path),
+      last_image=_load("last_frame.png", getattr(args, "last_image_path", None)),
+      skip_image_resize=True,
+      height=448,
+      width=768,
+      num_frames=124,
+      num_inference_steps=50,
+    ),
+  )
+
+
+@ExampleRegister.register("minimax_h3_ref2va", default="MiniMaxAI/MiniMax-H3")
+def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Ref2Va (reference image / video / audio to video + audio) with MiniMax-H3.
+
+  `ref2va` is the third checkpoint partition: this workflow loads `transformer_ref/` instead of
+  `transformer/`, so it is never in memory at the same time as the `t2va` / `fl2va` weights.
+  References are consumed in the order they are given and packed in front of the target sequence as
+  read-only rows; they do not bind the generated geometry, which comes from `height` / `width`, and
+  a reference video is cut to the requested duration rather than the other way round.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3 ref2va example.
+  """
+  from diffusers import MiniMaxH3ModularPipeline
+  # The reference data classes are exported by the pipeline package, not by `diffusers` itself.
+  from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3ImageReference,
+    MiniMaxH3VideoReference,
+  )
+
+  _minimax_h3_quantize_exclusions(args)
+
+  input_data = ExampleInputData(
+    prompt=(
+      "The astronaut from the reference image steps out of the lander and follows the hiker's "
+      "trail across the lunar surface, dust drifting in the low gravity, earthrise on the "
+      "horizon, cinematic."),
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=50,
+  )
+  # `--reference-*-path` replaces the whole list, and constructing a reference decodes its media, so
+  # the bundled pair is only built when the caller did not bring their own.
+  if not any(
+      getattr(args, attr, None)
+      for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
+    input_data.set_references([
+      MiniMaxH3ImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
+      MiniMaxH3VideoReference.from_file(_minimax_h3_demo_asset("reference_video.mp4")),
+    ])
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.REF2VA,
+      model_name_or_path=_path("MiniMaxAI/MiniMax-H3", args=args),
+      pipeline_class=MiniMaxH3ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_workflow="ref2va",
+      # The two VAEs ship float32; only the conditioner and the reference transformer are bfloat16.
+      modular_component_dtypes={
+        "transformer_ref": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      post_init_hook=_minimax_h3_drop_lm_head,
+      extra_optimize_kwargs={"cache_config": _minimax_h3_cache_config(args, "ref2va")},
+    ),
+    input_data=input_data,
   )
 
 

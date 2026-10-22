@@ -15,6 +15,7 @@ from .distributed import ParallelismConfig
 from .quantization import QuantizeConfig
 from .caching import load_configs
 from .utils import is_pipeline
+from .utils import resolve_transformer
 from .logger import init_logger
 
 logger = init_logger(__name__)
@@ -72,7 +73,11 @@ def summary(
       transformer = adapter_or_others  # transformer-only
       transformer_2 = None
     else:
-      transformer = adapter_or_others.transformer
+      # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
+      # `transformer_ref` for `ref2va` — and only ever one of the two exists.
+      _, transformer = resolve_transformer(adapter_or_others)
+      if transformer is None:
+        return [CacheStats()]
       transformer_2 = None  # Only for Wan2.2
       if hasattr(adapter_or_others, "transformer_2"):
         transformer_2 = adapter_or_others.transformer_2

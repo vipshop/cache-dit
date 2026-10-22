@@ -12,6 +12,7 @@ from ..forward_pattern import ForwardPattern
 from ..params_modifier import ParamsModifier
 
 from ...logger import init_logger
+from ...utils import resolve_transformer, TRANSFORMER_ATTR_NAMES
 
 logger = init_logger(__name__)
 
@@ -250,9 +251,13 @@ class BlockAdapter:
     if isinstance(pipe, FakeDiffusionPipeline):
       raise ValueError("Can not auto block adapter for FakeDiffusionPipeline.")
 
-    assert hasattr(pipe, "transformer"), "pipe.transformer can not be None."
-
-    transformer = pipe.transformer
+    # A pipeline may expose its denoising transformer under another name: MiniMax-H3 loads
+    # `transformer_ref` instead of `transformer` for the `ref2va` workflow, and only ever one of the
+    # two exists.
+    _, transformer = resolve_transformer(pipe)
+    assert transformer is not None, (
+      f"Neither {' nor '.join(TRANSFORMER_ATTR_NAMES)} is set on the pipeline; "
+      "auto block adapter needs one of them.")
 
     # "transformer_blocks", "blocks", "single_transformer_blocks", "layers"
     blocks, blocks_name = BlockAdapter.find_match_blocks(

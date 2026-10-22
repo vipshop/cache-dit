@@ -25,6 +25,10 @@ from ..caching import (
   load_configs,
   load_parallelism_config,
 )
+from ..utils import assign_transformer
+from ..utils import resolve_pipe
+from ..utils import resolve_transformer
+from ..offload import _default_module_filter
 from ..offload import _find_offload_related_hf_hook
 from ..offload import _parse_byte_size_arg
 from ..offload import layerwise_cpu_offload
@@ -36,6 +40,10 @@ from ..summary import strify as summary_strify
 from ..utils import is_modular_pipeline
 
 logger = init_logger(__name__)
+
+# Default of `--residual-diff-threshold`. Model-specific cache presets treat "the flag still holds
+# this value" as "the user did not touch it", so the literal has to live in one place.
+DEFAULT_RESIDUAL_DIFF_THRESHOLD = 0.12
 
 
 class MemoryTracker:
@@ -149,6 +157,25 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=None,
     help="Override mask image path if provided",
   )
+  parser.add_argument(
+    "--last-image-path",
+    type=str,
+    default=None,
+    help=("Path of the *last* frame for first/last-frame conditioning (MiniMax-H3 `fl2va`, which "
+          "takes `image` and `last_image` together)"),
+  )
+  for _flag, _kind in (
+    ("--reference-image-path", "image"),
+    ("--reference-video-path", "video"),
+    ("--reference-audio-path", "audio"),
+  ):
+    parser.add_argument(
+      _flag,
+      nargs="+",
+      default=None,
+      help=(f"Path(s) of {_kind} reference(s) for a reference-conditioned model (MiniMax-H3 "
+            "`ref2va`). References are consumed in image -> video -> audio order"),
+    )
   # Acceleration Config path
   parser.add_argument(
     "--config-path",
@@ -305,8 +332,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--residual-diff-threshold",
     "--rdt",
     type=float,
-    default=0.12,
-    help="CacheDiT residual diff threshold",
+    default=DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+    help=("CacheDiT residual diff threshold. A model with per-workflow cache presets treats this "
+          "default as 'not set' and uses its own starting point; any other value wins"),
   )
   parser.add_argument(
     "--max-warmup-steps",
@@ -985,9 +1013,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "(`adaln_proj`) from a pinned host mirror, and stream the text encoder as usual. "
           "Intended for joint video + audio models whose AdaLN tables are a large share of the "
           "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
-          "resident footprint and the per-step host-to-device traffic. `--compile` / "
-          "--cuda-graph` are only rejected while the AdaLN tables are actually streamed, i.e. "
-          "without `--quantize` or `--parallel tp`."),
+          "resident footprint and the per-step host-to-device traffic. While the AdaLN tables are "
+          "actually streamed (i.e. without `--quantize` or `--parallel tp`) each per-block copy is "
+          "a graph break, so `--compile` still works but pays a smaller speedup; "
+          "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
   )
   parser.add_argument(
     "--layerwise-async-transfer",
@@ -1790,12 +1819,14 @@ def maybe_compile_transformer(
     else:
       pipe = pipe_or_adapter
 
-    if hasattr(pipe, "transformer"):
-      transformer = getattr(pipe, "transformer", None)
+    # A pipeline may expose its denoising transformer under another name: MiniMax-H3 loads
+    # `transformer_ref` for the `ref2va` workflow, and only ever one of the two exists.
+    transformer_name, transformer = resolve_transformer(pipe)
+    if transformer is not None:
       if _should_defer_few_shot_compile(args, transformer):
-        _register_deferred_few_shot_compile_callback(args, pipe, transformer, "transformer")
+        _register_deferred_few_shot_compile_callback(args, pipe, transformer, transformer_name)
       else:
-        _compile_transformer_module(args, pipe, transformer, "transformer")
+        _compile_transformer_module(args, pipe, transformer, transformer_name)
     else:
       logger.warning("compile is set but no transformer found in the pipeline.")
 
@@ -2030,31 +2061,29 @@ def maybe_quantize_transformer(
     else:
       pipe = pipe_or_adapter
 
-    if hasattr(pipe, "transformer"):
-      transformer = getattr(pipe, "transformer", None)
-      if transformer is not None:
-        transformer_cls_name = transformer.__class__.__name__
-        if isinstance(transformer, torch.nn.Module):
-          logger.info(f"Quantizing transformer module: {transformer_cls_name} to"
-                      f" {args.quantize_type} ...")
-          transformer = quantize(
-            transformer,
-            quantize_config=QuantizeConfig(
-              quant_type=args.quantize_type,
-              regional_quantize=not args.disable_regional_quantize,
-              per_tensor_fallback=not args.disable_per_tensor_fallback,
-              exclude_layers=_resolve_cli_quantize_exclude_layers(args),
-              svdq_kwargs=_resolve_cli_svdq_kwargs(),
-              verbose=args.quantize_verbose,
-            ),
-          )
-          setattr(pipe, "transformer", transformer)
-        else:
-          logger.warning(f"Cannot quantize transformer module: {transformer_cls_name} Not a"
-                         " torch.nn.Module.")
-      setattr(pipe, "transformer", transformer)
-    else:
+    # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
+    # `transformer_ref` for `ref2va` — and only ever one of the two exists.
+    transformer_name, transformer = resolve_transformer(pipe)
+    if transformer is None:
       logger.warning("quantize is set but no transformer found in the pipeline.")
+    elif not isinstance(transformer, torch.nn.Module):
+      logger.warning("Cannot quantize %s: %s is not a torch.nn.Module.", transformer_name,
+                     transformer.__class__.__name__)
+    else:
+      logger.info("Quantizing transformer module '%s' (%s) to %s ...", transformer_name,
+                  transformer.__class__.__name__, args.quantize_type)
+      transformer = quantize(
+        transformer,
+        quantize_config=QuantizeConfig(
+          quant_type=args.quantize_type,
+          regional_quantize=not args.disable_regional_quantize,
+          per_tensor_fallback=not args.disable_per_tensor_fallback,
+          exclude_layers=_resolve_cli_quantize_exclude_layers(args),
+          svdq_kwargs=_resolve_cli_svdq_kwargs(),
+          verbose=args.quantize_verbose,
+        ),
+      )
+      assign_transformer(pipe, transformer, name=transformer_name)
 
     if hasattr(pipe, "transformer_2"):
       transformer_2 = getattr(pipe, "transformer_2", None)
@@ -2335,6 +2364,122 @@ def _is_text_encoder_offload_target(name: str) -> bool:
           or name == "vision_language_encoder")
 
 
+# Attribute names a vision-language conditioner can use for its vision tower.
+_VISION_TOWER_ATTRS = ("visual", "vision_tower", "vision_model")
+
+
+def _keep_vision_tower_resident(
+  module: torch.nn.Module,
+  device: torch.device,
+) -> Optional[str]:
+  """Move a conditioner's vision tower onto ``device`` and return its qualified name.
+
+  A vision tower is small next to the language stack but cannot be streamed: its forward builds the
+  interpolation constants from `self.pos_embed.weight.device` inside a plain method
+  (`Qwen3VLVisionModel.fast_pos_embed_interpolate`), so a streamed tower puts them on the offload
+  device and the first `hidden_states + pos_embeds` fails with a device mismatch. Keeping the tower
+  resident and streaming only the decoder avoids that without touching the model.
+
+  :param module: Conditioner being streamed.
+  :param device: Device its forward runs on.
+  :returns: Qualified name prefix of the tower, or None when the module has no vision tower.
+  """
+  named_modules = dict(module.named_modules())
+  for holder_name, holder in (("", module), ("model", getattr(module, "model", None))):
+    if not isinstance(holder, torch.nn.Module):
+      continue
+    for attr in _VISION_TOWER_ATTRS:
+      tower = getattr(holder, attr, None)
+      if not isinstance(tower, torch.nn.Module):
+        continue
+      prefix = f"{holder_name}.{attr}" if holder_name else attr
+      if named_modules.get(prefix) is not tower:
+        # An aliased attribute: the name we would exclude is not the path the offload discovery
+        # walks, so the exclusion would silently do nothing.
+        logger.warning(
+          "Vision tower of %s is not reachable at '%s'; leaving it on the layerwise "
+          "path.", module.__class__.__name__, prefix)
+        continue
+      tower.to(device)
+      logger.info(
+        "Keeping the vision tower %s of %s resident on %s (%.2f GiB): it derives its "
+        "position-embedding constants from the parameter device, so a streamed tower would build "
+        "them on the offload device.",
+        prefix,
+        module.__class__.__name__,
+        device,
+        sum(p.numel() * p.element_size() for p in tower.parameters()) / 2 ** 30,
+      )
+      return prefix
+  return None
+
+
+def _stream_filter_excluding(prefix: str):
+  """Build a layerwise-offload predicate that keeps ``prefix`` and its subtree resident.
+
+  :param prefix: Qualified name of the subtree to keep on the device.
+  :returns: Predicate accepting the default leaf targets outside ``prefix``.
+  """
+  excluded = prefix
+
+  def _filter(name: str, child: torch.nn.Module) -> bool:
+    if name == excluded or name.startswith(excluded + "."):
+      return False
+    return _default_module_filter(name, child)
+
+  return _filter
+
+
+def _needs_vision_inputs(pipe_or_adapter: Any) -> bool:
+  """Whether the conditioner of this pipeline is going to receive images or videos.
+
+  The workflows that condition on frames (`fl2va`, `ref2va`) load an `image_processor`; the text-only
+  workflow does not, because its preprocessing blocks are pruned away with the workflow. When the
+  answer cannot be determined the tower is kept resident, which is the safe side.
+
+  :param pipe_or_adapter: Pipeline, modular pipeline or adapter.
+  :returns: Whether a vision tower has to stay resident.
+  """
+  pipe = resolve_pipe(pipe_or_adapter)
+  if pipe is None:
+    return True
+  for name in ("image_processor", "video_processor"):
+    if getattr(pipe, name, None) is not None:
+      return True
+  return False
+
+
+def _layerwise_kwargs_for(
+  args: argparse.Namespace,
+  *,
+  target_name: str,
+  module: torch.nn.Module,
+  onload_device: torch.device,
+  keep_vision_resident: bool,
+) -> dict[str, Any]:
+  """Layerwise-offload kwargs for one component, including the vision-tower carve-out.
+
+  Both streaming paths (`--module-layerwise-cpu-offload` and the conditioner of
+  `--adaln-host-residency`) go through here, so a vision-language conditioner behaves the same way
+  whichever switch the user picks.
+
+  :param args: CLI arguments with the `layerwise_*` options.
+  :param target_name: Component name the target was resolved under.
+  :param module: Component about to be streamed.
+  :param onload_device: Device its forward runs on.
+  :param keep_vision_resident: Whether a vision tower has to stay on the device.
+  :returns: Keyword arguments for `layerwise_cpu_offload`.
+  """
+  kwargs = _resolve_layerwise_target_kwargs(args,
+                                            target_name=target_name,
+                                            onload_device=onload_device)
+  if keep_vision_resident and _is_text_encoder_offload_target(target_name):
+    vision_prefix = _keep_vision_tower_resident(module, onload_device)
+    if vision_prefix is not None:
+      kwargs["module_filter"] = _stream_filter_excluding(vision_prefix)
+  return kwargs
+
+
 def _resolve_layerwise_target_arg(
   args: argparse.Namespace,
   *,
@@ -2468,7 +2613,13 @@ def _apply_layerwise_cpu_offload(
     handles.append(
       layerwise_cpu_offload(
         module,
-        **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+        **_layerwise_kwargs_for(
+          args,
+          target_name=name,
+          module=module,
+          onload_device=device,
+          keep_vision_resident=_needs_vision_inputs(pipe_or_adapter),
+        ),
       ))
   return bool(handles) or skipped_due_to_existing_offload
 
@@ -2520,13 +2671,22 @@ def maybe_adaln_host_residency(
   # text encoder is streamed.
   tp_enabled = "tp" in (getattr(args, "parallel_type", "") or "")
   keep_transformer_resident = tp_enabled or getattr(args, "quantize", False)
-  if ((getattr(args, "compile", False) or getattr(args, "cuda_graph", False))
-      and not keep_transformer_resident):
-    # Only the streamed variant is traced: Dynamo cannot trace the per-step device move of the
-    # AdaLN tables. With a resident transformer this mode leaves the transformer untouched, so it
-    # composes with `--compile` exactly like a plain `--quantize` run does.
-    raise ValueError("--adaln-host-residency cannot be combined with --compile or --cuda-graph "
-                     "unless the transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "cuda_graph", False) and not keep_transformer_resident:
+    # CUDA Graph capture bakes the parameter pointers into the graph, and the host mirror rebinds
+    # `parameter.data` on every block, so the capture would replay stale device buffers.
+    raise ValueError("--adaln-host-residency cannot be combined with --cuda-graph unless the "
+                     "transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "compile_full_graph", False) and not keep_transformer_resident:
+    # `fullgraph=True` refuses the graph break the streaming hook causes by construction.
+    raise ValueError("--adaln-host-residency cannot be combined with --compile-full-graph unless "
+                     "the transformer stays resident (`--quantize` or `--parallel tp`).")
+  if getattr(args, "compile", False) and not keep_transformer_resident:
+    # The device move happens inside the layerwise hooks, which are `torch.compiler.disable`d, so
+    # each streamed block shows up as a graph break instead of an error: the compiled region is
+    # everything around it. That still pays off — the attention / FFN bodies are the bulk of the
+    # block — but the win is smaller than for a resident transformer.
+    logger.info("Streaming the AdaLN tables of the transformer while compiling: the per-block "
+                "host-to-device copy is a graph break, so each block compiles around it.")
 
   def _is_transformer(name: str, module: torch.nn.Module) -> bool:
     if name.startswith("transformer"):
@@ -2584,7 +2744,13 @@ def maybe_adaln_host_residency(
       )
       layerwise_cpu_offload(
         module,
-        **_resolve_layerwise_target_kwargs(args, target_name=name, onload_device=device),
+        **_layerwise_kwargs_for(
+          args,
+          target_name=name,
+          module=module,
+          onload_device=device,
+          keep_vision_resident=_needs_vision_inputs(pipe_or_adapter),
+        ),
       )
     else:
       module.to(device)

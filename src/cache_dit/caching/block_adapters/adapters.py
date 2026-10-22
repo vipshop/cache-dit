@@ -6,6 +6,7 @@ from .block_adapters import BlockAdapter
 from .block_registers import BlockAdapterRegister
 from ...envs import ENV
 from ...logger import init_logger
+from ...utils import resolve_transformer
 
 logger = init_logger(__name__)
 
@@ -168,9 +169,11 @@ def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
 
   # One checkpoint repository holds both partitions: `transformer` drives the `t2va` / `fl2va`
   # workflows and `transformer_ref` the `ref2va` one, and a workflow loads only its own.
-  transformer = getattr(pipe, "transformer", None)
+  _, transformer = resolve_transformer(pipe)
   if transformer is None:
-    transformer = pipe.transformer_ref
+    raise ValueError("The MiniMax-H3 pipeline has neither `transformer` nor `transformer_ref`: "
+                     "pass `workflow=` to `from_pretrained` / `load_components` so one of the two "
+                     "checkpoint partitions is loaded.")
   _relaxed_assert(transformer, MiniMaxH3Transformer3DModel)
 
   # MiniMax-H3 denoises **one packed sequence** — text, keyframe, audio and video rows — through a

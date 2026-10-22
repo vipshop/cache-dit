@@ -7,7 +7,7 @@ import dataclasses
 from PIL import Image
 from enum import Enum
 import numpy as np
-from typing import Dict, Any, Union, Optional, List, Callable
+from typing import Dict, Any, Union, Optional, List, Callable, ClassVar
 from diffusers.utils import export_to_video, load_image
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
@@ -41,6 +41,69 @@ class ExampleType(Enum):
   IE2I = "IE2I - Image Editing to Image"
   FLF2V = "FLF2V - First Last Frames to Video"
   VACE = "VACE - Video All-in-one Creation and Editing"
+  # Same first/last-frame conditioning as FLF2V, but the pipeline also generates a soundtrack, so
+  # the output parse has to go through the audio-video path instead of `output.frames`.
+  FL2VA = "FL2VA - First Last Frames to Video with Audio"
+  # Reference-conditioned: image / video / audio references plus a prompt.
+  REF2VA = "REF2VA - Reference to Video with Audio"
+
+
+# Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
+# asks a modular pipeline for those state keys) and `run` (which parses them) must agree on this
+# set: a mismatch leaves `output` as the whole `PipelineState`, and the parse step then fails only
+# after the full inference has already run.
+_AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA, ExampleType.REF2VA})
+
+# `--reference-*-path` flags and the diffusers class that loads them. Order is semantic: a pipeline
+# consumes references in the order it receives them.
+_REFERENCE_PATH_ARGS = (
+  ("reference_image_path", "MiniMaxH3ImageReference"),
+  ("reference_video_path", "MiniMaxH3VideoReference"),
+  ("reference_audio_path", "MiniMaxH3AudioReference"),
+)
+
+
+def _references_from_args(args: argparse.Namespace) -> Optional[list]:
+  """Build reference objects from the `--reference-*-path` flags.
+
+  :param args: CLI arguments.
+  :returns: The reference objects in image -> video -> audio order, or None when no flag is set.
+  :raises ImportError: When the installed diffusers has no reference classes for this model.
+  """
+  selected = [(attr, cls_name) for attr, cls_name in _REFERENCE_PATH_ARGS
+              if getattr(args, attr, None)]
+  if not selected:
+    return None
+  import diffusers
+
+  # The reference data classes come from the pipeline package when the installed diffusers has
+  # them; an older release only exposes some of them at the top level.
+  try:
+    from diffusers.modular_pipelines import minimax_h3 as _h3_references
+  except ImportError:  # pragma: no cover - older diffusers
+    _h3_references = None
+
+  references = []
+  for attr, cls_name in selected:
+    reference_cls = getattr(_h3_references, cls_name, None)
+    if reference_cls is None:
+      reference_cls = getattr(diffusers, cls_name, None)
+    if reference_cls is None:
+      raise ImportError(f"`{cls_name}` is not exposed by the installed diffusers, so "
+                        f"--{attr.replace('_', '-')} cannot be used. Pass `references` "
+                        "programmatically instead.")
+    paths = getattr(args, attr)
+    if isinstance(paths, str):
+      # A programmatic caller may pass a single path; iterating it would walk the characters.
+      paths = [paths]
+    for path in paths:
+      references.append(reference_cls.from_file(path))
+  if references and all(getattr(reference, "kind", None) == "audio" for reference in references):
+    # Fail here rather than after the 60 GiB conditioner has been loaded: the setup step rejects a
+    # soundtrack that has no visual reference to go with it.
+    raise ValueError("An audio reference has to be paired with at least one image or video "
+                     "reference.")
+  return references
 
 
 @dataclasses.dataclass
@@ -62,6 +125,12 @@ class ExampleInputData:
   # Specific inputs for image editing
   image: Optional[Union[List[Image.Image], Image.Image]] = None
   mask_image: Optional[Union[List[Image.Image], Image.Image]] = None
+  # Specific inputs for first/last-frame conditioning, e.g. MiniMax-H3 `fl2va`
+  last_image: Optional[Image.Image] = None
+  # Skip the client-side resize of `image` / `last_image`. A pipeline that derives its canvas from
+  # the source aspect ratio and crops or stretches the conditioning frame itself (MiniMax-H3's
+  # resize step) would otherwise resample twice, which changes the composition it asked for.
+  skip_image_resize: bool = False
   # Specific inputs for video generation, e.g, Wan VACE
   video: Optional[List[Image.Image]] = None
   mask: Optional[List[Image.Image]] = None
@@ -81,8 +150,47 @@ class ExampleInputData:
   # Some extra args, e.g, editing model specific inputs
   extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
+  # Reference media for reference-conditioned pipelines (MiniMax-H3 `ref2va`). Declared as a
+  # `ClassVar` — i.e. **not** a field — on purpose: `data()` runs `dataclasses.asdict`, which deep
+  # copies every value and turns a reference dataclass into a plain dict that the pipeline can no
+  # longer read. Set it through `set_references`; `data()` forwards the objects unchanged.
+  references: ClassVar[Any] = None
+  # Set by `Example.prepare_input_data` from the task type. A workflow that does not take references
+  # must not decode them either — the flags are global, and decoding a video or importing the
+  # reference loaders would fail a run that never asked for them.
+  allow_references: ClassVar[bool] = True
+
+  def set_references(self, references: Any) -> "ExampleInputData":
+    """Attach reference media for a reference-conditioned pipeline.
+
+    :param references: List of pipeline-specific reference objects, e.g. `MiniMaxH3ImageReference`.
+    :returns: This instance, so the call can wrap the constructor.
+    """
+    self.references = list(references)
+    return self
+
   def data(self, args: argparse.Namespace) -> Dict[str, Any]:
     data = dataclasses.asdict(self)
+    # `asdict` keeps falsy values, so a field that only steers this builder has to leave before the
+    # `is not None` filter below: forwarding `skip_image_resize=False` to the pipeline would be a
+    # `TypeError` for models that never declare it.
+    skip_image_resize = data.pop("skip_image_resize", False)
+    # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
+    # forwarded separately, after the arg overrides.
+    allow_references = getattr(self, "allow_references", True)
+    references = getattr(self, "references", None) if allow_references else None
+    # Decoding reference media is expensive (a video is decoded frame by frame), and `data()` is
+    # called twice per run — once for the inference and once for the summary. Cache by the flags so
+    # the media is decoded once.
+    references_from_args = None
+    if allow_references:
+      cache_key = tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS)
+      cached = getattr(self, "_references_from_args_cache", None)
+      if cached is not None and cached[0] == cache_key:
+        references_from_args = cached[1]
+      else:
+        references_from_args = _references_from_args(args)
+        self._references_from_args_cache = (cache_key, references_from_args)
     # Flatten extra_args and merge into main dict
     extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
     extra_args = extra_args if extra_args is not None else {}
@@ -108,32 +216,48 @@ class ExampleInputData:
       input_data["num_inference_steps"] = args.num_inference_steps
     if args.num_frames is not None:
       input_data["num_frames"] = args.num_frames
+    # Determine resize target: explicit --input-height/--input-width first,
+    # then fall back to output height/width.
+    input_height = getattr(args, "input_height", None)
+    input_width = getattr(args, "input_width", None)
+    resize_h = input_height if input_height is not None else input_data.get("height")
+    resize_w = input_width if input_width is not None else input_data.get("width")
+
+    def _prepare(image: Image.Image) -> Image.Image:
+      # `skip_image_resize` leaves the geometry to the pipeline: MiniMax-H3 derives its canvas from
+      # the source aspect ratio and stretches the first frame / cover-crops the last one itself, so
+      # resizing here would resample twice and change the composition it asked for.
+      if skip_image_resize or resize_h is None or resize_w is None:
+        return image
+      return image.resize((resize_w, resize_h))
+
+    if skip_image_resize and (getattr(args, "mask_image_path", None) is not None
+                              or input_data.get("mask_image") is not None):
+      # The mask has to line up with the image pixel for pixel, so leaving one of them to the
+      # pipeline and resizing the other here would silently mismatch them.
+      raise ValueError("`skip_image_resize` also leaves the mask geometry to the pipeline, which "
+                       "this CLI cannot express: drop the mask, or resize both here.")
+
     if args.image_path is not None:
-      if "image" in input_data:
-        if isinstance(input_data["image"], list):
-          if len(input_data["image"]) > 1:
-            logger.warning("Overriding multiple input images with a single image "
-                           "from args.image_path.")
-      # Determine resize target: explicit --input-height/--input-width first,
-      # then fall back to output height/width.
-      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
-      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
-      if isinstance(input_data["image"], list):
-        input_data["image"] = [load_image(args.image_path).convert("RGB")]
-        if resize_h is not None and resize_w is not None:
-          input_data["image"] = [img.resize((resize_w, resize_h)) for img in input_data["image"]]
+      image = load_image(args.image_path).convert("RGB")
+      if isinstance(input_data.get("image"), list):
+        if len(input_data["image"]) > 1:
+          logger.warning("Overriding multiple input images with a single image "
+                         "from args.image_path.")
+        input_data["image"] = [_prepare(image)]
       else:
-        input_data["image"] = load_image(args.image_path).convert("RGB")
-        if resize_h is not None and resize_w is not None:
-          input_data["image"] = input_data["image"].resize((resize_w, resize_h))
+        input_data["image"] = _prepare(image)
+    last_image_path = getattr(args, "last_image_path", None)
+    if last_image_path is not None:
+      # First/last-frame conditioning takes the trailing frame as its own argument (`last_image`),
+      # so it must not be folded into `image`.
+      input_data["last_image"] = _prepare(load_image(last_image_path).convert("RGB"))
     if args.mask_image_path is not None:
       if "mask_image" in input_data:
         if isinstance(input_data["mask_image"], list):
           if len(input_data["mask_image"]) > 1:
             logger.warning("Overriding multiple input mask images with a single mask "
                            "image from args.mask_image_path.")
-      resize_h = args.input_height if args.input_height is not None else input_data.get("height")
-      resize_w = args.input_width if args.input_width is not None else input_data.get("width")
       if isinstance(input_data["mask_image"], list):
         input_data["mask_image"] = [load_image(args.mask_image_path).convert("RGB")]
         if resize_h is not None and resize_w is not None:
@@ -153,6 +277,10 @@ class ExampleInputData:
     # Remove redundant keys from input data
     input_data.pop("seed", None)
     input_data.pop("gen_device", None)
+    if references_from_args:
+      input_data["references"] = references_from_args
+    elif references:
+      input_data["references"] = references
     return input_data
 
   def new_generator(
@@ -183,7 +311,10 @@ class ExampleInputData:
         summary_str += f"- {k}: {v}\n"
       elif k in ["height", "width", "num_inference_steps", "num_frames"]:
         summary_str += f"- {k}: {v}\n"
-      elif k in ["image", "mask_image", "control_image", "control_mask"]:
+      elif k == "references":
+        count = len(v) if isinstance(v, (list, tuple)) else 1
+        summary_str += f"- {k}: {count} item(s)\n"
+      elif k in ["image", "mask_image", "control_image", "control_mask", "last_image"]:
         if isinstance(v, Image.Image):
           W, H = v.size
           summary_str += f"- {k}: Single Image ({H}x{W})\n"
@@ -597,6 +728,44 @@ def _is_function_or_method(component: Any) -> bool:
   return is_basic_func and not is_excluded_instance and not is_method
 
 
+def parse_audio_video_output(
+  output: Any,
+  task_type: ExampleType,
+  native_fps: Optional[float] = None,
+) -> Dict[str, Any]:
+  """Parse the output of a task that returns a video stream plus an optional soundtrack.
+
+  A modular pipeline returns the state values it was asked for, i.e. a dict, while a regular
+  pipeline returns an object with attributes; both shapes are accepted so the same task type works
+  on either.
+
+  :param output: Pipeline output.
+  :param task_type: Task being parsed, used in the error message.
+  :param native_fps: Frame rate the model generates at, kept for the writer.
+  :returns: `video` / `audio` / `audio_sampling_rate` / `video_fps` keys.
+  :raises ValueError: When the output carries no `videos` entry.
+  """
+  if isinstance(output, dict):
+    videos = output["videos"]
+    audio = output.get("audio")
+    sampling_rate = output.get("sampling_rate")
+  else:
+    videos = getattr(output, "videos", None)
+    audio = getattr(output, "audio", None)
+    sampling_rate = getattr(output, "sampling_rate", None)
+  if videos is None:
+    raise ValueError(f"{task_type.name} expects the pipeline to return `videos`, got "
+                     f"{type(output).__name__}.")
+  return {
+    "video": videos[0] if isinstance(videos, (list, tuple)) else videos,
+    # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
+    "audio": audio[0] if audio is not None and audio.dim() == 3 else audio,
+    "audio_sampling_rate": sampling_rate if audio is not None else None,
+    # Keep the native rate: the soundtrack is cut to match it.
+    "video_fps": native_fps,
+  }
+
+
 class Example:
 
   def __init__(
@@ -621,6 +790,16 @@ class Example:
     return True
 
   def prepare_input_data(self):
+    # `--reference-*-path` is a global flag, and building references decodes media, so the decision
+    # is taken here — before `data()` reads the flags — instead of rejecting the result afterwards:
+    # a workflow that does not take references ignores them, and one that does not even have the
+    # reference loaders installed never tries to import them.
+    allow_references = self.init_config.task_type is ExampleType.REF2VA
+    self.input_data.allow_references = allow_references
+    if not allow_references and any(
+        getattr(self.args, attr, None) for attr, _ in _REFERENCE_PATH_ARGS):
+      logger.warning("Ignoring reference media: %s does not take references.",
+                     self.init_config.task_type.name)
     input_kwargs = self.input_data.data(self.args)
     default_num_inference_steps = input_kwargs.get("num_inference_steps", None)
     extra_optimize_kwargs = self.init_config.extra_optimize_kwargs
@@ -629,11 +808,12 @@ class Example:
 
   def run(self) -> None:
     self.check_valid()
+    # Inputs are built and validated before the model load: a bad combination should fail in a
+    # second, not after 100+ GiB of weights are on the device.
+    input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
     start_time = time.time()
     pipe = self.init_config.get_pipe(self.args)
     load_time = time.time() - start_time
-
-    input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
 
     maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
 
@@ -704,26 +884,14 @@ class Example:
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       images = output.images if hasattr(output, "images") else output
       output_data.image = images[0] if isinstance(images, list) else images
-    elif self.init_config.task_type == ExampleType.T2VA:
-      # A modular pipeline returns the selected state values, i.e. a dict, not a `BaseOutput`.
-      if isinstance(output, dict):
-        videos = output["videos"]
-        audio = output.get("audio")
-        sampling_rate = output.get("sampling_rate")
-      else:
-        videos = getattr(output, "videos", None)
-        audio = getattr(output, "audio", None)
-        sampling_rate = getattr(output, "sampling_rate", None)
-      if videos is None:
-        raise ValueError("T2VA expects the pipeline to return `videos`, got "
-                         f"{type(output).__name__}.")
-      output_data.video = videos[0] if isinstance(videos, (list, tuple)) else videos
-      if audio is not None:
-        # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
-        output_data.audio = audio[0] if audio.dim() == 3 else audio
-        output_data.audio_sampling_rate = sampling_rate
-      # Keep the native rate: MiniMax-H3 generates at 24 fps and the soundtrack is cut to match.
-      output_data.video_fps = getattr(pipe, "fps", None)
+    elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
+      parsed = parse_audio_video_output(output,
+                                        self.init_config.task_type,
+                                        native_fps=getattr(pipe, "fps", None))
+      output_data.video = parsed["video"]
+      output_data.audio = parsed["audio"]
+      output_data.audio_sampling_rate = parsed["audio_sampling_rate"]
+      output_data.video_fps = parsed["video_fps"]
     elif self.init_config.task_type in [
         ExampleType.T2V,
         ExampleType.I2V,
@@ -759,7 +927,7 @@ class Example:
     kwargs = dict(kwargs)
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       kwargs["output"] = "images"
-    elif self.init_config.task_type == ExampleType.T2VA:
+    elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
       # Joint video + audio models return both streams plus the rate the soundtrack runs at.
       kwargs["output"] = ["videos", "audio", "sampling_rate"]
     return pipe(**kwargs)
