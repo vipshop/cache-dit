@@ -19,8 +19,8 @@ Verification-only rows: the work is a cache A/B test (PSNR > 30, SSIM > 0.90 vs 
 
 | # | Model | Difficulty | Type | diffusers | Task | Transformer class | HF | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1 | LTX-2.5 (incl. DFR pipeline) | ★☆☆☆☆ | Verification-only | v0.40.0 (#14447, #14567, 2026-08) | t2v / i2v | `LTX2VideoTransformer3DModel` — `LTX` adapter | [Lightricks/LTX-2.5-Diffusers](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | ⬜ |
-| 2 | PRXPixel | ★★☆☆☆ | Verification-only | v0.39.0 (#13928, 2026-06-17) | t2i (pixel space, no VAE) | `PRXTransformer2DModel` — `PRX` adapter | [Photoroom/prxpixel-t2i](https://huggingface.co/Photoroom/prxpixel-t2i) | ⬜ |
+| 1 | LTX-2.5 (incl. DFR pipeline) | ★☆☆☆☆ | Verification-only | v0.40.0 (#14447, #14567, 2026-08) | t2v / i2v | `LTX2VideoTransformer3DModel` — `LTX` adapter | [Lightricks/LTX-2.5-Diffusers](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | ✅ |
+| 2 | PRXPixel | ★★☆☆☆ | Verification-only | v0.39.0 (#13928, 2026-06-17) | t2i (pixel space, no VAE) | `PRXTransformer2DModel` — `PRX` adapter | [Photoroom/prxpixel-t2i](https://huggingface.co/Photoroom/prxpixel-t2i) | ✅ |
 | 3 | Anima | ★★☆☆☆ | Verification-only (modular) | v0.39.0 (#13732, 2026-05-29) | t2i | `CosmosTransformer3DModel` — `Cosmos` adapter | [circlestone-labs/Anima-Base-v1.0-Diffusers](https://huggingface.co/circlestone-labs/Anima-Base-v1.0-Diffusers) | ⬜ |
 | 4 | Echo (JoyAI-Echo) | ★★☆☆☆ | Verification-only (modular) | v0.41.0 (#14941, 2026-10-05) | long video + audio (DMD few-step) | `LTX2VideoTransformer3DModel` — `LTX` adapter | [jdopensource/JoyAI-Echo](https://huggingface.co/jdopensource/JoyAI-Echo) | ⬜ |
 | 5 | Bria Fibo 2.0 | ★★☆☆☆ | Full adapter | 0.42-dev (#14991, 2026-10-20) | t2i / edit (8.1B) | `BriaFibo2Transformer2DModel` | [briaai/Fibo-2.0-dev](https://huggingface.co/briaai/Fibo-2.0-dev), [briaai/Fibo-2.0-edit-turbo](https://huggingface.co/briaai/Fibo-2.0-edit-turbo) | ⬜ |
@@ -47,6 +47,7 @@ All class names below were verified against diffusers source at HEAD `5378870`. 
 ### 3.2 PRXPixel
 - Difficulty ★★☆☆☆ (verification-only): `prx_adapter` already asserts `PRXTransformer2DModel` — the same class `PRXPixelPipeline` uses.
 - ⚠️ Pixel-space pipeline (no VAE; the denoised output *is* the image): confirm the block loop and CFG handling match latent-space PRX before trusting the A/B result. Requires `transformers >= 4.57` (Qwen3-VL text encoder).
+- Done (2026-10-23). Cache needed no change; CP/TP/TE-P were added because the shared class had none. Two model quirks are worth remembering: the text sequence and the RoPE must be split *outside* the block loop (`txt_in` output / `pe_embedder` ids) because PRX keeps `txt` and `pe` as loop-invariant locals, and the joint text+image key mask has to be rebuilt in the Ulysses all-to-all order. diffusers never declares `_repeated_blocks` for PRX, so regional quantization and `compile_repeated_blocks()` need the declaration cache-dit now adds.
 
 ### 3.3 Anima
 - Difficulty ★★☆☆☆ (verification-only, modular): Cosmos adapter covers `CosmosTransformer3DModel`. Read [`./modular_pipeline.md`](./modular_pipeline.md) first.
@@ -136,7 +137,7 @@ Documented so future refreshes do not re-add them:
 
 | Date | Model | Summary (adapter / coverage / PR or commit) |
 |---|---|---|
-| — | — | — |
+| 2026-10-23 | PRXPixel (`Photoroom/prxpixel-t2i`) | Reused the `PRX` adapter (no change). Added CP + TP planners (`distributed/transformers/prx.py`), `Qwen3VLTextModel` TE-P, `prx_pixel` CLI example, and an `_repeated_blocks` declaration so regional quant/compile can find `PRXBlock`. Verified on RTX PRO 5000: CP2 PSNR 43.4 / SSIM 0.989, TP2 43.1 / 0.989, fp8_per_row 35.3 / 0.962 (regional scope; whole-module scope loses ~3 dB and whole-module compile is slower than eager), fp8 pays off only together with `--compile` (eager 18.4s vs compiled 10.9s), svdq nvfp4 r64 reaches 9.6s / 2.03x with 29.2 dB / SSIM 0.835 and needs `--svdq-smooth-strategy few_shot` (identity: SSIM 0.21). Both quantization numbers require the `_repeated_blocks` declaration: without it they fall back to whole-module scope plus full-module compile and look ~40% slower. |
 
 ## R.6 How to Refresh This List
 

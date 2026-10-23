@@ -73,6 +73,7 @@ __all__ = [
   "minimax_h3_example",
   "minimax_h3_fl2va_example",
   "minimax_h3_ref2va_example",
+  "prx_pixel_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -131,6 +132,7 @@ _env_path_mapping = {
   "ANY_FLOW_DIR": "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
+  "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -2794,5 +2796,29 @@ def anyflow_far_example(args: argparse.Namespace, **kwargs) -> Example:
       num_frames=num_frames,
       num_inference_steps=num_inference_steps,
       guidance_scale=1.0,
+    ),
+  )
+
+
+@ExampleRegister.register("prx_pixel", default="Photoroom/prxpixel-t2i")
+def prx_pixel_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import PRXPixelPipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("Photoroom/prxpixel-t2i", args=args),
+      pipeline_class=PRXPixelPipeline,
+      extra_optimize_kwargs={
+        "enable_separate_cfg": False,  # CFG is batch-concatenated, single forward
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="A front-facing portrait of a lion in the golden savanna at sunset.",
+      height=1024,
+      width=1024,
+      num_inference_steps=28,
+      guidance_scale=5.0,
     ),
   )

@@ -360,10 +360,16 @@ class QuantizeAOContext:
       "_repeated_blocks",
       self.repeated_blocks if self.repeated_blocks else None,
     )
-    if self.repeated_blocks is None:
+    if not self.repeated_blocks:
       # If the module doesn't have _repeated_blocks attribute and repeated_blocks
       # is not specified, we will set regional_quantize to False to avoid
-      # potential issues.
+      # potential issues. An empty list is treated the same: no class name can match it,
+      # and regional quantization would fail after scanning the whole module.
+      if self.regional_quantize:
+        logger.warning(
+          f"{self.module_ref.__class__.__name__} declares no repeated blocks, so regional "
+          "quantization cannot scope the denoising stack. Falling back to whole-module "
+          "quantization; check the component allow/deny lists if that is unintended.")
       self.regional_quantize = False
 
     if self.module_ref is not None and self.is_float8_per_row():

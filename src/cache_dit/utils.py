@@ -72,6 +72,27 @@ def resolve_pipe(pipe_or_adapter: Any) -> Any:
 # `transformer_ref/` for `ref2va`), so the second name is a substitute, never an extra component.
 TRANSFORMER_ATTR_NAMES = ("transformer", "transformer_ref")
 
+# Denoising transformers that own a repeated block stack but never declare it. Regional
+# quantization and `compile_repeated_blocks()` discover the stack from `_repeated_blocks`, so
+# without the declaration they fall back to whole-module work: less accurate (the modulation and
+# pixel-output projections get quantized too) and slower (a full-graph compile of a 24-block
+# model with data-dependent reshapes loses to eager).
+_MISSING_REPEATED_BLOCKS = {
+  "PRXTransformer2DModel": ["PRXBlock"],
+}
+
+
+def declare_repeated_blocks(transformer: Optional[torch.nn.Module]) -> None:
+  """Declare the repeated block class for models diffusers never annotated.
+
+  :param transformer: Denoising transformer; `None` is a no-op.
+  """
+  if transformer is None or getattr(transformer, "_repeated_blocks", None):
+    return
+  repeated_blocks = _MISSING_REPEATED_BLOCKS.get(transformer.__class__.__name__)
+  if repeated_blocks:
+    transformer._repeated_blocks = list(repeated_blocks)
+
 
 def resolve_transformer(pipe_or_adapter: Any) -> Tuple[Optional[str], Any]:
   """Resolve the denoising transformer of a pipeline or adapter, with the attribute it came from.

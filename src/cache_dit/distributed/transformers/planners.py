@@ -123,6 +123,8 @@ def _activate_cp_planners():
     ".joy_image", "JoyImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   AnyFlowContextParallelismPlanner = _safe_import(  # noqa: F841
     ".anyflow", "AnyFlowContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  PrxContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".prx", "PrxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -197,3 +199,5 @@ def _activate_tp_planners():
     ".joy_image", "JoyImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   AnyFlowTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".anyflow", "AnyFlowTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  PrxTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".prx", "PrxTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

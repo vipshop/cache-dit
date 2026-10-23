@@ -6,7 +6,7 @@ from .block_adapters import BlockAdapter
 from .block_registers import BlockAdapterRegister
 from ...envs import ENV
 from ...logger import init_logger
-from ...utils import resolve_transformer
+from ...utils import declare_repeated_blocks, resolve_transformer
 
 logger = init_logger(__name__)
 
@@ -921,6 +921,9 @@ def prx_adapter(pipe, **kwargs) -> BlockAdapter:
     PRXTransformer2DModel = None  # requires diffusers>=0.36.dev0
 
   _relaxed_assert(pipe.transformer, PRXTransformer2DModel)
+  # diffusers does not declare `_repeated_blocks` for PRX, so regional quantization and
+  # `compile_repeated_blocks()` cannot discover the denoising stack on their own.
+  declare_repeated_blocks(pipe.transformer)
   return BlockAdapter(
     pipe=pipe,
     transformer=pipe.transformer,
