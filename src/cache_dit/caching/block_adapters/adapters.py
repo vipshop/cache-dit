@@ -295,6 +295,23 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
+def _default_call_float(pipe, name: str) -> Optional[float]:
+  """Return a numeric default of the pipeline's `__call__`, if discoverable.
+
+  :param pipe: Pipeline instance.
+  :param name: Name of the `__call__` parameter to look up.
+  :returns: The parameter default, or `None` when it is missing or not a plain number.
+  """
+
+  try:
+    default = inspect.signature(pipe.__call__).parameters[name].default
+    if isinstance(default, (int, float)):
+      return float(default)
+  except (AttributeError, KeyError, TypeError, ValueError):
+    pass
+  return None
+
+
 def _qwenimage21_default_cfg_scale(pipe) -> Optional[float]:
   """Return the pipeline's default classifier-free guidance scale, if discoverable.
 
@@ -302,12 +319,9 @@ def _qwenimage21_default_cfg_scale(pipe) -> Optional[float]:
   :returns: The default `true_cfg_scale` / `guidance_scale`, or `None` when unknown.
   """
 
-  try:
-    default = inspect.signature(pipe.__call__).parameters["true_cfg_scale"].default
-    if isinstance(default, (int, float)):
-      return float(default)
-  except (AttributeError, KeyError, TypeError, ValueError):
-    pass
+  default = _default_call_float(pipe, "true_cfg_scale")
+  if default is not None:
+    return default
 
   guider = getattr(pipe, "guider", None)
   if guider is not None:
@@ -394,6 +408,45 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
       has_separate_cfg=True,
       **kwargs,
     )
+
+
+@BlockAdapterRegister.register("Echo")
+def echo_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the Echo (JoyAI-Echo) text-to-video+audio modular pipeline.
+
+  Echo reuses the LTX-2 audiovisual backbone (`LTX2VideoTransformer3DModel`), so it shares the LTX-2
+  block contract and the `LTX2PatchFunctor` rewrite. The pipeline itself is guidance-free
+  (positive-only conditioning, one transformer forward per stochastic DMD step), hence no separate
+  CFG bookkeeping.
+
+  :param pipe: Echo modular pipeline.
+  :param kwargs: Extra `BlockAdapter` arguments.
+  :returns: The block adapter for Echo.
+  """
+  try:
+    from diffusers import LTX2VideoTransformer3DModel
+  except ImportError:
+    LTX2VideoTransformer3DModel = None  # requires a diffusers build with the LTX-2 backbone
+
+  from cache_dit.caching.patch_functors import LTX2PatchFunctor
+
+  _relaxed_assert(pipe.transformer, LTX2VideoTransformer3DModel)
+
+  guider = getattr(pipe, "guider", None)
+  has_separate_cfg = bool(guider is not None and getattr(guider, "num_conditions", 1) > 1)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    # Same treatment as LTX-2: `audio_hidden_states` plays the `encoder_hidden_states` role of
+    # Pattern_0, and the functor rewrites the keyword block call into the positional contract.
+    forward_pattern=ForwardPattern.Pattern_0,
+    patch_functor=LTX2PatchFunctor(),
+    check_forward_pattern=False,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
 
 
 @BlockAdapterRegister.register("LTX")
@@ -670,6 +723,46 @@ def amused_adapter(pipe, **kwargs) -> BlockAdapter:
     blocks=pipe.transformer.transformer_layers,
     forward_pattern=ForwardPattern.Pattern_3,
     check_forward_pattern=True,
+    **kwargs,
+  )
+
+
+# NOTE: The registry returns the first class-name prefix that matches, so "BriaFibo2" must be
+# registered before "BriaFibo" ("BriaFibo2*" class names also start with "BriaFibo").
+@BlockAdapterRegister.register("BriaFibo2")
+def bria_fibo2_adapter(pipe, **kwargs) -> BlockAdapter:
+  try:
+    from diffusers import BriaFibo2Transformer2DModel
+  except ImportError:
+    BriaFibo2Transformer2DModel = None  # requires a diffusers build with Bria Fibo 2.0
+
+  from cache_dit.caching.patch_functors import BriaFibo2PatchFunctor
+
+  _relaxed_assert(pipe.transformer, BriaFibo2Transformer2DModel)
+
+  # Fibo 2.0 runs a real CFG pass (two transformer forwards per step) unless the caller lowers
+  # `guidance_scale` to 1, which is what the distilled `Fibo-2.0-edit-turbo` checkpoint does. The
+  # pipeline default is authoritative here; a turbo run must set `enable_separate_cfg=False` in the
+  # cache config, otherwise cache-dit counts two forwards as one step and almost nothing is cached.
+  guidance_scale = _default_call_float(pipe, "guidance_scale")
+  has_separate_cfg = True if guidance_scale is None else guidance_scale > 1.0
+  if not has_separate_cfg:
+    logger.info(
+      f"Bria Fibo 2.0 defaults to guidance_scale={guidance_scale}, i.e. a single transformer "
+      "forward per step; separate CFG bookkeeping is disabled. Pass "
+      "`enable_separate_cfg=True` in the cache config if the run enables guidance.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    # Fibo 2.0 has a single-stream `layers` stack; `noise_refiner` and `perceiver` run before it
+    # and stay uncached. The functor distributes the per-injection-layer text bundles.
+    blocks=pipe.transformer.layers,
+    forward_pattern=ForwardPattern.Pattern_3,
+    patch_functor=BriaFibo2PatchFunctor(),
+    # Fibo 2.0 blocks take `x` instead of `hidden_states`.
+    check_forward_pattern=False,
+    has_separate_cfg=has_separate_cfg,
     **kwargs,
   )
 

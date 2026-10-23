@@ -4,7 +4,7 @@ import torch
 import argparse
 import PIL.Image
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Any, Tuple, List, Optional
 from diffusers.utils import load_image
 from diffusers import FlowMatchEulerDiscreteScheduler
 from ..caching import DBCacheConfig, ParamsModifier, steps_mask
@@ -75,6 +75,9 @@ __all__ = [
   "minimax_h3_ref2va_example",
   "prx_pixel_example",
   "anima_example",
+  "bria_fibo2_example",
+  "bria_fibo2_turbo_example",
+  "echo_t2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -135,6 +138,10 @@ _env_path_mapping = {
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
   "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
   "ANIMA_DIR": "circlestone-labs/Anima-Base-v1.0-Diffusers",
+  "FIBO_2_DIR": "briaai/Fibo-2.0-dev",
+  "FIBO_2_TURBO_DIR": "briaai/Fibo-2.0-edit-turbo",
+  "ECHO_DIR": "jdopensource/JoyAI-Echo",
+  "GEMMA_3_12B_DIR": "google/gemma-3-12b-it",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -2416,6 +2423,238 @@ def bria_fibo_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=28,
       guidance_scale=5,
+    ),
+  )
+
+
+def _bria_fibo2_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+  enable_separate_cfg: bool,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for Bria Fibo 2.0.
+
+  `Fibo-2.0-dev` runs classifier-free guidance (guidance 5, two transformer forwards per step) and
+  needs the separate-CFG bookkeeping; the distilled `Fibo-2.0-edit-turbo` samples without guidance
+  in 4 steps and must turn it off, otherwise every step only counts as half a step.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :param enable_separate_cfg: Whether the checkpoint runs cond/uncond in separate forwards.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+
+  if not args.cache:
+    return None
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=min(args.max_warmup_steps, max(1, steps // 4)),
+    num_inference_steps=steps,
+    enable_separate_cfg=enable_separate_cfg,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=args.max_continuous_cached_steps,
+  )
+
+
+def _bria_fibo2_input_image(args: argparse.Namespace) -> PIL.Image.Image:
+  """Load (and resize) the image both Fibo 2.0 edit examples run on.
+
+  :param args: CLI arguments, `--image-path` overrides the bundled sample.
+  :returns: The edit source image at the requested output resolution.
+  """
+  if args.image_path is not None:
+    image = load_image(args.image_path).convert("RGB")
+  elif _force_use_local_data():
+    image = load_image(os.path.join(CACHE_DIT_DIR,
+                                    "examples/data/yarn-art-pikachu.png")).convert("RGB")
+  else:
+    image = load_image(
+      "https://github.com/vipshop/cache-dit/raw/main/examples/data/yarn-art-pikachu.png").convert(
+        "RGB")
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  return image.resize((width, height))
+
+
+@ExampleRegister.register("bria_fibo2", default="briaai/Fibo-2.0-dev")
+def bria_fibo2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Bria Fibo 2.0 image edit example (full 30-step, guidance 5 checkpoint).
+
+  :param args: CLI arguments.
+  :returns: The Fibo 2.0 edit example.
+  """
+  from diffusers import BriaFibo2Pipeline
+
+  steps = 30 if args.num_inference_steps is None else args.num_inference_steps
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,
+      model_name_or_path=_path("briaai/Fibo-2.0-dev", args),
+      pipeline_class=BriaFibo2Pipeline,
+      extra_optimize_kwargs={
+        "cache_config": _bria_fibo2_cache_config(args, steps, enable_separate_cfg=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="Make the background a snowy forest",
+      height=height,
+      width=width,
+      num_inference_steps=steps,
+      guidance_scale=5.0,
+      image=_bria_fibo2_input_image(args),
+    ),
+  )
+
+
+@ExampleRegister.register("bria_fibo2_turbo", default="briaai/Fibo-2.0-edit-turbo")
+def bria_fibo2_turbo_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Bria Fibo 2.0 distilled edit example (4 steps, guidance 1).
+
+  :param args: CLI arguments.
+  :returns: The Fibo 2.0 turbo edit example.
+  """
+  from diffusers import BriaFibo2Pipeline
+
+  steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+  height = 1024 if args.height is None else args.height
+  width = 1024 if args.width is None else args.width
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I,
+      model_name_or_path=_path("briaai/Fibo-2.0-edit-turbo", args),
+      pipeline_class=BriaFibo2Pipeline,
+      extra_optimize_kwargs={
+        "cache_config": _bria_fibo2_cache_config(args, steps, enable_separate_cfg=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="Make the background a snowy forest",
+      height=height,
+      width=width,
+      num_inference_steps=steps,
+      guidance_scale=1.0,
+      image=_bria_fibo2_input_image(args),
+    ),
+  )
+
+
+def _echo_dmd_steps() -> int:
+  """Return the number of denoising steps the released Echo DMD schedule runs.
+
+  :returns: `len(sigmas) - 1`, or 8 when the schedule cannot be imported.
+  """
+  try:
+    from diffusers.modular_pipelines.echo.denoise import DEFAULT_ECHO_SIGMAS
+
+    return len(DEFAULT_ECHO_SIGMAS) - 1
+  except ImportError:
+    return 8
+
+
+def _echo_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for Echo (JoyAI-Echo).
+
+  Echo is guidance-free and runs one transformer forward per stochastic DMD step, so
+  `enable_separate_cfg` stays False. The released schedule is only 8 steps, so the default warmup
+  would leave nothing to reuse.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the DMD schedule runs.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+
+  if not args.cache:
+    return None
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=min(args.max_warmup_steps, 2),
+    num_inference_steps=steps,
+    enable_separate_cfg=False,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=args.max_continuous_cached_steps,
+  )
+
+
+_ECHO_PROMPT = (
+  "A cinematic dialogue scene in a quiet cafe: warm afternoon light falls through the "
+  "window, steam rises from a cup on the table, and the camera slowly pushes in.")
+
+
+def _echo_post_init_hook(pipe: Any) -> None:
+  """Report Echo's native container rate to the video writer.
+
+  :param pipe: The loaded Echo modular pipeline.
+  """
+  # A modular pipeline exposes no `fps`, and `encode_video` would fall back to 8 fps, which makes the
+  # saved clip play at a third of the rate it was generated for.
+  pipe.fps = 25.0
+
+
+@ExampleRegister.register("echo_t2va", default="jdopensource/JoyAI-Echo")
+def echo_t2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Echo (JoyAI-Echo) text-to-video+audio example.
+
+  Echo is a modular pipeline whose DMD schedule is fixed at 8 sigma steps, so
+  `num_inference_steps` is not forwarded. Its text encoder lives in the gated
+  `google/gemma-3-12b-it` repo instead of the checkpoint, hence the load override.
+
+  :param args: CLI arguments.
+  :returns: The Echo t2va example.
+  """
+  from diffusers import EchoModularPipeline
+
+  gemma_dir = _path("google/gemma-3-12b-it")
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("jdopensource/JoyAI-Echo", args),
+      pipeline_class=EchoModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      # The reference parity recipe keeps `audio_vae` in float32.
+      modular_component_dtypes={
+        "default": torch.bfloat16,
+        "audio_vae": torch.float32,
+      },
+      modular_load_overrides={
+        # The checkpoint points its text encoder at the gated `google/gemma-3-12b-it`; both entries
+        # have to be redirected together, otherwise the tokenizer and the embeddings disagree.
+        "pretrained_model_name_or_path": {
+          "text_encoder": gemma_dir,
+          "tokenizer": gemma_dir,
+        },
+        # The spec leaves `subfolder=None`, which transformers cannot join onto a local path.
+        "subfolder": {
+          "text_encoder": "",
+          "tokenizer": "",
+        },
+      },
+      post_init_hook=_echo_post_init_hook,
+      extra_optimize_kwargs={
+        "cache_config": _echo_cache_config(args, _echo_dmd_steps()),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_ECHO_PROMPT,
+      height=384,
+      width=640,
+      num_frames=121,
+      use_num_inference_steps=False,
+      extra_input_kwargs={
+        "frame_rate": 25.0,
+        "model_frame_rate": 24.0,
+      },
     ),
   )
 

@@ -114,6 +114,12 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
         # IMPORTANT: shard video timestep (B, seq_len) to match sharded hidden_states
         "timestep":
         _ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        # Echo (JoyAI-Echo) drives the audio stream with a per-token audio timestep (B, seq_len_a),
+        # which has to follow the sharded `audio_hidden_states`. LTX-2 / LTX-2.5 pass a scalar
+        # `(B,)` instead: `expected_dims=2` makes the hook skip it with a `warning_once` and the
+        # value stays replicated, which is what those pipelines want (it broadcasts per token).
+        "audio_timestep":
+        _ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
         # LTX-2.5 keyframe marker (B, seq_len, 1). It never reaches the blocks, but the transformer
         # adds it onto the already-split `hidden_states` right after `proj_in`, so it has to be split
         # on the same axis. `video_coords` (B, 3, seq_len, 2) is different: it is consumed by `rope`,
