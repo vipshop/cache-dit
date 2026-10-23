@@ -398,24 +398,34 @@ def qwenimage_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("LTX")
 def ltxvideo_adapter(pipe, **kwargs) -> BlockAdapter:
-  # LTX-1 (LTXVideoTransformer3DModel) and LTX-2 (LTX2VideoTransformer3DModel) share
+  # LTX-1 (LTXVideoTransformer3DModel) and LTX-2 / LTX-2.5 (LTX2VideoTransformer3DModel) share
   # the `transformer_blocks` structure, but differ in block forward IO:
   # - LTX-1 blocks return only `hidden_states`  -> Pattern_2
   # - LTX-2 blocks return `(hidden_states, audio_hidden_states)` -> Pattern_0
   from diffusers import LTXVideoTransformer3DModel
 
   cls_name: str = pipe.transformer.__class__.__name__
-  is_ltx2: bool = cls_name.startswith("LTX2")
-  forward_pattern = ForwardPattern.Pattern_0 if is_ltx2 else ForwardPattern.Pattern_2
-
   try:
     from diffusers import LTX2VideoTransformer3DModel
     from cache_dit.caching.patch_functors import LTX2PatchFunctor
-
-    patch_functor = LTX2PatchFunctor() if is_ltx2 else None
-  except Exception:
+  except ImportError:
     LTX2VideoTransformer3DModel = None  # requires newer diffusers
-    patch_functor = None
+    LTX2PatchFunctor = None
+
+  # LTX-2.5 ships the same `LTX2VideoTransformer3DModel` class, so the class-name prefix check stays
+  # for older diffusers while `isinstance` keeps working if the class is ever renamed.
+  is_ltx2: bool = cls_name.startswith("LTX2") or (LTX2VideoTransformer3DModel is not None
+                                                  and isinstance(pipe.transformer,
+                                                                 LTX2VideoTransformer3DModel))
+  forward_pattern = ForwardPattern.Pattern_0 if is_ltx2 else ForwardPattern.Pattern_2
+
+  patch_functor = None
+  if is_ltx2:
+    if LTX2PatchFunctor is None:
+      logger.warning("LTX-2 detected but `LTX2PatchFunctor` is unavailable; block calls keep the "
+                     "upstream keyword-argument form and caching will not be applied.")
+    else:
+      patch_functor = LTX2PatchFunctor()
 
   supported_transformers = (LTXVideoTransformer3DModel, )
   if LTX2VideoTransformer3DModel is not None:

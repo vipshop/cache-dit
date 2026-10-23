@@ -131,6 +131,10 @@ class ExampleInputData:
   # the source aspect ratio and crops or stretches the conditioning frame itself (MiniMax-H3's
   # resize step) would otherwise resample twice, which changes the composition it asked for.
   skip_image_resize: bool = False
+  # Forward `--num-inference-steps` to the pipeline. Pipelines that schedule their own passes with
+  # an explicit sigma list (LTX-2.5 `LTX2DFRPipeline`) take no such argument, so they clear it.
+  # Builder-only, like `skip_image_resize`: `data()` pops it before forwarding.
+  use_num_inference_steps: bool = True
   # Specific inputs for video generation, e.g, Wan VACE
   video: Optional[List[Image.Image]] = None
   mask: Optional[List[Image.Image]] = None
@@ -175,6 +179,7 @@ class ExampleInputData:
     # `is not None` filter below: forwarding `skip_image_resize=False` to the pipeline would be a
     # `TypeError` for models that never declare it.
     skip_image_resize = data.pop("skip_image_resize", False)
+    use_num_inference_steps = data.pop("use_num_inference_steps", True)
     # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
     # forwarded separately, after the arg overrides.
     allow_references = getattr(self, "allow_references", True)
@@ -212,10 +217,13 @@ class ExampleInputData:
       input_data["height"] = args.height
     if args.width is not None:
       input_data["width"] = args.width
-    if args.num_inference_steps is not None:
+    if args.num_inference_steps is not None and use_num_inference_steps:
       input_data["num_inference_steps"] = args.num_inference_steps
     if args.num_frames is not None:
       input_data["num_frames"] = args.num_frames
+    # `--extra-input-kwargs` is merged above, so drop the key after every source was considered.
+    if not use_num_inference_steps:
+      input_data.pop("num_inference_steps", None)
     # Determine resize target: explicit --input-height/--input-width first,
     # then fall back to output height/width.
     input_height = getattr(args, "input_height", None)
@@ -525,6 +533,11 @@ class ExampleInitConfig:
   vae: Optional[Union[ModelMixin, Callable]] = None
   text_encoder: Optional[Union[GenerationMixin, Callable]] = None
   controlnet: Optional[Union[ModelMixin, Callable]] = None
+  # Optional components to leave unloaded even when the checkpoint ships them, e.g. an LTX-2.5
+  # `prompt_enhancer`: it rewrites the prompt (changing the input distribution) and dominates the
+  # measured latency. Passing them as `None` is also required to skip a component whose folder is
+  # absent, since `from_pretrained` otherwise falls back to the checkpoint root and fails.
+  skip_components: Optional[List[str]] = None
   lora_weights_path: Optional[str] = None
   lora_weights_name: Optional[str] = None
   # For parallelism compatibility, tensor parallelism requires fused LoRA
@@ -685,6 +698,10 @@ class ExampleInitConfig:
     )
     # Remove None components
     custom_components_kwargs = {k: v for k, v in custom_components_kwargs.items() if v is not None}
+    # Skipped optional components are re-added as `None`: `from_pretrained` then leaves them
+    # unloaded instead of looking them up on disk.
+    for name in self.skip_components or []:
+      custom_components_kwargs[name] = None
     return custom_components_kwargs
 
   @property
@@ -728,34 +745,65 @@ def _is_function_or_method(component: Any) -> bool:
   return is_basic_func and not is_excluded_instance and not is_method
 
 
+def _resolve_audio_sampling_rate(pipe: Any) -> Optional[int]:
+  """Read the rate the generated waveform runs at from the pipeline's own components.
+
+  Some pipelines return a waveform without reporting a rate (LTX-2 is one of them), which would
+  make the writer drop the soundtrack. The vocoder knows the rate it produced: LTX-2 decodes audio
+  latents with `audio_vae` at 16 kHz and upsamples through `vocoder` to
+  `config.output_sampling_rate` (24/48 kHz), so `pipe.audio_sampling_rate` — a *mel-domain* rate —
+  is deliberately not consulted.
+
+  :param pipe: Pipeline instance, may be `None`.
+  :returns: The output sampling rate in Hz, or `None` when no component reports one.
+  """
+  for name in ("vocoder", "audio_vae"):
+    component = getattr(pipe, name, None)
+    config = getattr(component, "config", None)
+    for key in ("output_sampling_rate", "sample_rate", "sampling_rate"):
+      rate = getattr(config, key, None)
+      if rate is not None:
+        return int(rate)
+  return None
+
+
 def parse_audio_video_output(
   output: Any,
   task_type: ExampleType,
   native_fps: Optional[float] = None,
+  pipe: Any = None,
 ) -> Dict[str, Any]:
   """Parse the output of a task that returns a video stream plus an optional soundtrack.
 
   A modular pipeline returns the state values it was asked for, i.e. a dict, while a regular
   pipeline returns an object with attributes; both shapes are accepted so the same task type works
-  on either.
+  on either. The video stream is read from `videos` or, for pipelines that follow the older
+  `DiffusionPipeline` convention (LTX-2), from `frames`.
 
   :param output: Pipeline output.
   :param task_type: Task being parsed, used in the error message.
   :param native_fps: Frame rate the model generates at, kept for the writer.
+  :param pipe: Pipeline instance, used to recover a missing sampling rate from its components.
   :returns: `video` / `audio` / `audio_sampling_rate` / `video_fps` keys.
-  :raises ValueError: When the output carries no `videos` entry.
+  :raises ValueError: When the output carries neither `videos` nor `frames`.
   """
   if isinstance(output, dict):
-    videos = output["videos"]
+    videos = output.get("videos")
+    if videos is None:
+      videos = output.get("frames")
     audio = output.get("audio")
     sampling_rate = output.get("sampling_rate")
   else:
     videos = getattr(output, "videos", None)
+    if videos is None:
+      videos = getattr(output, "frames", None)
     audio = getattr(output, "audio", None)
     sampling_rate = getattr(output, "sampling_rate", None)
   if videos is None:
-    raise ValueError(f"{task_type.name} expects the pipeline to return `videos`, got "
+    raise ValueError(f"{task_type.name} expects the pipeline to return `videos` (or `frames`), got "
                      f"{type(output).__name__}.")
+  if sampling_rate is None and audio is not None:
+    sampling_rate = _resolve_audio_sampling_rate(pipe)
   return {
     "video": videos[0] if isinstance(videos, (list, tuple)) else videos,
     # The pipeline returns `(batch, channels, num_samples)`; store one request's waveform.
@@ -887,7 +935,8 @@ class Example:
     elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
       parsed = parse_audio_video_output(output,
                                         self.init_config.task_type,
-                                        native_fps=getattr(pipe, "fps", None))
+                                        native_fps=getattr(pipe, "fps", None),
+                                        pipe=pipe)
       output_data.video = parsed["video"]
       output_data.audio = parsed["audio"]
       output_data.audio_sampling_rate = parsed["audio_sampling_rate"]

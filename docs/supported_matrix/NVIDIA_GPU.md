@@ -24,6 +24,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image|✅|✅|✅|
 |LTX-2-I2V|✅|✅|✅|
 |LTX-2-T2V|✅|✅|✅|
+|LTX-2.5-DFR (8 steps)|✅|✅|✅|
+|LTX-2.5-T2V|✅|✅|✅|
+|LTX-2.5-I2V|✅|✅|✅|
 |Qwen-Image-2512|✅|✅|✅|
 |Qwen-Image-2.1-Turbo (8 steps)|✅|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|✖️|
@@ -124,6 +127,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image|✅|✅|
 |LTX-2-I2V|✅|✅|
 |LTX-2-T2V|✅|✅|
+|LTX-2.5-DFR (8 steps)|✅|✅|
+|LTX-2.5-T2V|✅|✅|
+|LTX-2.5-I2V|✅|✅|
 |Qwen-Image-2512|✅|✅|
 |Z-Image-Turbo `🤖Q`|✅|✅|
 |Qwen-Image-Layered|✅|✅|

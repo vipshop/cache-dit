@@ -160,6 +160,7 @@ flowchart TD
 | CP: a tensor is a method return or nested type that hooks cannot split | `./references/cp.md` hybrid CP |
 | CP: head count or sequence length not divisible by cp_size | `./references/cp.md` UAA |
 | CP: the model has an attention_mask | `./references/cp.md` attention mask reorder |
+| CP: the run renders a **coherent but different** sample while per-op replays / tiny parity look healthy | `./references/cp.md` §2.10 class-level patch leaking into connectors |
 | TP: choosing the overall TP strategy | `./references/tp.md` plus the TP chart above |
 | TP: attention output garbled | `./references/tp.md` shard_div_attr |
 | TP: fused CUDA kernels crash under TP | `./references/tp.md` DTensor-unsafe ops |
@@ -183,6 +184,7 @@ These are the traps that pass without crashing but produce wrong images. Each is
 7. **Choosing pure patch-based CP when hybrid (hook + method patch) suffices.** If the ONLY obstacle is a method like `get_rotary_pos_embed` or `pos_embed` that returns a sequence-length-dependent tensor not reachable by hooks, patch that ONE method — do NOT patch the entire `forward()`. Pure patch-based CP is a maintenance burden that should never be green-lit without proving hybrid is truly impossible. → `./references/cp.md` implementation approaches and hybrid CP
 8. **Modular pipeline: dropping required transformer kwargs.** A `ModularPipeline` denoise step builds the transformer kwargs from `inspect.signature(transformer.forward)`. Cache-dit replaces `forward`, so the replacement must carry the original `__signature__` — otherwise `img_ids` / `txt_ids` / `image_cond_*` are silently dropped and the first denoise step raises `TypeError: ... missing N required positional arguments`. → `./references/modular_pipeline.md` §3.1
 9. **Optional prompt-rewrite / prompt-enhancement stages.** Many pipelines carry an extra LLM/VLM step that rewrites `prompt` into a long caption (FLUX.3 `prompt_upsampler`/`pup`, and similar steps in other families). Its components often have **no `pretrained_model_name_or_path`**, so `load_components()` leaves them `None` and the full pipeline crashes; and even when loaded it changes the *input distribution*, dominates the measured latency and is not covered by `--parallel-text` (that targets `text_encoder`). Decide explicitly: pop the step for benchmarking (fixed prompt in == prompt encoded) or inject the components for production, and record which one the example uses. → `./references/modular_pipeline.md` §4.1
+10. **Class-level processor patches leaking outside the CP-enabled transformer.** A class-level `__call__` patch also rewrites attention trees built from the same classes elsewhere in the pipeline (LTX-2.5: `LTX2TextConnectors`), and a stale fork drops newer upstream features (per-head gates) for them — CP then renders a **coherent but different** video (PSNR ~9 dB) while every transformer-level probe and the tiny parity test stay green. Arm via `_cp_config` only, keep a saved upstream `__call__` as the fallback, and test the unarmed path for bit-equality. → `./references/cp.md` §2.10
 
 ### 0.6 Integration TODO List Template
 

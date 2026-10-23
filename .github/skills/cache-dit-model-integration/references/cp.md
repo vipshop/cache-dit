@@ -628,6 +628,72 @@ This **20.0 dB** floor reflects the team's acceptance that bf16 CP cannot be bit
 
 If your model fails the boundary-uniformity check, you have a structural bug — re-read §2.7 (mask) and §2.8 (RoPE drift). If it passes uniformity but fails the absolute thresholds, consider whether bf16 is acceptable or whether the model needs fp32 attention (rare; usually the drift is tolerable).
 
+### 2.10 ⚠️ Class-Level Processor Patches Leak Into Unrelated Components (Critical Pitfall)
+
+> **If the planner patches a processor's `__call__` at CLASS level, every attention tree built from that class changes behavior — including components outside the transformer.** This is the "CP runs to completion and renders a coherent but *different* video" bug. Ops-level replays of the transformer look healthy, so it cannot be found by probing the transformer; it must be found in the *conditioning path*.
+
+**The case (LTX-2.5 DFR, 2-rank Ulysses, fixed in cache-dit commit `38f10df`).** The 2-GPU CP run was 1.5× faster, deterministic, and rendered a plausible portrait instead of the tabby cat the single-GPU reference produced — PSNR 8.9 dB, SSIM 0.24, i.e. *a different sample*, not noise or localized garbling.
+
+**Why the usual suspects were wrong:**
+
+| Symptom signature | §2.7 mask | §2.8 RoPE drift | **§2.10 patch leak** |
+|---|---|---|---|
+| Output | mostly correct, top-left garbled | boundary frames flicker | **coherent, entirely different content** |
+| Per-op replay of the transformer | broken at the masked op | broken at RoPE / first block | **healthy (rel ~1e-2 everywhere)** |
+| TP / tiny-model parity | often broken | often broken | **both pass** |
+
+A coherent different sample means the *conditioning* changed, not the attention math.
+
+**Diagnosis protocol (ordered; every step is cheap):**
+
+1. **Initial latents must be bit-identical across ranks.** Hook the pipeline's latent preparation and compare sums per rank (rules out generator/device divergence).
+2. **Replay the dumped first-call kwargs through base vs CP with per-op probes** (`proj_in`, `attn1`, `attn2`, cross-modal attns, `ff`, blocks, `proj_out`). If a single forward is accurate, stop looking at attention — the split plan and the processors are fine.
+3. **Compare ONE denoise step's latents** (base vs TP vs CP). TP matching while CP diverges localizes the bug to something CP-only.
+4. **Hook the prompt path.** Wrap `pipe.encode_prompt` *and* the prompt post-processing component (LTX-2.5: `pipe.connectors`). Identical `encode_prompt` output but a connector output with rel ≈ 0.84 / 1.96 (vs the cp-free run) is the hit.
+
+**Root cause.** `LTX2TextConnectors` builds its attention from the very classes the planner patches — `LTX2Attention` + `LTX2AudioVideoAttnProcessor` (`diffusers/pipelines/ltx2/connectors.py`) — and the LTX-2.5 checkpoint sets `video_gated_attn=True` / `audio_gated_attn=True` there. The historical class-level patch predated gated attention, so under CP it silently dropped `to_gate_logits` for the connectors and rewrote the prompt embeddings. The transformer blocks were unaffected because they use the *other* processor (`LTX2PerturbedAttnProcessor`, LTX-2.5's `perturbed_attn=True`), whose patch was written later and did keep the gate — which is exactly why ops-level probes and the tiny parity test stayed green.
+
+**The fix — two layers, both required.**
+
+Layer 1 (the general pattern): a class-level patch must be **inert unless the instance was armed by the CP runtime**. Save the untouched upstream `__call__` before patching, and delegate to it whenever the processor carries no multi-rank `_cp_config`:
+
+```python
+_CP_PATCH_ORIGINALS: dict = {}
+
+def _cp_is_armed(processor) -> bool:
+  cp_config = getattr(processor, "_cp_config", None)
+  return cp_config is not None and cp_config._world_size > 1
+
+def _install_cp_processor_patches() -> None:
+  for processor_cls in (MyAttnProcessor, MyPerturbedAttnProcessor):
+    _CP_PATCH_ORIGINALS.setdefault(processor_cls, processor_cls.__call__)
+  MyAttnProcessor.__call__ = __patch__my_attn_processor_call__
+
+@functools.wraps(MyAttnProcessor.__call__)
+def __patch__my_attn_processor_call__(self, attn, hidden_states, **kwargs):
+  original = _CP_PATCH_ORIGINALS.get(MyAttnProcessor)
+  if original is not None and not _cp_is_armed(self):
+    # The connectors / any unarmed tree: bit-identical to a cp-free run.
+    return original(self, attn, hidden_states, **kwargs)
+  ...  # the actual CP path (mask expansion, dispatch, ...)
+```
+
+Layer 2 (fork hygiene): a class-level patch is a *fork of upstream code*. The armed path must be re-diffed against the **current** upstream `__call__` on every integration — upstream grows args over time (per-head gates: `gates = 2.0 * torch.sigmoid(gate_logits)`; perturbation masks; ...), and a stale fork drops them for every model that uses the class.
+
+**Regression tests** (`tests/api/test_ltx25_cp_gates.py` — copy the pattern for any model with class-level patches):
+
+1. *unarmed* processor with the model-specific extra (gates): the patched `__call__` must be `torch.equal` to the saved upstream `__call__` output;
+2. *armed* processor: must reach the CP dispatch (fails there without a process group — proves the fallback did not run) **and** must still apply the extra (hand-roll the gated math and assert it differs from the ungated output).
+
+**Checklist before shipping ANY class-level processor patch:**
+
+1. `grep` the model's pipelines for **other users of the same attention classes** — connectors, duration heads, latent upsamplers, prompt enhancers, vocoders. Anything found must be covered by the unarmed fallback test.
+2. The patch must be inert unless the instance was armed with a multi-rank `_cp_config` (Layer 1).
+3. Re-diff the patched body against the current upstream implementation (Layer 2).
+4. Add the unarmed-vs-upstream regression test; the tiny-model parity test cannot catch this class of bug, because the leaked-into component is not part of the tiny transformer.
+
+**Acceptance after the fix (LTX-2.5 DFR, 2× RTX PRO 5000, PCIe):** CP2 reproduces the single-GPU reference at PSNR 30.6 dB (min 28.6) / SSIM 0.943 (min 0.936) — i.e. the §2.9 bf16 drift level, comfortably above the 20 dB / 0.90 floor — with the connectors' prompt embeddings bit-identical to the cp-free run again.
+
 ---
 
 ## More references 
