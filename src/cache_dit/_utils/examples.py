@@ -74,6 +74,7 @@ __all__ = [
   "minimax_h3_fl2va_example",
   "minimax_h3_ref2va_example",
   "prx_pixel_example",
+  "anima_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -133,6 +134,7 @@ _env_path_mapping = {
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
   "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
+  "ANIMA_DIR": "circlestone-labs/Anima-Base-v1.0-Diffusers",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -2820,5 +2822,75 @@ def prx_pixel_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=28,
       guidance_scale=5.0,
+    ),
+  )
+
+
+def _anima_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the Anima (Cosmos Predict2 backbone) t2i pipeline.
+
+  Anima samples with classifier-free guidance (the modular guider component holds
+  `guidance_scale=4.0`, i.e. a conditional and an unconditional forward per step), so
+  `enable_separate_cfg` stays True. The uniform 28-block stack recomputes its first block
+  every step (`Fn_compute_blocks=1`) to keep the cached residuals anchored. The residual
+  threshold is the generic CLI default (0.12), tuned against this example's 30-step
+  schedule; the model card's 50-step default moves less per step and only caches more.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  # A model-provided cache config normally overrides the CLI knobs, so `--ws` would be
+  # silently ignored. Honour an explicit value and fall back to the tuned default otherwise
+  # (8 is the `--ws` CLI default).
+  warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=warmup,
+    num_inference_steps=steps,
+    enable_separate_cfg=True,
+    residual_diff_threshold=args.residual_diff_threshold,
+  )
+
+
+_ANIMA_PROMPT = ("A front-facing portrait of a lion in the golden savanna at sunset, detailed fur, "
+                 "cinematic lighting, photorealistic")
+_ANIMA_NEGATIVE_PROMPT = "blurry, low quality, watermark, text, deformed"
+
+
+@ExampleRegister.register("anima", default="circlestone-labs/Anima-Base-v1.0-Diffusers")
+def anima_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import AnimaModularPipeline
+
+  # 30 steps instead of the 50-step default keeps the benchmark matrix comparable across
+  # configs; height/width must be multiples of 16 (vae_scale_factor * patch).
+  steps = 30 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("circlestone-labs/Anima-Base-v1.0-Diffusers", args),
+      pipeline_class=AnimaModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      # The repo ships `modular_model_index.json`, so `from_pretrained` resolves the blocks
+      # and no `modular_blocks_factory` is needed.
+      # Guidance lives in the modular guider component (guidance_scale=4.0 by default):
+      # `ModularPipeline.__call__` does not route a `guidance_scale` input into it.
+      extra_optimize_kwargs={
+        "cache_config": _anima_cache_config(args, steps),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_ANIMA_PROMPT,
+      negative_prompt=_ANIMA_NEGATIVE_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
     ),
   )
