@@ -119,6 +119,8 @@ def _activate_cp_planners():
     ".krea2", "Krea2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   BriaFiboContextParallelismPlanner = _safe_import(  # noqa: F841
     ".bria_fibo", "BriaFiboContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  BriaFibo2ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".bria_fibo2", "BriaFibo2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   JoyImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".joy_image", "JoyImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   AnyFlowContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -197,6 +199,8 @@ def _activate_tp_planners():
     ".krea2", "Krea2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   BriaFiboTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".bria_fibo", "BriaFiboTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  BriaFibo2TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".bria_fibo2", "BriaFibo2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   JoyImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".joy_image", "JoyImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   AnyFlowTensorParallelismPlanner = _safe_import(  # noqa: F841
