@@ -33,6 +33,39 @@ from .register import (
 
 logger = init_logger(__name__)
 
+# Upstream `__call__` implementations captured before the class-level CP patches are installed.
+# The patched `__call__` hands control back to them for any processor without a multi-rank
+# `_cp_config` (e.g. the `LTX2TextConnectors` component), so the patch can never rewrite non-CP math.
+_CP_PATCH_ORIGINALS: dict = {}
+
+
+def _cp_is_armed(processor) -> bool:
+  """Whether `processor` was armed by the CP runtime with a multi-rank `_cp_config`."""
+  cp_config = getattr(processor, "_cp_config", None)
+  return cp_config is not None and cp_config._world_size > 1
+
+
+def _install_cp_processor_patches() -> None:
+  """Install the class-level attention patches the LTX-2 CP path needs.
+
+  Both processors must be patched: LTX-2.5 checkpoints set `perturbed_attn=True`, and
+  `LTX2PerturbedAttnProcessor` is a standalone class (not a subclass of
+  `LTX2AudioVideoAttnProcessor`). Patching only the latter silently disables CP for LTX-2.5: the
+  sequence is already split across ranks, so attention would run on local shards only.
+
+  The patches are class-level, so they also cover attention trees the CP runtime never armed with
+  `_cp_config` -- most importantly `LTX2TextConnectors`, which builds its attention from
+  `LTX2Attention` + `LTX2AudioVideoAttnProcessor` with `gated_attn=True` on LTX-2.5. The patched
+  `__call__` therefore keeps the untouched upstream implementation and only takes over when the
+  processor actually carries a multi-rank `_cp_config`; anything else must stay bit-identical to a
+  cp-free run.
+  """
+  for processor_cls in (LTX2AudioVideoAttnProcessor, LTX2PerturbedAttnProcessor):
+    _CP_PATCH_ORIGINALS.setdefault(processor_cls, processor_cls.__call__)
+  LTX2Attention.prepare_attention_mask = __patch__LTX2Attention_prepare_attention_mask__  # type: ignore[assignment]
+  LTX2AudioVideoAttnProcessor.__call__ = __patch__LTX2AudioVideoAttnProcessor__call__  # type: ignore[assignment]
+  LTX2PerturbedAttnProcessor.__call__ = __patch__LTX2PerturbedAttnProcessor__call__  # type: ignore[assignment]
+
 
 @ContextParallelismPlannerRegister.register("LTX2")
 class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
@@ -51,15 +84,10 @@ class LTX2ContextParallelismPlanner(ContextParallelismPlanner):
     # LTX2ImageToVideoPipeline passes `timestep` as a 2D `(B, seq_len)` tensor named
     # `video_timestep`. The cache-dit CP plan shards that tensor correctly for Ulysses / Ring CP.
 
-    # Patch attention-mask preparation so head sharding and global-sequence padding stay aligned
-    # under CP.
-    LTX2Attention.prepare_attention_mask = __patch__LTX2Attention_prepare_attention_mask__  # type: ignore[assignment]
-    # Both processors must be patched: LTX-2.5 checkpoints set `perturbed_attn=True`, and
-    # `LTX2PerturbedAttnProcessor` is a standalone class (not a subclass of
-    # `LTX2AudioVideoAttnProcessor`). Patching only the latter silently disables CP for LTX-2.5:
-    # the sequence is already split across ranks, so attention would run on local shards only.
-    LTX2AudioVideoAttnProcessor.__call__ = __patch__LTX2AudioVideoAttnProcessor__call__  # type: ignore[assignment]
-    LTX2PerturbedAttnProcessor.__call__ = __patch__LTX2PerturbedAttnProcessor__call__  # type: ignore[assignment]
+    # Patch attention-mask preparation and both processors so head sharding, global-sequence
+    # padding and the CP dispatch stay aligned under CP. Unarmed processors (e.g. the
+    # `LTX2TextConnectors` component) hand control back to the upstream `__call__`.
+    _install_cp_processor_patches()
 
     rope_type = getattr(getattr(transformer, "config", None), "rope_type", "interleaved")
     if rope_type == "split":
@@ -237,6 +265,18 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
   query_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
   key_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
 ) -> torch.Tensor:
+  original = _CP_PATCH_ORIGINALS.get(LTX2AudioVideoAttnProcessor)
+  if original is not None and not _cp_is_armed(self):
+    return original(
+      self,
+      attn,
+      hidden_states,
+      encoder_hidden_states=encoder_hidden_states,
+      attention_mask=attention_mask,
+      query_rotary_emb=query_rotary_emb,
+      key_rotary_emb=key_rotary_emb,
+    )
+
   batch_size, sequence_length, _ = (hidden_states.shape if encoder_hidden_states is None else
                                     encoder_hidden_states.shape)
 
@@ -244,6 +284,12 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
 
   if encoder_hidden_states is None:
     encoder_hidden_states = hidden_states
+
+  # Gated attention (`gated_attn=True`, LTX-2.3/2.5 and the LTX2TextConnectors component). The
+  # class-level patch also reaches processors outside the CP-enabled transformer -- the connectors
+  # build their attention from this very class -- so dropping the gate silently rewrote the prompt
+  # embeddings under CP and produced a different (but coherent) video.
+  gate_logits = attn.to_gate_logits(hidden_states) if attn.to_gate_logits is not None else None
 
   query = attn.to_q(hidden_states)
   key = attn.to_k(encoder_hidden_states)
@@ -280,6 +326,14 @@ def __patch__LTX2AudioVideoAttnProcessor__call__(
   hidden_states = hidden_states.flatten(2, 3)
   hidden_states = hidden_states.to(query.dtype)
 
+  if gate_logits is not None:
+    hidden_states = hidden_states.unflatten(2, (attn.heads, -1))  # [B, T, H, D]
+    # The factor of 2.0 keeps the initial gates at 1 for zero-initialized gate logits. `gate_logits`
+    # was computed from the CP-local `hidden_states`, so its token axis already matches.
+    gates = 2.0 * torch.sigmoid(gate_logits)  # [B, T, H]
+    hidden_states = hidden_states * gates.unsqueeze(-1)
+    hidden_states = hidden_states.flatten(2, 3)
+
   hidden_states = attn.to_out[0](hidden_states)
   hidden_states = attn.to_out[1](hidden_states)
   return hidden_states
@@ -301,6 +355,20 @@ def __patch__LTX2PerturbedAttnProcessor__call__(
   # mask preparation change; the spatio-temporal-guidance lerp and the per-head gate stay identical
   # to upstream, because both operate on per-token tensors that CP already sharded (Ulysses/Ring
   # return `(B, seq_local, heads_global, dim)`), so no cross-rank reduction is needed for them.
+  original = _CP_PATCH_ORIGINALS.get(LTX2PerturbedAttnProcessor)
+  if original is not None and not _cp_is_armed(self):
+    return original(
+      self,
+      attn,
+      hidden_states,
+      encoder_hidden_states=encoder_hidden_states,
+      attention_mask=attention_mask,
+      query_rotary_emb=query_rotary_emb,
+      key_rotary_emb=key_rotary_emb,
+      perturbation_mask=perturbation_mask,
+      all_perturbed=all_perturbed,
+    )
+
   batch_size, sequence_length, _ = (hidden_states.shape if encoder_hidden_states is None else
                                     encoder_hidden_states.shape)
 
