@@ -26,6 +26,7 @@ from ..caching import (
   load_parallelism_config,
 )
 from ..utils import assign_transformer
+from ..utils import declare_repeated_blocks
 from ..utils import resolve_pipe
 from ..utils import resolve_transformer
 from ..offload import _default_module_filter
@@ -1572,8 +1573,11 @@ def _compile_transformer_module(args, pipe, transformer, name):
       setattr(pipe, name, compiled)
       return compiled
 
-  use_regional_compile = not args.disable_compile_repeated_blocks and hasattr(
-    transformer, "compile_repeated_blocks")
+  # `compile_repeated_blocks()` raises when `_repeated_blocks` is empty, which is the default
+  # for diffusers transformers that never declare their denoising stack (e.g. PRX).
+  use_regional_compile = (not args.disable_compile_repeated_blocks
+                          and hasattr(transformer, "compile_repeated_blocks")
+                          and bool(getattr(transformer, "_repeated_blocks", None)))
 
   if args.cuda_graph and use_regional_compile:
     use_regional_compile = False
@@ -1822,6 +1826,7 @@ def maybe_compile_transformer(
     # A pipeline may expose its denoising transformer under another name: MiniMax-H3 loads
     # `transformer_ref` for the `ref2va` workflow, and only ever one of the two exists.
     transformer_name, transformer = resolve_transformer(pipe)
+    declare_repeated_blocks(transformer)
     if transformer is not None:
       if _should_defer_few_shot_compile(args, transformer):
         _register_deferred_few_shot_compile_callback(args, pipe, transformer, transformer_name)
@@ -1832,6 +1837,7 @@ def maybe_compile_transformer(
 
     if hasattr(pipe, "transformer_2"):
       transformer_2 = getattr(pipe, "transformer_2", None)
+      declare_repeated_blocks(transformer_2)
       if _should_defer_few_shot_compile(args, transformer_2):
         _register_deferred_few_shot_compile_callback(args, pipe, transformer_2, "transformer_2")
       else:
@@ -2064,6 +2070,8 @@ def maybe_quantize_transformer(
     # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
     # `transformer_ref` for `ref2va` — and only ever one of the two exists.
     transformer_name, transformer = resolve_transformer(pipe)
+    # Regional scoping needs `_repeated_blocks`, which a few diffusers models never declare.
+    declare_repeated_blocks(transformer)
     if transformer is None:
       logger.warning("quantize is set but no transformer found in the pipeline.")
     elif not isinstance(transformer, torch.nn.Module):

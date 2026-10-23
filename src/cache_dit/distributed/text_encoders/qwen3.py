@@ -124,3 +124,48 @@ class Qwen3VLTextEncoderTensorParallelismPlanner(TextEncoderTensorParallelismPla
 
     maybe_empty_cache()
     return text_encoder, layer_plans
+
+
+@TextEncoderTensorParallelismPlannerRegister.register("Qwen3VLTextModel")
+class Qwen3VLTextModelTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
+  """TP for a bare Qwen3-VL text stack, e.g. PRXPixel's `text_encoder`.
+
+  PRXPixel loads `Qwen3VLTextModel` directly (the vision tower is discarded), so unlike the
+  `Qwen3VLForConditionalGeneration` planner there is no `.model.language_model` wrapper to
+  unwrap. mrope is computed from `position_ids` inside the rotary embedding and never splits
+  the sequence, so plain per-projection sharding is enough.
+  """
+
+  def _apply(
+    self,
+    text_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+    **kwargs,
+  ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextDecoderLayer
+
+    tp_mesh = self.mesh(parallelism_config=parallelism_config)
+
+    model = text_encoder
+    layer_plans = []
+    for _, block in model.layers.named_children():
+      assert isinstance(block, Qwen3VLTextDecoderLayer)
+      layer_plan = {
+        "self_attn.q_proj": ColwiseParallel(),
+        "self_attn.k_proj": ColwiseParallel(),
+        "self_attn.v_proj": ColwiseParallel(),
+        "self_attn.o_proj": RowwiseParallel(),
+        "mlp.gate_proj": ColwiseParallel(),
+        "mlp.up_proj": ColwiseParallel(),
+        "mlp.down_proj": RowwiseParallel(),
+      }
+
+      parallelize_module(
+        module=block,
+        device_mesh=tp_mesh,
+        parallelize_plan=layer_plan,
+      )
+      layer_plans.append(layer_plan)
+
+    maybe_empty_cache()
+    return text_encoder, layer_plans

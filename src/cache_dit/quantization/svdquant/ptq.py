@@ -546,7 +546,12 @@ class SVDQPTQContext:
       "_repeated_blocks",
       quantize_config.repeated_blocks if quantize_config.repeated_blocks else None,
     )
-    regional_quantize = quantize_config.regional_quantize and repeated_blocks is not None
+    regional_quantize = quantize_config.regional_quantize and bool(repeated_blocks)
+    if quantize_config.regional_quantize and not repeated_blocks:
+      logger.warning(
+        f"{root_module.__class__.__name__} declares no repeated blocks, so regional quantization "
+        "cannot scope the denoising stack. Falling back to whole-module quantization; check the "
+        "layer allow/deny lists if that is unintended.")
     context = cls(
       root_module=root_module,
       quantize_config=quantize_config,
