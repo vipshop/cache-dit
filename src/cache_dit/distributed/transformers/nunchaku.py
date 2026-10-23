@@ -363,7 +363,7 @@ class NunchakuZImageContextParallelismPlanner(ContextParallelismPlanner):
         # zimage controlnet shared the same refiner as zimage, so, we need to
         # add gather hooks for all layers in noise_refiner and context_refiner.
         # 0. Hooks for noise_refiner layers, 2
-        # Insert gather hook after each layers due to the ops: (controlnet)
+        # Insert gather hook after each layer due to the ops: (controlnet)
         # - x = x + noise_refiner_block_samples[layer_idx]
         "noise_refiner.*": {
           "x": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
@@ -383,7 +383,7 @@ class NunchakuZImageContextParallelismPlanner(ContextParallelismPlanner):
         f"context_refiner.{n_context_refiner_layers - 1}":
         _ContextParallelOutput(gather_dim=1, expected_dims=3),
         # 2. Hooks for main transformer layers, num_layers=30
-        # Insert gather hook after each layers due to the ops: (main transformer)
+        # Insert gather hook after each layer due to the ops: (main transformer)
         # - unified + controlnet_block_samples[layer_idx]
         "layers.*": {
           "x": _ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),

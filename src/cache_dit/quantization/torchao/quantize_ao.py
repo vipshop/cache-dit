@@ -415,7 +415,7 @@ class QuantizeAOContext:
     # Case 0: TP + torchao FP8 per-row quantization.
     # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
     # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-    # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+    # RowwiseParallel (TP) will cause the layout of the linear weights to change after
     # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
     rowwise_layers = copy.deepcopy(self.rowwise_layers)
     # The major quantization type may not be float8 per-row when precision_plan is specified,
