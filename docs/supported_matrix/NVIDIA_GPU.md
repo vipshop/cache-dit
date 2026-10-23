@@ -85,6 +85,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Kandinsky-5.0-T2V-Lite|✅|✅️|✅️|
 |PRX-512-t2i-sft|✅|✖️|✖️|
 |PRXPixel-t2i|✅|✅|✅|
+|Anima-Base-t2i|✅|✅|✅|
 |LTX-Video-v0.9.8|✅|✅|✅|
 |LTX-Video-v0.9.7|✅|✅|✅|
 |CogVideoX|✅|✅|✅|
@@ -184,6 +185,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Kandinsky-5.0-T2V-Lite|✅|✅|
 |PRX-512-t2i-sft|✅|✖️|
 |PRXPixel-t2i|✅|✖️|
+|Anima-Base-t2i|✅|✅|
 |LTX-Video-v0.9.8|✅|✖️|
 |LTX-Video-v0.9.7|✅|✖️|
 |CogVideoX|✅|✖️|

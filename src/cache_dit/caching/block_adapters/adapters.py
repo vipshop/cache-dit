@@ -495,8 +495,6 @@ def cogview4_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("Cosmos")
 def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
-  from diffusers import CosmosTransformer3DModel
-
   try:
     from diffusers import Cosmos3OmniTransformer
   except ImportError:
@@ -520,16 +518,64 @@ def cosmos_adapter(pipe, **kwargs) -> BlockAdapter:
       **kwargs,
     )
 
+  return _cosmos_predict2_adapter(pipe, has_separate_cfg=True, **kwargs)
+
+
+def _cosmos_predict2_adapter(
+  pipe,
+  has_separate_cfg: bool,
+  **kwargs,
+) -> BlockAdapter:
+  """Build the block adapter for the Cosmos Predict2 backbone.
+
+  `CosmosTransformer3DModel` runs a uniform `transformer_blocks` stack with the
+  Pattern_2 contract (hidden + encoder states in, hidden states out), shared by
+  the Cosmos Predict video pipelines and the Anima text-to-image modular pipeline.
+
+  :param pipe: Pipeline owning a `CosmosTransformer3DModel` transformer.
+  :param has_separate_cfg: Whether cond/uncond run as separate forwards.
+  :returns: The BlockAdapter for the `transformer_blocks` stack.
+  """
+  from diffusers import CosmosTransformer3DModel
+
   _relaxed_assert(pipe.transformer, CosmosTransformer3DModel)
+  # diffusers does not declare `_repeated_blocks` for Cosmos, so regional quantization and
+  # `compile_repeated_blocks()` cannot discover the denoising stack on their own.
+  declare_repeated_blocks(pipe.transformer)
   return BlockAdapter(
     pipe=pipe,
     transformer=pipe.transformer,
     blocks=pipe.transformer.transformer_blocks,
     forward_pattern=ForwardPattern.Pattern_2,
     check_forward_pattern=True,
-    has_separate_cfg=True,
+    has_separate_cfg=has_separate_cfg,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("Anima")
+def anima_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the Anima text-to-image modular pipeline.
+
+  Anima reuses the Cosmos Predict2 DiT (`CosmosTransformer3DModel`); the
+  model-specific conditioning is folded into `AnimaTextConditioner` before the
+  denoise loop, so only the shared Cosmos block contract needs caching. Unlike
+  the regular Cosmos pipelines, guidance is driven by the modular guider
+  component, so `has_separate_cfg` follows the guider's condition count
+  instead of a fixed True (a guidance_scale of 1.0 samples without a negative
+  branch and must not halve the step accounting).
+
+  :param pipe: The `AnimaModularPipeline` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter for the `transformer_blocks` stack.
+  """
+
+  guider = getattr(pipe, "guider", None)
+  if guider is None:
+    logger.warning("Anima adapter found no guider component; assuming no separate CFG.")
+  has_separate_cfg = bool(guider is not None and getattr(guider, "num_conditions", 1) > 1)
+
+  return _cosmos_predict2_adapter(pipe, has_separate_cfg, **kwargs)
 
 
 @BlockAdapterRegister.register("EasyAnimate")

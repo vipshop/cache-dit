@@ -125,6 +125,8 @@ def _activate_cp_planners():
     ".anyflow", "AnyFlowContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   PrxContextParallelismPlanner = _safe_import(  # noqa: F841
     ".prx", "PrxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  CosmosContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".cosmos", "CosmosContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -201,3 +203,5 @@ def _activate_tp_planners():
     ".anyflow", "AnyFlowTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   PrxTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".prx", "PrxTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  CosmosTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".cosmos", "CosmosTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

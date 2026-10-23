@@ -79,6 +79,9 @@ TRANSFORMER_ATTR_NAMES = ("transformer", "transformer_ref")
 # model with data-dependent reshapes loses to eager).
 _MISSING_REPEATED_BLOCKS = {
   "PRXTransformer2DModel": ["PRXBlock"],
+  # Cosmos Predict2 (incl. the Anima t2i modular pipeline) ships the same uniform
+  # `transformer_blocks` stack without declaring it.
+  "CosmosTransformer3DModel": ["CosmosTransformerBlock"],
 }
 
 
