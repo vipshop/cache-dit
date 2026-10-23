@@ -19,7 +19,7 @@ Verification-only rows: the work is a cache A/B test (PSNR > 30, SSIM > 0.90 vs 
 
 | # | Model | Difficulty | Type | diffusers | Task | Transformer class | HF | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1 | LTX-2.5 (incl. DFR pipeline) | ★☆☆☆☆ | Verification-only | v0.40.0 (#14447, #14567, 2026-08) | t2v / i2v | `LTX2VideoTransformer3DModel` — `LTX` adapter | [Lightricks/LTX-2.5-Diffusers](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | ⬜ |
+| 1 | LTX-2.5 (incl. DFR pipeline) | ★☆☆☆☆ | Verification-only | v0.40.0 (#14447, #14567, 2026-08) | t2v / i2v | `LTX2VideoTransformer3DModel` — `LTX` adapter | [Lightricks/LTX-2.5-Diffusers](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | ✅ |
 | 2 | PRXPixel | ★★☆☆☆ | Verification-only | v0.39.0 (#13928, 2026-06-17) | t2i (pixel space, no VAE) | `PRXTransformer2DModel` — `PRX` adapter | [Photoroom/prxpixel-t2i](https://huggingface.co/Photoroom/prxpixel-t2i) | ⬜ |
 | 3 | Anima | ★★☆☆☆ | Verification-only (modular) | v0.39.0 (#13732, 2026-05-29) | t2i | `CosmosTransformer3DModel` — `Cosmos` adapter | [circlestone-labs/Anima-Base-v1.0-Diffusers](https://huggingface.co/circlestone-labs/Anima-Base-v1.0-Diffusers) | ⬜ |
 | 4 | Echo (JoyAI-Echo) | ★★☆☆☆ | Verification-only (modular) | v0.41.0 (#14941, 2026-10-05) | long video + audio (DMD few-step) | `LTX2VideoTransformer3DModel` — `LTX` adapter | [jdopensource/JoyAI-Echo](https://huggingface.co/jdopensource/JoyAI-Echo) | ⬜ |
