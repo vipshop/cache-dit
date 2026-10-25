@@ -53,13 +53,13 @@ def set_compile_configs(
   try:
     import torch._dynamo.config as dynamo_config  # type: ignore[attr-defined]
 
-    # Alway increase recompile_limit for dynamic shape compilation
+    # Always increase recompile_limit for dynamic shape compilation
     dynamo_config.recompile_limit = 1024  # default is 8
     dynamo_config.accumulated_recompile_limit = 8192  # default is 256
     # https://docs.pytorch.org/docs/stable/nested.html#data-dependent-operation-within-torch-compile
     if hasattr(dynamo_config, "capture_scalar_outputs"):
       if capture_scalar_outputs is None:
-        # Exiplicitly set capture_scalar_outputs to True to avoid graph break
+        # Explicitly set capture_scalar_outputs to True to avoid graph break
         # while using Ulysses Anything Attention:
         # Graph break from `Tensor.item()`, consider setting:
         # torch._dynamo.config.capture_scalar_outputs = True
@@ -68,7 +68,7 @@ def set_compile_configs(
           if capture_scalar_outputs:
             logger.info("Ulysses Anything Attention is enabled. "
                         "Auto set capture_scalar_outputs as True "
-                        "to avoid graph break from scalar outpus, "
+                        "to avoid graph break from scalar outputs, "
                         "e.g., Tensor.item().")
             dynamo_config.capture_scalar_outputs = capture_scalar_outputs
       else:

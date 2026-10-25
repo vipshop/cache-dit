@@ -58,7 +58,7 @@ class TextEncoderTensorParallelismPlanner:
 
     # Workaround for case: TP -> FP8 DQ per row, make torch._scaled_mm happy.
     # Avoid error: "RuntimeError: Expected b.stride(0) == 1 to be true, but got false"
-    # RowwiseParallel (TP) will cause the layout of the linear weights changedly after
+    # RowwiseParallel (TP) will cause the layout of the linear weights to change after
     # '_dispatch_get_local_results_slow_path', Why??? Need further investigation.
     self.record_plans(text_encoder, layer_plans)
 

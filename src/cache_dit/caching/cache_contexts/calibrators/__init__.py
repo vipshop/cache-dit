@@ -22,13 +22,13 @@ class CalibratorConfig:
 
   # enable_calibrator (`bool`, *required*,  defaults to False):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
-  #     with specific calibrator for hidden_states (or hidden_states redisual),
+  #     with specific calibrator for hidden_states (or hidden_states residual),
   #     such as taylorseer, foca, and so on.
   enable_calibrator: bool = False
   # enable_encoder_calibrator (`bool`, *required*,  defaults to False):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
   #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
-  #     redisual), such as taylorseer, foca, and so on.
+  #     residual), such as taylorseer, foca, and so on.
   enable_encoder_calibrator: bool = False
   # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
   #    The specific type for calibrator, taylorseer or foca, etc.
@@ -109,13 +109,13 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
 
   # enable_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
-  #     with specific calibrator for hidden_states (or hidden_states redisual),
+  #     with specific calibrator for hidden_states (or hidden_states residual),
   #     such as taylorseer, foca, and so on.
   enable_calibrator: bool = True
   # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
   #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
-  #     redisual), such as taylorseer, foca, and so on.
+  #     residual), such as taylorseer, foca, and so on.
   enable_encoder_calibrator: bool = True
   # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
   #    The specific type for calibrator, taylorseer or foca, etc.
@@ -167,13 +167,13 @@ class DMDCalibratorConfig(CalibratorConfig):
 
   # enable_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
-  #     with specific calibrator for hidden_states (or hidden_states redisual),
+  #     with specific calibrator for hidden_states (or hidden_states residual),
   #     such as taylorseer, foca, dmd, and so on.
   enable_calibrator: bool = True
   # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
   #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
-  #     redisual), such as taylorseer, foca, dmd, and so on.
+  #     residual), such as taylorseer, foca, dmd, and so on.
   enable_encoder_calibrator: bool = True
   # calibrator_type (`str`, *required*,  defaults to 'dmd'):
   #    The specific type for calibrator, taylorseer, foca or dmd, etc.
@@ -235,13 +235,13 @@ class FoCaCalibratorConfig(CalibratorConfig):
 
   # enable_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
-  #     with specific calibrator for hidden_states (or hidden_states redisual),
+  #     with specific calibrator for hidden_states (or hidden_states residual),
   #     such as taylorseer, foca, and so on.
   enable_calibrator: bool = True
   # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
   #     Whether to enable calibrator, if True. means that user want to use DBCache
   #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
-  #     redisual), such as taylorseer, foca, and so on.
+  #     residual), such as taylorseer, foca, and so on.
   enable_encoder_calibrator: bool = True
   # calibrator_type (`str`, *required*,  defaults to 'taylorseer'):
   #    The specific type for calibrator, taylorseer or foca, etc.
