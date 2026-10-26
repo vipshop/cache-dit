@@ -146,6 +146,7 @@ flowchart TD
 | Situation | Section |
 |---|---|
 | **Picking the next model to integrate / checking the pending-model list** | `./references/rfc_pending_models.md` |
+| **A measured speedup looks wrong (fp8/svdq/compile flat), or choosing which optimizations can pay off before benchmarking** | `./references/perf_analysis.md` — FLOPs budget (attention vs GEMM share), the 6-step diagnostic ladder, ffpa case study |
 | **Downloading model weights to the local model root** | `./references/model_download.md` |
 | **The model is a diffusers `ModularPipeline` (e.g. FLUX.3): `pipe` is neither a `DiffusionPipeline` nor an `nn.Module`** | `./references/modular_pipeline.md` |
 | The pipeline has an optional prompt-rewrite / prompt-upsampling stage (FLUX.3 `pup`, ...) | `./references/modular_pipeline.md` §4.1 |
