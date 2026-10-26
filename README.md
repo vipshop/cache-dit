@@ -58,8 +58,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
 </div>
 
 ```bash
-# Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
-# release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
+# Required: CUDA >=13.0, PyTorch >=2.11 (a CUDA 13 build), GLIBC 2.38.
 pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```
