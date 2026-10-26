@@ -27,6 +27,87 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
+<div align="center">
+  <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
+</div>
+
+First, you can install the cache-dit from PyPI or install from source: 
+
+```bash
+pip3 install -U cache-dit # PyPI, stable release.
+pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
+```
+
+Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
+
+```python
+>>> import cache_dit
+>>> from diffusers import DiffusionPipeline
+>>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
+>>> cache_dit.enable_cache(pipe) # Cache Acceleration with One-line code.
+>>> from cache_dit import DBCacheConfig, ParallelismConfig
+>>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + Parallelism.
+...   pipe, cache_config=DBCacheConfig(), # w/ default
+...   parallelism_config=ParallelismConfig(ulysses_size=2))
+>>> from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
+>>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
+...   pipe, cache_config=DBCacheConfig(), # w/ default
+...   parallelism_config=ParallelismConfig(ulysses_size=2),
+...   quantize_config=QuantizeConfig(quant_type=...))
+>>> output = pipe(...) # Then, just call the pipe as normal.
+```
+
+<div align="center">
+  <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
+</div>
+
+First, install the pre-built CUDA package, or build Cache-DiT from source with SVDQuant support (Experimental):
+
+```bash
+# Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
+# release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
+pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
+CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
+```
+
+Then, try to quantize your model with just **♥️a few lines♥️** of codes ~
+
+```python
+>>> from cache_dit import QuantizeConfig
+>>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
+>>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
+>>> pipe.transformer = cache_dit.quantize(
+...   pipe.transformer, quant_config=QuantizeConfig(
+...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
+...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
+...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
+>>> output = pipe(...) # Then, just call the pipe as normal.
+```
+
+<div align="center">
+  <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
+</div>
+
+**Bucket-style** Layerwise Offload w/ nearly zero (**<5%🎉**) latency overhead ~
+
+```python
+>>> import cache_dit
+>>> cache_dit.layerwise_offload(
+...   pipe, # nn.Module: pipe, transformer, text_encoder, etc.
+...   onload_device="cuda",
+...   offload_device="cpu",
+...   async_transfer=True,
+...   transfer_buckets=4,
+...   persistent_buckets=64,
+...   persistent_bins=8,
+...   prefetch_limit=True,
+...   max_copy_streams=4,
+...   max_inflight_prefetch_bytes="8gib")
+>>> output = pipe(...) # Then, just call the pipe as normal.
+```
+
+For more advanced features, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
+
 ## 📋Supported DiT Models
 
 Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
