@@ -15,7 +15,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
 </div>
 
-Cache-DiT is compatible with compilation, CPU Offloading, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), ComfyUI, and runs natively on NVIDIA GPUs, Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
+Cache-DiT is compatible with compilation, CPU Offloading, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), ComfyUI, and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
@@ -40,7 +40,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 - [🚀Use CUDA Graphs](./CUDA_GRAPH.md)
 - [🌐Use Ray Wrapper](./RAY.md)
 - [🛠️Layerwise Offload](./OFFLOAD.md)
-- [🛰️Ascend NPU Support](./ASCEND_NPU.md)
+- [🛰️Huawei Ascend NPU Support](./ASCEND_NPU.md)
 - [🖥️AMD GPU Support](./AMD_GPU.md)
 - [📄Config with YAML](./LOAD_CONFIGS.md)
 - [🌐Environment Variables](./ENV.md)

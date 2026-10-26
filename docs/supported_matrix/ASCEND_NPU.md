@@ -1,4 +1,4 @@
-# Ascend NPU Supported Matrix  
+# Huawei Ascend NPU Supported Matrix  
 
 <div id="supported"></div>
 
