@@ -558,6 +558,12 @@ class ExampleInitConfig:
   # Modular pipelines only: per-component loading dtype, e.g. `{"transformer": torch.bfloat16,
   # "default": torch.float32}` for a checkpoint whose VAEs ship float32.
   modular_component_dtypes: Optional[Dict[str, Any]] = None
+  # Modular pipelines only: extra `load_components` overrides, e.g.
+  # `{"pretrained_model_name_or_path": {"text_encoder": "/local/gemma-3-12b-it"}}` to load a
+  # component referenced by `modular_model_index.json` from a local path (the JoyAI-Echo checkpoint
+  # points its text encoder at the gated `google/gemma-3-12b-it`). Values must be per-component
+  # maps: `load_components` applies a plain value to every component.
+  modular_load_overrides: Optional[Dict[str, Any]] = None
 
   @property
   def is_modular_pipeline(self) -> bool:
@@ -609,6 +615,8 @@ class ExampleInitConfig:
       }
       if self.modular_workflow is not None:
         load_kwargs["workflow"] = self.modular_workflow
+      if self.modular_load_overrides:
+        load_kwargs.update(self.modular_load_overrides)
       pipe.load_components(**load_kwargs)
       if self.post_init_hook is not None:
         self.post_init_hook(pipe, **kwargs)

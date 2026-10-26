@@ -74,6 +74,35 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
     return text_encoder, layer_plans
 
+  @staticmethod
+  def _resolve_language_model(
+    text_encoder: torch.nn.Module,
+  ) -> Tuple[torch.nn.Module, Union[torch.nn.Module, None], Union[str, None]]:
+    """Unwrap the text stack and report the attribute it hangs off.
+
+    Gemma3 ships as a multimodal container whose text stack sits at a different depth per
+    transformers version: `language_model.model.layers` in v4, `model.language_model.layers` in v5.
+
+    :param text_encoder: Gemma-family text encoder, possibly a multimodal container.
+    :returns: `(module, owner, attr)` where `owner.attr` is the module, or `(module, None, None)`
+      when the module holding `layers` is the encoder itself.
+    """
+    if isinstance(text_encoder, (GemmaForCausalLM, Gemma2ForCausalLM, Gemma3ForCausalLM)):
+      return text_encoder.model, text_encoder, "model"
+
+    module = text_encoder
+    owner, attr = None, None
+    while not hasattr(module, "layers"):
+      for name in ("language_model", "model"):
+        child = getattr(module, name, None)
+        if isinstance(child, torch.nn.Module) and child is not module:
+          owner, attr = module, name
+          module = child
+          break
+      else:
+        return module, None, None
+    return module, owner, attr
+
   def parallelize_text_encoder(
     self,
     text_encoder: Union[
@@ -89,27 +118,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     tp_mesh: DeviceMesh,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
 
-    # NOTE: Gemma3 can be used as a multi-modal backbone. In those cases the actual
-    # language model is nested under `language_model` (and sometimes `language_model.model`).
-    # We need to unwrap to the module that has `layers`.
-    if isinstance(text_encoder, Gemma3ForConditionalGeneration) and hasattr(
-        text_encoder, "language_model"):
-      model_container = getattr(text_encoder, "language_model")
-      model = getattr(model_container, "model", model_container)
-    elif isinstance(
-        text_encoder,
-      (
-        GemmaForCausalLM,
-        Gemma2ForCausalLM,
-        Gemma3ForCausalLM,
-      ),
-    ):
-      model = text_encoder.model
-    else:
-      model = text_encoder
-      if not hasattr(model, "layers") and hasattr(model, "language_model"):
-        model_container = getattr(model, "language_model")
-        model = getattr(model_container, "model", model_container)
+    model, model_owner, model_owner_attr = self._resolve_language_model(text_encoder)
 
     if not hasattr(model, "layers"):
       raise AttributeError(
@@ -147,25 +156,10 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
       )
       layer_plans.append(layer_plan)
 
-    if isinstance(
-        text_encoder,
-      (
-        GemmaForCausalLM,
-        Gemma2ForCausalLM,
-        Gemma3ForCausalLM,
-        Gemma3ForConditionalGeneration,
-      ),
-    ):
-      # NOTE: Gemma3ForConditionalGeneration may store the LM under `language_model`.
-      if isinstance(text_encoder, Gemma3ForConditionalGeneration) and hasattr(
-          text_encoder, "language_model"):
-        language_model = getattr(text_encoder, "language_model")
-        if hasattr(language_model, "model"):
-          language_model.model = model
-        else:
-          text_encoder.language_model = model
-      else:
-        text_encoder.model = model
+    if model_owner is not None:
+      # Write the (already parallelized in place) stack back to the attribute it came from, so the
+      # container keeps pointing at the module whose layers now hold the sharded projections.
+      setattr(model_owner, model_owner_attr, model)
     else:
       text_encoder = model
 
