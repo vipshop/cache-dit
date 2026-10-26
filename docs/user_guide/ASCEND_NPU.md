@@ -1,4 +1,4 @@
-# Ascend NPU Support 
+# Huawei Ascend NPU Support 
 
 We are excited to announce that Cache-DiT now provides **native** support for <span style="color:#c77dff;">**Ascend NPU**</span>. Theoretically, **nearly all** models supported by Cache-DiT can run on Ascend NPU with most of Cache-DiT’s optimization technologies. Please refer to **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
 

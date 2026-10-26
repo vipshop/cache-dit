@@ -70,7 +70,7 @@ nav:
       - Use CUDA Graphs: user_guide/CUDA_GRAPH.md
       - Use Ray Wrapper: user_guide/RAY.md
       - Layerwise Offload: user_guide/OFFLOAD.md
-      - Ascend NPU Support: user_guide/ASCEND_NPU.md
+      - Huawei Ascend NPU Support: user_guide/ASCEND_NPU.md
       - AMD GPU Support: user_guide/AMD_GPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md
       - Environment Variables: user_guide/ENV.md
@@ -80,11 +80,11 @@ nav:
       - API Docmentation: user_guide/API_DOCS.md
   - Supported Matrix: 
     - NVIDIA GPU: supported_matrix/NVIDIA_GPU.md
-    - Ascend NPU: supported_matrix/ASCEND_NPU.md
+    - Huawei Ascend NPU: supported_matrix/ASCEND_NPU.md
   - Benchmark: 
     - Hybrid Cache: benchmark/HYBRID_CACHE.md
     - NVIDIA GPU: benchmark/NVIDIA_GPU.md
-    - Ascend NPU: benchmark/ASCEND_NPU.md
+    - Huawei Ascend NPU: benchmark/ASCEND_NPU.md
   - Developer Guide: 
     - pre-commit: developer_guide/PRE_COMMIT.md
     - Support New Model: developer_guide/SUPPORT_NEW_MODEL.md

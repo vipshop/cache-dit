@@ -1,4 +1,4 @@
-# Ascend NPU Benchmark
+# Huawei Ascend NPU Benchmark
 
 ## Atlas 800I A2
 
