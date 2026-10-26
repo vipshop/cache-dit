@@ -6,7 +6,7 @@
 
 Users can set the <span style="color:#c77dff;">extra_parallel_modules</span> parameter in <span style="color:#c77dff;">parallelism_config</span> (when using Tensor Parallelism or Context Parallelism) to specify additional modules that need to be parallelized beyond the main transformer — e.g, <span style="color:#c77dff;">text_encoder</span> in <span style="color:#c77dff;">Flux2Pipeline</span>. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the text encoder. 
 
-Currently, cache-dit supported text encoder parallelism for **T5Encoder, UMT5Encoder, Llama, Gemma 1/2/3, Mistral, Mistral-3, Qwen-3, Qwen-2.5 VL, Glm and Glm-4** model series, namely, supported almost **[🔥ALL](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers.
+Currently, cache-dit supported text encoder parallelism for **T5Encoder, UMT5Encoder, Llama, Gemma 1/2/3, Mistral, Mistral-3, Qwen-3, Qwen-2.5 VL, Qwen-3 VL, Glm and Glm-4** model series, namely, supported almost **[🔥ALL](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers.
 
 ```python
 from cache_dit import ParallelismConfig

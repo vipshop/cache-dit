@@ -169,3 +169,21 @@ class Qwen3VLTextModelTensorParallelismPlanner(TextEncoderTensorParallelismPlann
 
     maybe_empty_cache()
     return text_encoder, layer_plans
+
+
+@TextEncoderTensorParallelismPlannerRegister.register("Qwen3VLModel")
+class Qwen3VLModelTensorParallelismPlanner(Qwen3VLTextModelTensorParallelismPlanner):
+  """TP for a complete Qwen3-VL model whose text stack backs Ideogram 4."""
+
+  def _apply(
+    self,
+    text_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+    **kwargs,
+  ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    _, layer_plans = super()._apply(
+      text_encoder=text_encoder.language_model,
+      parallelism_config=parallelism_config,
+      **kwargs,
+    )
+    return text_encoder, layer_plans

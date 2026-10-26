@@ -15,7 +15,7 @@ from .distributed import ParallelismConfig
 from .quantization import QuantizeConfig
 from .caching import load_configs
 from .utils import is_pipeline
-from .utils import resolve_transformer
+from .utils import iter_transformer_modules
 from .logger import init_logger
 
 logger = init_logger(__name__)
@@ -69,60 +69,33 @@ def summary(
   # DiffusionPipeline or transformer moudle, which may contain cached,
   # parallelism and quantization stats.
   if not isinstance(adapter_or_others, BlockAdapter):
-    if not is_pipeline(adapter_or_others):
-      transformer = adapter_or_others  # transformer-only
-      transformer_2 = None
-    else:
-      # A pipeline may keep its denoising transformer under another name — MiniMax-H3 loads
-      # `transformer_ref` for `ref2va` — and only ever one of the two exists.
-      _, transformer = resolve_transformer(adapter_or_others)
-      if transformer is None:
-        return [CacheStats()]
-      transformer_2 = None  # Only for Wan2.2
-      if hasattr(adapter_or_others, "transformer_2"):
-        transformer_2 = adapter_or_others.transformer_2
+    transformers = [module for _, module in iter_transformer_modules(adapter_or_others)]
+    if not transformers:
+      return [CacheStats()]
 
-    if all((
-        not BlockAdapter.is_cached(transformer),
-        not BlockAdapter.is_parallelized(transformer),
-        not BlockAdapter.is_quantized(transformer),
-    )):
+    if all(
+        all((
+          not BlockAdapter.is_cached(transformer),
+          not BlockAdapter.is_parallelized(transformer),
+          not BlockAdapter.is_quantized(transformer),
+        )) for transformer in transformers):
       return [CacheStats()]
 
     blocks_stats: List[CacheStats] = []
-    # Only cached transformers will have cache stats for sub-blocks.
-    # Parallelism and quantization stats will be collected at the
-    # transformer level.
-    if BlockAdapter.is_cached(transformer):
-      for blocks in BlockAdapter.find_blocks(transformer):
-        blocks_stats.append(_summary(
-          blocks,
-          details=details,
-          logging=logging,
-          **kwargs,
-        ))
+    for transformer in transformers:
+      if BlockAdapter.is_cached(transformer):
+        for blocks in BlockAdapter.find_blocks(transformer):
+          blocks_stats.append(_summary(
+            blocks,
+            details=details,
+            logging=logging,
+            **kwargs,
+          ))
 
-    if transformer_2 is not None and BlockAdapter.is_cached(transformer_2):
-      for blocks in BlockAdapter.find_blocks(transformer_2):
-        blocks_stats.append(_summary(
-          blocks,
-          details=details,
-          logging=logging,
-          **kwargs,
-        ))
-
-    # Add the overall transformer-level stats at the end of the list,
-    # which will be used for summarization and strify. Including cache
-    # options, parallelism and quantization config at transformer level.
-    blocks_stats.append(_summary(
-      transformer,
-      details=details,
-      logging=logging,
-      **kwargs,
-    ))
-    if transformer_2 is not None:
+    # Transformer-level cache options, parallelism and quantization stats stay at the end.
+    for transformer in transformers:
       blocks_stats.append(_summary(
-        transformer_2,
+        transformer,
         details=details,
         logging=logging,
         **kwargs,

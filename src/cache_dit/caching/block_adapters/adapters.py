@@ -1418,3 +1418,47 @@ def anyflow_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=False,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("Ideogram4")
+def ideogram4_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for Ideogram 4 (asymmetric-CFG transformer pair).
+
+  `Ideogram4Pipeline` denoises with two independent `Ideogram4Transformer2DModel` partitions:
+  `transformer` runs the packed [text, image] sequence and `unconditional_transformer` runs the
+  image-only positions with zeroed text features, then the two velocities are blended. Each
+  partition owns its own `layers` stack and is called exactly once per denoising step, so both are
+  cached as sibling entries (the Wan 2.2 `transformer` / `transformer_2` layout) instead of one
+  merged stack: every cache context then sees one forward per step, which is why
+  `has_separate_cfg` stays False and the per-branch step counters line up 1:1 with the steps.
+  Checkpoints that ship without the unconditional partition (and transformer-only usage) fall back
+  to a single cached stack.
+
+  The block contract is `(hidden_states, attention_mask, image_rotary_emb, adaln_input)` ->
+  `hidden_states` (Pattern_3) and the block loop carries no extra body ops, so no PatchFunctor is
+  needed.
+
+  :param pipe: `Ideogram4Pipeline`, or a wrapper exposing only the transformer partitions.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `layers` stack of every loaded partition.
+  """
+  from diffusers import Ideogram4Transformer2DModel
+
+  _relaxed_assert(pipe.transformer, Ideogram4Transformer2DModel)
+
+  transformers = [pipe.transformer]
+  unconditional_transformer = getattr(pipe, "unconditional_transformer", None)
+  if unconditional_transformer is not None:
+    _relaxed_assert(unconditional_transformer, Ideogram4Transformer2DModel)
+    transformers.append(unconditional_transformer)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformers,
+    blocks=[transformer.layers for transformer in transformers],
+    blocks_name=["layers"] * len(transformers),
+    forward_pattern=[ForwardPattern.Pattern_3] * len(transformers),
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
