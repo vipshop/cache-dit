@@ -6,8 +6,10 @@ single cached-blocks call, the per-layer slice is lost: the wrapper receives wha
 call passes and reuses it for every block.
 
 The patch keeps the upstream forward untouched apart from a thin prologue that distributes the
-bundles, so the cached loop still feeds every block its own conditioning. This follows the
-`BriaFiboPatchFunctor` pattern.
+bundles, so the cached loop still feeds every block its own conditioning. Blocks only switch to the
+stash while the loop is collapsed: an intact loop already hands each block its own bundle, and
+overriding there would make a gradient-checkpointing recompute read the stash of a later forward.
+This follows the `BriaFiboPatchFunctor` pattern.
 """
 
 import torch
@@ -44,6 +46,7 @@ class BriaFibo2PatchFunctor(PatchFunctor):
       block._text_bundle = None
       block._text_bundle_index = bundle_index.get(layer_id, None)
       block._text_mask = None
+      block._use_text_bundle = False
       block.forward = _patched_block_forward.__get__(block)
 
     transformer._orig_layers = orig_layers
@@ -68,11 +71,16 @@ def _patched_transformer_forward(
   return_dict: bool = True,
 ):
   # Bundle 0 feeds the Perceiver, bundle `k + 1` feeds `injection_layer_ids[k]`; both are consumed
-  # by the forward body, so only the injection bundles need to be stashed here.
+  # by the forward body, so only the injection bundles need to be stashed here. The stash only has
+  # to override the caller's text when the loop is collapsed: otherwise the upstream loop already
+  # hands every block its own bundle, and rewriting would make a gradient-checkpointing recompute
+  # read whatever the *last* forward stashed instead of the values captured for this graph.
+  collapsed = len(self.layers) != len(self._orig_layers)
   for layer_id, index in self._text_bundle_index.items():
     block = self._orig_layers[layer_id]
     block._text_bundle = encoder_hidden_states[:, index]
     block._text_mask = encoder_attention_mask
+    block._use_text_bundle = collapsed
   return self._orig_forward(
     hidden_states,
     timestep,
@@ -83,19 +91,36 @@ def _patched_transformer_forward(
   )
 
 
+# Tail of `BriaFibo2TransformerBlock.forward` in declaration order (the three leading parameters
+# `x` / `attn_mask` / `freqs_cis` are always passed positionally).
+_FORWARD_TAIL_ARGS = (
+  "adaln_input",
+  "noise_mask",
+  "adaln_noisy",
+  "adaln_clean",
+  "encoder_hidden_states",
+  "encoder_attention_mask",
+)
+
+
 def _patched_block_forward(
   self: torch.nn.Module,
   x: torch.Tensor,
-  attn_mask: torch.Tensor,
+  attn_mask: Optional[torch.Tensor],
   freqs_cis: torch.Tensor,
   *args,
   **kwargs,
 ) -> torch.Tensor:
-  # The block has 9 parameters. The loop passes the first three positionally and the rest as
-  # keywords, whereas the gradient-checkpointing path passes all nine positionally
-  # (`_gradient_checkpointing_func(block, x, attention_mask, freqs_cis, None, noise_mask, ...)`);
-  # only rewrite the keyword form, which is the only one an inference run with cache takes.
-  if self._text_bundle_index is not None and not args:
+  # The loop passes the first three parameters positionally and the rest as keywords, while the
+  # gradient-checkpointing branch passes all nine positionally. Normalize the tail into keywords
+  # first: under cache the collapsed loop only ever indexes layer 0, so a positional
+  # `encoder_hidden_states` belongs to the wrong block (usually `None`).
+  if args:
+    if len(args) > len(_FORWARD_TAIL_ARGS):
+      raise TypeError(f"BriaFibo2TransformerBlock got {len(args)} positional arguments after "
+                      f"`freqs_cis`, expected at most {len(_FORWARD_TAIL_ARGS)}.")
+    kwargs = {**dict(zip(_FORWARD_TAIL_ARGS, args)), **kwargs}
+  if self._use_text_bundle:
     kwargs["encoder_hidden_states"] = self._text_bundle
     kwargs["encoder_attention_mask"] = self._text_mask
-  return self._orig_forward(x, attn_mask, freqs_cis, *args, **kwargs)
+  return self._orig_forward(x, attn_mask, freqs_cis, **kwargs)
