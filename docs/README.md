@@ -36,14 +36,10 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
 </div>
 
-First, you can install the cache-dit from PyPI or install from source: 
-
 ```bash
 pip3 install -U cache-dit # PyPI, stable release.
 pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
 ```
-
-Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
 
 ```python
 >>> import cache_dit
@@ -66,16 +62,12 @@ Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~
   <p> <h2>🚀Quick Start: SVDQuant (W4A4) PTQ/DQ workflow</h2> </p>
 </div>
 
-First, install the pre-built CUDA package, or build Cache-DiT from source with SVDQuant support (Experimental):
-
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
 # release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
 pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```
-
-Then, try to quantize your model with just **♥️a few lines♥️** of codes ~
 
 ```python
 >>> from cache_dit import QuantizeConfig
@@ -93,8 +85,6 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
   <p> <h2>🚀Quick Start: Bucket-style Layerwise CPU Offload</h2> </p>
 </div>
 
-**Bucket-style** Layerwise Offload w/ nearly zero (**<5%🎉**) latency overhead ~
-
 ```python
 >>> import cache_dit
 >>> cache_dit.layerwise_offload(
@@ -110,8 +100,6 @@ Then, try to quantize your model with just **♥️a few lines♥️** of codes 
 ...   max_inflight_prefetch_bytes="8gib")
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
-
-For more advanced features, please refer to our online documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/user_guide/OVERVIEWS/).
 
 ## 🌐Community Integration
 
