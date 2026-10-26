@@ -72,3 +72,5 @@ minimax_h3_ref2va_example = _safe_import(".examples", "minimax_h3_ref2va_example
 joy_image_edit_example = _safe_import(".examples", "joy_image_edit_example")
 prx_pixel_example = _safe_import(".examples", "prx_pixel_example")
 anima_example = _safe_import(".examples", "anima_example")
+motif_video_t2v_example = _safe_import(".examples", "motif_video_t2v_example")
+motif_video_i2v_example = _safe_import(".examples", "motif_video_i2v_example")

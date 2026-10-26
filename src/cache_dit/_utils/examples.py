@@ -78,6 +78,8 @@ __all__ = [
   "bria_fibo2_example",
   "bria_fibo2_turbo_example",
   "echo_t2va_example",
+  "motif_video_t2v_example",
+  "motif_video_i2v_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -142,6 +144,7 @@ _env_path_mapping = {
   "FIBO_2_TURBO_DIR": "briaai/Fibo-2.0-edit-turbo",
   "ECHO_DIR": "jdopensource/JoyAI-Echo",
   "GEMMA_3_12B_DIR": "google/gemma-3-12b-it",
+  "MOTIF_VIDEO_DIR": "Motif-Technologies/Motif-Video-2B",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -2655,6 +2658,99 @@ def echo_t2va_example(args: argparse.Namespace, **kwargs) -> Example:
         "frame_rate": 25.0,
         "model_frame_rate": 24.0,
       },
+    ),
+  )
+
+
+_MOTIF_VIDEO_HF_ID = "Motif-Technologies/Motif-Video-2B"
+
+
+def _motif_video_i2v_image(model_name_or_path: str, args: argparse.Namespace):
+  """Pick the i2v conditioning image: the caller's path, the local snapshot's
+  `assets/i2v_sample.jpg`, or the Hub URL as the last resort (the local network
+  cannot reach huggingface.co directly).
+  """
+
+  if args.image_path is not None:
+    return load_image(args.image_path).convert("RGB")
+  local_asset = os.path.join(model_name_or_path, "assets", "i2v_sample.jpg")
+  if os.path.isfile(local_asset):
+    return load_image(local_asset).convert("RGB")
+  return load_image(
+    f"https://huggingface.co/{_MOTIF_VIDEO_HF_ID}/resolve/main/assets/i2v_sample.jpg").convert(
+      "RGB")
+
+
+@ExampleRegister.register("motif_video_t2v", default=_MOTIF_VIDEO_HF_ID)
+def motif_video_t2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Motif-Video-2B text-to-video example.
+
+  The pipeline guides via `AdaptiveProjectedGuidance` (two sequential transformer passes per
+  step), so `enable_separate_cfg` is derived from `guider.num_conditions` by the adapter and
+  the guidance scale is configured on the guider, not on `__call__`.
+  """
+
+  from diffusers import MotifVideoPipeline
+
+  model_name_or_path = _path(_MOTIF_VIDEO_HF_ID, args=args)
+  num_inference_steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=MotifVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+    ),
+    input_data=ExampleInputData(
+      prompt=("A cinematic drone shot gliding over a misty mountain lake at sunrise. "
+              "Golden light pierces the fog, water ripples gently, distant peaks emerge "
+              "slowly. Smooth camera motion, natural parallax, ultra-realistic, cinematic."),
+      negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+      height=736,
+      width=1280,
+      num_frames=121,
+      num_inference_steps=num_inference_steps,
+    ),
+  )
+
+
+@ExampleRegister.register("motif_video_i2v", default=_MOTIF_VIDEO_HF_ID)
+def motif_video_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Motif-Video-2B image-to-video example.
+
+  The i2v pipeline requires the `feature_extractor` (SigLIP) component and animates the
+  provided first frame; the conditioning image is resized to the target resolution.
+  """
+
+  from diffusers import MotifVideoImage2VideoPipeline
+
+  model_name_or_path = _path(_MOTIF_VIDEO_HF_ID, args=args)
+  num_inference_steps = 50 if args.num_inference_steps is None else args.num_inference_steps
+
+  height = 736 if args.height is None else args.height
+  width = 1280 if args.width is None else args.width
+  image = _motif_video_i2v_image(model_name_or_path, args)
+  image = image.resize((width, height))
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=MotifVideoImage2VideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+    ),
+    input_data=ExampleInputData(
+      prompt=("The scene comes to life with gentle natural motion: soft wind, subtle light "
+              "changes, smooth cinematic camera drift."),
+      negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+      image=image,
+      height=height,
+      width=width,
+      num_frames=121,
+      num_inference_steps=num_inference_steps,
     ),
   )
 

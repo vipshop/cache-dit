@@ -129,6 +129,8 @@ def _activate_cp_planners():
     ".prx", "PrxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   CosmosContextParallelismPlanner = _safe_import(  # noqa: F841
     ".cosmos", "CosmosContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  MotifVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".motif_video", "MotifVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -209,3 +211,5 @@ def _activate_tp_planners():
     ".prx", "PrxTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   CosmosTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".cosmos", "CosmosTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  MotifVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".motif_video", "MotifVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

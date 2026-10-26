@@ -15,6 +15,16 @@ from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
 from transformers.models.gemma3.modeling_gemma3 import Gemma3DecoderLayer
 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoderLayer
 
+try:
+  # transformers 5: Motif-Video ships `T5Gemma2Encoder` (a separate module from `t5gemma`).
+  from transformers.models.t5gemma2.modeling_t5gemma2 import (
+    T5Gemma2Encoder,
+    T5Gemma2EncoderLayer,
+  )
+except ImportError:  # older transformers
+  T5Gemma2Encoder = None
+  T5Gemma2EncoderLayer = None
+
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
   ParallelStyle,
@@ -44,9 +54,21 @@ _supported_gemma_classes = (
   Gemma3ForCausalLM,
   Gemma3ForConditionalGeneration,
 )
+if T5Gemma2Encoder is not None:
+  _supported_gemma_classes = _supported_gemma_classes + (T5Gemma2Encoder, )
+
+_supported_layer_classes = (
+  GemmaDecoderLayer,
+  Gemma2DecoderLayer,
+  Gemma3DecoderLayer,
+  T5GemmaEncoderLayer,
+)
+if T5Gemma2EncoderLayer is not None:
+  _supported_layer_classes = _supported_layer_classes + (T5Gemma2EncoderLayer, )
 
 
 # Text Encoder Lumina-Image, prx series models.
+@TextEncoderTensorParallelismPlannerRegister.register("T5Gemma2Encoder")
 @TextEncoderTensorParallelismPlannerRegister.register("T5GemmaEncoder")
 @TextEncoderTensorParallelismPlannerRegister.register("GemmaModel")
 @TextEncoderTensorParallelismPlannerRegister.register("Gemma2Model")
@@ -82,6 +104,8 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
 
     Gemma3 ships as a multimodal container whose text stack sits at a different depth per
     transformers version: `language_model.model.layers` in v4, `model.language_model.layers` in v5.
+    `T5Gemma2Encoder` (transformers 5, Motif-Video) nests the stack at `text_model.layers`;
+    its `vision_tower` / `multi_modal_projector` are deliberately left untouched.
 
     :param text_encoder: Gemma-family text encoder, possibly a multimodal container.
     :returns: `(module, owner, attr)` where `owner.attr` is the module, or `(module, None, None)`
@@ -93,7 +117,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     module = text_encoder
     owner, attr = None, None
     while not hasattr(module, "layers"):
-      for name in ("language_model", "model"):
+      for name in ("language_model", "model", "text_model"):
         child = getattr(module, name, None)
         if isinstance(child, torch.nn.Module) and child is not module:
           owner, attr = module, name
@@ -129,16 +153,10 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     assert isinstance(model, torch.nn.Module), "model must be a torch.nn.Module"
     layer_plans = []
     for _, block in model.layers.named_children():
-      assert isinstance(
-        block,
-        (
-          GemmaDecoderLayer,
-          Gemma2DecoderLayer,
-          Gemma3DecoderLayer,
-          T5GemmaEncoderLayer,
-        ),
-      ), (f"Unsupported layer type {block.__class__.__name__} for Gemma TP. "
-          "Expected a GemmaDecoderLayer/Gemma2DecoderLayer/Gemma3DecoderLayer/T5GemmaEncoderLayer.")
+      assert isinstance(block, _supported_layer_classes), (
+        f"Unsupported layer type {block.__class__.__name__} for Gemma TP. "
+        "Expected one of: "
+        f"{[cls.__name__ for cls in _supported_layer_classes]}.")
       layer_plan = {
         "self_attn.q_proj": ColwiseParallel(),
         "self_attn.k_proj": ColwiseParallel(),
