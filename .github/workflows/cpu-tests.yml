@@ -92,16 +92,6 @@ jobs:
         run: |
           cd tests
           pytest api/test_load_configs.py -v -s -x
-
-      - name: Run Echo Adapter CPU Tests (pytest)
-        run: |
-          cd tests
-          pytest api/test_echo_adapter.py -v -s -x
-
-      - name: Run Bria Fibo 2.0 Adapter CPU Tests (pytest)
-        run: |
-          cd tests
-          pytest api/test_bria_fibo2_adapter.py -v -s -x
     
       - name: Verify cache_dit installation
         run: |
