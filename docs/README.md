@@ -39,8 +39,8 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 First, you can install the cache-dit from PyPI or install from source: 
 
 ```bash
-uv pip install -U cache-dit # PyPI, stable release.
-uv pip install git+https://github.com/vipshop/cache-dit.git # latest.
+pip3 install -U cache-dit # PyPI, stable release.
+pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
 ```
 
 Then, try to accelerate your DiTs with just **♥️one line♥️** of code ~  
@@ -70,8 +70,8 @@ First, install the pre-built CUDA package, or build Cache-DiT from source with S
 
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
-# release (2.38; see the platform tags on the index page).
-uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
+# release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
+pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```
 
