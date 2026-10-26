@@ -295,6 +295,60 @@ def hunyuanvideo_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
+@BlockAdapterRegister.register("MotifVideo")
+def motif_video_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import MotifVideoTransformer3DModel
+  from cache_dit.caching.patch_functors import MotifVideoPatchFunctor
+
+  _relaxed_assert(pipe.transformer, MotifVideoTransformer3DModel)
+
+  # The functor splits the sliced single-stream loops into dedicated sub-module
+  # attributes before the BlockAdapter reads them: `blocks=[...]` is evaluated as a
+  # constructor argument, i.e. BEFORE `__post_init__` would apply the functor. Planners
+  # (CP/TP) apply it themselves as well; guard on `_is_patched` to keep re-entry silent.
+  if not getattr(pipe.transformer, "_is_patched", False):
+    MotifVideoPatchFunctor().apply(pipe.transformer)
+
+  # Motif-Video guides via `AdaptiveProjectedGuidance`: `num_conditions == 2` runs the
+  # conditional and unconditional passes as two sequential transformer calls (the batch
+  # is never doubled), so the cond/uncond cache contexts must be tracked separately.
+  guider = getattr(pipe, "guider", None)
+  has_separate_cfg = bool(guider is not None and getattr(guider, "num_conditions", 1) > 1)
+  if guider is not None and (float(getattr(guider, "start", 0.0) or 0.0),
+                             float(getattr(guider, "stop", 1.0) or 1.0)) != (0.0, 1.0):
+    # `num_conditions` is a dynamic property: a split [start, stop) window would flip the
+    # parity of the two-pass bookkeeping mid-run and silently misalign the cache contexts.
+    logger.warning("MotifVideo guider start/stop != (0.0, 1.0): num_conditions varies per "
+                   "step, separate-CFG cache bookkeeping may be misaligned.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=[
+      pipe.transformer.transformer_blocks,
+      pipe.transformer._motif_single_encoder_blocks,
+      pipe.transformer._motif_single_decoder_blocks,
+    ],
+    blocks_name=[
+      "transformer_blocks",
+      "_motif_single_encoder_blocks",
+      "_motif_single_decoder_blocks",
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_0,
+      ForwardPattern.Pattern_0,
+      ForwardPattern.Pattern_0,
+    ],
+    check_forward_pattern=True,
+    # The return annotation of MotifVideoSingleTransformerBlock is `torch.Tensor`
+    # while it actually returns a (hidden_states, encoder_hidden_states) tuple.
+    check_num_outputs=False,
+    has_separate_cfg=has_separate_cfg,
+    patch_functor=MotifVideoPatchFunctor(),
+    **kwargs,
+  )
+
+
 def _default_call_float(pipe, name: str) -> Optional[float]:
   """Return a numeric default of the pipeline's `__call__`, if discoverable.
 

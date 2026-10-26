@@ -80,6 +80,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-Lightning `🤖Q`|✅|✅|✖️|
 |Qwen-Image-Edit-2509-Lightning `🤖Q`|✅|✅|✖️|
 |SkyReels-V2-T2V|✅|✅|✅|
+|Motif-Video-T2V|✅|✅|✅|
+|Motif-Video-I2V|✅|✅|✅|
 |LongCat-Video|✅|✖️|✖️|
 |ChronoEdit-14B|✅|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅️|✅️|
@@ -181,6 +183,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-Lightning `🤖Q`|✅|✅|
 |Qwen-Image-Edit-2509-Lightning `🤖Q`|✅|✅|
 |SkyReels-V2-T2V|✅|✅|
+|Motif-Video-T2V|✅|✅|
+|Motif-Video-I2V|✅|✅|
 |ChronoEdit-14B|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅|
 |PRX-512-t2i-sft|✅|✖️|
