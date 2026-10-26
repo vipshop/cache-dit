@@ -138,6 +138,31 @@ def test_defaults_are_the_documented_ones():
   assert input_data.guidance_scale is None
 
 
+def test_default_prompt_is_the_official_structured_json_caption():
+  prompt = json.loads(_IDEOGRAM4_PROMPT)
+  assert list(prompt) == [
+    "high_level_description",
+    "style_description",
+    "compositional_deconstruction",
+  ]
+  assert list(prompt["style_description"]) == ["aesthetics", "lighting", "photo", "medium"]
+  composition = prompt["compositional_deconstruction"]
+  assert list(composition) == ["background", "elements"]
+  assert list(composition["elements"][0]) == ["type", "bbox", "desc"]
+  assert list(composition["elements"][1]) == ["type", "bbox", "text", "desc"]
+  assert composition["elements"][1]["text"] == "hello world"
+  assert [element["type"] for element in composition["elements"]] == ["obj", "text"]
+  assert [element["bbox"] for element in composition["elements"]] == [
+    [120, 100, 920, 900],
+    [500, 300, 680, 700],
+  ]
+  assert _IDEOGRAM4_PROMPT == json.dumps(
+    prompt,
+    separators=(",", ":"),
+    ensure_ascii=False,
+  )
+
+
 def test_cli_step_override_reaches_the_example():
   example = ideogram4_example(_factory_args(num_inference_steps=8))
   assert example.input_data.num_inference_steps == 8

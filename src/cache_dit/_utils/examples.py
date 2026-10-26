@@ -3234,8 +3234,42 @@ def anima_example(args: argparse.Namespace, **kwargs) -> Example:
   )
 
 
-_IDEOGRAM4_PROMPT = ("A photo of a cat holding a sign that says hello world, soft studio lighting, "
-                     "sharp focus")
+# Ideogram 4 is trained exclusively on structured JSON captions. Plain text is not a valid fallback:
+# it frequently produces the model's safety-filter placeholder instead of an image.
+_IDEOGRAM4_PROMPT = json.dumps(
+  {
+    "high_level_description":
+    "A studio photograph of an orange cat holding a sign that says hello world.",
+    "style_description": {
+      "aesthetics": "warm, playful, polished",
+      "lighting": "soft diffused studio lighting",
+      "photo": "eye-level, shallow depth of field, sharp focus",
+      "medium": "photograph",
+    },
+    "compositional_deconstruction": {
+      "background":
+      "A seamless warm gray studio backdrop with a subtle floor shadow.",
+      "elements": [
+        {
+          "type":
+          "obj",
+          "bbox": [120, 100, 920, 900],
+          "desc":
+          "An alert orange tabby cat sitting upright and holding a white rectangular sign "
+          "with both front paws.",
+        },
+        {
+          "type": "text",
+          "bbox": [500, 300, 680, 700],
+          "text": "hello world",
+          "desc": "Bold black sans-serif lowercase text centered on the white sign.",
+        },
+      ],
+    },
+  },
+  separators=(",", ":"),
+  ensure_ascii=False,
+)
 # The model's recommended setting, and the step count the pipeline's default guidance schedule is
 # written for.
 _IDEOGRAM4_STEPS = 48
