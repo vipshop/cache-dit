@@ -222,8 +222,10 @@ class _ContextParallelSplitHook(ModelHook):
 
   def post_forward(self, module: torch.nn.Module, output):
     is_tensor = isinstance(output, torch.Tensor)
+    # A fused block may return an optional stream (`(video, None)` for a video-only run).
     is_tensor_list = isinstance(output,
-                                (list, tuple)) and all(isinstance(x, torch.Tensor) for x in output)
+                                (list, tuple)) and all(x is None or isinstance(x, torch.Tensor)
+                                                       for x in output)
 
     if not is_tensor and not is_tensor_list:
       raise ValueError(
@@ -235,6 +237,11 @@ class _ContextParallelSplitHook(ModelHook):
         continue
       if index >= len(output_list):
         raise ValueError(f"Index {index} out of bounds for output of length {len(output_list)}.")
+      if output_list[index] is None:
+        logger.warning_once(
+          "Skipped the CP split of output slot %s: the module returned None. "
+          "Check the plan if this stream is expected to carry data.", index)
+        continue
       output_list[index] = self._prepare_cp_input(output_list[index], cpm)
 
     return output_list[0] if is_tensor else tuple(output_list)
@@ -269,7 +276,10 @@ class _ContextParallelGatherHook(ModelHook):
 
     if is_tensor:
       output_list = [output]
-    elif isinstance(output, (list, tuple)) and all(isinstance(x, torch.Tensor) for x in output):
+    elif isinstance(output, (list, tuple)) and all(x is None or isinstance(x, torch.Tensor)
+                                                   for x in output):
+      # A fused block may return an optional stream (`(video, None)` for a video-only run); the
+      # plan carries `None` in that slot and the value is passed through untouched.
       output_list = list(output)
     else:
       raise ValueError(
@@ -282,6 +292,11 @@ class _ContextParallelGatherHook(ModelHook):
     for index, cpm in enumerate(self.metadata):
       if cpm is None:
         continue
+      if output_list[index] is None:
+        raise ValueError(
+          f"Output slot {index} is None but the context-parallel plan expects a gather there "
+          f"({type(cpm).__name__}). A plan that skips an optional stream must carry `None` in "
+          "that slot as well.")
       gather_dim = getattr(cpm, "gather_dim")
       if self.parallel_config.ulysses_anything:
         output_list[index] = _PartitionAnythingSharder.unshard_anything(

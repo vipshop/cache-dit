@@ -84,6 +84,8 @@ __all__ = [
   "ideogram4_example",
   "moss_image_sft_example",
   "moss_image_base_example",
+  "nucleus_image_example",
+  "kandinsky6_ti2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -152,6 +154,8 @@ _env_path_mapping = {
   "IDEOGRAM4_DIR": "ideogram-ai/ideogram-4-fp8",
   "MOSS_IMAGE_SFT_DIR": "OpenMOSS-Team/MOSS-Image-SFT",
   "MOSS_IMAGE_BASE_DIR": "OpenMOSS-Team/MOSS-Image-Base",
+  "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
+  "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3409,3 +3413,158 @@ def moss_image_sft_example(args: argparse.Namespace, **kwargs) -> Example:
 @ExampleRegister.register("moss_image_base", default="OpenMOSS-Team/MOSS-Image-Base")
 def moss_image_base_example(args: argparse.Namespace, **kwargs) -> Example:
   return _moss_image_example(args, "OpenMOSS-Team/MOSS-Image-Base")
+
+
+_NUCLEUS_IMAGE_PROMPT = ("A studio photograph of an orange cat holding a wooden sign that says "
+                         "hello world, soft window light, shallow depth of field")
+
+
+def _nucleus_image_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the NucleusMoE-Image t2i pipeline.
+
+  The pipeline samples with classifier-free guidance (`guidance_scale=4.0`), i.e. a conditional and
+  an unconditional forward per step, so `enable_separate_cfg` stays True. The stack mixes three
+  dense blocks with 29 MoE blocks but every block shares one I/O contract, so a single
+  `Fn_compute_blocks=1` prologue anchors the cached residuals well enough.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=warmup,
+    num_inference_steps=steps,
+    enable_separate_cfg=True,
+    residual_diff_threshold=args.residual_diff_threshold,
+  )
+
+
+@ExampleRegister.register("nucleus_image", default="NucleusAI/Nucleus-Image")
+def nucleus_image_example(args: argparse.Namespace, **kwargs) -> Example:
+  """NucleusMoE-Image text-to-image example.
+
+  28 steps instead of the model card's 50 keeps the benchmark matrix affordable; height/width must
+  be multiples of `vae_scale_factor * patch_size` (16) and 1024² gives 4096 image tokens, which
+  divides by the CP sizes used in the tests.
+
+  :param args: CLI arguments.
+  :returns: The NucleusMoE-Image t2i example.
+  """
+  from diffusers import NucleusMoEImagePipeline
+
+  steps = 28 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("NucleusAI/Nucleus-Image", args),
+      pipeline_class=NucleusMoEImagePipeline,
+      extra_optimize_kwargs={
+        "cache_config": _nucleus_image_cache_config(args, steps),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_NUCLEUS_IMAGE_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      guidance_scale=4.0,
+    ),
+  )
+
+
+_KANDINSKY6_PROMPT = ("A cinematic close-up of a glass teapot on a wooden table, steam curling "
+                      "upward in warm afternoon light, the quiet hiss of the kettle in the "
+                      "background")
+# The distilled checkpoint runs `PiflowScheduler`, which requires guidance_scale=1.0 and therefore
+# exactly one transformer forward per step.
+_KANDINSKY6_DEFAULT_STEPS = 16
+
+
+def _kandinsky6_cache_config(
+  args: argparse.Namespace,
+  steps: int,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the distilled Kandinsky 6.0 TI2VA pipeline.
+
+  The distilled checkpoint is guidance-free (`guidance_scale=1.0`), so `enable_separate_cfg` must be
+  False: with the pipeline default of 5.0 left in place cache-dit pairs two consecutive forwards
+  into one step and almost nothing is cached. 16 steps leaves little room, hence the short warmup.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    # The CP planner gathers the video stream on the last block's output, so a CP run needs at
+    # least one tail block; keep it here as well so the two paths share one config.
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, 4),
+    num_inference_steps=steps,
+    enable_separate_cfg=False,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=args.max_continuous_cached_steps,
+  )
+
+
+def _kandinsky6_post_init_hook(pipe: Any) -> None:
+  """Report Kandinsky 6.0's native frame rate to the video writer.
+
+  :param pipe: The loaded pipeline.
+  """
+  # `__call__` defaults to `frame_rate=24.0`, and the writer falls back to 8 fps without this.
+  pipe.fps = 24.0
+
+
+@ExampleRegister.register(
+  "kandinsky6_ti2va",
+  default="kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
+)
+def kandinsky6_ti2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Kandinsky 6.0 text-to-video+audio example (distilled 5s checkpoint).
+
+  The released distilled recipe is 16 steps at `guidance_scale=1.0`. 512×768×121 frames is the
+  pipeline default canvas; the verification runs in this repo shrink it further, so pass
+  `--height/--width/--num-frames` when the whole matrix has to stay under the time budget.
+
+  :param args: CLI arguments.
+  :returns: The Kandinsky 6.0 t2va example.
+  """
+  from diffusers import Kandinsky6TI2VAPipeline
+
+  steps = _KANDINSKY6_CACHE_STEPS if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers", args),
+      pipeline_class=Kandinsky6TI2VAPipeline,
+      post_init_hook=_kandinsky6_post_init_hook,
+      extra_optimize_kwargs={
+        "cache_config": _kandinsky6_cache_config(args, steps),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_KANDINSKY6_PROMPT,
+      height=512,
+      width=768,
+      num_frames=121,
+      num_inference_steps=steps,
+      guidance_scale=1.0,
+      extra_input_kwargs={
+        "frame_rate": 24.0,
+      },
+    ),
+  )
