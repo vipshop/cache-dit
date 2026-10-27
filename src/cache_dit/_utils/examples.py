@@ -82,6 +82,8 @@ __all__ = [
   "motif_video_t2v_example",
   "motif_video_i2v_example",
   "ideogram4_example",
+  "moss_image_sft_example",
+  "moss_image_base_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -148,6 +150,8 @@ _env_path_mapping = {
   "GEMMA_3_12B_DIR": "google/gemma-3-12b-it",
   "MOTIF_VIDEO_DIR": "Motif-Technologies/Motif-Video-2B",
   "IDEOGRAM4_DIR": "ideogram-ai/ideogram-4-fp8",
+  "MOSS_IMAGE_SFT_DIR": "OpenMOSS-Team/MOSS-Image-SFT",
+  "MOSS_IMAGE_BASE_DIR": "OpenMOSS-Team/MOSS-Image-Base",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3359,3 +3363,49 @@ def ideogram4_example(args: argparse.Namespace, **kwargs) -> Example:
       },
     ),
   )
+
+
+_MOSS_IMAGE_PROMPT = "A wide view of a refrigerator beside a kitchen counter with a fruit bowl."
+
+
+def _moss_image_example(args: argparse.Namespace, default: str) -> Example:
+  """Build a MOSS-Image example; SFT and Base differ only by checkpoint.
+
+  Caching assumes one `transformer.forward()` per CFG branch, so `guidance_scale` must stay above 1
+  (`do_cfg=True`) and `num_images_per_prompt` at 1; SLG is not part of the cached path.
+
+  :param args: Parsed CLI arguments.
+  :param default: Default checkpoint id or path of the variant.
+  :returns: The configured example.
+  """
+  from ..models.pipelines.moss_image import MOSSImagePipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path(default, args=args),
+      pipeline_class=MOSSImagePipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_MOSS_IMAGE_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=50,
+      guidance_scale=3.0,
+      extra_input_kwargs={
+        # Default CFG recipe of the release: skip block 22 in the negative branch.
+        "uncond_skip_layers": [22],
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("moss_image_sft", default="OpenMOSS-Team/MOSS-Image-SFT")
+def moss_image_sft_example(args: argparse.Namespace, **kwargs) -> Example:
+  return _moss_image_example(args, "OpenMOSS-Team/MOSS-Image-SFT")
+
+
+@ExampleRegister.register("moss_image_base", default="OpenMOSS-Team/MOSS-Image-Base")
+def moss_image_base_example(args: argparse.Namespace, **kwargs) -> Example:
+  return _moss_image_example(args, "OpenMOSS-Team/MOSS-Image-Base")
