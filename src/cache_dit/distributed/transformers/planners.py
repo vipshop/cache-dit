@@ -133,6 +133,8 @@ def _activate_cp_planners():
     ".motif_video", "MotifVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Ideogram4ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".ideogram4", "Ideogram4ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  MOSSImageContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".moss_image", "MOSSImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -217,3 +219,5 @@ def _activate_tp_planners():
     ".motif_video", "MotifVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Ideogram4TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".ideogram4", "Ideogram4TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  MOSSImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".moss_image", "MOSSImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

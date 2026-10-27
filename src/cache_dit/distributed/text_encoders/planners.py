@@ -55,6 +55,8 @@ def _activate_text_encoder_tp_planners():
     ".glm_image", "GlmImageTensorParallelismPlanner")
   SmolLM3TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".smollm3", "SmolLM3TensorParallelismPlanner")
+  Qwen3_5TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".qwen3_5", "Qwen3_5TensorParallelismPlanner")
 
 
 __all__ = ["_activate_text_encoder_tp_planners"]
