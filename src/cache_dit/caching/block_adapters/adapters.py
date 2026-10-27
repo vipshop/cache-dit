@@ -1462,3 +1462,39 @@ def ideogram4_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=False,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("MOSSImage")
+def moss_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for MOSS-Image (`MOSSImagePipeline` / `MOSSImageTransformer`).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.moss_image`), so it is
+  not a diffusers module and no strict type check applies. Its denoising stack is
+  `transformer.layers` and each block takes `(hidden_states, rope, modulation, skip_layers,
+  cp_config)` and returns `hidden_states` (Pattern_3).
+
+  Two model specifics matter here:
+
+  * `has_separate_cfg=True`: the pipeline runs one `transformer.forward()` per CFG branch (cond,
+    then uncond with `uncond_skip_layers`), so the two branches need independent cache contexts and
+    one shared step counter. The optional SLG forward is a third branch — keep it off when caching.
+  * `check_forward_pattern=True`: the built-in block's first parameter is `hidden_states`, so the
+    contract is verifiable, but cache-dit defaults that check off for non-diffusers transformers.
+
+  Layer skipping lives inside the block (`skip_layers` argument) rather than in the block loop, so
+  the cached-block wrapper reproduces the CFG skip exactly and no PatchFunctor is needed.
+
+  :param pipe: `MOSSImagePipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `layers` denoising stack.
+  """
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.layers,
+    blocks_name="layers",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )

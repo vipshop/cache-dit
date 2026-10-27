@@ -150,6 +150,28 @@ torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
 ```
 
+> **MOSS-Image** ships its own pipeline, so it is vendored inside cache-dit
+> (`cache_dit/models/pipelines/moss_image.py`) and loads with
+> `--model-path <checkpoint root>`. Caching assumes one DiT forward per CFG branch: keep batch 1,
+> `guidance_scale != 1` (unless `enable_separate_cfg=False`) and leave `slg_*` unset — the pipeline
+> raises otherwise. Its joint image+text sequence is short, so Ulysses generally needs
+> `--ulysses-anything` unless the token count divides by the CP size; Ring is not supported.
+
+```bash
+# single GPU: baseline + DBCache
+python3 -m cache_dit.generate moss_image_sft --steps 25 --cache --rdt 0.3
+
+# context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel ulysses --ulysses-anything --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel tp --parallel-text --cache
+
+# VAE parallelism needs a latent larger than the VAE tile size (>=1536px output)
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --height 1536 --width 1536 --parallel tp --parallel-vae
+
+# hybrid CP + TP (4 GPUs, 2+2)
+torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel ulysses_tp --ulysses-anything --cache
+```
+
 ## Low-bits Quantization 
 
 cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
