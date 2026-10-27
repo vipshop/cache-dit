@@ -71,6 +71,28 @@ def resolve_pipe(pipe_or_adapter: Any) -> Any:
 # checkpoint partitions and loads exactly one of them (`transformer/` for `t2va` / `fl2va`,
 # `transformer_ref/` for `ref2va`), so the second name is a substitute, never an extra component.
 TRANSFORMER_ATTR_NAMES = ("transformer", "transformer_ref")
+SECONDARY_TRANSFORMER_ATTR_NAMES = ("transformer_2", "unconditional_transformer")
+
+
+def iter_transformer_modules(pipe_or_adapter: Any) -> List[Tuple[Optional[str], Any]]:
+  """Iterate the primary and secondary denoising transformers owned by a pipeline.
+
+  :param pipe_or_adapter: Pipeline, adapter or bare transformer module.
+  :returns: ``(attribute_name, module)`` pairs in denoiser execution order.
+  """
+  pipe = resolve_pipe(pipe_or_adapter)
+  if pipe is None:
+    pipe = pipe_or_adapter
+  name, transformer = resolve_transformer(pipe)
+  modules = [(name, transformer)] if transformer is not None else []
+  seen = {id(transformer)} if transformer is not None else set()
+  for secondary_name in SECONDARY_TRANSFORMER_ATTR_NAMES:
+    module = getattr(pipe, secondary_name, None)
+    if isinstance(module, torch.nn.Module) and id(module) not in seen:
+      modules.append((secondary_name, module))
+      seen.add(id(module))
+  return modules
+
 
 # Denoising transformers that own a repeated block stack but never declare it. Regional
 # quantization and `compile_repeated_blocks()` discover the stack from `_repeated_blocks`, so

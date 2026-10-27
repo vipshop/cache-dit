@@ -1,10 +1,11 @@
 import os
 import math
+import json
 import torch
 import argparse
 import PIL.Image
 import numpy as np
-from typing import Any, Tuple, List, Optional
+from typing import Any, Dict, Tuple, List, Optional
 from diffusers.utils import load_image
 from diffusers import FlowMatchEulerDiscreteScheduler
 from ..caching import DBCacheConfig, ParamsModifier, steps_mask
@@ -80,6 +81,7 @@ __all__ = [
   "echo_t2va_example",
   "motif_video_t2v_example",
   "motif_video_i2v_example",
+  "ideogram4_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -145,6 +147,7 @@ _env_path_mapping = {
   "ECHO_DIR": "jdopensource/JoyAI-Echo",
   "GEMMA_3_12B_DIR": "google/gemma-3-12b-it",
   "MOTIF_VIDEO_DIR": "Motif-Technologies/Motif-Video-2B",
+  "IDEOGRAM4_DIR": "ideogram-ai/ideogram-4-fp8",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3227,5 +3230,132 @@ def anima_example(args: argparse.Namespace, **kwargs) -> Example:
       height=1024,
       width=1024,
       num_inference_steps=steps,
+    ),
+  )
+
+
+# Ideogram 4 is trained exclusively on structured JSON captions. Plain text is not a valid fallback:
+# it frequently produces the model's safety-filter placeholder instead of an image.
+_IDEOGRAM4_PROMPT = json.dumps(
+  {
+    "high_level_description":
+    "A studio photograph of an orange cat holding a sign that says hello world.",
+    "style_description": {
+      "aesthetics": "warm, playful, polished",
+      "lighting": "soft diffused studio lighting",
+      "photo": "eye-level, shallow depth of field, sharp focus",
+      "medium": "photograph",
+    },
+    "compositional_deconstruction": {
+      "background":
+      "A seamless warm gray studio backdrop with a subtle floor shadow.",
+      "elements": [
+        {
+          "type":
+          "obj",
+          "bbox": [120, 100, 920, 900],
+          "desc":
+          "An alert orange tabby cat sitting upright and holding a white rectangular sign "
+          "with both front paws.",
+        },
+        {
+          "type": "text",
+          "bbox": [500, 300, 680, 700],
+          "text": "hello world",
+          "desc": "Bold black sans-serif lowercase text centered on the white sign.",
+        },
+      ],
+    },
+  },
+  separators=(",", ":"),
+  ensure_ascii=False,
+)
+# The model's recommended setting, and the step count the pipeline's default guidance schedule is
+# written for.
+_IDEOGRAM4_STEPS = 48
+
+
+def _ideogram4_guidance_schedule(steps: int) -> List[float]:
+  """Rebuild Ideogram4's recommended per-step guidance schedule for `steps` steps.
+
+  `Ideogram4Pipeline.__call__` defaults to `(7.0,) * 45 + (3.0,) * 3`, i.e. 48 entries, and
+  `check_inputs` rejects a `guidance_schedule` whose length differs from `num_inference_steps`. A
+  schedule baked into the input data would therefore break every step-count override, including the
+  warmup pass, so it is rebuilt per call from the steps actually forwarded.
+
+  :param steps: Denoising steps the pipeline will actually run.
+  :returns: 7.0 for the main steps and a 3.0 "polish" tail of at most 3 steps.
+  """
+  return [7.0] * max(steps - 3, 0) + [3.0] * min(3, steps)
+
+
+class _Ideogram4Example(Example):
+  """Ideogram4 example whose guidance schedule is derived from the step count.
+
+  The schedule has to match `num_inference_steps` exactly, and the run overrides that count in two
+  places a static input dict cannot see: `--num-inference-steps` and `--warmup-num-inference-steps`.
+  Deriving it in `call_pipe` keeps both consistent without touching the generic None filtering of
+  `ExampleInputData.data()`.
+  """
+
+  def call_pipe(self, pipe, kwargs: Dict[str, Any]):
+    kwargs = dict(kwargs)
+    steps = kwargs.get("num_inference_steps", self.input_data.num_inference_steps)
+    if "guidance_schedule" not in kwargs:
+      if kwargs.get("guidance_scale") is None:
+        kwargs["guidance_schedule"] = _ideogram4_guidance_schedule(steps)
+      else:
+        # Bypass input-data None filtering only here: the pipeline requires exactly one mode.
+        kwargs["guidance_schedule"] = None
+    return super().call_pipe(pipe, kwargs)
+
+
+@ExampleRegister.register("ideogram4", default="ideogram-ai/ideogram-4-fp8")
+def ideogram4_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Ideogram 4 text-to-image example.
+
+  `Ideogram4Pipeline` applies asymmetric classifier-free guidance: the conditional `transformer` and
+  the separate `unconditional_transformer` take one forward pass each per step, and the two
+  velocities are blended outside of both, so `enable_separate_cfg` is off.
+
+  The optional `prompt_enhancer_head` is not loaded and `prompt_upsampling` stays off: the upsampler
+  rewrites the prompt into a structured JSON caption, which changes the input distribution between
+  runs and dominates the measured latency.
+
+  The default checkpoint is the official FP8 release, which only loads through the `Ideogram4`
+  loader: it patches `Ideogram4Pipeline.from_pretrained` to rebuild the three FP8 components as
+  bfloat16 on the way in, and a bfloat16 checkpoint passes through the same patch unchanged.
+
+  :param args: CLI arguments.
+  :returns: The Ideogram 4 t2i example.
+  """
+  from diffusers import Ideogram4Pipeline
+  from ..loaders import Ideogram4Loader
+
+  # Applied inside the factory, not at import time: this module is imported through `_safe_import`,
+  # and a failing module-level import would degrade every other example to the import-error stub.
+  Ideogram4Loader().apply(Ideogram4Pipeline)
+
+  steps = _IDEOGRAM4_STEPS if args.num_inference_steps is None else args.num_inference_steps
+  return _Ideogram4Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("ideogram-ai/ideogram-4-fp8", args=args),
+      pipeline_class=Ideogram4Pipeline,
+      skip_components=["prompt_enhancer_head"],
+      extra_optimize_kwargs={
+        "enable_separate_cfg": False,
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_IDEOGRAM4_PROMPT,
+      # Both must be multiples of `vae_scale_factor * patch_size` (16).
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      extra_input_kwargs={
+        "prompt_upsampling": False,
+      },
     ),
   )

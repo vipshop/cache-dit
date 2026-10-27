@@ -27,6 +27,7 @@ from ..caching import (
 )
 from ..utils import assign_transformer
 from ..utils import declare_repeated_blocks
+from ..utils import iter_transformer_modules
 from ..utils import resolve_pipe
 from ..utils import resolve_transformer
 from ..offload import _default_module_filter
@@ -1823,25 +1824,15 @@ def maybe_compile_transformer(
     else:
       pipe = pipe_or_adapter
 
-    # A pipeline may expose its denoising transformer under another name: MiniMax-H3 loads
-    # `transformer_ref` for the `ref2va` workflow, and only ever one of the two exists.
-    transformer_name, transformer = resolve_transformer(pipe)
-    declare_repeated_blocks(transformer)
-    if transformer is not None:
+    transformers = iter_transformer_modules(pipe)
+    if not transformers:
+      logger.warning("compile is set but no transformer found in the pipeline.")
+    for transformer_name, transformer in transformers:
+      declare_repeated_blocks(transformer)
       if _should_defer_few_shot_compile(args, transformer):
         _register_deferred_few_shot_compile_callback(args, pipe, transformer, transformer_name)
       else:
         _compile_transformer_module(args, pipe, transformer, transformer_name)
-    else:
-      logger.warning("compile is set but no transformer found in the pipeline.")
-
-    if hasattr(pipe, "transformer_2"):
-      transformer_2 = getattr(pipe, "transformer_2", None)
-      declare_repeated_blocks(transformer_2)
-      if _should_defer_few_shot_compile(args, transformer_2):
-        _register_deferred_few_shot_compile_callback(args, pipe, transformer_2, "transformer_2")
-      else:
-        _compile_transformer_module(args, pipe, transformer_2, "transformer_2")
 
   return pipe_or_adapter
 
@@ -2093,29 +2084,22 @@ def maybe_quantize_transformer(
       )
       assign_transformer(pipe, transformer, name=transformer_name)
 
-    if hasattr(pipe, "transformer_2"):
-      transformer_2 = getattr(pipe, "transformer_2", None)
-      if transformer_2 is not None:
-        transformer_2_cls_name = transformer_2.__class__.__name__
-        if isinstance(transformer_2, torch.nn.Module):
-          logger.info(f"Quantizing transformer_2 module: {transformer_2_cls_name} to"
-                      f" {args.quantize_type} ...")
-          transformer_2 = quantize(
-            transformer_2,
-            quantize_config=QuantizeConfig(
-              quant_type=args.quantize_type,
-              regional_quantize=not args.disable_regional_quantize,
-              per_tensor_fallback=not args.disable_per_tensor_fallback,
-              exclude_layers=_resolve_cli_quantize_exclude_layers(args),
-              svdq_kwargs=_resolve_cli_svdq_kwargs(),
-              verbose=args.quantize_verbose,
-            ),
-          )
-          setattr(pipe, "transformer_2", transformer_2)
-        else:
-          logger.warning(f"Cannot quantize transformer_2 module: {transformer_2_cls_name} Not a"
-                         " torch.nn.Module.")
-      setattr(pipe, "transformer_2", transformer_2)
+    for secondary_name, secondary in iter_transformer_modules(pipe)[1:]:
+      declare_repeated_blocks(secondary)
+      logger.info("Quantizing transformer module '%s' (%s) to %s ...", secondary_name,
+                  secondary.__class__.__name__, args.quantize_type)
+      secondary = quantize(
+        secondary,
+        quantize_config=QuantizeConfig(
+          quant_type=args.quantize_type,
+          regional_quantize=not args.disable_regional_quantize,
+          per_tensor_fallback=not args.disable_per_tensor_fallback,
+          exclude_layers=_resolve_cli_quantize_exclude_layers(args),
+          svdq_kwargs=_resolve_cli_svdq_kwargs(),
+          verbose=args.quantize_verbose,
+        ),
+      )
+      assign_transformer(pipe, secondary, name=secondary_name)
 
   return pipe_or_adapter
 
