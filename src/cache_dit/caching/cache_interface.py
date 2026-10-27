@@ -25,6 +25,41 @@ from ..attention import AttnBackendSelector
 logger = init_logger(__name__)
 
 
+def check_min_bn_blocks(
+  transformers: List[torch.nn.Module],
+  cache_config: Optional[Union[DBCacheConfig, DBPruneConfig]],
+  parallelism_config: ParallelismConfig,
+) -> None:
+  """Validate the planner-declared minimum of tail blocks against the cache config.
+
+  A context-parallel planner that gathers a module output on the last block requires
+  `Bn_compute_blocks >= 1`: the cached path only executes the tail blocks inside the Bn group, so
+  with the `DBCacheConfig` default of 0 a cache hit never gathers and a computed step would subtract
+  a local tensor from a gathered one. The planner advertises the requirement on the transformer
+  (`_cp_requires_min_bn_blocks`) because it runs before the cache config is known.
+
+  :param transformers: Transformers that were just parallelized.
+  :param cache_config: Cache config in effect, or None.
+  :param parallelism_config: Parallelism config that was applied.
+  :raises ValueError: When the cache config uses fewer tail blocks than a planner requires.
+  """
+  if cache_config is None or not parallelism_config.cp_enabled():
+    return
+
+  for transformer in transformers:
+    min_bn = getattr(transformer, "_cp_requires_min_bn_blocks", None)
+    if min_bn is None:
+      continue
+    bn_compute_blocks = getattr(cache_config, "Bn_compute_blocks", 0) or 0
+    if bn_compute_blocks < min_bn:
+      raise ValueError(
+        f"{transformer.__class__.__name__} context parallelism needs "
+        f"`Bn_compute_blocks >= {min_bn}` (got {bn_compute_blocks}): the plan gathers a module "
+        "output on the last block, which the cached path only executes inside the Bn group. Set "
+        "`DBCacheConfig(Bn_compute_blocks=1)` or disable the cache. Note that block-level context "
+        "parallelism is not supported by `DBPruneConfig`, so use a `DBCacheConfig` here.")
+
+
 def enable_cache(
   pipe_or_adapter: Union[
     DiffusionPipeline,
@@ -430,6 +465,12 @@ def _enable_cache_impl(
     for i, transformer in enumerate(transformers):
       # Enable parallelism for the transformer inplace
       transformers[i] = enable_parallelism(transformer, parallelism_config)
+
+    # A parallelism planner may require a minimum number of tail blocks. A context-parallel plan
+    # that gathers a module output on the last block (Kandinsky 6.0) needs `Bn_compute_blocks >= 1`,
+    # because the cached path only executes the last block inside the Bn group: with the default 0
+    # a cache hit never gathers and a computed step mixes a gathered tensor with a local one.
+    check_min_bn_blocks(transformers, cache_config, parallelism_config)
 
   # Enable quantization if quantize_config is provided.
   if quantize_config is not None:

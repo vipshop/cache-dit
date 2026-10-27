@@ -1498,3 +1498,108 @@ def moss_image_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("NucleusMoE")
+def nucleus_moe_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for NucleusMoE-Image (`NucleusMoEImagePipeline`).
+
+  The denoising stack is `transformer.transformer_blocks`, a single-stream DiT block list whose
+  blocks take `(hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_kwargs)`
+  and return only `hidden_states` (Pattern_2). The transformer calls them with keyword arguments
+  whose first two names match the cache wrapper, so the cached loop forwards the extra arguments
+  (`temb`, the rotary embedding, the joint text+image mask) unchanged and no PatchFunctor is
+  needed.
+
+  Two model specifics matter here:
+
+  * `has_separate_cfg` follows the pipeline default (`guidance_scale=4.0`), i.e. one
+    `transformer.forward()` per CFG branch, so the cond / uncond passes need independent cache
+    contexts sharing one step counter.
+  * The block stack mixes dense and Mixture-of-Experts layers (`dense_moe_strategy`), but the
+    block I/O contract is identical for both: a skipped block also skips its routing, so the
+    cached residual stays valid.
+
+  `NucleusMoEImageTransformer2DModel` already declares `_repeated_blocks`, so regional
+  quantization and `compile_repeated_blocks()` discover the stack without help.
+
+  :param pipe: `NucleusMoEImagePipeline` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `transformer_blocks` denoising stack.
+  """
+  from diffusers import NucleusMoEImageTransformer2DModel
+
+  _relaxed_assert(pipe.transformer, NucleusMoEImageTransformer2DModel)
+
+  guidance_scale = _default_call_float(pipe, "guidance_scale")
+  has_separate_cfg = True if guidance_scale is None else guidance_scale > 1.0
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    blocks_name="transformer_blocks",
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
+@BlockAdapterRegister.register("Kandinsky6")
+def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for Kandinsky 6.0 (`Kandinsky6TI2VAPipeline`).
+
+  Only the fused video/audio stack `visual_transformer_blocks` is cached: it holds the 60
+  `Kandinsky6FusedTransformerDecoderBlock` layers that carry almost all of the FLOPs, while the
+  4+4 text blocks (`video_text_transformer_blocks` / `audio_text_transformer_blocks`) run once per
+  step over the prompt and are cheap.
+
+  The block contract is `(vis, aud, text_v, text_a, time_embed, vis_rope, aud_rope, attn_mask)` ->
+  `(vis, aud)` (Pattern_0): the second stream is the *evolving audio latent*, not a static text
+  context, so it is cached as the pattern's "encoder" residual. `forward` calls the blocks
+  positionally, which matches the cached wrapper's `block(hidden_states, encoder_hidden_states,
+  *args)` call exactly, so no PatchFunctor is needed. The block parameters are named `vis` / `aud`
+  instead of `hidden_states` / `encoder_hidden_states`, hence the disabled signature check.
+
+  `has_separate_cfg` follows the pipeline default (`guidance_scale=5.0`, i.e. two forwards per
+  step). The distilled checkpoints must run `guidance_scale=1.0` with `PiflowScheduler`, which is
+  one forward per step: such a run has to set `enable_separate_cfg=False` in the cache config,
+  otherwise cache-dit pairs two consecutive steps into one and almost nothing is cached.
+
+  The VSR pipeline (`Kandinsky6SRPipeline`) drives a different, text-free transformer
+  (`Kandinsky6SRTransformer3DModel`) and is **not** covered by this adapter yet.
+
+  :param pipe: `Kandinsky6TI2VAPipeline` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `visual_transformer_blocks` denoising stack.
+  """
+  from diffusers import Kandinsky6Transformer3DModel
+
+  transformer = getattr(pipe, "transformer", None)
+  if not isinstance(transformer, Kandinsky6Transformer3DModel):
+    raise NotImplementedError(
+      f"Kandinsky 6.0 caching needs a `Kandinsky6Transformer3DModel`, got "
+      f"{type(transformer).__name__} on {pipe.__class__.__name__}. The VSR pipeline drives "
+      "`Kandinsky6SRTransformer3DModel`, which needs its own adapter.")
+
+  guidance_scale = _default_call_float(pipe, "guidance_scale")
+  has_separate_cfg = True if guidance_scale is None else guidance_scale > 1.0
+  if not has_separate_cfg:
+    logger.info(
+      f"Kandinsky 6.0 defaults to guidance_scale={guidance_scale}, i.e. a single transformer "
+      "forward per step; separate CFG bookkeeping is disabled. Pass `enable_separate_cfg=True` "
+      "in the cache config if the run enables guidance.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.visual_transformer_blocks,
+    blocks_name="visual_transformer_blocks",
+    forward_pattern=ForwardPattern.Pattern_0,
+    # The block parameters are `vis` / `aud`, and the second output slot is the audio stream.
+    check_forward_pattern=False,
+    check_num_outputs=False,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
