@@ -69,6 +69,8 @@ from .offload import get_layerwise_offload_handles
 from .offload import layerwise_offload
 from .offload import layerwise_cpu_offload
 from .offload import remove_layerwise_offload
+from .loaders import BaseLoader
+from .loaders import Ideogram4Loader
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache

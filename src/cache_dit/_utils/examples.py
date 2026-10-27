@@ -7,7 +7,7 @@ import PIL.Image
 import numpy as np
 from typing import Any, Dict, Tuple, List, Optional
 from diffusers.utils import load_image
-from diffusers import DiffusionPipeline, FlowMatchEulerDiscreteScheduler
+from diffusers import FlowMatchEulerDiscreteScheduler
 from ..caching import DBCacheConfig, ParamsModifier, steps_mask
 from ..logger import init_logger
 
@@ -3289,274 +3289,6 @@ def _ideogram4_guidance_schedule(steps: int) -> List[float]:
   return [7.0] * max(steps - 3, 0) + [3.0] * min(3, steps)
 
 
-# The official checkpoint stores FP8 weights with one scale per output row and a fused attention
-# `qkv`, none of which `diffusers` maps onto the module parameters: `from_pretrained` leaves the
-# unmatched parameters on the meta device — `device_map="balanced"` included — and `pipe.to` then
-# fails on them. The helpers below rebuild the three affected components as bfloat16 modules,
-# which `from_pretrained` accepts as ready-made objects, and leave the rest of the pipeline alone.
-_IDEOGRAM4_FP8_MARKER = "text_encoder/config.json"
-_IDEOGRAM4_FP8_MARKER_KEY = "ideogram_fp8_weight_only"
-_IDEOGRAM4_FP8_DTYPE = torch.float8_e4m3fn
-# What the checkpoint appends to a weight's own name to name the scale of that weight's rows.
-_IDEOGRAM4_SCALE_SUFFIX = "_scale"
-
-
-def _ideogram4_checkpoint_file(model_path: str, filename: str) -> Optional[str]:
-  """Resolve one checkpoint file to a local path.
-
-  A local directory is served as-is, without a network round trip; a repository id falls back to
-  `hf_hub_download`. The caller decides whether the file has to exist. A path that is absolute or
-  dotted is never a repository id, so a mistyped local path keeps failing with the loader's own
-  error instead of a hub one.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param filename: File path relative to the checkpoint root.
-  :returns: The local path, or `None` when a repository does not ship the file.
-  """
-  if (os.path.isdir(model_path) or os.path.isabs(model_path) or model_path.startswith(os.curdir)):
-    return os.path.join(model_path, filename)
-  from huggingface_hub import hf_hub_download
-  from huggingface_hub.errors import EntryNotFoundError
-
-  try:
-    return hf_hub_download(repo_id=model_path, filename=filename)
-  except EntryNotFoundError:
-    return None
-
-
-def _ideogram4_optional_checkpoint_file(model_path: str, filename: str) -> Optional[str]:
-  """Resolve one checkpoint file that the checkpoint is allowed not to ship.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param filename: File path relative to the checkpoint root.
-  :returns: The local path, or `None` when the file is absent.
-  """
-  path = _ideogram4_checkpoint_file(model_path, filename)
-  if path is None or not os.path.exists(path):
-    return None
-  return path
-
-
-def _ideogram4_shard_paths(model_path: str, subfolder: str, basename: str) -> List[str]:
-  """Shards of one component, in a stable order.
-
-  The official FP8 checkpoint ships a single `{basename}.safetensors` per component, while a
-  re-uploaded checkpoint may ship the sharded form listed by
-  `{basename}.safetensors.index.json`. Both are supported, and the index wins when both are
-  present, because it is the file that says which shards hold the weights.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param subfolder: Component directory inside the checkpoint.
-  :param basename: Weight file basename; `model` for a `transformers` component.
-  :returns: Local paths of every shard, sorted by file name.
-  """
-  index_path = _ideogram4_optional_checkpoint_file(
-    model_path, f"{subfolder}/{basename}.safetensors.index.json")
-  if index_path is None:
-    return [_ideogram4_checkpoint_file(model_path, f"{subfolder}/{basename}.safetensors")]
-  with open(index_path) as index_file:
-    shard_names = json.load(index_file)["weight_map"].values()
-  return [
-    _ideogram4_checkpoint_file(model_path, f"{subfolder}/{shard}")
-    for shard in sorted(set(shard_names))
-  ]
-
-
-def _ideogram4_is_fp8(model_path: str) -> bool:
-  """Whether a checkpoint is an FP8 release, according to its own text-encoder config.
-
-  The exporter writes `ideogram_fp8_weight_only` into `text_encoder/config.json`, which is a flag a
-  bfloat16 re-upload does not carry: the absence of the file or of the key means the checkpoint
-  loads through the plain `from_pretrained` path.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :returns: Whether the checkpoint has to be converted before it can be loaded.
-  """
-  marker_path = _ideogram4_optional_checkpoint_file(model_path, _IDEOGRAM4_FP8_MARKER)
-  if marker_path is None:
-    return False
-  with open(marker_path) as marker_file:
-    return bool(json.load(marker_file).get(_IDEOGRAM4_FP8_MARKER_KEY, False))
-
-
-def _ideogram4_dequantize(weight: torch.Tensor, scale: torch.Tensor,
-                          dtype: torch.dtype) -> torch.Tensor:
-  """Read one FP8 weight through its per-row scale.
-
-  The checkpoint keeps one scale per output row, so the scale multiplies along dim 0 only, and the
-  product is taken in float32 to keep the FP8 values exact before the cast to the target dtype.
-
-  :param weight: FP8 weight of shape `(out_features, in_features)`.
-  :param scale: One scale per output row, of shape `(out_features,)`.
-  :param dtype: Dtype the dequantized weight is materialized in.
-  :returns: The weight in `dtype`.
-  """
-  return (weight.to(torch.float32) * scale.to(torch.float32).unsqueeze(-1)).to(dtype)
-
-
-def _ideogram4_convert_tensor(
-  name: str,
-  weight: torch.Tensor,
-  scale: Optional[torch.Tensor],
-  dtype: torch.dtype,
-) -> Dict[str, torch.Tensor]:
-  """Map one stored tensor onto the parameter names and values the module expects.
-
-  Two renames come on top of the dequantization: the fused `attention.qkv` weight is the `to_q`,
-  `to_k` and `to_v` weights concatenated along dim 0 (their per-row scales likewise), and the
-  module calls the attention output projection `to_out.0` where the checkpoint says `o`. The scale
-  tensors have no counterpart in the module, so they are consumed here and never forwarded.
-
-  :param name: The tensor's name in the checkpoint.
-  :param weight: The stored weight, FP8 or already in the target dtype (biases, norms).
-  :param scale: The scale stored beside the weight, or `None` for an unquantized weight.
-  :param dtype: Dtype the weights are materialized in.
-  :returns: One entry per module parameter the stored tensor provides.
-  """
-  if name.endswith(".attention.qkv.weight"):
-    base = name.removesuffix(".attention.qkv.weight")
-    weights = weight.chunk(3, dim=0)
-    projections = ("to_q", "to_k", "to_v")
-    if scale is None:
-      return {
-        f"{base}.attention.{projection}.weight": chunk.to(dtype)
-        for projection, chunk in zip(projections, weights)
-      }
-    return {
-      f"{base}.attention.{projection}.weight": _ideogram4_dequantize(chunk, part, dtype)
-      for projection, chunk, part in zip(projections, weights, scale.chunk(3, dim=0))
-    }
-  if name.endswith(".attention.o.weight"):
-    name = name.replace(".attention.o.weight", ".attention.to_out.0.weight")
-  if scale is None:
-    return {name: weight.to(dtype)}
-  return {name: _ideogram4_dequantize(weight, scale, dtype)}
-
-
-def _ideogram4_component_state_dict(
-  model_path: str,
-  subfolder: str,
-  basename: str,
-  dtype: torch.dtype,
-) -> Dict[str, torch.Tensor]:
-  """One component's converted weights, built one stored tensor at a time.
-
-  A denoiser is ~9 GiB of FP8 on disk and ~18 GiB once dequantized, so the shards are never read as
-  a whole: each stored tensor is converted, its FP8 source released, and only the converted copy
-  kept. The converted copy still reaches `load_state_dict` in one piece, which is why the caller
-  converts one component at a time and drops the result before starting the next.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param subfolder: Component directory inside the checkpoint.
-  :param basename: Weight file basename; `model` for a `transformers` component.
-  :param dtype: Dtype the weights are dequantized to.
-  :returns: Converted state dict, keyed by the module's own parameter names.
-  """
-  from safetensors import safe_open
-
-  shard_paths = _ideogram4_shard_paths(model_path, subfolder, basename)
-  # Scales are looked up by name, and a scale is not guaranteed to sit in the same shard as the
-  # weight it belongs to.
-  scale_shards: Dict[str, str] = {}
-  for shard_path in shard_paths:
-    with safe_open(shard_path, framework="pt") as handle:
-      for name in handle.keys():
-        if name.endswith(_IDEOGRAM4_SCALE_SUFFIX):
-          scale_shards[name] = shard_path
-
-  state_dict: Dict[str, torch.Tensor] = {}
-  for shard_path in shard_paths:
-    with safe_open(shard_path, framework="pt", device="cpu") as handle:
-      stored = set(handle.keys())
-      for name in sorted(stored):
-        if name.endswith(_IDEOGRAM4_SCALE_SUFFIX):
-          continue
-        scale_name = f"{name}{_IDEOGRAM4_SCALE_SUFFIX}"
-        if scale_name in stored:
-          scale = handle.get_tensor(scale_name)
-        elif scale_name in scale_shards:
-          with safe_open(scale_shards[scale_name], framework="pt", device="cpu") as scale_handle:
-            scale = scale_handle.get_tensor(scale_name)
-        else:
-          scale = None
-        state_dict.update(_ideogram4_convert_tensor(name, handle.get_tensor(name), scale, dtype))
-  return state_dict
-
-
-def _ideogram4_from_config_with_dtype(module_class: Any, config: Any, dtype: torch.dtype) -> Any:
-  """Instantiate a `diffusers` module whose temporary parameters already have `dtype`.
-
-  `from_config` has no dtype argument, and the freshly initialized parameters are replaced by the
-  converted weights right afterwards, so initializing them in float32 would cost a second copy of
-  the model for nothing. A global default dtype is the only handle `diffusers` offers here; it is
-  restored before this function returns.
-
-  :param module_class: The `ModelMixin` subclass to instantiate.
-  :param config: Its config, as returned by `load_config`.
-  :param dtype: Dtype the module is initialized in.
-  :returns: The instantiated module, with its parameters not yet loaded.
-  """
-  previous_dtype = torch.get_default_dtype()
-  torch.set_default_dtype(dtype)
-  try:
-    return module_class.from_config(config)
-  finally:
-    torch.set_default_dtype(previous_dtype)
-
-
-def _ideogram4_bf16_transformer(model_path: str, subfolder: str, dtype: torch.dtype) -> Any:
-  """Materialize one of the two denoisers from an FP8 checkpoint.
-
-  The module is built from the checkpoint's own `config.json` first, because the converted state
-  dict has to be assigned into an existing module. `assign=True` adopts the converted tensors
-  instead of copying into the initialized ones, and `strict=True` proves the mapping covered every
-  parameter, so neither an unhandled rename nor a leftover FP8 weight can pass silently.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param subfolder: `transformer` or `unconditional_transformer`.
-  :param dtype: Dtype the weights are dequantized to.
-  :returns: The denoiser, in eval mode.
-  """
-  from diffusers import Ideogram4Transformer2DModel
-
-  transformer = _ideogram4_from_config_with_dtype(
-    Ideogram4Transformer2DModel,
-    Ideogram4Transformer2DModel.load_config(model_path, subfolder=subfolder),
-    dtype,
-  )
-  transformer.load_state_dict(
-    _ideogram4_component_state_dict(model_path, subfolder, "diffusion_pytorch_model", dtype),
-    assign=True,
-    strict=True,
-  )
-  return transformer.eval()
-
-
-def _ideogram4_bf16_text_encoder(model_path: str, dtype: torch.dtype) -> Any:
-  """Materialize the text encoder from an FP8 checkpoint.
-
-  The encoder is a plain `transformers` model, so the same two steps apply: build it from its
-  config, then assign the dequantized weights. Its FP8 weights carry per-row scales exactly like the
-  denoisers, but none of the renames, since `Qwen3VLModel` already stores `q_proj`/`k_proj`/`v_proj`
-  separately.
-
-  :param model_path: Local checkpoint directory or HuggingFace Hub repository id.
-  :param dtype: Dtype the weights are dequantized to.
-  :returns: The text encoder, in eval mode.
-  """
-  from transformers import AutoConfig, AutoModel
-
-  # `trust_remote_code` because the official checkpoint ships the encoder through an `auto_map`.
-  config = AutoConfig.from_pretrained(model_path, subfolder="text_encoder", trust_remote_code=True)
-  text_encoder = AutoModel.from_config(config, trust_remote_code=True, dtype=dtype)
-  text_encoder.load_state_dict(
-    _ideogram4_component_state_dict(model_path, "text_encoder", "model", dtype),
-    assign=True,
-    strict=True,
-  )
-  return text_encoder.eval()
-
-
 class _Ideogram4Example(Example):
   """Ideogram4 example whose guidance schedule is derived from the step count.
 
@@ -3578,56 +3310,6 @@ class _Ideogram4Example(Example):
     return super().call_pipe(pipe, kwargs)
 
 
-class _Ideogram4InitConfig(ExampleInitConfig):
-  """Init config that rebuilds the official FP8 checkpoint as bfloat16 modules.
-
-  `ideogram-ai/ideogram-4-fp8` stores both denoisers and the text encoder as FP8 weights with one
-  scale per output row and a fused attention `qkv`, and no `from_pretrained` route maps those onto
-  the module parameters: the unmatched parameters stay on the meta device — with `device_map` or
-  without — and `pipe.to(device)` then fails on them. The three components are therefore converted
-  and handed to `from_pretrained` as ready-made objects, which leaves the `vae`, `scheduler` and
-  `tokenizer` of the pipeline on their normal loading path.
-
-  A checkpoint without the `ideogram_fp8_weight_only` marker in `text_encoder/config.json` takes the
-  parent class path untouched.
-  """
-
-  def _custom_components_kwargs(self) -> Dict[str, Any]:
-    """Components handed to `from_pretrained` instead of being loaded from the checkpoint.
-
-    :returns: The parent's component kwargs, plus the three rebuilt ones for an FP8 checkpoint.
-    """
-    components = super()._custom_components_kwargs()
-    if not _ideogram4_is_fp8(self.model_name_or_path):
-      return components
-    model_path, dtype = self.model_name_or_path, self.torch_dtype
-    # One component at a time: the converted state dict of the previous one is released before the
-    # next one is read, so the peak stays at one dequantized component instead of three.
-    components["transformer"] = _ideogram4_bf16_transformer(model_path, "transformer", dtype)
-    components["unconditional_transformer"] = _ideogram4_bf16_transformer(
-      model_path, "unconditional_transformer", dtype)
-    components["text_encoder"] = _ideogram4_bf16_text_encoder(model_path, dtype)
-    return components
-
-  def get_pipe(self, args: argparse.Namespace, **kwargs) -> DiffusionPipeline:
-    """Build the pipeline, refusing the one flag this conversion cannot serve.
-
-    `maybe_apply_optimization` skips its `pipe.to(device)` under `--device-map-balance` and leaves
-    the placement to `from_pretrained`, which only places the components it loaded itself: the
-    rebuilt denoisers would stay on the host and fail at the first forward pass, long after the
-    weights were converted. Rejecting the combination keeps that failure a second away instead of
-    a minute.
-
-    :param args: CLI arguments.
-    :returns: The loaded pipeline.
-    """
-    if args.device_map_balance and _ideogram4_is_fp8(self.model_name_or_path):
-      raise ValueError(
-        "--device-map-balance is not supported with an FP8 Ideogram 4 checkpoint: the converted "
-        "components are placed by `pipe.to`, which that flag skips.")
-    return super().get_pipe(args, **kwargs)
-
-
 @ExampleRegister.register("ideogram4", default="ideogram-ai/ideogram-4-fp8")
 def ideogram4_example(args: argparse.Namespace, **kwargs) -> Example:
   """Ideogram 4 text-to-image example.
@@ -3640,18 +3322,24 @@ def ideogram4_example(args: argparse.Namespace, **kwargs) -> Example:
   rewrites the prompt into a structured JSON caption, which changes the input distribution between
   runs and dominates the measured latency.
 
-  The default checkpoint is the official FP8 release, so the init config is the one that converts it
-  to bfloat16 on the way in; a bfloat16 checkpoint passes through it unchanged.
+  The default checkpoint is the official FP8 release, which only loads through the `Ideogram4`
+  loader: it patches `Ideogram4Pipeline.from_pretrained` to rebuild the three FP8 components as
+  bfloat16 on the way in, and a bfloat16 checkpoint passes through the same patch unchanged.
 
   :param args: CLI arguments.
   :returns: The Ideogram 4 t2i example.
   """
   from diffusers import Ideogram4Pipeline
+  from ..loaders import Ideogram4Loader
+
+  # Applied inside the factory, not at import time: this module is imported through `_safe_import`,
+  # and a failing module-level import would degrade every other example to the import-error stub.
+  Ideogram4Loader().apply(Ideogram4Pipeline)
 
   steps = _IDEOGRAM4_STEPS if args.num_inference_steps is None else args.num_inference_steps
   return _Ideogram4Example(
     args=args,
-    init_config=_Ideogram4InitConfig(
+    init_config=ExampleInitConfig(
       task_type=ExampleType.T2I,
       model_name_or_path=_path("ideogram-ai/ideogram-4-fp8", args=args),
       pipeline_class=Ideogram4Pipeline,
