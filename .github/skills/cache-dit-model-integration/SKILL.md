@@ -154,6 +154,7 @@ flowchart TD
 | Block loop calls blocks with keyword args, or has extra ops inside the loop | `./references/cache.md` PatchFunctor pitfalls |
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | `./references/cache.md` advanced PatchFunctor cases |
 | Third-party (non-diffusers) model | `./references/cache.md` third-party model section |
+| Checkpoint needs dtype/fused-tensor/name conversion before `from_pretrained` can load it | `./references/loader.md` |
 | CP: choosing hook-based vs hybrid | `./references/cp.md` plus the CP chart above |
 | CP: a projection / rope / pos_embed output stays full-length | `./references/cp.md` output-split hook |
 | CP: uniform loop + attention-processor all-to-all | `./references/cp.md` single-point split |
@@ -538,6 +539,7 @@ Read these only when the current phase needs them:
 | TE-P | [`./references/tep.md`](./references/tep.md) | Adding or checking text encoder tensor parallelism. |
 | VAE-P | [`./references/vaep.md`](./references/vaep.md) | Adding or checking VAE parallel decoding support. |
 | CLI | [`./references/cli.md`](./references/cli.md) | Registering `cache_dit.generate` examples and local model path environment variables. |
+| Checkpoint loader | [`./references/loader.md`](./references/loader.md) | Adding a `BaseLoader` subclass to convert FP8/fused/renamed checkpoints inside the patched `from_pretrained`; Ideogram 4 is the reference case. |
 | Install | [`./references/install.md`](./references/install.md) | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
 | Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks. |
 | Model download | [`./references/model_download.md`](./references/model_download.md) | Fetching model weights to `/workspace/dev/vipdev/hf_models/` — ModelScope first (`modelscope-hub` CLI), HF fallback. |
