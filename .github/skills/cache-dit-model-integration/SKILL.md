@@ -20,8 +20,27 @@ STOP — Has the user provided BOTH of the following?
          Do NOT guess, search blindly, or assume defaults.
   YES → Continue.
 
+STOP — Does this task either
+       (a) add a model that is NOT in the diffusers library (ships its own `pipeline_<model>.py` /
+           transformer code, `model_index.json` points at an unimportable module, or the code lives
+           only in a third-party package / `trust_remote_code`), or
+       (b) move a diffusers model's source code INTO cache-dit so we own the model instead of
+           patching diffusers (the path for custom-kernel / deep-optimization work)?
+  YES → **Read `./references/custom_models.md` FIRST, before the Cache chapter.**
+        (a) Decide the ownership model (vendor into `src/cache_dit/models/pipelines/` vs. depend on
+            the third-party package), then keep every dispatch contract it lists.
+        (b) Follow the migration runbook in that file (§3): audit the diffusers-detection flips
+            (`check_forward_pattern`, `_relaxed_assert`, leftover `PatchFunctor` silently skipped),
+            keep class / attribute / state-dict names, fold the patches into the owned code and
+            delete them.
+        Both: vendored `DiffusionPipeline` / `ModelMixin`, diffusers VAE and transformers text
+        encoder, top-level block `ModuleList`, one block call per loop iteration, `hidden_states`
+        first, `_repeated_blocks`, and skip/step-varying state moved INTO the block.
+        Then continue with the phases below.
+  NO  → Continue.
+
 STOP — Have you identified the new model's transformer architecture?
-  NO  → Read the model's diffusers source code. Identify:
+  NO  → Read the model's source code (diffusers, or the vendored / third-party copy). Identify:
          - The ModuleList name(s) containing transformer blocks (e.g., transformer_blocks)
          - The block forward() signature (inputs and outputs)
   YES → Proceed to Cache (`./references/cache.md`) and CLI (`./references/cli.md`) in parallel.
@@ -35,6 +54,7 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 **Hard rules:**
 
 - **⚠️ MANDATORY: Local model path and code info.** If the user has not explicitly provided (a) the local model path and (b) the pipeline/transformer class names with source file paths (diffusers or third-party), you **MUST** ask the user to specify them via ``vscode_askQuestions`` before any code changes.  Do NOT search the codebase or assume default paths — the user knows their setup best.
+- **⚠️ MANDATORY: `./references/custom_models.md` for BOTH ownership cases.** Read it **before** writing the plan whenever either holds: **(a)** the model is **not part of the diffusers library** (own `pipeline_<model>.py` / transformer code, a `model_index.json` module diffusers cannot import, or code from a third-party package); **(b)** the task **moves a diffusers model's source into cache-dit** (owning the model instead of patching it — the required path when an optimization touches attention/kernel math or the block loop itself, where no hook point is left). Follow its ownership decision (vendor / absorb / depend), its contract checklist and, for (b), its migration runbook: the diffusers-detection branches flip once `__module__` is `cache_dit.*` — `check_forward_pattern` defaults to False, `_relaxed_assert` stops checking, and a leftover `PatchFunctor` is **silently skipped** — while class, block-attribute and state-dict names must stay unchanged. Reference integrations: MOSS-Image (vendored, case a); Boogu-Image (third-party package, case a, adapter only). No case-(b) precedent exists yet — treat its runbook as authoritative.
 - **⚠️ MANDATORY: Plan before code.** Before writing ANY implementation code, you **MUST**: (1) thoroughly analyze the model's pipeline and transformer source code, (2) create a detailed integration plan following this skill's workflow and read the relevant references (Cache → CP → TP → TE-P → VAE-P → CLI → Testing), (3) present the plan to the user for review and approval.  **Do NOT start implementing until the user explicitly approves the plan.**  This prevents wasted effort from incorrect assumptions about the model architecture.
 - ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow. Download flows (ModelScope first, HF fallback): [`./references/model_download.md`](./references/model_download.md).
 - ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (garbled output).
@@ -60,7 +80,9 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 flowchart TD
     G{"GATE CHECK: local model path AND pipeline/transformer source both provided?"}
     G -->|No| GA["STOP - ask the user via vscode_askQuestions"]
-    G -->|Yes| A["Read and analyze pipeline __call__ and transformer.forward()"]
+    G -->|Yes| CM{"Own the model source? (absent from diffusers, or migrating one in)"}
+    CM -->|"Yes: read custom_models.md (vendor / depend / migrate)"| A["Read and analyze pipeline __call__ and transformer.forward()"]
+    CM -->|No| A
     A --> PL["Draft an integration plan with §0.6 TODO list, get user approval"]
         PL --> C1["Cache: BlockAdapter + ForwardPattern - cache.md"]
         C1 -->|"Parallel: CLI"| CLI["Register generate CLI + env mapping - cli.md"]
@@ -154,7 +176,9 @@ flowchart TD
 | Choosing the block I/O pattern | `./references/cache.md` and the ForwardPattern table below |
 | Block loop calls blocks with keyword args, or has extra ops inside the loop | `./references/cache.md` PatchFunctor pitfalls |
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | `./references/cache.md` advanced PatchFunctor cases |
-| Third-party (non-diffusers) model | `./references/cache.md` third-party model section |
+| **The model is NOT in the diffusers library** (own `pipeline_<model>.py`, `trust_remote_code`, or a third-party package owns the code) | **`./references/custom_models.md`** — vendor-vs-depend decision, vendored-code contracts, `from_pretrained` contract, block-level skip state, CP identity markers, TP fused FFN, CPU tests |
+| **Moving a diffusers model's source into cache-dit** (own the model instead of patching it, for custom-kernel / deep optimization) | **`./references/custom_models.md` §3** — diffusers-detection flips, scope (what not to move), name/state-dict compatibility, fold-and-delete the patches, drift control, stricter verification |
+| Adapter-only for a third-party transformer that imports from an installed package | `./references/cache.md` third-party model section |
 | Checkpoint needs dtype/fused-tensor/name conversion before `from_pretrained` can load it | `./references/loader.md` |
 | CP: choosing hook-based vs hybrid | `./references/cp.md` plus the CP chart above |
 | CP: a projection / rope / pos_embed output stays full-length | `./references/cp.md` output-split hook |
@@ -203,7 +227,8 @@ Phase 0 — Prerequisites
 ```
 - [ ] Model files downloaded to local path (`./references/model_download.md` — ModelScope first, HF fallback)
 - [ ] Test image prepared (for IE2I / I2V models)
-- [ ] Diffusers source code read: pipeline __call__, transformer.forward(), block class
+- [ ] [Owned-model tasks only] `./references/custom_models.md` read; entry point recorded — (a) absent from diffusers, flavour decided (vendor / third-party / importable), or (b) absorbing a diffusers model (migration runbook §3)
+- [ ] Source code read: pipeline __call__, transformer.forward(), block class (diffusers, vendored or third-party)
 - [ ] ForwardPattern identified (Pattern_0 through Pattern_5)
 - [ ] Block ModuleList name(s) confirmed
 - [ ] GQA / attention_mask / modulation style documented
@@ -337,7 +362,7 @@ All of this is described by a single `BlockAdapter` dataclass instance.
 
 **How to determine the correct pattern for your model:**
 
-1. Open the block's `forward()` method in diffusers source.
+1. Open the block's `forward()` method in diffusers source (or in the vendored / third-party copy — see [`./references/custom_models.md`](./references/custom_models.md)).
 2. Check the parameter list: does it take only `hidden_states`, or also `encoder_hidden_states`? This determines `Forward_H_only`.
 3. Check the return statement: does it return one tensor or two? In what order? This determines `Return_H_Only` / `Return_H_First`.
 4. Match against the table above. If none fits exactly, open an issue.
@@ -540,6 +565,7 @@ Read these only when the current phase needs them:
 
 | Phase | Reference | Read when |
 |---|---|---|
+| Custom / owned model | [`./references/custom_models.md`](./references/custom_models.md) | **Two entry points**: (a) the model is **not in the diffusers library** — vendor-vs-depend decision, dispatch contracts, `from_pretrained` contract, block-level skip/branch state, CP identity markers, TP fused-FFN rearrangement, CLI, CPU tests; (b) **absorbing a diffusers model into cache-dit** — migration runbook, diffusers-detection flips, name/state-dict compatibility, fold-and-delete patches, drift control. **Mandatory before the Cache chapter.** |
 | Modular pipeline | [`./references/modular_pipeline.md`](./references/modular_pipeline.md) | The model ships only as a diffusers `ModularPipeline` (FLUX.3): core plumbing, which block list to cache, CLI template, CP/TP status, verification checklist. |
 | Cache | [`./references/cache.md`](./references/cache.md) | Implementing `BlockAdapter`, selecting `ForwardPattern`, handling third-party models, or writing `PatchFunctor`. |
 | Attention | [`./references/attention.md`](./references/attention.md) | Writing a model-specific attention processor, selecting a backend, using `_dispatch_attention_fn`, or implementing CP attention without duplicate communication. |
