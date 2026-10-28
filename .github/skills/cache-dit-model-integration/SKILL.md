@@ -543,4 +543,4 @@ Read these only when the current phase needs them:
 | Install | [`./references/install.md`](./references/install.md) | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
 | Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks. |
 | Model download | [`./references/model_download.md`](./references/model_download.md) | Fetching model weights to `/workspace/dev/vipdev/hf_models/` — ModelScope first (`modelscope-hub` CLI), HF fallback. |
-| Pending models RFC | [`./references/rfc_pending_models.md`](./references/rfc_pending_models.md) | diffusers v0.38+ models not yet supported by cache-dit, ordered by integration difficulty, with per-model notes, exclusions, and status tracking. |
+| Pending models RFC | [`./references/rfc_pending_models.md`](./references/rfc_pending_models.md) | Models not yet supported by cache-dit, ordered by integration difficulty, with per-model notes, exclusions, and status tracking: diffusers v0.38+ (R.2) plus community-hot models without a diffusers implementation (R.6). |
