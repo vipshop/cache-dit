@@ -3,8 +3,8 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
-from cache_dit.kernels.cuda import fused_merge_attn_states
-from cache_dit.kernels.cuda._comm import comm_extension_is_available
+from cache_dit.kernels._merge_states import fused_merge_attn_states
+from cache_dit.kernels._comm import comm_extension_is_available
 
 
 def _require_runtime() -> None:

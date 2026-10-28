@@ -1,138 +1,41 @@
 import torch
-from typing import Callable, Tuple
-from .backend import KernelBackend
-
-_KERNEL_BE_FN = Callable[[], KernelBackend]
-_ERROR_TEMPLATE = "kernel backend: {} is not supported now!"
-
-
-def _select_cuda_backend() -> KernelBackend:
-  return KernelBackend.CUDA
-
-
-def _select_mindiesd_backend() -> KernelBackend:
-  return KernelBackend.MINDIESD
-
-
-_KERNEL_BE_SELECTOR_MAP = {
-  "fp8_comm_per_token_quant": _select_cuda_backend,
-  "fp8_comm_per_token_dequant": _select_cuda_backend,
-  "fp8_comm_qkv_permute_quant": _select_cuda_backend,
-  "fp8_comm_qkv_permute_dequant": _select_cuda_backend,
-  "fused_merge_attn_states": _select_cuda_backend,
-  "svdq_gemm_w4a4": _select_cuda_backend,
-  "svdq_gemm_w4a4_v2": _select_cuda_backend,
-  "svdq_gemm_w4a4_ext": _select_cuda_backend,
-  "svdq_quantize_w4a4_act_fuse_lora": _select_cuda_backend,
-  "svdq_quantize_w4a4_wgt": _select_cuda_backend,
-  "svdq_set_faster_i2f_mode": _select_cuda_backend,
-  "svdq_set_log_level": _select_cuda_backend,
-}
-
-
-def _get_backend_selector(op_name: str) -> _KERNEL_BE_FN:
-  """Return the registered default backend selector for an op name.
-
-  :param op_name: Public operator name.
-  :returns: Selector callable that chooses the default backend.
-  :raises KeyError: If the operator has no registered selector.
-  """
-
-  try:
-    return _KERNEL_BE_SELECTOR_MAP[op_name]
-  except KeyError as exc:
-    raise KeyError(f"No backend selector registered for op {op_name!r}.") from exc
-
-
-def _resolve_backend(op_name: str, ) -> KernelBackend:
-  selector = _get_backend_selector(op_name)
-  backend = selector()
-  if not KernelBackend.is_supported(backend):
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
-  return backend
+from ._merge_states import fused_merge_attn_states
 
 
 # Ulysses FP8 communication related ops
 def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_per_token_quant")
-  if backend == KernelBackend.CUDA:
-    from .cuda import fp8_comm_per_token_quant
+  from ._cuda_ops import fp8_comm_per_token_quant
 
-    return fp8_comm_per_token_quant(x)
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return fp8_comm_per_token_quant(x)
 
 
 def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_per_token_dequant")
-  if backend == KernelBackend.CUDA:
-    from .cuda import fp8_comm_per_token_dequant
+  from ._cuda_ops import fp8_comm_per_token_dequant
 
-    return fp8_comm_per_token_dequant(x)
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return fp8_comm_per_token_dequant(x)
 
 
 def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_qkv_permute_quant")
-  if backend == KernelBackend.CUDA:
-    from .cuda import fp8_comm_qkv_permute_quant
+  from ._cuda_ops import fp8_comm_qkv_permute_quant
 
-    return fp8_comm_qkv_permute_quant(x)
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return fp8_comm_qkv_permute_quant(x)
 
 
 def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_backend("fp8_comm_qkv_permute_dequant")
-  if backend == KernelBackend.CUDA:
-    from .cuda import fp8_comm_qkv_permute_dequant
+  from ._cuda_ops import fp8_comm_qkv_permute_dequant
 
-    return fp8_comm_qkv_permute_dequant(quant_x)
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
-
-
-# Attention related ops, e.g, for Ring Attention
-def _fused_merge_attn_states_impl(
-  prev_out: torch.Tensor,
-  prev_lse: torch.Tensor,
-  suff_out: torch.Tensor,
-  suff_lse: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-  backend = _resolve_backend("fused_merge_attn_states")
-  if backend == KernelBackend.CUDA:
-    from .cuda import fused_merge_attn_states
-
-    return fused_merge_attn_states(
-      prev_out,
-      prev_lse,
-      suff_out,
-      suff_lse,
-    )
-  if backend == KernelBackend.MINDIESD:
-    max_lse = torch.max(prev_lse, suff_lse)
-    prev_scale = torch.exp(prev_lse - max_lse)
-    suff_scale = torch.exp(suff_lse - max_lse)
-    denom = prev_scale + suff_scale
-    denom = denom + 1e-12
-    out = torch.where(
-      denom > 1e-12,
-      (prev_out * prev_scale.unsqueeze(-1) + suff_out * suff_scale.unsqueeze(-1)) /
-      denom.unsqueeze(-1),
-      prev_out,
-    )
-    lse = max_lse + torch.log(denom)
-    return out, lse
-  else:
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return fp8_comm_qkv_permute_dequant(quant_x)
 
 
 # SVDQuant related ops, with CUDA implementations by default.
 def _svdq_extension_is_available_impl() -> bool:
-  from .cuda import svdq_extension_is_available
+  from ._cuda_ops import svdq_extension_is_available
 
   return svdq_extension_is_available()
 
 
 def _svdq_get_load_error_impl() -> Exception | None:
-  from .cuda import svdq_get_load_error
+  from ._cuda_ops import svdq_get_load_error
 
   return svdq_get_load_error()
 
@@ -151,25 +54,22 @@ def _svdq_gemm_w4a4_impl(
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-  backend = _resolve_backend("svdq_gemm_w4a4")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_gemm_w4a4
+  from ._cuda_ops import svdq_gemm_w4a4
 
-    return svdq_gemm_w4a4(
-      act=act,
-      wgt=wgt,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_act_in,
-      lora_up=lora_up,
-      bias=bias,
-      fp4=fp4,
-      alpha=alpha,
-      wcscales=wcscales,
-      act_unsigned=act_unsigned,
-      output_dtype=output_dtype,
-    )
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return svdq_gemm_w4a4(
+    act=act,
+    wgt=wgt,
+    ascales=ascales,
+    wscales=wscales,
+    lora_act_in=lora_act_in,
+    lora_up=lora_up,
+    bias=bias,
+    fp4=fp4,
+    alpha=alpha,
+    wcscales=wcscales,
+    act_unsigned=act_unsigned,
+    output_dtype=output_dtype,
+  )
 
 
 def _svdq_gemm_w4a4_v2_impl(
@@ -187,26 +87,23 @@ def _svdq_gemm_w4a4_v2_impl(
   output_dtype: torch.dtype | None = None,
   stage: int = 1,
 ) -> torch.Tensor:
-  backend = _resolve_backend("svdq_gemm_w4a4_v2")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_gemm_w4a4_v2
+  from ._cuda_ops import svdq_gemm_w4a4_v2
 
-    return svdq_gemm_w4a4_v2(
-      act=act,
-      wgt=wgt,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_act_in,
-      lora_up=lora_up,
-      bias=bias,
-      fp4=fp4,
-      alpha=alpha,
-      wcscales=wcscales,
-      act_unsigned=act_unsigned,
-      output_dtype=output_dtype,
-      stage=stage,
-    )
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return svdq_gemm_w4a4_v2(
+    act=act,
+    wgt=wgt,
+    ascales=ascales,
+    wscales=wscales,
+    lora_act_in=lora_act_in,
+    lora_up=lora_up,
+    bias=bias,
+    fp4=fp4,
+    alpha=alpha,
+    wcscales=wcscales,
+    act_unsigned=act_unsigned,
+    output_dtype=output_dtype,
+    stage=stage,
+  )
 
 
 def _svdq_gemm_w4a4_ext_impl(
@@ -240,42 +137,39 @@ def _svdq_gemm_w4a4_ext_impl(
   out_v: torch.Tensor | None = None,
   attn_tokens: int = 0,
 ) -> torch.Tensor:
-  backend = _resolve_backend("svdq_gemm_w4a4_ext")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_gemm_w4a4_ext
+  from ._cuda_ops import svdq_gemm_w4a4_ext
 
-    return svdq_gemm_w4a4_ext(
-      act=act,
-      wgt=wgt,
-      out=out,
-      qout=qout,
-      ascales=ascales,
-      wscales=wscales,
-      oscales=oscales,
-      poolout=poolout,
-      lora_act_in=lora_act_in,
-      lora_up=lora_up,
-      lora_down=lora_down,
-      lora_act_out=lora_act_out,
-      norm_q=norm_q,
-      norm_k=norm_k,
-      rotary_emb=rotary_emb,
-      bias=bias,
-      smooth_factor=smooth_factor,
-      out_vk=out_vk,
-      out_linearattn=out_linearattn,
-      act_unsigned=act_unsigned,
-      lora_scales=lora_scales,
-      fuse_silu=fuse_silu,
-      fp4=fp4,
-      alpha=alpha,
-      wcscales=wcscales,
-      out_q=out_q,
-      out_k=out_k,
-      out_v=out_v,
-      attn_tokens=attn_tokens,
-    )
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return svdq_gemm_w4a4_ext(
+    act=act,
+    wgt=wgt,
+    out=out,
+    qout=qout,
+    ascales=ascales,
+    wscales=wscales,
+    oscales=oscales,
+    poolout=poolout,
+    lora_act_in=lora_act_in,
+    lora_up=lora_up,
+    lora_down=lora_down,
+    lora_act_out=lora_act_out,
+    norm_q=norm_q,
+    norm_k=norm_k,
+    rotary_emb=rotary_emb,
+    bias=bias,
+    smooth_factor=smooth_factor,
+    out_vk=out_vk,
+    out_linearattn=out_linearattn,
+    act_unsigned=act_unsigned,
+    lora_scales=lora_scales,
+    fuse_silu=fuse_silu,
+    fp4=fp4,
+    alpha=alpha,
+    wcscales=wcscales,
+    out_q=out_q,
+    out_k=out_k,
+    out_v=out_v,
+    attn_tokens=attn_tokens,
+  )
 
 
 def _svdq_quantize_w4a4_act_fuse_lora_impl(
@@ -286,19 +180,16 @@ def _svdq_quantize_w4a4_act_fuse_lora_impl(
   fp4: bool = False,
   pad_size: int = 256,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-  backend = _resolve_backend("svdq_quantize_w4a4_act_fuse_lora")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_quantize_w4a4_act_fuse_lora
+  from ._cuda_ops import svdq_quantize_w4a4_act_fuse_lora
 
-    return svdq_quantize_w4a4_act_fuse_lora(
-      input=input,
-      lora_down=lora_down,
-      smooth=smooth,
-      fuse_glu=fuse_glu,
-      fp4=fp4,
-      pad_size=pad_size,
-    )
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return svdq_quantize_w4a4_act_fuse_lora(
+    input=input,
+    lora_down=lora_down,
+    smooth=smooth,
+    fuse_glu=fuse_glu,
+    fp4=fp4,
+    pad_size=pad_size,
+  )
 
 
 def _svdq_quantize_w4a4_wgt_impl(
@@ -306,32 +197,21 @@ def _svdq_quantize_w4a4_wgt_impl(
   output: torch.Tensor | None = None,
   oscales: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-  backend = _resolve_backend("svdq_quantize_w4a4_wgt")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_quantize_w4a4_wgt
+  from ._cuda_ops import svdq_quantize_w4a4_wgt
 
-    return svdq_quantize_w4a4_wgt(input=input, output=output, oscales=oscales)
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  return svdq_quantize_w4a4_wgt(input=input, output=output, oscales=oscales)
 
 
 def _svdq_set_faster_i2f_mode_impl(mode: str, ) -> None:
-  backend = _resolve_backend("svdq_set_faster_i2f_mode")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_set_faster_i2f_mode
+  from ._cuda_ops import svdq_set_faster_i2f_mode
 
-    svdq_set_faster_i2f_mode(mode)
-    return
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  svdq_set_faster_i2f_mode(mode)
 
 
 def _svdq_set_log_level_impl(level: str, ) -> None:
-  backend = _resolve_backend("svdq_set_log_level")
-  if backend == KernelBackend.CUDA:
-    from .cuda import svdq_set_log_level
+  from ._cuda_ops import svdq_set_log_level
 
-    svdq_set_log_level(level)
-    return
-  raise ValueError(_ERROR_TEMPLATE.format(backend))
+  svdq_set_log_level(level)
 
 
 # Ulysses FP8 communication related ops
@@ -374,29 +254,6 @@ def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
     per-token basis suitable for communication purposes.
   """
   return _fp8_comm_qkv_permute_dequant_impl(quant_x=quant_x, )
-
-
-# Attention related ops, e.g, for Ring Attention
-def fused_merge_attn_states(
-  prev_out: torch.Tensor,
-  prev_lse: torch.Tensor,
-  suff_out: torch.Tensor,
-  suff_lse: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-  """Fuse the attention states of two consecutive attention states, e.g., Ring Attention.
-
-  :param prev_out: Previous output tensor.
-  :param prev_lse: Previous log-sum-exp tensor.
-  :param suff_out: Sufficient output tensor.
-  :param suff_lse: Sufficient log-sum-exp tensor.
-  :returns: Fused output and log-sum-exp tensors.
-  """
-  return _fused_merge_attn_states_impl(
-    prev_out=prev_out,
-    prev_lse=prev_lse,
-    suff_out=suff_out,
-    suff_lse=suff_lse,
-  )
 
 
 # SVDQuant related ops, with CUDA implementations by default.
