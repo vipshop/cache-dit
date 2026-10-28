@@ -22,6 +22,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |GLM-Image-T2I|✅|✖️|✅|
 |GLM-Image-I2I|✅|✖️|✅|
 |Z-Image|✅|✅|✅|
+|Ming-Image-0.1-Design|✅|✅|✅|
+|Ming-Image-0.1-Design-Layer|✅|✅|✅|
 |LTX-2-I2V|✅|✅|✅|
 |LTX-2-T2V|✅|✅|✅|
 |LTX-2.5-DFR (8 steps)|✅|✅|✅|
@@ -132,6 +134,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |GLM-Image-T2I|✖️|✅|
 |GLM-Image-I2I|✖️|✅|
 |Z-Image|✅|✅|
+|Ming-Image-0.1-Design|✅|✅|
+|Ming-Image-0.1-Design-Layer|✅|✅|
 |LTX-2-I2V|✅|✅|
 |LTX-2-T2V|✅|✅|
 |LTX-2.5-DFR (8 steps)|✅|✅|

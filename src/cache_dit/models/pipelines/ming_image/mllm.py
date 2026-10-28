@@ -803,6 +803,8 @@ class MingImageMLLM(nn.Module):
   trunk; the connector, the diffusion transformer and the VAE live elsewhere.
   """
 
+  _cache_dit_text_encoder = True
+
   def __init__(
     self,
     config: dict,
@@ -995,8 +997,9 @@ class MingImageMLLM(nn.Module):
     :param inputs: prepared inputs.
     :returns: input embeddings ``[1, S, hidden_size]``.
     """
-    device = self.model.model.word_embeddings.weight.device
-    embeds = self.model.model.word_embeddings(inputs.input_ids.to(device))
+    embedding_device = self.model.model.word_embeddings.weight.device
+    embeds = self.model.model.word_embeddings(inputs.input_ids.to(embedding_device))
+    device = embeds.device
     patch_mask = inputs.image_mask.to(device)
     num_patch = int(patch_mask.sum())
     if num_patch == 0:
@@ -1012,7 +1015,8 @@ class MingImageMLLM(nn.Module):
         f"Ming-Image patch mismatch: {num_patch} <imagePatch> tokens in the prompt but "
         f"{features.shape[0]} image/query embeddings "
         f"(reference-image blocks come first, then the query block)")
-    return embeds.masked_scatter(patch_mask.unsqueeze(-1), features.to(embeds.dtype))
+    return embeds.masked_scatter(patch_mask.unsqueeze(-1),
+                                 features.to(device=device, dtype=embeds.dtype))
 
   def prepare_inputs(self,
                      prompt: str,

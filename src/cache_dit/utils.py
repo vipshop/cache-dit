@@ -172,7 +172,8 @@ def _is_text_encoder(module: torch.nn.Module) -> bool:
   _import_module = module.__class__.__module__
   # Including the cases for normal text encoder and vision-language
   # model (e.g, GLM Image) in transformers
-  return _import_module.startswith("transformers")
+  return (_import_module.startswith("transformers")
+          or bool(getattr(module, "_cache_dit_text_encoder", False)))
 
 
 def _is_controlnet(module: torch.nn.Module) -> bool:
