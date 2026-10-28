@@ -20,6 +20,7 @@ from .logger import init_logger
 from .utils import disable_print
 from .utils import maybe_empty_cache
 from .utils import parse_extra_modules
+from .patches import patch_nucleus_moe_grouped_mm_offsets
 from .caching import load_options  # deprecated
 from .caching import load_cache_config
 from .caching import load_parallelism_config

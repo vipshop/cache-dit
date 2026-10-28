@@ -8,6 +8,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..logger import init_logger
 from ..platforms import current_platform
+from ..patches import maybe_patch_nucleus_moe_grouped_mm_offsets
 from ..compile.utils import (
   set_compile_configs,
   mindiesd_compile_available,
@@ -1553,6 +1554,10 @@ def _force_compile_dynamic(args, pipe) -> bool:
 
 
 def _compile_transformer_module(args, pipe, transformer, name):
+  # Before any early return: a model that is already compiled cannot take the patch anymore, and the
+  # warning is the only hint a user gets for why the compile failed.
+  maybe_patch_nucleus_moe_grouped_mm_offsets(transformer)
+
   if transformer is None or isinstance(
       transformer,
       torch._dynamo.OptimizedModule,  # already compiled

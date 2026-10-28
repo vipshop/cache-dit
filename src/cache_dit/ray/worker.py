@@ -12,6 +12,7 @@ from diffusers.models.modeling_utils import ModelMixin
 
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
+from ..patches import maybe_patch_nucleus_moe_grouped_mm_offsets
 from ..quantization import QuantizeConfig
 from ..utils import assign_transformer, resolve_transformer
 from ._tree import cpu_tensor_tree
@@ -64,6 +65,8 @@ def _maybe_compile_transformer(
 
   if not parallelism_config.ray_use_compile:
     return transformer
+
+  maybe_patch_nucleus_moe_grouped_mm_offsets(transformer)
 
   compile_repeated_blocks = getattr(transformer, "compile_repeated_blocks", None)
   if callable(compile_repeated_blocks):
