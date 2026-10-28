@@ -1020,6 +1020,46 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+# NOTE: The registry returns the first class-name prefix that matches, so "HiDreamO1Image" must be
+# registered before "HiDream" (HiDream-I1), which would otherwise capture it.
+@BlockAdapterRegister.register("HiDreamO1Image")
+def hidream_o1_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for HiDream-O1-Image (`HiDreamO1ImagePipeline` /
+  `HiDreamO1ImageTransformer2DModel`).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.hidream_o1_image`), so
+  it is not a diffusers module and no strict type check applies. Its denoising stack is
+  `transformer.layers` and each block takes `(hidden_states, rope, attention_mask, cp_config)` and
+  returns `hidden_states` (Pattern_3).
+
+  Two model specifics matter here:
+
+  * `has_separate_cfg=True`: the pipeline runs one `transformer.forward()` per CFG branch
+    (conditional, then the `" "` unconditional branch), so the two branches need independent cache
+    contexts and one shared step counter.
+  * `check_forward_pattern=True`: the built-in block's first parameter is `hidden_states`, so the
+    contract is verifiable, but cache-dit defaults that check off for non-diffusers transformers.
+
+  The block loop calls one block per iteration and carries the timestep through the `<|tms_token|>`
+  embedding row before the loop, so no PatchFunctor is needed.
+
+  :param pipe: `HiDreamO1ImagePipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `layers` denoising stack.
+  """
+  _relaxed_assert(pipe.transformer)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.layers,
+    blocks_name="layers",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("HiDream")
 def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
   # NOTE: Need to patch Transformer forward to fully support

@@ -88,6 +88,7 @@ __all__ = [
   "ming_image_design_layer_example",
   "nucleus_image_example",
   "kandinsky6_ti2va_example",
+  "hidream_o1_image_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -156,6 +157,7 @@ _env_path_mapping = {
   "IDEOGRAM4_DIR": "ideogram-ai/ideogram-4-fp8",
   "MOSS_IMAGE_SFT_DIR": "OpenMOSS-Team/MOSS-Image-SFT",
   "MOSS_IMAGE_BASE_DIR": "OpenMOSS-Team/MOSS-Image-Base",
+  "HIDREAM_O1_IMAGE_DIR": "HiDream-ai/HiDream-O1-Image",
   "MING_IMAGE_DESIGN_DIR": "inclusionAI/Ming-Image-0.1-Design",
   "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
@@ -3457,6 +3459,52 @@ def ming_image_design_example(args: argparse.Namespace, **kwargs) -> Example:
                           default="inclusionAI/Ming-Image-0.1-Design-Layer")
 def ming_image_design_layer_example(args: argparse.Namespace, **kwargs) -> Example:
   return _ming_image_example(args, layered=True)
+
+
+_HIDREAM_O1_IMAGE_PROMPT = ("A vintage travel poster of a mountain lake at sunrise, layered "
+                            "silhouettes of pine trees in the foreground, and the words "
+                            "\"SUNRISE LAKE\" printed in bold serif letters at the bottom")
+
+
+@ExampleRegister.register("hidream_o1_image", default="HiDream-ai/HiDream-O1-Image")
+def hidream_o1_image_example(args: argparse.Namespace, **kwargs) -> Example:
+  """HiDream-O1-Image text-to-image example.
+
+  Defaults follow the release recipe: 2048x2048, 50 steps, CFG 5.0 with the empty-ish `" "`
+  unconditional prompt. The pipeline snaps a requested size to the closest trained aspect ratio;
+  pass `--extra-input-kwargs "{'snap_resolution': False}"` to render an arbitrary multiple of 32.
+
+  The model is pixel-space and embeds its own token ids, so there is no VAE and no text encoder to
+  shard: `--parallel-vae` / `--parallel-text` cannot work and are rejected here instead of being
+  silently ignored.
+
+  :param args: Parsed CLI arguments.
+  :param kwargs: Unused extra keyword arguments.
+  :returns: The configured example.
+  """
+  from ..models.pipelines.hidream_o1_image import HiDreamO1ImagePipeline
+
+  if getattr(args, "parallel_text_encoder", False):
+    raise NotImplementedError("HiDream-O1-Image embeds its own token ids: it has no text encoder, "
+                              "so `--parallel-text` is not applicable.")
+  if getattr(args, "parallel_vae", False):
+    raise NotImplementedError("HiDream-O1-Image is pixel-space: it has no VAE, so `--parallel-vae` "
+                              "is not applicable.")
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,
+      model_name_or_path=_path("HiDream-ai/HiDream-O1-Image", args=args),
+      pipeline_class=HiDreamO1ImagePipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_HIDREAM_O1_IMAGE_PROMPT,
+      height=2048,
+      width=2048,
+      num_inference_steps=50,
+      guidance_scale=5.0,
+    ),
+  )
 
 
 _NUCLEUS_IMAGE_PROMPT = ("A studio photograph of an orange cat holding a wooden sign that says "

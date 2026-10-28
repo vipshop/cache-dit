@@ -137,6 +137,9 @@ def _activate_cp_planners():
     ".moss_image", "MOSSImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Kandinsky6ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".kandinsky6", "Kandinsky6ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  HiDreamO1ImageContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".hidream_o1_image", "HiDreamO1ImageContextParallelismPlanner",
+    ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -225,5 +228,8 @@ def _activate_tp_planners():
     ".moss_image", "MOSSImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   NucleusMoETensorParallelismPlanner = _safe_import(  # noqa: F841
     ".nucleus_moe", "NucleusMoETensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  HiDreamO1ImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".hidream_o1_image", "HiDreamO1ImageTensorParallelismPlanner",
+    ImportErrorTensorParallelismPlanner)
   Kandinsky6TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".kandinsky6", "Kandinsky6TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
