@@ -3,10 +3,10 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
-from cache_dit.kernels._cuda_ops import fp8_comm_per_token_dequant
-from cache_dit.kernels._cuda_ops import fp8_comm_per_token_quant
-from cache_dit.kernels._cuda_ops import fp8_comm_qkv_permute_dequant
-from cache_dit.kernels._cuda_ops import fp8_comm_qkv_permute_quant
+from cache_dit.kernels._comm import fp8_comm_per_token_dequant
+from cache_dit.kernels._comm import fp8_comm_per_token_quant
+from cache_dit.kernels._comm import fp8_comm_qkv_permute_dequant
+from cache_dit.kernels._comm import fp8_comm_qkv_permute_quant
 from cache_dit.kernels._comm import comm_extension_is_available
 
 

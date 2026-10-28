@@ -4,38 +4,38 @@ from ._merge_states import fused_merge_attn_states
 
 # Ulysses FP8 communication related ops
 def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  from ._cuda_ops import fp8_comm_per_token_quant
+  from ._comm import fp8_comm_per_token_quant
 
   return fp8_comm_per_token_quant(x)
 
 
 def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  from ._cuda_ops import fp8_comm_per_token_dequant
+  from ._comm import fp8_comm_per_token_dequant
 
   return fp8_comm_per_token_dequant(x)
 
 
 def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  from ._cuda_ops import fp8_comm_qkv_permute_quant
+  from ._comm import fp8_comm_qkv_permute_quant
 
   return fp8_comm_qkv_permute_quant(x)
 
 
 def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
-  from ._cuda_ops import fp8_comm_qkv_permute_dequant
+  from ._comm import fp8_comm_qkv_permute_dequant
 
   return fp8_comm_qkv_permute_dequant(quant_x)
 
 
 # SVDQuant related ops, with CUDA implementations by default.
 def _svdq_extension_is_available_impl() -> bool:
-  from ._cuda_ops import svdq_extension_is_available
+  from ._svdquant import svdq_extension_is_available
 
   return svdq_extension_is_available()
 
 
 def _svdq_get_load_error_impl() -> Exception | None:
-  from ._cuda_ops import svdq_get_load_error
+  from ._svdquant import svdq_get_load_error
 
   return svdq_get_load_error()
 
@@ -54,7 +54,7 @@ def _svdq_gemm_w4a4_impl(
   act_unsigned: bool = False,
   output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
-  from ._cuda_ops import svdq_gemm_w4a4
+  from ._svdquant import svdq_gemm_w4a4
 
   return svdq_gemm_w4a4(
     act=act,
@@ -87,7 +87,7 @@ def _svdq_gemm_w4a4_v2_impl(
   output_dtype: torch.dtype | None = None,
   stage: int = 1,
 ) -> torch.Tensor:
-  from ._cuda_ops import svdq_gemm_w4a4_v2
+  from ._svdquant import svdq_gemm_w4a4_v2
 
   return svdq_gemm_w4a4_v2(
     act=act,
@@ -137,7 +137,7 @@ def _svdq_gemm_w4a4_ext_impl(
   out_v: torch.Tensor | None = None,
   attn_tokens: int = 0,
 ) -> torch.Tensor:
-  from ._cuda_ops import svdq_gemm_w4a4_ext
+  from ._svdquant import svdq_gemm_w4a4_ext
 
   return svdq_gemm_w4a4_ext(
     act=act,
@@ -180,7 +180,7 @@ def _svdq_quantize_w4a4_act_fuse_lora_impl(
   fp4: bool = False,
   pad_size: int = 256,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-  from ._cuda_ops import svdq_quantize_w4a4_act_fuse_lora
+  from ._svdquant import svdq_quantize_w4a4_act_fuse_lora
 
   return svdq_quantize_w4a4_act_fuse_lora(
     input=input,
@@ -197,19 +197,19 @@ def _svdq_quantize_w4a4_wgt_impl(
   output: torch.Tensor | None = None,
   oscales: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-  from ._cuda_ops import svdq_quantize_w4a4_wgt
+  from ._svdquant import svdq_quantize_w4a4_wgt
 
   return svdq_quantize_w4a4_wgt(input=input, output=output, oscales=oscales)
 
 
 def _svdq_set_faster_i2f_mode_impl(mode: str, ) -> None:
-  from ._cuda_ops import svdq_set_faster_i2f_mode
+  from ._svdquant import svdq_set_faster_i2f_mode
 
   svdq_set_faster_i2f_mode(mode)
 
 
 def _svdq_set_log_level_impl(level: str, ) -> None:
-  from ._cuda_ops import svdq_set_log_level
+  from ._svdquant import svdq_set_log_level
 
   svdq_set_log_level(level)
 
