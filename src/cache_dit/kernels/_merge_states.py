@@ -1,6 +1,35 @@
 import torch
 
-from ._comm import _call_fused_merge_attn_states
+from ._comm import _get_required_ops_module
+
+
+def _call_fused_merge_attn_states(
+  prev_out: torch.Tensor,
+  prev_lse: torch.Tensor,
+  suff_out: torch.Tensor,
+  suff_lse: torch.Tensor,
+  out: torch.Tensor,
+  lse: torch.Tensor,
+) -> None:
+  """Bridge the attention-state merge operator to the compiled extension.
+
+  :param prev_out: Contiguous 3D previous attention output `[B * N, H, D]`.
+  :param prev_lse: Contiguous 2D previous log-sum-exp `[B * N, H]`.
+  :param suff_out: Contiguous 3D suffix attention output `[B * N, H, D]`.
+  :param suff_lse: Contiguous 2D suffix log-sum-exp `[B * N, H]`.
+  :param out: Contiguous 3D merged attention output `[B * N, H, D]`, written in place.
+  :param lse: Contiguous 2D merged log-sum-exp `[B * N, H]`, written in place.
+  """
+
+  _get_required_ops_module().fused_merge_attn_states(
+    prev_out,
+    prev_lse,
+    suff_out,
+    suff_lse,
+    out,
+    lse,
+  )
+
 
 torch.library.define(
   "cache_dit_cuda_ops::fused_merge_attn_states",

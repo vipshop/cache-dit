@@ -113,40 +113,11 @@ def _call_fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor, x: torch.Tensor) -
   _get_required_ops_module().fp8_comm_qkv_permute_dequant(quant_x, x)
 
 
-def _call_fused_merge_attn_states(
-  prev_out: torch.Tensor,
-  prev_lse: torch.Tensor,
-  suff_out: torch.Tensor,
-  suff_lse: torch.Tensor,
-  out: torch.Tensor,
-  lse: torch.Tensor,
-) -> None:
-  """Bridge the attention-state merge operator to the compiled extension.
-
-  :param prev_out: Contiguous 3D previous attention output `[B * N, H, D]`.
-  :param prev_lse: Contiguous 2D previous log-sum-exp `[B * N, H]`.
-  :param suff_out: Contiguous 3D suffix attention output `[B * N, H, D]`.
-  :param suff_lse: Contiguous 2D suffix log-sum-exp `[B * N, H]`.
-  :param out: Contiguous 3D merged attention output `[B * N, H, D]`, written in place.
-  :param lse: Contiguous 2D merged log-sum-exp `[B * N, H]`, written in place.
-  """
-
-  _get_required_ops_module().fused_merge_attn_states(
-    prev_out,
-    prev_lse,
-    suff_out,
-    suff_lse,
-    out,
-    lse,
-  )
-
-
 __all__ = [
   "_call_fp8_comm_per_token_dequant",
   "_call_fp8_comm_per_token_quant",
   "_call_fp8_comm_qkv_permute_dequant",
   "_call_fp8_comm_qkv_permute_quant",
-  "_call_fused_merge_attn_states",
   "_get_required_ops_module",
   "comm_extension_is_available",
   "comm_get_load_error",
