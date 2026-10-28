@@ -22,6 +22,14 @@ class ENV(object):
   CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS: bool = bool(
     int(os.environ.get("CACHE_DIT_FLUX_ENABLE_DUMMY_BLOCKS", "1")))
 
+  # Opt-in workaround for `torch.compile` with NucleusMoE-Image. Upstream
+  # `SwiGLUExperts._run_experts_grouped_mm` builds the grouped-GEMM offsets with
+  # `torch.cumsum(..., dtype=torch.int32)`, but inductor drops the `dtype` argument, so the
+  # compiled graph passes int64 offsets and `aten._grouped_mm` raises. Set to 1 to install
+  # cache-dit's int32-safe copy of that method. See `cache_dit.patches`.
+  CACHE_DIT_NUCLEUS_MOE_GROUPED_MM_OFFSETS_FIX: bool = bool(
+    int(os.environ.get("CACHE_DIT_NUCLEUS_MOE_GROUPED_MM_OFFSETS_FIX", "0")))
+
   # Torch compile ENVs
 
   # Enable epilogue and prologue fusion in cache-dit compile optimizations

@@ -6,6 +6,7 @@ from .block_adapters import BlockAdapter
 from .block_registers import BlockAdapterRegister
 from ...envs import ENV
 from ...logger import init_logger
+from ...patches import maybe_patch_nucleus_moe_grouped_mm_offsets
 from ...utils import declare_repeated_blocks, resolve_transformer
 
 logger = init_logger(__name__)
@@ -1523,6 +1524,13 @@ def nucleus_moe_adapter(pipe, **kwargs) -> BlockAdapter:
   `NucleusMoEImageTransformer2DModel` already declares `_repeated_blocks`, so regional
   quantization and `compile_repeated_blocks()` discover the stack without help.
 
+  A third model-specific gotcha only shows up with `torch.compile`: upstream's grouped-GEMM
+  offsets lose their `dtype` inside a compiled graph, so `aten._grouped_mm` rejects them. Set
+  `CACHE_DIT_NUCLEUS_MOE_GROUPED_MM_OFFSETS_FIX=1` to install cache-dit's int32-safe copy of
+  `SwiGLUExperts._run_experts_grouped_mm` (see `cache_dit.patches`). The install happens here so
+  that users who call `torch.compile()` themselves are covered as well; the CLI `--compile` path
+  hooks the compile funnel instead.
+
   :param pipe: `NucleusMoEImagePipeline` instance.
   :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
   :returns: The BlockAdapter covering the `transformer_blocks` denoising stack.
@@ -1530,6 +1538,8 @@ def nucleus_moe_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import NucleusMoEImageTransformer2DModel
 
   _relaxed_assert(pipe.transformer, NucleusMoEImageTransformer2DModel)
+
+  maybe_patch_nucleus_moe_grouped_mm_offsets()
 
   guidance_scale = _default_call_float(pipe, "guidance_scale")
   has_separate_cfg = True if guidance_scale is None else guidance_scale > 1.0
