@@ -16,6 +16,42 @@ from .utils import TileBatchedP2PComm
 logger = init_logger(__name__)
 
 
+def _set_tile_geometry(
+  auto_encoder: torch.nn.Module,
+  height: int,
+  width: int,
+  tile_size: int,
+  tile_stride: int,
+  default_geometry: tuple[int, int, int, int],
+  optimized_geometry: tuple[int, int, int, int] | None = None,
+) -> None:
+  """Set VAE tile geometry and restore the original geometry for smaller images.
+
+  :param auto_encoder: VAE instance whose tiling attributes are updated.
+  :param height: Input image height in pixels.
+  :param width: Input image width in pixels.
+  :param tile_size: Default square tile size for large images.
+  :param tile_stride: Default square tile stride for large images.
+  :param default_geometry: Original `(tile_h, tile_w, stride_h, stride_w)` before parallelization.
+  :param optimized_geometry: Optional `(target_h, target_w, tile, stride)` override.
+  """
+
+  if min(height, width) < 1024:
+    tile_height, tile_width, stride_height, stride_width = default_geometry
+  else:
+    tile_height = tile_width = tile_size
+    stride_height = stride_width = tile_stride
+    if optimized_geometry is not None:
+      target_height, target_width, target_tile, target_stride = optimized_geometry
+      if height == target_height and width == target_width:
+        tile_height = tile_width = target_tile
+        stride_height = stride_width = target_stride
+  auto_encoder.tile_sample_min_height = tile_height
+  auto_encoder.tile_sample_min_width = tile_width
+  auto_encoder.tile_sample_stride_height = stride_height
+  auto_encoder.tile_sample_stride_width = stride_width
+
+
 @AutoEncoderDataParallelismPlannerRegister.register("AutoencoderKLQwenImage")
 class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
 
@@ -24,6 +60,11 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
   decoder_first_chunk: bool = False
   # 2.1 also clamps the decoded range like its own `tiled_decode`; 1.x does not.
   clamp_decoded_output: bool = False
+  large_image_encode_tile_size: int = 512
+  large_image_encode_tile_stride: int = 384
+  large_image_decode_tile_size: int = 512
+  large_image_decode_tile_stride: int = 384
+  optimized_decode_geometry: tuple[int, int, int, int] | None = None
 
   def _apply(
     self,
@@ -52,8 +93,19 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
     rank = dist.get_rank(group)
     # captured here: `self` inside the wrappers below is the VAE, not the planner
     decoder_first_chunk = self.decoder_first_chunk
+    encode_tile_size = self.large_image_encode_tile_size
+    encode_tile_stride = self.large_image_encode_tile_stride
+    decode_tile_size = self.large_image_decode_tile_size
+    decode_tile_stride = self.large_image_decode_tile_stride
+    optimized_decode_geometry = self.optimized_decode_geometry
 
     auto_encoder.enable_tiling()
+    default_tile_geometry = (
+      auto_encoder.tile_sample_min_height,
+      auto_encoder.tile_sample_min_width,
+      auto_encoder.tile_sample_stride_height,
+      auto_encoder.tile_sample_stride_width,
+    )
 
     clamp_decoded_output = self.clamp_decoded_output
     comm = TileBatchedP2PComm()
@@ -68,13 +120,8 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
     ):
       _, _, num_frames, height, width = x.shape
 
-      # Overwrite tile size and stride for better performance while
-      # still reducing memory usage.
-      if min(height, width) >= 1024:
-        self.tile_sample_min_height = 512
-        self.tile_sample_min_width = 512
-        self.tile_sample_stride_height = 384
-        self.tile_sample_stride_width = 384
+      _set_tile_geometry(self, height, width, encode_tile_size, encode_tile_stride,
+                         default_tile_geometry)
 
       latent_height = height // self.spatial_compression_ratio
       latent_width = width // self.spatial_compression_ratio
@@ -187,13 +234,15 @@ class AutoencoderKLQwenImageDataParallelismPlanner(AutoEncoderDataParallelismPla
       sample_height = height * self.spatial_compression_ratio
       sample_width = width * self.spatial_compression_ratio
 
-      # Overwrite tile size and stride for better performance while
-      # still reducing memory usage.
-      if min(sample_height, sample_width) >= 1024:
-        self.tile_sample_min_height = 512
-        self.tile_sample_min_width = 512
-        self.tile_sample_stride_height = 384
-        self.tile_sample_stride_width = 384
+      _set_tile_geometry(
+        self,
+        sample_height,
+        sample_width,
+        decode_tile_size,
+        decode_tile_stride,
+        default_tile_geometry,
+        optimized_decode_geometry,
+      )
 
       tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
       tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio

@@ -41,6 +41,7 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 - For Python-only changes, `pip install -e "." --no-build-isolation` is sufficient; SVDQuant C++ compilation is NOT required.
 - **Do NOT alter core dependency versions** (torch, torchvision, transformers, diffusers, cache-dit, triton) in the `cdit` conda environment. Other dependencies may be installed only if they do not conflict with these.
 - **Do NOT modify any code in the diffusers library.** If a model requires patches (e.g., monkey-patching `forward()`, attention processors, etc.), write all patch code inside the cache-dit repository. Diffusers is a third-party dependency and must not be altered.
+- **⚠️ MANDATORY: Use cache-dit's attention dispatcher.** Every new model-specific attention processor or CP attention call in cache-dit must use `_dispatch_attention_fn` from `cache_dit.attention` (normally `from ...attention import _dispatch_attention_fn`), not diffusers' `dispatch_attention_fn` or a backend function directly. When the processor already owns CP communication, pass `parallel_config=None` to prevent a second collective. Read [`./references/attention.md`](./references/attention.md) before writing attention code.
 - **All examples in this skill are references, not templates to copy.** Every model has unique architecture details (block signatures, tensor layouts, shared vs per-block modulation, attention mask requirements, etc.). Before following any example, first analyze whether the referenced model's architecture is actually comparable to the target model. Blindly copying an example that was designed for a different architecture will produce incorrect or broken code.
 - ControlNet parallelism is a special case and is NOT covered in this guide.
 - **⚠️ GQA attention backend pitfall**: When a model uses GQA (e.g., ``num_heads=48, num_kv_heads=12``), the ``dispatch_attention_fn(..., enable_gqa=True)`` path may cause PyTorch SDPA to fall back to a **slow backend** (``math`` or an inefficient ``mem_efficient`` kernel) because flash-attention / cuDNN SDPA backends have limited GQA support.  **Always benchmark ``enable_gqa=True`` vs. manually repeating K/V heads to match Q heads and passing ``enable_gqa=False``** (MHA path).  On NVIDIA L20, the MHA repeat gave a **~2.2× single-GPU speedup** for Krea-2-Turbo (48 Q / 12 KV heads, 128 head_dim, 4608 seq).  This is not CP-specific — any model with GQA should evaluate whether the repeat→MHA path is faster.  If confirmed, apply the repeat unconditionally in the attention processor patch, not just in the CP path.  Document the finding in the planner's docstring as well (see ``krea2.py`` for an example).
@@ -162,6 +163,7 @@ flowchart TD
 | CP: a tensor is a method return or nested type that hooks cannot split | `./references/cp.md` hybrid CP |
 | CP: head count or sequence length not divisible by cp_size | `./references/cp.md` UAA |
 | CP: the model has an attention_mask | `./references/cp.md` attention mask reorder |
+| **Writing an attention processor, selecting a backend, or deciding who owns CP communication** | `./references/attention.md` — mandatory `_dispatch_attention_fn`, backend selection, and double-communication prevention |
 | CP: the run renders a **coherent but different** sample while per-op replays / tiny parity look healthy | `./references/cp.md` §2.10 class-level patch leaking into connectors |
 | TP: choosing the overall TP strategy | `./references/tp.md` plus the TP chart above |
 | TP: attention output garbled | `./references/tp.md` shard_div_attr |
@@ -477,6 +479,12 @@ All paths are relative to the cache-dit repository root.
 | ForwardPattern enum          | `src/cache_dit/caching/forward_pattern.py`                | 6 block I/O contract patterns                 |
 | BlockAdapterRegister         | `src/cache_dit/caching/block_adapters/block_registers.py` | Registration decorator                        |
 
+### Attention Files
+
+| Module | File | Purpose |
+|---|---|---|
+| Attention dispatcher and backend registry | `src/cache_dit/attention/backends/register.py` | `_dispatch_attention_fn`, backend selection, constraints, and CP dispatch |
+
 ### Distributed Parallelism Files
 
 | Module                        | File                                                     | Purpose                                                                              |
@@ -534,6 +542,7 @@ Read these only when the current phase needs them:
 |---|---|---|
 | Modular pipeline | [`./references/modular_pipeline.md`](./references/modular_pipeline.md) | The model ships only as a diffusers `ModularPipeline` (FLUX.3): core plumbing, which block list to cache, CLI template, CP/TP status, verification checklist. |
 | Cache | [`./references/cache.md`](./references/cache.md) | Implementing `BlockAdapter`, selecting `ForwardPattern`, handling third-party models, or writing `PatchFunctor`. |
+| Attention | [`./references/attention.md`](./references/attention.md) | Writing a model-specific attention processor, selecting a backend, using `_dispatch_attention_fn`, or implementing CP attention without duplicate communication. |
 | CP | [`./references/cp.md`](./references/cp.md) | Implementing hook-based or hybrid CP, UAA, attention processor patches, or mask permutation fixes. |
 | TP | [`./references/tp.md`](./references/tp.md) | Implementing TP planners, `shard_div_attr`, GQA handling, fused QKV, `Replicate()`, or DTensor-unsafe op patches. |
 | TE-P | [`./references/tep.md`](./references/tep.md) | Adding or checking text encoder tensor parallelism. |

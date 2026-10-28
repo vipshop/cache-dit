@@ -24,6 +24,8 @@ class AutoencoderKLQwenImage21DataParallelismPlanner(AutoencoderKLQwenImageDataP
   # `Expected 3D or 4D input to conv2d`.
   decoder_first_chunk: bool = True
   clamp_decoded_output: bool = True
+  # Four 640/576 tiles reduce decode work at 1024x1024 while retaining a 64-pixel blend region.
+  optimized_decode_geometry: tuple[int, int, int, int] | None = (1024, 1024, 640, 576)
 
   def _apply(
     self,
