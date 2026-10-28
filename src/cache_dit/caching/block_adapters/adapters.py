@@ -1177,6 +1177,21 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("MingImage")
+def ming_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.layers,
+    blocks_name="layers",
+    forward_pattern=ForwardPattern.Pattern_3,
+    # Ming uses Z-Image blocks whose first argument is named `x`.
+    check_forward_pattern=False,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("ZImage")
 def zimage_adapter(pipe, **kwargs) -> BlockAdapter:
   from cache_dit.caching.patch_functors import ZImageControlNetPatchFunctor

@@ -85,6 +85,8 @@ Available examples:
 - ✅ zimage_turbo_nunchaku          - Default: nunchaku/nunchaku-z-image-turbo
 - ✅ zimage_turbo                   - Default: Tongyi-MAI/Z-Image-Turbo
 - ✅ zimage                         - Default: Tongyi-MAI/Z-Image
+- ✅ ming_image_design              - Default: inclusionAI/Ming-Image-0.1-Design
+- ✅ ming_image_design_layer        - Default: inclusionAI/Ming-Image-0.1-Design-Layer
 - ✅ zimage_turbo_controlnet_2.0    - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
 - ✅ zimage_turbo_controlnet_2.1    - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
 - ✅ longcat_image                  - Default: meituan-longcat/LongCat-Image
@@ -154,6 +156,30 @@ python3 -m cache_dit.generate qwen_image_21_turbo_modular --cache
 python3 -m cache_dit.generate qwen_image_21_modular_edit --cache
 python3 -m cache_dit.generate qwen_image_21_turbo_modular_edit --cache
 ```
+
+### Ming-Image 0.1
+
+`Ming-Image` uses a built-in pipeline and does not require vLLM, vllm-omni, or remote model code.
+Both variants default to 12 inference steps. `Design` returns one RGBA image. `Design-Layer`
+returns the composite followed by every RGBA layer, saves each image separately, and preserves the
+reference image aspect ratio with 16-pixel alignment.
+
+```bash
+python3 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design --cache --rdt 0.08 --ws 8
+python3 -m cache_dit.generate ming_image_design_layer \
+  --model-path /PATH/TO/Ming-Image-0.1-Design-Layer \
+  --image-path /PATH/TO/reference.png --cache --rdt 0.08 --ws 8
+
+torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel ulysses --parallel-vae
+torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp
+```
+
+The custom Bailing-MoE MLLM does not support text-encoder parallelism. `--parallel-text-encoder`
+and `--parallel-text` fail explicitly for these examples. The default repeated-block compile path
+is supported; it does not compile the MLLM or the direct-condition hook.
 
 ## Custom Model Path
 

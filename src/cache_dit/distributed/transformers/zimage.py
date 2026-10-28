@@ -29,6 +29,7 @@ from .register import (
 logger = init_logger(__name__)
 
 
+@ContextParallelismPlannerRegister.register("MingImageTransformer2DModel")
 @ContextParallelismPlannerRegister.register("ZImageTransformer2DModel")
 class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 
@@ -129,6 +130,7 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
     return _cp_plan
 
 
+@TensorParallelismPlannerRegister.register("MingImage")
 @TensorParallelismPlannerRegister.register("Lumina2")
 @TensorParallelismPlannerRegister.register("ZImage")
 class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
@@ -152,10 +154,9 @@ class ZImageTensorParallelismPlanner(TensorParallelismPlanner):
     transformer: torch.nn.Module,
     tp_mesh: DeviceMesh,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
-    class_name = transformer.__class__.__name__
-
-    attn_mod_name = "attention" if class_name.startswith("ZImage") else "attn"
-    ff_linear_name = "w" if class_name.startswith("ZImage") else "linear_"
+    first_block = transformer.layers[0]
+    attn_mod_name = "attention" if hasattr(first_block, "attention") else "attn"
+    ff_linear_name = "w" if hasattr(first_block.feed_forward, "w1") else "linear_"
 
     def tp_shard_block(block, tp_size):
       attn = getattr(block, attn_mod_name)

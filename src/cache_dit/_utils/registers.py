@@ -131,6 +131,8 @@ class ExampleInputData:
   # the source aspect ratio and crops or stretches the conditioning frame itself (MiniMax-H3's
   # resize step) would otherwise resample twice, which changes the composition it asked for.
   skip_image_resize: bool = False
+  # Preserve alpha for RGBA-conditioned pipelines. Builder-only, like `skip_image_resize`.
+  keep_alpha: bool = False
   # Forward `--num-inference-steps` to the pipeline. Pipelines that schedule their own passes with
   # an explicit sigma list (LTX-2.5 `LTX2DFRPipeline`) take no such argument, so they clear it.
   # Builder-only, like `skip_image_resize`: `data()` pops it before forwarding.
@@ -179,6 +181,7 @@ class ExampleInputData:
     # `is not None` filter below: forwarding `skip_image_resize=False` to the pipeline would be a
     # `TypeError` for models that never declare it.
     skip_image_resize = data.pop("skip_image_resize", False)
+    keep_alpha = data.pop("keep_alpha", False)
     use_num_inference_steps = data.pop("use_num_inference_steps", True)
     # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
     # forwarded separately, after the arg overrides.
@@ -247,7 +250,10 @@ class ExampleInputData:
                        "this CLI cannot express: drop the mask, or resize both here.")
 
     if args.image_path is not None:
-      image = load_image(args.image_path).convert("RGB")
+      if keep_alpha:
+        image = load_image(args.image_path, convert_method=lambda value: value.convert("RGBA"))
+      else:
+        image = load_image(args.image_path).convert("RGB")
       if isinstance(input_data.get("image"), list):
         if len(input_data["image"]) > 1:
           logger.warning("Overriding multiple input images with a single image "
@@ -548,6 +554,8 @@ class ExampleInitConfig:
   extra_optimize_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
   # For third-party models that require trust_remote_code
   trust_remote_code: bool = False
+  # Preserve every image returned by multi-output pipelines instead of selecting the first.
+  preserve_image_list: bool = False
   # Modular pipelines only: factory of the pipeline blocks. Needed for checkpoints whose repo has no
   # `modular_model_index.json` (e.g. Qwen-Image 2.1), so `from_pretrained` cannot resolve the blocks.
   modular_blocks_factory: Optional[Callable[[], Any]] = None
@@ -939,7 +947,9 @@ class Example:
 
     if self.init_config.task_type in [ExampleType.T2I, ExampleType.IE2I]:
       images = output.images if hasattr(output, "images") else output
-      output_data.image = images[0] if isinstance(images, list) else images
+      if isinstance(images, list) and not self.init_config.preserve_image_list:
+        images = images[0]
+      output_data.image = images
     elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
       parsed = parse_audio_video_output(output,
                                         self.init_config.task_type,

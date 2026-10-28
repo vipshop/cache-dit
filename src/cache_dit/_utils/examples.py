@@ -84,6 +84,8 @@ __all__ = [
   "ideogram4_example",
   "moss_image_sft_example",
   "moss_image_base_example",
+  "ming_image_design_example",
+  "ming_image_design_layer_example",
   "nucleus_image_example",
   "kandinsky6_ti2va_example",
 ]
@@ -154,6 +156,8 @@ _env_path_mapping = {
   "IDEOGRAM4_DIR": "ideogram-ai/ideogram-4-fp8",
   "MOSS_IMAGE_SFT_DIR": "OpenMOSS-Team/MOSS-Image-SFT",
   "MOSS_IMAGE_BASE_DIR": "OpenMOSS-Team/MOSS-Image-Base",
+  "MING_IMAGE_DESIGN_DIR": "inclusionAI/Ming-Image-0.1-Design",
+  "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
 }
@@ -3413,6 +3417,48 @@ def moss_image_sft_example(args: argparse.Namespace, **kwargs) -> Example:
 @ExampleRegister.register("moss_image_base", default="OpenMOSS-Team/MOSS-Image-Base")
 def moss_image_base_example(args: argparse.Namespace, **kwargs) -> Example:
   return _moss_image_example(args, "OpenMOSS-Team/MOSS-Image-Base")
+
+
+def _ming_image_example(args: argparse.Namespace, layered: bool) -> Example:
+  from ..models.pipelines.ming_image import MingImagePipeline
+
+  if getattr(args, "parallel_text_encoder", False):
+    raise NotImplementedError("Ming-Image's custom Bailing-MoE MLLM does not support TE-P.")
+  default = ("inclusionAI/Ming-Image-0.1-Design-Layer"
+             if layered else "inclusionAI/Ming-Image-0.1-Design")
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.IE2I if layered else ExampleType.T2I,
+      model_name_or_path=_path(default, args=args),
+      pipeline_class=MingImagePipeline,
+      preserve_image_list=layered,
+      extra_optimize_kwargs={"enable_separate_cfg": False},
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        "Decompose this design into 4 editable RGBA layers." if layered else
+        "A minimal transparent sticker of a red paper airplane, centered on a blank background."),
+      height=1024,
+      width=1024,
+      num_inference_steps=12,
+      guidance_scale=2.0 if layered else 1.0,
+      keep_alpha=True,
+      skip_image_resize=True,
+      extra_input_kwargs={"num_layers": 4} if layered else {},
+    ),
+  )
+
+
+@ExampleRegister.register("ming_image_design", default="inclusionAI/Ming-Image-0.1-Design")
+def ming_image_design_example(args: argparse.Namespace, **kwargs) -> Example:
+  return _ming_image_example(args, layered=False)
+
+
+@ExampleRegister.register("ming_image_design_layer",
+                          default="inclusionAI/Ming-Image-0.1-Design-Layer")
+def ming_image_design_layer_example(args: argparse.Namespace, **kwargs) -> Example:
+  return _ming_image_example(args, layered=True)
 
 
 _NUCLEUS_IMAGE_PROMPT = ("A studio photograph of an orange cat holding a wooden sign that says "

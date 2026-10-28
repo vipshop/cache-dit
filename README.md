@@ -114,7 +114,6 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | Image | Joy-Image| [`JoyImageEditTransformer3DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Krea-2 | [`Krea2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Ideogram 4 🔥 | [`Ideogram4Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | MOSS-Image 🔥 | [`MOSSImageTransformer`](src/cache_dit/models/pipelines/moss_image.py) | 2 | ✔️/✔️/✖️/✖️ |
 | Image | Bria-Fibo | [`BriaFiboTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Bria-Fibo 2.0 🔥 | [`BriaFibo2Transformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | NucleusMoE-Image 🔥 | [`NucleusMoEImageTransformer2DModel`](src/cache_dit/caching/block_adapters/adapters.py) | 1 | ✔️/✔️/✔️/✔️ |
@@ -175,6 +174,20 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
 
+</div>
+
+<div align="center">
+  <p> <h2>🚀Built-in Pipelines Beyond 🤗Diffusers</h2>
+</div>
+
+<div align="center">
+
+| Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
+|:----------|:----------------|:-------------|:----------|:-------|
+| **Image** | MOSS-Image (Base/SFT) 🔥 | [`MOSSImageTransformer`](src/cache_dit/models/pipelines/moss_image.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 (Design/...) 🔥 | [`MingImageTransformer2DModel`](src/cache_dit/models/pipelines/ming_image/transformer.py) | 2 | ✔️/✔️/✔️/✔️ |
+
+<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
 
 ## 🤖Agentic Workflows  
