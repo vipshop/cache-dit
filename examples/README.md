@@ -191,10 +191,9 @@ torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel ulysses --
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text --cache
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
 torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
-# Qwen-Image 2.1: Ulysses only. The text/condition-image prefix is replicated on every rank and
-# only the target image tokens are sharded, so Ring (which would split the block-causal mask) and
-# `--ulysses-anything` (uneven shards) are rejected. target tokens must divide by cp_size, e.g.
-# 1024x1024 -> 4096 tokens.
+# Qwen-Image 2.1: Ulysses only. Prefix and target tokens are sharded as one sequence with tail
+# padding, and prefix KV caches are head-sharded. Ring and `--ulysses-anything` are rejected.
+# Sequence lengths need not divide by cp_size; the local head count after TP must divide by it.
 torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel ulysses --cache
 torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel tp --parallel-text --parallel-vae --cache
 ```

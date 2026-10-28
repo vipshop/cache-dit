@@ -2,7 +2,6 @@ import torch
 from typing import Dict, List, Tuple
 
 from diffusers import QwenImage21Transformer2DModel
-from diffusers.models.attention_dispatch import dispatch_attention_fn
 from diffusers.models.transformers.transformer_qwenimage21 import (
   QwenImage21AttnProcessor,
   QwenImage21FlexAttnProcessor,
@@ -25,6 +24,7 @@ from .register import (
   TensorParallelismPlannerRegister,
 )
 from ..config import ParallelismConfig
+from ...attention import _dispatch_attention_fn
 from ...logger import init_logger
 
 logger = init_logger(__name__)
@@ -33,16 +33,14 @@ _ATTN_PROCESSOR_PATCHED = False
 
 
 def _patch_attn_processor_for_cp() -> None:
-  """Route the default attention processor through the replicated-prefix CP path.
+  """Run full-sequence Ulysses attention with head-sharded prefix KV caches.
 
-  The layout follows sglang's native Qwen-Image 2.1 DiT and vllm-omni's `joint_strategy="front"`:
-  the text/condition-image prefix is replicated on every rank and only the target image tokens are
-  sharded, so the block-causal segments stay valid and never need reordering. Prefix rows are
-  recomputed redundantly on each rank; target rows attend to `[prefix ; target gathered]`, which is
-  exactly the full attention they get without CP.
+  Q/K/V are projected on local sequence shards, then redistributed from
+  `[B, S_LOCAL, H_GLOBAL, D]` to `[B, S_GLOBAL, H_LOCAL, D]`. Block-causal masks and segments keep
+  their original global indices. The output all-to-all restores the block's local sequence layout.
 
-  The gathered variant must not communicate twice: cache-dit installs `_parallel_config` on every
-  processor, so each dispatch has to opt out with `parallel_config=None`.
+  Every dispatch opts out with `parallel_config=None` because communication is explicit here.
+  `cp_meta` contains `(communicator, global_sequence_padding, ulysses_degree)`.
   """
 
   global _ATTN_PROCESSOR_PATCHED
@@ -78,14 +76,51 @@ def _patch_attn_processor_for_cp() -> None:
         key_valid=key_valid,
       )
 
-    comm, q_prefix, kv_prefix = cp_meta
-    query, key, value, seq_len_q = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb,
-                                                            layer_cache, kv_cache_mode,
-                                                            cache_write_slice)
+    comm, cp_pad, cp_size = cp_meta
+    query, key, value, _ = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb, None, None,
+                                                    None)
+    local_heads = query.shape[2]
+    if local_heads % cp_size != 0:
+      raise NotImplementedError(
+        f"Qwen-Image 2.1 CP requires the local attention head count after TP ({local_heads}) "
+        f"to be divisible by ulysses_size ({cp_size}).")
 
-    outputs = []
-    if q_prefix > 0:
-      # Prefix rows are identical on every rank: reuse the block-causal segments as-is.
+    # Metadata contains the sequence length on some communication backends; prefill and cached
+    # steps have different lengths, so refresh it for every attention call.
+    comm.init_meta(query)
+    query_wait = comm.send_q(query)
+    key_wait = comm.send_k(key)
+    value_wait = comm.send_v(value)
+    query = query_wait.wait()
+    key = key_wait.wait()
+    value = value_wait.wait()
+
+    seq_len = query.shape[1] - cp_pad
+    query = query[:, :seq_len]
+    key = key[:, :seq_len]
+    value = value[:, :seq_len]
+
+    if layer_cache is not None:
+      if kv_cache_mode == "extract" and cache_write_slice is not None:
+        layer_cache.store(key[:, cache_write_slice].clone(), value[:, cache_write_slice].clone())
+      elif kv_cache_mode == "cached":
+        cached_k, cached_v = layer_cache.get()
+        key = torch.cat([cached_k, key], dim=1)
+        value = torch.cat([cached_v, value], dim=1)
+
+    if segments is None:
+      hidden_states = _dispatch_attention_fn(
+        query,
+        key,
+        value,
+        attn_mask=attention_mask,
+        dropout_p=0.0,
+        backend=self._attention_backend,
+        parallel_config=None,
+      )
+    else:
+      prefix_len = segments[-1][1] if segments else 0
+      outputs = []
       for start, end, is_text in segments:
         seg_mask = None
         if is_text:
@@ -101,7 +136,7 @@ def _patch_attn_processor_for_cp() -> None:
           seg_key_valid = key_valid[:, None, None, :end]
           seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
         outputs.append(
-          dispatch_attention_fn(
+          _dispatch_attention_fn(
             query[:, start:end],
             key[:, :end],
             value[:, :end],
@@ -110,36 +145,24 @@ def _patch_attn_processor_for_cp() -> None:
             backend=None,
             parallel_config=None,
           ))
-
-    if seq_len_q > q_prefix:
-      # Target rows: gather the target K/V of every rank, keep the replicated prefix in front.
-      # K and V share one collective (`torch.stack` + gather on the sequence axis).
-      kv_local = torch.stack([key[:, kv_prefix:], value[:, kv_prefix:]], dim=0)
-      kv_full = comm.all_gather_tensor_dim(kv_local, dim=2)
-      key_full, value_full = kv_full[0], kv_full[1]
-      key_all = torch.cat([key[:, :kv_prefix], key_full], dim=1)
-      value_all = torch.cat([value[:, :kv_prefix], value_full], dim=1)
-      target_mask = None
-      if key_valid is not None:
-        target_mask = torch.cat(
-          [
-            key_valid[:, :kv_prefix],
-            key_valid.new_ones(key_valid.shape[0], key_full.shape[1]),
-          ],
-          dim=1,
-        )[:, None, None, :]
       outputs.append(
-        dispatch_attention_fn(
-          query[:, q_prefix:],
-          key_all,
-          value_all,
-          attn_mask=target_mask,
+        _dispatch_attention_fn(
+          query[:, prefix_len:],
+          key,
+          value,
+          attn_mask=None if key_valid is None else key_valid[:, None, None, :],
           dropout_p=0.0,
           backend=None,
           parallel_config=None,
         ))
+      hidden_states = torch.cat(outputs, dim=1)
 
-    hidden_states = torch.cat(outputs, dim=1)[:, :seq_len_q]
+    if cp_pad:
+      pad_shape = list(hidden_states.shape)
+      pad_shape[1] = cp_pad
+      hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(pad_shape)], dim=1)
+    assert hidden_states.shape[1] % cp_size == 0
+    hidden_states = comm.send_o(hidden_states).wait()
     hidden_states = hidden_states.flatten(2, 3).type_as(query)
     hidden_states = attn.to_out[0](hidden_states)
     return attn.to_out[1](hidden_states)
@@ -150,17 +173,15 @@ def _patch_attn_processor_for_cp() -> None:
 
 @ContextParallelismPlannerRegister.register("QwenImage21")
 class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
-  """Context parallelism for Qwen-Image 2.1: replicated prefix, sharded target tokens.
+  """Context parallelism for Qwen-Image 2.1 with sharded prefix and target tokens.
 
-  The joint sequence is `[text + condition images, target image]` and its attention is block-causal,
-  where target rows already attend to the whole sequence. Sharding only the target tail therefore
-  keeps every mask valid, and the prefix KV cache stays complete on every rank. The split and the
-  gather live in `QwenImage21PatchFunctor` (a declarative hook cannot express a non-uniform
-  boundary), so this planner returns an empty hook plan.
+  The current sequence is padded and sharded before every block. Attention redistributes Q/K/V to
+  full-sequence/local-head layout, so block-causal segments keep their global indices and the prefix
+  KV cache stores only this rank's heads. The split/gather lives in `QwenImage21PatchFunctor`, so
+  this planner returns an empty hook plan.
 
-  Ring is rejected: it would split the block-causal mask. `ulysses_anything` is rejected for the
-  same reason (uneven shards break the segment indices). `QwenImage21FlexAttnProcessor` is rejected
-  because its flex `BlockMask` describes the full sequence and the flex kernel never communicates.
+  Ring is rejected: it would split the block-causal mask. `ulysses_anything` and flex attention are
+  rejected because this model-specific processor implements the standard padded Ulysses path only.
   """
 
   def _apply(
@@ -175,9 +196,8 @@ class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
         "Use `--parallel ulysses` instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "ulysses_anything is not supported for Qwen-Image 2.1: the block-causal segments assume "
-        "evenly sized target shards. Choose a cp_size that divides the target token count.")
-
+        "ulysses_anything is not supported for Qwen-Image 2.1: use the standard padded Ulysses "
+        "path with `--parallel ulysses` instead.")
     flex_blocks = [
       block for block in transformer.transformer_blocks
       if isinstance(block.attn.processor, QwenImage21FlexAttnProcessor)
@@ -196,8 +216,8 @@ class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
       QwenImage21PatchFunctor().apply(transformer)
 
     _patch_attn_processor_for_cp()
-    logger.info("Enabled Qwen-Image 2.1 context parallelism: replicated prefix, sharded target "
-                f"tokens (ulysses_size={parallelism_config.ulysses_size}).")
+    logger.info("Enabled Qwen-Image 2.1 context parallelism: full-sequence shards with "
+                f"head-sharded prefix KV cache (ulysses_size={parallelism_config.ulysses_size}).")
 
     return {}
 

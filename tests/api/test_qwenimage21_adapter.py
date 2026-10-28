@@ -158,7 +158,7 @@ def _cp_planner():
   return QwenImage21ContextParallelismPlanner()
 
 
-def test_cp_planner_rejects_ring_and_uneven_shards():
+def test_cp_planner_rejects_ring_and_ulysses_anything():
   from cache_dit import ParallelismConfig
 
   transformer = _tiny_transformer()
@@ -223,8 +223,39 @@ def test_cp_processor_matches_stock_processor_when_not_sharded(monkeypatch):
   original_call = QwenImage21AttnProcessor.__call__
   monkeypatch.setattr(QwenImage21AttnProcessor, "__call__", original_call)
   monkeypatch.setattr(cp_module, "_ATTN_PROCESSOR_PATCHED", False)
+  dispatch_calls = []
+  original_dispatch = cp_module._dispatch_attention_fn
+
+  def tracked_dispatch(*args, **kwargs):
+    dispatch_calls.append(kwargs)
+    return original_dispatch(*args, **kwargs)
+
+  monkeypatch.setattr(cp_module, "_dispatch_attention_fn", tracked_dispatch)
+
+  class _IdentityHandle:
+
+    def __init__(self, x):
+      self.x = x
+
+    def wait(self):
+      return self.x
 
   class _IdentityComm:
+
+    def init_meta(self, x):
+      return self
+
+    def send_q(self, x):
+      return _IdentityHandle(x)
+
+    def send_k(self, x):
+      return _IdentityHandle(x)
+
+    def send_v(self, x):
+      return _IdentityHandle(x)
+
+    def send_o(self, x):
+      return _IdentityHandle(x)
 
     def all_gather_tensor_dim(self, x, dim):
       return x
@@ -243,10 +274,19 @@ def test_cp_processor_matches_stock_processor_when_not_sharded(monkeypatch):
     attn,
     hidden_states,
     segments=segments,
-    cp_meta=(_IdentityComm(), TEXT_LEN, TEXT_LEN),
+    cp_meta=(_IdentityComm(), 0, 1),
   )
 
   torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+  assert len(dispatch_calls) == 2
+  assert all(call["parallel_config"] is None for call in dispatch_calls)
+  with pytest.raises(NotImplementedError, match="local attention head count"):
+    QwenImage21AttnProcessor()(
+      attn,
+      hidden_states,
+      segments=segments,
+      cp_meta=(_IdentityComm(), 0, 3),
+    )
 
 
 def test_cached_warmup_is_bit_exact():

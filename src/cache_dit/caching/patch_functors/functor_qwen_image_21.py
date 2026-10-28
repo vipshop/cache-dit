@@ -24,20 +24,23 @@ def _cp_context(transformer: QwenImage21Transformer2DModel) -> tuple[int, int, A
   """Return `(rank, world_size, cp_config)` for the active context-parallel runtime.
 
   :param transformer: Transformer instance that may carry `_cp_config`.
-  :returns: The CP rank, the CP world size, and the runtime config (or `None` when disabled).
+  :returns: The Ulysses-local rank, CP world size, and runtime config (or `None` when disabled).
   """
 
   cp_config = getattr(transformer, "_cp_config", None)
   if cp_config is None:
     return 0, 1, None
-  world_size = int(getattr(cp_config, "_world_size", 1) or 1)
+  world_size = int(getattr(cp_config, "ulysses_degree", 1) or 1)
   if world_size <= 1:
     return 0, 1, None
-  return int(getattr(cp_config, "_rank", 0) or 0), world_size, cp_config
+  rank = getattr(cp_config, "_ulysses_local_rank", None)
+  if rank is None:
+    raise RuntimeError("Qwen-Image 2.1 CP is enabled before the Ulysses mesh rank is initialized.")
+  return int(rank), world_size, cp_config
 
 
 def _cp_comm(transformer: QwenImage21Transformer2DModel):
-  """Return the lazily created all-gather communicator bound to the CP group.
+  """Return the lazily created Ulysses communicator bound to the CP group.
 
   :param transformer: Transformer instance with an initialized `_cp_config`.
   :returns: The cached `_All2AllComm` instance.
@@ -53,49 +56,40 @@ def _cp_comm(transformer: QwenImage21Transformer2DModel):
     comm = _All2AllComm(cp_config)
     transformer._qwenimage21_cp_comm = comm
     transformer._qwenimage21_cp_comm_config = cp_config
-    logger.info(f"Qwen-Image 2.1 context parallelism: cp_size={cp_config._world_size}, "
-                "replicated prefix + sharded target tokens.")
+    logger.info(f"Qwen-Image 2.1 context parallelism: cp_size={cp_config.ulysses_degree}, "
+                "full-sequence shards + head-sharded prefix KV cache.")
   return comm
 
 
-def _cp_shard(x: torch.Tensor, prefix: int, rank: int, size: int, dim: int) -> torch.Tensor:
-  """Keep `prefix` entries intact and evenly shard the rest along `dim`.
+def _cp_shard(x: torch.Tensor, rank: int, size: int, dim: int) -> tuple[torch.Tensor, int]:
+  """Pad and evenly shard a sequence along `dim`.
 
   :param x: Sequence-shaped tensor.
-  :param prefix: Number of leading entries replicated on every rank.
-  :param rank: Local rank.
+  :param rank: Ulysses-local rank.
   :param size: CP world size.
   :param dim: Dimension to shard.
-  :returns: The local shard, with the replicated prefix in front.
+  :returns: The local shard and number of padding entries in the global sequence.
   """
 
-  target = x.shape[dim] - prefix
-  if target % size != 0:
-    raise ValueError(f"Target token count {target} must be divisible by cp_size {size}. "
-                     "Pick a resolution/cp_size pair whose target grid divides evenly, e.g. "
-                     "1024x1024 (4096 tokens) with cp_size 2 or 4.")
-  local = target // size
-  tail = x.narrow(dim, prefix + rank * local, local)
-  if prefix == 0:
-    return tail
-  return torch.cat([x.narrow(dim, 0, prefix), tail], dim=dim)
+  pad = (-x.shape[dim]) % size
+  if pad:
+    pad_shape = list(x.shape)
+    pad_shape[dim] = pad
+    x = torch.cat([x, x.new_zeros(pad_shape)], dim=dim)
+  local = x.shape[dim] // size
+  return x.narrow(dim, rank * local, local), pad
 
 
-def _cp_gather(x: torch.Tensor, prefix: int, comm) -> torch.Tensor:
-  """Gather the sharded tail back and keep the replicated prefix in front.
+def _cp_gather(x: torch.Tensor, seq_len: int, comm) -> torch.Tensor:
+  """Gather local sequence shards and remove global padding.
 
-  :param x: Local sequence tensor `[prefix ; local shard]`.
-  :param prefix: Number of leading replicated entries.
+  :param x: Local padded sequence shard.
+  :param seq_len: Unpadded global sequence length.
   :param comm: Communicator returned by :func:`_cp_comm`.
-  :returns: The full sequence tensor.
+  :returns: The full, unpadded sequence tensor.
   """
 
-  if x.shape[1] == prefix:
-    return x
-  tail = comm.all_gather_tensor_dim(x[:, prefix:], dim=1)
-  if prefix == 0:
-    return tail
-  return torch.cat([x[:, :prefix], tail], dim=1)
+  return comm.all_gather_tensor_dim(x, dim=1)[:, :seq_len]
 
 
 class QwenImage21PatchFunctor(PatchFunctor):
@@ -262,13 +256,6 @@ def __patch_transformer_forward__(
 
   cp_rank, cp_size, cp_config = _cp_context(self)
   cp_enabled = cp_size > 1
-  if cp_enabled:
-    target_len = image_pad_mask.shape[0] - prefix_len
-    if target_len % cp_size != 0:
-      # Fail before the block loop instead of deep inside the attention processor.
-      raise ValueError(f"Target token count {target_len} must be divisible by cp_size {cp_size}. "
-                       "Pick a cp_size whose target grid divides evenly, e.g. 1024x1024 "
-                       "(4096 tokens) with cp_size 2 or 4.")
 
   if kv_cache_mode == "cached":
     joint_hidden_states = joint_hidden_states[:, prefix_len:]
@@ -277,13 +264,6 @@ def __patch_transformer_forward__(
     attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
     cache_write_slice = None
     block_segments, block_key_valid = None, None
-    # The input holds target tokens only; the cached prefix stays replicated on every rank.
-    local_prefix, kv_prefix = 0, prefix_len
-    if cp_enabled:
-      # A full-length padding mask cannot be broadcast onto the locally sharded keys; the CP
-      # processor rebuilds it from the prefix part instead.
-      attention_mask = None
-      block_key_valid = None if joint_key_valid is None else joint_key_valid[:, :prefix_len]
   else:
     # `transformer_blocks` may be swapped for the cached wrapper, so read the processors
     # from the real block list that this functor captured at patch time.
@@ -297,21 +277,21 @@ def __patch_transformer_forward__(
       for processor in processors) else _qwenimage21_prefix_segments(image_ids, prefix_len))
     cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
     block_key_valid = joint_key_valid
-    local_prefix, kv_prefix = prefix_len, prefix_len
 
   # `norm_out` runs on the gathered sequence: the mask must cover whatever the blocks return,
   # which is the full joint sequence on prefill and target-only rows on cached steps.
   modulation_mask_full = modulation_mask
 
   cp_meta = None
+  cp_seq_len = joint_hidden_states.shape[1]
   if cp_enabled:
-    # Replicated prefix + evenly sharded target tokens: target rows attend to the whole
-    # sequence anyway, so no mask has to be reordered across ranks.
-    joint_hidden_states = _cp_shard(joint_hidden_states, local_prefix, cp_rank, cp_size, dim=1)
-    rotary_emb = _cp_shard(rotary_emb, local_prefix, cp_rank, cp_size, dim=0)
+    joint_hidden_states, cp_pad = _cp_shard(joint_hidden_states, cp_rank, cp_size, dim=1)
+    rotary_emb, rotary_pad = _cp_shard(rotary_emb, cp_rank, cp_size, dim=0)
+    assert rotary_pad == cp_pad
     if modulation_mask is not None:
-      modulation_mask = _cp_shard(modulation_mask, local_prefix, cp_rank, cp_size, dim=0)
-    cp_meta = (_cp_comm(self), local_prefix, kv_prefix)
+      modulation_mask, mask_pad = _cp_shard(modulation_mask, cp_rank, cp_size, dim=0)
+      assert mask_pad == cp_pad
+    cp_meta = (_cp_comm(self), cp_pad, cp_size)
 
   # Iterate the attribute, not the captured list: cache-dit swaps `transformer_blocks`
   # for the cached wrapper and the wrapper drives the real blocks internally.
@@ -348,7 +328,7 @@ def __patch_transformer_forward__(
 
   if cp_enabled:
     # The pipeline slices `noise_pred[:, -latents.size(1):]`, so hand back the full sequence.
-    joint_hidden_states = _cp_gather(joint_hidden_states, local_prefix, cp_meta[0])
+    joint_hidden_states = _cp_gather(joint_hidden_states, cp_seq_len, cp_meta[0])
 
   joint_hidden_states = self.norm_out(joint_hidden_states, temb, modulation_mask_full)
   output = self.proj_out(joint_hidden_states)
