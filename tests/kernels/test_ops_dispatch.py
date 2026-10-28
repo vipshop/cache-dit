@@ -1,33 +1,40 @@
 import importlib
 
 import pytest
-import torch
 
+import cache_dit.kernels as kernels
 import cache_dit.kernels._comm as comm_ops
-from cache_dit.kernels import ops
+import cache_dit.kernels._merge_states as merge_ops
+import cache_dit.kernels._svdquant as svdq_ops
 
 
 @pytest.mark.parametrize(
-  "op_name,args",
+  "op_name,source_module",
   [
-    ("fp8_comm_per_token_quant", (torch.empty(0), )),
-    ("fp8_comm_per_token_dequant", (torch.empty(0), )),
-    ("fp8_comm_qkv_permute_quant", (torch.empty(0), )),
-    ("fp8_comm_qkv_permute_dequant", (torch.empty(0), )),
+    ("fp8_comm_per_token_quant", comm_ops),
+    ("fp8_comm_per_token_dequant", comm_ops),
+    ("fp8_comm_qkv_permute_quant", comm_ops),
+    ("fp8_comm_qkv_permute_dequant", comm_ops),
+    ("fused_merge_attn_states", merge_ops),
+    ("svdq_get_load_error", svdq_ops),
+    ("svdq_extension_is_available", svdq_ops),
+    ("svdq_gemm_w4a4", svdq_ops),
+    ("svdq_gemm_w4a4_v2", svdq_ops),
+    ("svdq_gemm_w4a4_ext", svdq_ops),
+    ("svdq_quantize_w4a4_act_fuse_lora", svdq_ops),
+    ("svdq_quantize_w4a4_wgt", svdq_ops),
+    ("svdq_set_faster_i2f_mode", svdq_ops),
+    ("svdq_set_log_level", svdq_ops),
   ],
 )
-def test_public_ops_dispatch_directly_to_cuda(
-  op_name: str,
-  args: tuple[torch.Tensor, ...],
-  monkeypatch: pytest.MonkeyPatch,
-) -> None:
-  sentinel = object()
+def test_public_api_is_reexported_from_domain_module(op_name: str, source_module) -> None:
+  assert getattr(kernels, op_name) is getattr(source_module, op_name)
 
-  def fake_cuda_op(*_args):
-    return sentinel
 
-  monkeypatch.setattr(comm_ops, op_name, fake_cuda_op)
-  assert getattr(ops, op_name)(*args) is sentinel
+def test_public_api_matches_all() -> None:
+  assert sorted(kernels.__all__) == sorted(name for name in vars(kernels)
+                                           if not name.startswith("_") and name != "kernels")
+  assert all(getattr(kernels, name) is not None for name in kernels.__all__)
 
 
 @pytest.mark.parametrize(
@@ -43,17 +50,10 @@ def test_public_ops_dispatch_directly_to_cuda(
   ],
 )
 def test_backend_dispatch_layer_removed(symbol: str) -> None:
-  assert not hasattr(ops, symbol)
+  assert not hasattr(kernels, symbol)
 
 
-@pytest.mark.parametrize("module", ["backend", "_cuda_ops", "_ops_registery"])
+@pytest.mark.parametrize("module", ["backend", "ops", "_cuda_ops", "_ops_registery"])
 def test_removed_dispatch_modules(module: str) -> None:
   with pytest.raises(ModuleNotFoundError):
     importlib.import_module(f"cache_dit.kernels.{module}")
-
-
-def test_merge_states_wrapper_is_dedicated() -> None:
-  from cache_dit.kernels import _merge_states
-
-  assert ops.fused_merge_attn_states is _merge_states.fused_merge_attn_states
-  assert not hasattr(comm_ops, "fused_merge_attn_states")
