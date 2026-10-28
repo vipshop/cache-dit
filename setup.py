@@ -21,6 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 RELEASE_FLAVOR_ENV = "CACHE_DIT_RELEASE_FLAVOR"
 VERSION_WRITE_TO_ENV = "CACHE_DIT_VERSION_WRITE_TO"
 SVDQUANT_BUILD_FLAG = "CACHE_DIT_BUILD_SVDQUANT"
+COMM_BUILD_FLAG = "CACHE_DIT_BUILD_COMM"
 WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # Distribution name is intentionally not managed via a PACKAGE_NAME env var in
 # setup.py. Under PEP 621, setuptools reads the project name from the active
@@ -31,13 +32,11 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # release build runs in.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
-# sm100 (Blackwell B100/B200, CC 10.0) is not included in the default
-# target list because the NVFP4 block-scaled MMA instruction used by the
-# SVDQuant FP4 kernel requires sm_120a or higher (PTX ISA, warp-level mma
-# Target ISA Notes: ".kind::mxf4nvf4 and .kind::mxf4 are supported on
-# sm_120a and sm_121a"). INT4 kernels work correctly on sm100. Users who
-# only need INT4 kernels can build for sm100 explicitly via
-# CACHE_DIT_CUDA_ARCH_LIST=100 or TORCH_CUDA_ARCH_LIST=100.
+# Default builds cover Ada (89), Hopper architecture-specific (90a), Blackwell
+# datacenter (100), and Blackwell consumer architecture-specific (120a). The
+# SVDQuant extension filters out Hopper because its INT4 kernels require >=sm80
+# and exclude sm90; its FP4 kernels still require sm120a or newer at runtime.
+DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -50,12 +49,37 @@ CUDA_ARCH_ALIASES = {
 }
 
 
-def _normalize_svdquant_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -> str:
+def _normalize_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -> str:
   if sm == "120" and support_sm120:
     return "120a"
   if sm == "121" and support_sm121:
     return "121a"
   return sm
+
+
+def _default_cuda_arch_targets(
+  *,
+  support_sm90a: bool,
+  support_sm100: bool,
+  support_sm120: bool,
+) -> list[str]:
+  """Return the default CUDA targets supported by the active nvcc toolchain.
+
+  :param support_sm90a: Whether nvcc supports the Hopper architecture-specific target.
+  :param support_sm100: Whether nvcc supports the Blackwell datacenter target.
+  :param support_sm120: Whether nvcc supports the Blackwell consumer architecture-specific
+    target.
+  :returns: The supported subset of `89`, `90a`, `100`, and `120a`.
+  """
+
+  targets = ["89"]
+  if support_sm90a:
+    targets.append("90a")
+  if support_sm100:
+    targets.append("100")
+  if support_sm120:
+    targets.append("120a")
+  return targets
 
 
 def _is_supported_svdquant_sm_target(sm: str) -> bool:
@@ -65,6 +89,21 @@ def _is_supported_svdquant_sm_target(sm: str) -> bool:
 
   capability = int(normalized)
   return capability >= 80 and capability != 90
+
+
+def _is_supported_comm_sm_target(sm: str) -> bool:
+  """Return whether a normalized SM target can host the communication kernels.
+
+  :param sm: Normalized SM target such as `89`, `90`, or `120a`.
+  :returns: `True` when the target is `>=sm89`. Unlike SVDQuant, Hopper (sm90) is
+    supported.
+  """
+
+  normalized = sm.removesuffix("a")
+  if not normalized.isdigit():
+    return False
+
+  return int(normalized) >= 89
 
 
 def _env_flag(name: str) -> bool:
@@ -94,16 +133,29 @@ def _should_build_svdquant() -> bool:
   return _env_flag(SVDQUANT_BUILD_FLAG)
 
 
-if _should_build_svdquant():
+def _should_build_comm() -> bool:
+  """Return whether the optional communication extension takes part in the build.
+
+  A full `CACHE_DIT_BUILD_SVDQUANT=1` build ships both CUDA extensions, so the
+  SVDQuant flag also enables the communication extension.
+
+  :returns: `True` when either build flag requests the communication extension.
+  """
+
+  return _env_flag(COMM_BUILD_FLAG) or _should_build_svdquant()
+
+
+if _should_build_svdquant() or _should_build_comm():
   try:
     import torch
     from packaging import version as packaging_version
     from torch.utils.cpp_extension import CUDA_HOME, BuildExtension, CUDAExtension
   except ImportError as exc:
     raise RuntimeError(
-      "Building the optional SVDQuant extension requires `torch` and `packaging` "
+      "Building the optional Cache-DiT CUDA extensions requires `torch` and `packaging` "
       "to be installed in the active environment. Run `conda activate cdit` and "
       "initialize submodules with `git submodule update --init --recursive --force`, then install with "
+      "`CACHE_DIT_BUILD_COMM=1 python3 -m pip install -e . --no-build-isolation` or "
       "`CACHE_DIT_BUILD_SVDQUANT=1 python3 -m pip install -e . --no-build-isolation`.") from exc
 else:
   torch = None
@@ -111,6 +163,29 @@ else:
   CUDA_HOME = None
   BuildExtension = None
   CUDAExtension = None
+
+if BuildExtension is None:
+  CacheDiTBuildExtension = None
+else:
+
+  class CacheDiTBuildExtension(BuildExtension):
+    """Merge the per-toolchain compiler flag buckets before the extensions build.
+
+    `CUDAExtension` only forwards the `cxx` and `nvcc` buckets to the compiler, so the
+    `gcc`, `msvc`, and `nvcc_msvc` buckets declared by the extension definitions are
+    folded into those two buckets here.
+    """
+
+    def build_extensions(self):
+      for ext in self.extensions:
+        ext.extra_compile_args.setdefault("cxx", [])
+        ext.extra_compile_args.setdefault("nvcc", [])
+        if self.compiler.compiler_type == "msvc":
+          ext.extra_compile_args["cxx"] += ext.extra_compile_args.pop("msvc", [])
+          ext.extra_compile_args["nvcc"] += ext.extra_compile_args.pop("nvcc_msvc", [])
+        else:
+          ext.extra_compile_args["cxx"] += ext.extra_compile_args.pop("gcc", [])
+      super().build_extensions()
 
 
 def _ensure_spdlog_submodule() -> None:
@@ -183,13 +258,28 @@ def _missing_svdquant_sources() -> list[str]:
   ]
 
 
+def _required_comm_sources() -> list[str]:
+  return [
+    "csrc/kernels/comm/comm_ops.cpp",
+    "csrc/kernels/comm/fp8_comm.cu",
+    "csrc/kernels/attn/merge_states.cu",
+  ]
+
+
+def _missing_comm_sources() -> list[str]:
+  return [
+    relative_path for relative_path in _required_comm_sources()
+    if not (ROOT_DIR / relative_path).exists()
+  ]
+
+
 def _get_nvcc_version(cuda_home: str | None) -> str:
   nvcc_path = path.join(cuda_home, "bin", "nvcc") if cuda_home else "nvcc"
   try:
     nvcc_output = subprocess.check_output([nvcc_path, "--version"]).decode()
   except (OSError, subprocess.CalledProcessError) as exc:
     raise RuntimeError(
-      "`CACHE_DIT_BUILD_SVDQUANT=1` was set, but `nvcc` was not found. "
+      "A Cache-DiT CUDA extension build was requested, but `nvcc` was not found. "
       "Activate the CUDA toolchain inside `conda activate cdit` before building.") from exc
 
   match = re.search(r"release (\d+\.\d+), V(\d+\.\d+\.\d+)", nvcc_output)
@@ -261,13 +351,15 @@ def _get_sm_targets() -> list[str]:
   assert torch is not None
 
   nvcc_version = _get_nvcc_version(CUDA_HOME)
+  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
+  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
   explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
   if explicit_arch_list:
     raw_targets = [
-      _normalize_svdquant_sm_target(
+      _normalize_sm_target(
         sm,
         support_sm120=support_sm120,
         support_sm121=support_sm121,
@@ -286,7 +378,7 @@ def _get_sm_targets() -> list[str]:
   else:
     sm_targets = []
 
-  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "FAST").upper()
+  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "ALL").upper()
   if build_mode not in {"FAST", "ALL"}:
     raise RuntimeError(
       f"Unsupported CACHE_DIT_SVDQUANT_BUILD_MODE={build_mode!r}. Expected 'FAST' or 'ALL'.")
@@ -295,7 +387,7 @@ def _get_sm_targets() -> list[str]:
   ) and torch.cuda.device_count() > 0:
     for device_index in range(torch.cuda.device_count()):
       capability = torch.cuda.get_device_capability(device_index)
-      sm = _normalize_svdquant_sm_target(
+      sm = _normalize_sm_target(
         f"{capability[0]}{capability[1]}",
         support_sm120=support_sm120,
         support_sm121=support_sm121,
@@ -303,11 +395,13 @@ def _get_sm_targets() -> list[str]:
       if sm not in sm_targets:
         sm_targets.append(sm)
   elif not sm_targets:
-    sm_targets = ["80", "86", "89"]
-    if support_sm120:
-      sm_targets.append("120a")
-    if support_sm121:
-      sm_targets.append("121a")
+    sm_targets = [
+      sm for sm in _default_cuda_arch_targets(
+        support_sm90a=support_sm90a,
+        support_sm100=support_sm100,
+        support_sm120=support_sm120,
+      ) if _is_supported_svdquant_sm_target(sm)
+    ]
 
   unsupported_targets = [sm for sm in sm_targets if not _is_supported_svdquant_sm_target(sm)]
   if unsupported_targets:
@@ -317,6 +411,69 @@ def _get_sm_targets() -> list[str]:
 
   if not sm_targets:
     raise RuntimeError("No CUDA SM targets were resolved for the SVDQuant extension build.")
+
+  return sm_targets
+
+
+def _get_comm_sm_targets() -> list[str]:
+  """Resolve the CUDA SM targets used to compile the communication extension.
+
+  The communication kernels are the only requirement here, so the filter keeps every target `>=sm89`
+  and, unlike SVDQuant, keeps Hopper (sm90). Targets that cannot host the kernels are dropped
+  instead of raising, so that a build requested for other accelerators still succeeds.
+
+  :returns: The resolved SM targets, e.g. `["89", "90", "120a"]`, or an empty list when none of the
+    requested targets can host the communication kernels.
+  """
+
+  assert packaging_version is not None
+  assert CUDA_HOME is not None
+  assert torch is not None
+
+  nvcc_version = _get_nvcc_version(CUDA_HOME)
+  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
+  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
+  support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
+  support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
+
+  explicit_arch_list = os.getenv("CACHE_DIT_CUDA_ARCH_LIST") or os.getenv("TORCH_CUDA_ARCH_LIST")
+  sm_targets: list[str] = []
+  if explicit_arch_list:
+    arch_list_env = ("CACHE_DIT_CUDA_ARCH_LIST"
+                     if os.getenv("CACHE_DIT_CUDA_ARCH_LIST") else "TORCH_CUDA_ARCH_LIST")
+    raw_targets = [
+      _normalize_sm_target(
+        sm,
+        support_sm120=support_sm120,
+        support_sm121=support_sm121,
+      ) for sm in _parse_arch_list(explicit_arch_list)
+    ]
+    sm_targets = [sm for sm in raw_targets if _is_supported_comm_sm_target(sm)]
+    skipped = [sm for sm in raw_targets if sm not in sm_targets]
+    if skipped:
+      print(f"[cache-dit] Comm: skipping SM targets below sm89 from {arch_list_env}: "
+            f"{', '.join(skipped)}.")
+  elif os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "ALL").upper() == "FAST" and \
+      torch.cuda.is_available() and torch.cuda.device_count() > 0:
+    for device_index in range(torch.cuda.device_count()):
+      capability = torch.cuda.get_device_capability(device_index)
+      sm = _normalize_sm_target(
+        f"{capability[0]}{capability[1]}",
+        support_sm120=support_sm120,
+        support_sm121=support_sm121,
+      )
+      if sm not in sm_targets:
+        sm_targets.append(sm)
+    skipped = [sm for sm in sm_targets if not _is_supported_comm_sm_target(sm)]
+    if skipped:
+      print(f"[cache-dit] Comm: skipping detected SM targets below sm89: {', '.join(skipped)}.")
+      sm_targets = [sm for sm in sm_targets if _is_supported_comm_sm_target(sm)]
+  else:
+    sm_targets = _default_cuda_arch_targets(
+      support_sm90a=support_sm90a,
+      support_sm100=support_sm100,
+      support_sm120=support_sm120,
+    )
 
   return sm_targets
 
@@ -334,7 +491,7 @@ def _require_min_cuda_for_cu13_release() -> None:
 
 def _get_svdquant_extension():
   if not _should_build_svdquant():
-    return [], {}
+    return []
 
   _ensure_spdlog_submodule()
   _require_min_cuda_for_cu13_release()
@@ -348,21 +505,7 @@ def _get_svdquant_extension():
       "`CACHE_DIT_BUILD_SVDQUANT=1` was set, but the migrated native source tree is incomplete. "
       f"Missing files under {ROOT_DIR}: {preview}")
 
-  assert BuildExtension is not None
   assert CUDAExtension is not None
-
-  class CacheDiTBuildExtension(BuildExtension):
-
-    def build_extensions(self):
-      for ext in self.extensions:
-        ext.extra_compile_args.setdefault("cxx", [])
-        ext.extra_compile_args.setdefault("nvcc", [])
-        if self.compiler.compiler_type == "msvc":
-          ext.extra_compile_args["cxx"] += ext.extra_compile_args.pop("msvc", [])
-          ext.extra_compile_args["nvcc"] += ext.extra_compile_args.pop("nvcc_msvc", [])
-        else:
-          ext.extra_compile_args["cxx"] += ext.extra_compile_args.pop("gcc", [])
-      super().build_extensions()
 
   sm_targets = _get_sm_targets()
   gcc_flags = [
@@ -429,7 +572,114 @@ def _get_svdquant_extension():
     },
   )
 
-  return [extension], {"build_ext": CacheDiTBuildExtension}
+  return [extension]
+
+
+def _get_comm_extension():
+  """Build the optional communication extension requested by the build flags.
+
+  :returns: A single-element list holding the `cache_dit._C_comm` extension, or an empty
+    list when the extension is not requested or cannot target this build.
+  """
+
+  if not _should_build_comm():
+    return []
+
+  _require_min_cuda_for_cu13_release()
+
+  missing_sources = _missing_comm_sources()
+  if missing_sources:
+    preview = ", ".join(missing_sources[:4])
+    if len(missing_sources) > 4:
+      preview += ", ..."
+    raise RuntimeError(
+      "The Cache-DiT communication extension was requested, but its native source tree is "
+      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
+
+  sm_targets = _get_comm_sm_targets()
+  if not sm_targets:
+    skip_reason = ("[cache-dit] Comm: no SM target >=sm89 was resolved, so the optional "
+                   "`cache_dit._C_comm` extension is skipped. Set CACHE_DIT_CUDA_ARCH_LIST "
+                   "to an explicit target list to build it.")
+    if IS_CU13_RELEASE:
+      raise RuntimeError(skip_reason)
+    print(skip_reason)
+    return []
+
+  assert CUDAExtension is not None
+
+  gcc_flags = [
+    "-DBUILD_CACHE_DIT_COMM=1",
+    "-fvisibility=hidden",
+    "-O3",
+    "-std=c++20",
+  ]
+  msvc_flags = [
+    "/DBUILD_CACHE_DIT_COMM=1",
+    "/O2",
+    "/std:c++20",
+    "/Zc:__cplusplus",
+    "/FS",
+  ]
+  # The communication kernels only need relaxed constexpr and lambda evaluation, so the
+  # SVDQuant-only fast-math and spdlog settings are intentionally left out.
+  nvcc_flags = [
+    "-DBUILD_CACHE_DIT_COMM=1",
+    "-O3",
+    "-std=c++20",
+    "-U__CUDA_NO_HALF_OPERATORS__",
+    "-U__CUDA_NO_HALF_CONVERSIONS__",
+    "-U__CUDA_NO_HALF2_OPERATORS__",
+    "-U__CUDA_NO_HALF2_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
+    "--expt-relaxed-constexpr",
+    "--expt-extended-lambda",
+  ]
+  if os.getenv("CACHE_DIT_BUILD_WHEELS", "0") == "0":
+    nvcc_flags.append("--generate-line-info")
+  for sm_target in sm_targets:
+    nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
+
+  extension = CUDAExtension(
+    name="cache_dit._C_comm",
+    sources=_required_comm_sources(),
+    include_dirs=[
+      str(ROOT_DIR / "csrc" / "kernels"),
+      str(ROOT_DIR / "csrc" / "kernels" / "comm"),
+    ],
+    extra_compile_args={
+      "gcc": gcc_flags,
+      "msvc": msvc_flags,
+      "nvcc": nvcc_flags,
+      "nvcc_msvc": [
+        "-Xcompiler",
+        "/Zc:__cplusplus",
+        "-Xcompiler",
+        "/FS",
+        "-Xcompiler",
+        "/bigobj",
+      ],
+    },
+  )
+
+  return [extension]
+
+
+def _get_extensions() -> tuple[list, dict[str, object]]:
+  """Collect every CUDA extension requested by the build flags.
+
+  :returns: The requested extensions and the shared `build_ext` cmdclass mapping.
+  """
+
+  ext_modules = [*_get_svdquant_extension(), *_get_comm_extension()]
+  if not ext_modules:
+    return [], {}
+
+  assert CacheDiTBuildExtension is not None
+  return ext_modules, {"build_ext": CacheDiTBuildExtension}
 
 
 def is_git_directory(path="."):
@@ -450,7 +700,7 @@ def my_local_scheme(version):
 
 
 _validate_release_configuration()
-EXT_MODULES, CMDCLASS = _get_svdquant_extension()
+EXT_MODULES, CMDCLASS = _get_extensions()
 USE_SCM_VERSION = {
   "version_scheme": "python-simplified-semver",
   "local_scheme": my_local_scheme,

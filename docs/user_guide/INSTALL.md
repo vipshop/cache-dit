@@ -42,6 +42,12 @@ git submodule update --init --recursive --force # init submodules
 CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
 ```
 
+The full CUDA build also includes the communication operators used by FP8 Ulysses and Ring Attention. To build only these communication operators without SVDQuant on SM89 or newer GPUs, use:
+
+```bash
+CACHE_DIT_BUILD_COMM=1 uv pip install -e . --no-deps --no-build-isolation
+```
+
 > [!WARNING]
 > `cache-dit-cu13` (the former distribution name on PyPI, last release `1.5.2`) is
 > retired: the CUDA build is now `cache-dit` itself, tagged with the local version
