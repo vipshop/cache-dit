@@ -3422,8 +3422,6 @@ def moss_image_base_example(args: argparse.Namespace, **kwargs) -> Example:
 def _ming_image_example(args: argparse.Namespace, layered: bool) -> Example:
   from ..models.pipelines.ming_image import MingImagePipeline
 
-  if getattr(args, "parallel_text_encoder", False):
-    raise NotImplementedError("Ming-Image's custom Bailing-MoE MLLM does not support TE-P.")
   default = ("inclusionAI/Ming-Image-0.1-Design-Layer"
              if layered else "inclusionAI/Ming-Image-0.1-Design")
   return Example(

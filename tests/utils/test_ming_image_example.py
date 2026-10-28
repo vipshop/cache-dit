@@ -105,6 +105,15 @@ def test_rgba_input_survives_cli_image_builder(tmp_path):
   assert data["num_layers"] == 4
 
 
-def test_parallel_text_fails_explicitly_for_custom_mllm():
-  with pytest.raises(NotImplementedError, match="does not support TE-P"):
-    ming_image_design_example(_factory_args(parallel_text_encoder=True))
+def test_parallel_text_is_supported_for_custom_mllm():
+  from cache_dit.distributed.text_encoders.planners import (
+    _activate_text_encoder_tp_planners, )
+  from cache_dit.distributed.text_encoders.register import (
+    TextEncoderTensorParallelismPlannerRegister, )
+  from cache_dit.models.pipelines.ming_image.mllm import MingImageMLLM
+
+  ming_image_design_example(_factory_args(parallel_text_encoder=True))
+  assert MingImageMLLM._cache_dit_text_encoder is True
+  _activate_text_encoder_tp_planners()
+  planner = TextEncoderTensorParallelismPlannerRegister.get_planner("MingImageMLLM")
+  assert planner.__name__ == "MingImageMLLMTensorParallelismPlanner"

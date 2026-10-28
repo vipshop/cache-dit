@@ -1,6 +1,8 @@
 """Unit tests for the Ming-Image MLLM condition extractor (tiny configs, CPU only)."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 from safetensors.torch import save_file
@@ -88,6 +90,30 @@ def tiny_config():
 def tiny_model(capture_layers=(1, 2, NUM_LAYERS)):
   torch.manual_seed(0)
   return MingImageMLLM(tiny_config(), img_gen_scales=(4, ), capture_layers=capture_layers).eval()
+
+
+def test_te_p_plan_paths_resolve_on_the_real_tiny_tree(monkeypatch):
+  from cache_dit.distributed.text_encoders.ming_image import (
+    MingImageMLLMTensorParallelismPlanner, )
+
+  model = tiny_model()
+  captured = []
+
+  def fake_parallelize_module(*, module, device_mesh, parallelize_plan):
+    captured.append((module, parallelize_plan))
+
+  monkeypatch.setattr("cache_dit.distributed.text_encoders.ming_image.parallelize_module",
+                      fake_parallelize_module)
+  monkeypatch.setattr("cache_dit.distributed.text_encoders.ming_image.maybe_empty_cache",
+                      lambda: None)
+  mesh = SimpleNamespace(get_group=lambda: SimpleNamespace(size=lambda: 2))
+
+  MingImageMLLMTensorParallelismPlanner().parallelize_text_encoder(model, mesh)
+
+  assert captured
+  for block, plan in captured:
+    for path in plan:
+      block.get_submodule(path)
 
 
 class StubTokenizer:

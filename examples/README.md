@@ -166,7 +166,7 @@ reference image aspect ratio with 16-pixel alignment.
 
 ```bash
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --cache --rdt 0.08 --ws 8
+  --model-path /PATH/TO/Ming-Image-0.1-Design --cache --rdt 0.20 --ws 8
 python3 -m cache_dit.generate ming_image_design_layer \
   --model-path /PATH/TO/Ming-Image-0.1-Design-Layer \
   --image-path /PATH/TO/reference.png --cache --rdt 0.08 --ws 8
@@ -174,12 +174,25 @@ python3 -m cache_dit.generate ming_image_design_layer \
 torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design --parallel ulysses --parallel-vae
 torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp
+  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp --parallel-text
+
+python3 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize-type float8_per_row --compile
+python3 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design --svdq-nvfp4-r64-dq --compile
+python3 -m cache_dit.generate ming_image_design \
+  --model-path /PATH/TO/Ming-Image-0.1-Design \
+  --layerwise-offload --layerwise-async-transfer --no-layerwise-text-async-transfer --compile
 ```
 
-The custom Bailing-MoE MLLM does not support text-encoder parallelism. `--parallel-text-encoder`
-and `--parallel-text` fail explicitly for these examples. The default repeated-block compile path
-is supported; it does not compile the MLLM or the direct-condition hook.
+TE-P shards fused-QKV and every dense/routed/shared expert `gate_proj`/`up_proj` with replicated
+outputs. Each expert's `down_proj`, the attention output projection, routers and the vision tower
+stay replicated so every consumer of a sharded linear still receives a complete activation. Ring
+and `--ulysses-anything` are rejected for the zero-masked Design variant because it emits a full
+padding mask; the learned-padding Design-Layer variant keeps the Z-Image behavior. TE-P is
+memory-oriented and can be slower than plain TP. For offload, keep async transfer on for the
+DiT/VAE but disable it for the 15k-submodule MLLM (`--no-layerwise-text-async-transfer`); global
+text async is much slower.
 
 ## Custom Model Path
 

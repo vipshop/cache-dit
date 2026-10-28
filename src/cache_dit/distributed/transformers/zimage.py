@@ -29,7 +29,6 @@ from .register import (
 logger = init_logger(__name__)
 
 
-@ContextParallelismPlannerRegister.register("MingImageTransformer2DModel")
 @ContextParallelismPlannerRegister.register("ZImageTransformer2DModel")
 class ZImageContextParallelismPlanner(ContextParallelismPlanner):
 
@@ -128,6 +127,34 @@ class ZImageContextParallelismPlanner(ContextParallelismPlanner):
         _ContextParallelOutput(gather_dim=1, expected_dims=3),
       }
     return _cp_plan
+
+
+@ContextParallelismPlannerRegister.register("MingImageTransformer2DModel")
+class MingImageContextParallelismPlanner(ZImageContextParallelismPlanner):
+  """Z-Image CP plan with the mask-sensitive Ming variants guarded."""
+
+  def _apply(
+    self,
+    transformer: Optional[torch.nn.Module | ModelMixin] = None,
+    parallelism_config: Optional[ParallelismConfig] = None,
+    **kwargs,
+  ) -> _ContextParallelModelPlan:
+    zero_masked = (getattr(transformer, "alignment_padding_mode", None) == "zero_masked")
+    if zero_masked and getattr(parallelism_config, "ring_size", None) not in (None, 1):
+      raise NotImplementedError(
+        "Ming-Image Design uses zero-masked alignment, which emits a full-sequence attention "
+        "mask; Ring rotates K/V at every step but reuses that full mask. Use `--parallel ulysses` "
+        "or a learned-padding variant instead.")
+    if zero_masked and getattr(parallelism_config, "ulysses_anything", False):
+      raise NotImplementedError(
+        "Ming-Image Design zero-masked padding is not compatible with `--ulysses-anything`: "
+        "uneven partitions require reordering the full padding mask. Use the default Ulysses "
+        "partition or a learned-padding variant.")
+    return super()._apply(
+      transformer=transformer,
+      parallelism_config=parallelism_config,
+      **kwargs,
+    )
 
 
 @TensorParallelismPlannerRegister.register("MingImage")
