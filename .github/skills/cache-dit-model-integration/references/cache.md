@@ -255,6 +255,14 @@ The `BlockAdapterRegister.register("MyModel")` decorator on your function alread
 
 ### 1.6 Third-Party (Non-Diffusers) Models
 
+> **If the model has no diffusers implementation at all** (it ships its own `pipeline_<model>.py` /
+> transformer code, or only runs through `trust_remote_code`), or the task **moves a diffusers model's
+> source into cache-dit** to own it, the rules below are necessary but not sufficient: read
+> [`./custom_models.md`](./custom_models.md) first for the vendor-vs-depend decision, the dispatch
+> contracts the owned code must keep, the block-level placement of skip/branch state, and (for a
+> migration) the `__module__`-flip audit — a leftover `PatchFunctor` stops running once the class is
+> no longer a diffusers module.
+
 If your model does **not** come from the official `diffusers` library (e.g., it is defined in `sglang` or another third-party package), follow these rules:
 
 **Do NOT hardcode `from diffusers import ...`.** Instead, use `_safe_import` with name-based matching, or simply skip the diffusers-specific import entirely.
