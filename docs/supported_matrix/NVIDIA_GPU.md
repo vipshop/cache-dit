@@ -39,6 +39,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|✅|✅|
 |Ovis-Image|✅|✅|✅|
+|HiDream-O1-Image|✅|✅|✅|
 |Joy-Image-Edit|✅|✅|✅|
 |Bria-Fibo|✅|✅|✅|
 |Bria-Fibo-Edit|✅|✅|✅|
