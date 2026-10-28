@@ -2,15 +2,21 @@ import pytest
 
 from cache_dit.kernels.backend import KernelBackend
 from cache_dit.kernels.ops import _get_backend_selector
-from cache_dit.kernels.ops import _select_kernel_backend
+from cache_dit.kernels.ops import _resolve_backend
+from cache_dit.kernels.ops import _select_cuda_backend
+
+_COMM_OPS = [
+  "fp8_comm_per_token_quant",
+  "fp8_comm_per_token_dequant",
+  "fp8_comm_qkv_permute_quant",
+  "fp8_comm_qkv_permute_dequant",
+  "fused_merge_attn_states",
+]
 
 
-def test_get_backend_selector_returns_registered_selector() -> None:
-  assert _get_backend_selector("fused_merge_attn_states") is _select_kernel_backend
-  assert _get_backend_selector("fp8_comm_per_token_quant") is _select_kernel_backend
-  assert _get_backend_selector("fp8_comm_per_token_dequant") is _select_kernel_backend
-  assert _get_backend_selector("fp8_comm_qkv_permute_quant") is _select_kernel_backend
-  assert _get_backend_selector("fp8_comm_qkv_permute_dequant") is _select_kernel_backend
+@pytest.mark.parametrize("op_name", _COMM_OPS)
+def test_comm_ops_use_cuda_selector(op_name: str) -> None:
+  assert _get_backend_selector(op_name) is _select_cuda_backend
 
 
 def test_get_backend_selector_rejects_unknown_op() -> None:
@@ -18,27 +24,11 @@ def test_get_backend_selector_rejects_unknown_op() -> None:
     _get_backend_selector("unknown_op")
 
 
-def _patch_supported_backends(monkeypatch: pytest.MonkeyPatch, cutedsl_enabled: bool) -> None:
-
-  def _is_supported(cls, backend: KernelBackend) -> bool:
-    if backend == KernelBackend.CUTEDSL:
-      return cutedsl_enabled
-    if backend == KernelBackend.TRITON:
-      return True
-    return False
-
-  monkeypatch.setattr(KernelBackend, "is_supported", classmethod(_is_supported))
+def test_select_cuda_backend() -> None:
+  assert _select_cuda_backend() == KernelBackend.CUDA
 
 
-def test_select_kernel_backend_prefers_cutedsl_when_available(
-  monkeypatch: pytest.MonkeyPatch, ) -> None:
-  _patch_supported_backends(monkeypatch, cutedsl_enabled=True)
-
-  assert _select_kernel_backend() == KernelBackend.CUTEDSL
-
-
-def test_select_kernel_backend_falls_back_to_triton_when_cutedsl_missing(
-  monkeypatch: pytest.MonkeyPatch, ) -> None:
-  _patch_supported_backends(monkeypatch, cutedsl_enabled=False)
-
-  assert _select_kernel_backend() == KernelBackend.TRITON
+@pytest.mark.parametrize("op_name", _COMM_OPS)
+def test_resolve_comm_backend(op_name: str, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(KernelBackend, "is_supported", classmethod(lambda cls, backend: True))
+  assert _resolve_backend(op_name) == KernelBackend.CUDA

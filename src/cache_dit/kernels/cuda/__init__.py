@@ -1,4 +1,9 @@
 from ._ops_registery import (
+  fp8_comm_per_token_dequant,
+  fp8_comm_per_token_quant,
+  fp8_comm_qkv_permute_dequant,
+  fp8_comm_qkv_permute_quant,
+  fused_merge_attn_states,
   svdq_get_load_error,
   svdq_extension_is_available,
   svdq_gemm_w4a4,
@@ -11,6 +16,11 @@ from ._ops_registery import (
 )
 
 __all__ = [
+  "fp8_comm_per_token_quant",
+  "fp8_comm_per_token_dequant",
+  "fp8_comm_qkv_permute_quant",
+  "fp8_comm_qkv_permute_dequant",
+  "fused_merge_attn_states",
   "svdq_get_load_error",
   "svdq_extension_is_available",
   "svdq_gemm_w4a4",

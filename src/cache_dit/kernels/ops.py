@@ -6,10 +6,6 @@ _KERNEL_BE_FN = Callable[[], KernelBackend]
 _ERROR_TEMPLATE = "kernel backend: {} is not supported now!"
 
 
-def _select_triton_backend() -> KernelBackend:
-  return KernelBackend.TRITON
-
-
 def _select_cuda_backend() -> KernelBackend:
   return KernelBackend.CUDA
 
@@ -18,26 +14,12 @@ def _select_mindiesd_backend() -> KernelBackend:
   return KernelBackend.MINDIESD
 
 
-def _select_kernel_backend() -> KernelBackend:
-  """Select the default backend for kernel ops.
-
-  This is the generic selector entrypoint. If CuTe DSL is available, prefer it as the default
-  backend. Otherwise fall back to Triton.
-
-  :returns: Selected backend for the requested operator.
-  """
-
-  if not KernelBackend.is_supported(KernelBackend.CUTEDSL):
-    return KernelBackend.TRITON
-  return KernelBackend.CUTEDSL
-
-
 _KERNEL_BE_SELECTOR_MAP = {
-  "fp8_comm_per_token_quant": _select_kernel_backend,
-  "fp8_comm_per_token_dequant": _select_kernel_backend,
-  "fp8_comm_qkv_permute_quant": _select_kernel_backend,
-  "fp8_comm_qkv_permute_dequant": _select_kernel_backend,
-  "fused_merge_attn_states": _select_kernel_backend,
+  "fp8_comm_per_token_quant": _select_cuda_backend,
+  "fp8_comm_per_token_dequant": _select_cuda_backend,
+  "fp8_comm_qkv_permute_quant": _select_cuda_backend,
+  "fp8_comm_qkv_permute_dequant": _select_cuda_backend,
+  "fused_merge_attn_states": _select_cuda_backend,
   "svdq_gemm_w4a4": _select_cuda_backend,
   "svdq_gemm_w4a4_v2": _select_cuda_backend,
   "svdq_gemm_w4a4_ext": _select_cuda_backend,
@@ -70,77 +52,41 @@ def _resolve_backend(op_name: str, ) -> KernelBackend:
   return backend
 
 
-def _cutedsl_fp8_comm_supports_head_size(head_size: int) -> bool:
-  elems_per_thread = 16
-  cta_threads = 256
-  if head_size % elems_per_thread != 0:
-    return False
-  row_threads = head_size // elems_per_thread
-  return row_threads <= 32 and cta_threads % row_threads == 0
-
-
-def _resolve_fp8_comm_backend(op_name: str, head_size: int) -> KernelBackend:
-  backend = _resolve_backend(op_name)
-  if backend == KernelBackend.CUTEDSL and not _cutedsl_fp8_comm_supports_head_size(head_size):
-    return KernelBackend.TRITON
-  return backend
-
-
 # Ulysses FP8 communication related ops
 def _fp8_comm_per_token_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_fp8_comm_backend("fp8_comm_per_token_quant", x.shape[-1])
-  if backend == KernelBackend.TRITON:
-    from .triton import fp8_comm_per_token_quant
+  backend = _resolve_backend("fp8_comm_per_token_quant")
+  if backend == KernelBackend.CUDA:
+    from .cuda import fp8_comm_per_token_quant
 
     return fp8_comm_per_token_quant(x)
-  if backend == KernelBackend.CUTEDSL:
-    from .cutedsl import fp8_comm_per_token_quant
-
-    return fp8_comm_per_token_quant(x)
-  else:
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
+  raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_per_token_dequant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_fp8_comm_backend("fp8_comm_per_token_dequant", x.shape[-1] - 2)
-  if backend == KernelBackend.TRITON:
-    from .triton import fp8_comm_per_token_dequant
+  backend = _resolve_backend("fp8_comm_per_token_dequant")
+  if backend == KernelBackend.CUDA:
+    from .cuda import fp8_comm_per_token_dequant
 
     return fp8_comm_per_token_dequant(x)
-  if backend == KernelBackend.CUTEDSL:
-    from .cutedsl import fp8_comm_per_token_dequant
-
-    return fp8_comm_per_token_dequant(x)
-  else:
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
+  raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_qkv_permute_quant_impl(x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_fp8_comm_backend("fp8_comm_qkv_permute_quant", x.shape[-1])
-  if backend == KernelBackend.TRITON:
-    from .triton import fp8_comm_qkv_permute_quant
+  backend = _resolve_backend("fp8_comm_qkv_permute_quant")
+  if backend == KernelBackend.CUDA:
+    from .cuda import fp8_comm_qkv_permute_quant
 
     return fp8_comm_qkv_permute_quant(x)
-  if backend == KernelBackend.CUTEDSL:
-    from .cutedsl import fp8_comm_qkv_permute_quant
-
-    return fp8_comm_qkv_permute_quant(x)
-  else:
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
+  raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 def _fp8_comm_qkv_permute_dequant_impl(quant_x: torch.Tensor, ) -> torch.Tensor:
-  backend = _resolve_fp8_comm_backend("fp8_comm_qkv_permute_dequant", quant_x.shape[-1] - 4)
-  if backend == KernelBackend.TRITON:
-    from .triton import fp8_comm_qkv_permute_dequant
+  backend = _resolve_backend("fp8_comm_qkv_permute_dequant")
+  if backend == KernelBackend.CUDA:
+    from .cuda import fp8_comm_qkv_permute_dequant
 
     return fp8_comm_qkv_permute_dequant(quant_x)
-  if backend == KernelBackend.CUTEDSL:
-    from .cutedsl import fp8_comm_qkv_permute_dequant
-
-    return fp8_comm_qkv_permute_dequant(quant_x)
-  else:
-    raise ValueError(_ERROR_TEMPLATE.format(backend))
+  raise ValueError(_ERROR_TEMPLATE.format(backend))
 
 
 # Attention related ops, e.g, for Ring Attention
@@ -151,17 +97,8 @@ def _fused_merge_attn_states_impl(
   suff_lse: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
   backend = _resolve_backend("fused_merge_attn_states")
-  if backend == KernelBackend.TRITON:
-    from .triton import fused_merge_attn_states
-
-    return fused_merge_attn_states(
-      prev_out,
-      prev_lse,
-      suff_out,
-      suff_lse,
-    )
-  if backend == KernelBackend.CUTEDSL:
-    from .cutedsl import fused_merge_attn_states
+  if backend == KernelBackend.CUDA:
+    from .cuda import fused_merge_attn_states
 
     return fused_merge_attn_states(
       prev_out,

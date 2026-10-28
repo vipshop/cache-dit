@@ -259,7 +259,7 @@ Two orthogonal communication optimizations further reduce Ulysses overhead:
 \label{fig:async_ulysses}
 \end{figure}
 
-\textbf{FP8 Ulysses} reduces all-to-all communication volume by quantizing the Q, V, and output tensors to FP8 before transmission. The K tensor is kept in BF16/FP16 to preserve softmax precision. Per-token FP8 quantization and dequantization kernels are implemented in Triton and CuTeDSL backends, as illustrated in Figure~\ref{fig:fp8_ulysses}.
+\textbf{FP8 Ulysses} reduces all-to-all communication volume by quantizing the Q, V, and output tensors to FP8 before transmission. The K tensor is kept in BF16/FP16 to preserve softmax precision. Per-token FP8 quantization and dequantization kernels are implemented in CUDA, as illustrated in Figure~\ref{fig:fp8_ulysses}.
 
 \begin{figure}[H]
 \centering

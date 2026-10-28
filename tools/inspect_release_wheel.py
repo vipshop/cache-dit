@@ -68,6 +68,8 @@ def main() -> int:
         f"{wheel.name} carries a binary, so it is not a pure-Python wheel: {binaries}")
     if args.so == "svdquant" and not any("_C_svdquant" in name for name in binaries):
       raise SystemExit(f"{wheel.name} carries no SVDQuant extension: {binaries}")
+    if args.so == "svdquant" and not any("_C_comm" in name for name in binaries):
+      raise SystemExit(f"{wheel.name} carries no communication extension: {binaries}")
     version = _module_version(archive)
 
   if version != args.version:

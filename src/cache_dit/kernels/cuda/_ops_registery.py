@@ -1,5 +1,10 @@
 import torch
 
+from ._comm import _call_fp8_comm_per_token_dequant
+from ._comm import _call_fp8_comm_per_token_quant
+from ._comm import _call_fp8_comm_qkv_permute_dequant
+from ._comm import _call_fp8_comm_qkv_permute_quant
+from ._comm import _call_fused_merge_attn_states
 from ._svdquant import _call_svdq_gemm_w4a4
 from ._svdquant import _call_svdq_quantize_w4a4_act_fuse_lora
 from ._svdquant import _call_svdq_quantize_w4a4_wgt
@@ -371,6 +376,161 @@ def _fake_svdq_gemm_w4a4_v2(
   return act.new_empty((act.shape[0], wgt.shape[0]), dtype=output_dtype)
 
 
+# Ulysses FP8 communication related ops
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_comm_per_token_quant",
+  "(Tensor x) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_comm_per_token_quant", "CUDA")
+def _fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  *shape, head_size = x.shape
+  x = x.reshape(-1, head_size).contiguous()
+  rows, cols = x.shape
+  quant_x = torch.empty((rows, cols + 2), dtype=torch.float8_e4m3fn, device=x.device)
+  _call_fp8_comm_per_token_quant(x, quant_x)
+  return quant_x.reshape(*shape, head_size + 2)
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_comm_per_token_quant")
+def _fake_fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  *shape, head_size = x.shape
+  return x.new_empty((*shape, head_size + 2), dtype=torch.float8_e4m3fn)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_comm_per_token_dequant",
+  "(Tensor x) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_comm_per_token_dequant", "CUDA")
+def _fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.float8_e4m3fn:
+    raise ValueError(f"Expected a float8_e4m3fn activation, got {x.dtype}.")
+  *shape, packed_head_size = x.shape
+  x = x.reshape(-1, packed_head_size).contiguous()
+  rows, cols = x.shape
+  dequant_x = torch.empty((rows, cols - 2), dtype=torch.bfloat16, device=x.device)
+  _call_fp8_comm_per_token_dequant(x, dequant_x)
+  return dequant_x.reshape(*shape, packed_head_size - 2)
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_comm_per_token_dequant")
+def _fake_fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.float8_e4m3fn:
+    raise ValueError(f"Expected a float8_e4m3fn activation, got {x.dtype}.")
+  *shape, packed_head_size = x.shape
+  return x.new_empty((*shape, packed_head_size - 2), dtype=torch.bfloat16)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_comm_qkv_permute_quant",
+  "(Tensor x) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_comm_qkv_permute_quant", "CUDA")
+def _fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  batch, seq_len, partitions, num_heads, head_size = x.shape
+  quant_x = torch.empty((partitions, seq_len, batch, num_heads, head_size + 4),
+                        dtype=torch.float8_e4m3fn,
+                        device=x.device)
+  _call_fp8_comm_qkv_permute_quant(x, quant_x)
+  return quant_x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_comm_qkv_permute_quant")
+def _fake_fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  batch, seq_len, partitions, num_heads, head_size = x.shape
+  return x.new_empty((partitions, seq_len, batch, num_heads, head_size + 4),
+                     dtype=torch.float8_e4m3fn)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_comm_qkv_permute_dequant",
+  "(Tensor quant_x) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_comm_qkv_permute_dequant", "CUDA")
+def _fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  if quant_x.dtype != torch.float8_e4m3fn:
+    raise ValueError(f"Expected a float8_e4m3fn activation, got {quant_x.dtype}.")
+  seq_len, batch, num_heads, packed_head_size = quant_x.shape
+  head_size = packed_head_size - 4
+  # The dequantized activation is consumed as a contiguous `[B, S, N, D]` buffer.
+  x = torch.empty((batch, seq_len, num_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=quant_x.device)
+  _call_fp8_comm_qkv_permute_dequant(quant_x, x)
+  return x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_comm_qkv_permute_dequant")
+def _fake_fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  if quant_x.dtype != torch.float8_e4m3fn:
+    raise ValueError(f"Expected a float8_e4m3fn activation, got {quant_x.dtype}.")
+  seq_len, batch, num_heads, packed_head_size = quant_x.shape
+  return quant_x.new_empty((batch, seq_len, num_heads, packed_head_size - 4), dtype=torch.bfloat16)
+
+
+# Attention state merge op, e.g, for Ring Attention
+torch.library.define(
+  "cache_dit_cuda_ops::fused_merge_attn_states",
+  "(Tensor prev_out, Tensor prev_lse, Tensor suff_out, Tensor suff_lse) "
+  "-> (Tensor out, Tensor lse)",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fused_merge_attn_states", "CUDA")
+def _fused_merge_attn_states(
+  prev_out: torch.Tensor,
+  prev_lse: torch.Tensor,
+  suff_out: torch.Tensor,
+  suff_lse: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  batch, seq_len, num_heads, head_size = suff_out.shape
+  # The extension consumes flattened attention states, so the batch and sequence
+  # dimensions are merged before the call and restored afterwards.
+  prev_out = prev_out.flatten(0, 1).contiguous()
+  suff_out = suff_out.flatten(0, 1).contiguous()
+  prev_lse = prev_lse.flatten(0, 1).squeeze(-1).contiguous()
+  suff_lse = suff_lse.flatten(0, 1).squeeze(-1).contiguous()
+
+  out = torch.empty_like(suff_out)
+  lse = torch.empty_like(suff_lse)
+  _call_fused_merge_attn_states(prev_out, prev_lse, suff_out, suff_lse, out, lse)
+  return out.view(batch, seq_len, num_heads, head_size), lse.view(batch, seq_len, num_heads, 1)
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fused_merge_attn_states")
+def _fake_fused_merge_attn_states(
+  prev_out: torch.Tensor,
+  prev_lse: torch.Tensor,
+  suff_out: torch.Tensor,
+  suff_lse: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  del prev_out, prev_lse
+  batch, seq_len, num_heads, head_size = suff_out.shape
+  # Exactly replicate the view chain of the real implementation so the abstract
+  # tensors keep the same shape and strides under torch.compile.
+  suff_out = suff_out.flatten(0, 1).contiguous()
+  suff_lse = suff_lse.flatten(0, 1).squeeze(-1).contiguous()
+  out = suff_out.new_empty(suff_out.shape, dtype=suff_out.dtype)
+  lse = suff_lse.new_empty(suff_lse.shape, dtype=suff_lse.dtype)
+  return out.view(batch, seq_len, num_heads, head_size), lse.view(batch, seq_len, num_heads, 1)
+
+
 def svdq_quantize_w4a4_act_fuse_lora(
   input: torch.Tensor,
   lora_down: torch.Tensor | None,
@@ -558,7 +718,80 @@ def svdq_set_faster_i2f_mode(mode: str) -> None:
   _get_required_utils_module().set_faster_i2f_mode(mode)
 
 
+def fp8_comm_per_token_quant(x: torch.Tensor) -> torch.Tensor:
+  """Quantize a floating-point tensor into the FP8 per-token communication layout.
+
+  :param x: Dense BF16 activation to quantize; the last dimension is the head dimension that gains
+    two trailing scale columns.
+  :returns: The quantized FP8 activation, keeping the leading dimensions and adding two scale
+    columns to the last one.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_comm_per_token_quant(x)
+
+
+def fp8_comm_per_token_dequant(x: torch.Tensor) -> torch.Tensor:
+  """Dequantize a FP8 per-token communication tensor back to floating-point format.
+
+  :param x: FP8 activation packed by `fp8_comm_per_token_quant`.
+  :returns: The dequantized BF16 activation, with the two trailing scale columns removed
+    from the last dimension.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_comm_per_token_dequant(x)
+
+
+def fp8_comm_qkv_permute_quant(x: torch.Tensor) -> torch.Tensor:
+  """Quantize a QKV tensor into FP8 while permuting it for communication.
+
+  :param x: Dense BF16 QKV activation shaped `[B, S, P, N, D]`, whose last dimension must have
+    stride 1.
+  :returns: The quantized FP8 activation shaped `[P, S, B, N, D + 4]`.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_comm_qkv_permute_quant(x)
+
+
+def fp8_comm_qkv_permute_dequant(quant_x: torch.Tensor) -> torch.Tensor:
+  """Dequantize a permuted FP8 QKV tensor and restore its original layout.
+
+  :param quant_x: FP8 activation shaped `[S, B, N, D + 4]` packed by
+    `fp8_comm_qkv_permute_quant`, whose last dimension must have stride 1.
+  :returns: The dequantized BF16 activation shaped `[B, S, N, D]` in a contiguous layout.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_comm_qkv_permute_dequant(quant_x)
+
+
+def fused_merge_attn_states(
+  prev_out: torch.Tensor,
+  prev_lse: torch.Tensor,
+  suff_out: torch.Tensor,
+  suff_lse: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  """Fuse the attention states of two consecutive attention chunks, e.g. Ring Attention.
+
+  :param prev_out: Previous attention output shaped `[B, N, H, D]`.
+  :param prev_lse: Previous log-sum-exp shaped `[B, N, H, 1]`.
+  :param suff_out: Suffix attention output shaped `[B, N, H, D]`.
+  :param suff_lse: Suffix log-sum-exp shaped `[B, N, H, 1]`.
+  :returns: The fused attention output `[B, N, H, D]` and log-sum-exp `[B, N, H, 1]`.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fused_merge_attn_states(
+    prev_out,
+    prev_lse,
+    suff_out,
+    suff_lse,
+  )
+
+
 __all__ = [
+  "fp8_comm_per_token_quant",
+  "fp8_comm_per_token_dequant",
+  "fp8_comm_qkv_permute_quant",
+  "fp8_comm_qkv_permute_dequant",
+  "fused_merge_attn_states",
   "svdq_get_load_error",
   "svdq_extension_is_available",
   "svdq_gemm_w4a4",
