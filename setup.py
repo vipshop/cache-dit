@@ -32,13 +32,11 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # release build runs in.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
-# sm100 (Blackwell B100/B200, CC 10.0) is not included in the default
-# target list because the NVFP4 block-scaled MMA instruction used by the
-# SVDQuant FP4 kernel requires sm_120a or higher (PTX ISA, warp-level mma
-# Target ISA Notes: ".kind::mxf4nvf4 and .kind::mxf4 are supported on
-# sm_120a and sm_121a"). INT4 kernels work correctly on sm100. Users who
-# only need INT4 kernels can build for sm100 explicitly via
-# CACHE_DIT_CUDA_ARCH_LIST=100 or TORCH_CUDA_ARCH_LIST=100.
+# Default builds cover Ada (89), Hopper architecture-specific (90a), Blackwell
+# datacenter (100), and Blackwell consumer architecture-specific (120a). The
+# SVDQuant extension filters out Hopper because its INT4 kernels require >=sm80
+# and exclude sm90; its FP4 kernels still require sm120a or newer at runtime.
+DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -57,6 +55,31 @@ def _normalize_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -
   if sm == "121" and support_sm121:
     return "121a"
   return sm
+
+
+def _default_cuda_arch_targets(
+  *,
+  support_sm90a: bool,
+  support_sm100: bool,
+  support_sm120: bool,
+) -> list[str]:
+  """Return the default CUDA targets supported by the active nvcc toolchain.
+
+  :param support_sm90a: Whether nvcc supports the Hopper architecture-specific target.
+  :param support_sm100: Whether nvcc supports the Blackwell datacenter target.
+  :param support_sm120: Whether nvcc supports the Blackwell consumer architecture-specific
+    target.
+  :returns: The supported subset of `89`, `90a`, `100`, and `120a`.
+  """
+
+  targets = ["89"]
+  if support_sm90a:
+    targets.append("90a")
+  if support_sm100:
+    targets.append("100")
+  if support_sm120:
+    targets.append("120a")
+  return targets
 
 
 def _is_supported_svdquant_sm_target(sm: str) -> bool:
@@ -328,6 +351,8 @@ def _get_sm_targets() -> list[str]:
   assert torch is not None
 
   nvcc_version = _get_nvcc_version(CUDA_HOME)
+  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
+  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
@@ -353,7 +378,7 @@ def _get_sm_targets() -> list[str]:
   else:
     sm_targets = []
 
-  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "FAST").upper()
+  build_mode = os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "ALL").upper()
   if build_mode not in {"FAST", "ALL"}:
     raise RuntimeError(
       f"Unsupported CACHE_DIT_SVDQUANT_BUILD_MODE={build_mode!r}. Expected 'FAST' or 'ALL'.")
@@ -370,11 +395,13 @@ def _get_sm_targets() -> list[str]:
       if sm not in sm_targets:
         sm_targets.append(sm)
   elif not sm_targets:
-    sm_targets = ["80", "86", "89"]
-    if support_sm120:
-      sm_targets.append("120a")
-    if support_sm121:
-      sm_targets.append("121a")
+    sm_targets = [
+      sm for sm in _default_cuda_arch_targets(
+        support_sm90a=support_sm90a,
+        support_sm100=support_sm100,
+        support_sm120=support_sm120,
+      ) if _is_supported_svdquant_sm_target(sm)
+    ]
 
   unsupported_targets = [sm for sm in sm_targets if not _is_supported_svdquant_sm_target(sm)]
   if unsupported_targets:
@@ -404,6 +431,8 @@ def _get_comm_sm_targets() -> list[str]:
   assert torch is not None
 
   nvcc_version = _get_nvcc_version(CUDA_HOME)
+  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
+  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
@@ -424,13 +453,8 @@ def _get_comm_sm_targets() -> list[str]:
     if skipped:
       print(f"[cache-dit] Comm: skipping SM targets below sm89 from {arch_list_env}: "
             f"{', '.join(skipped)}.")
-  elif os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "FAST").upper() == "ALL":
-    sm_targets = ["89", "90"]
-    if support_sm120:
-      sm_targets.append("120a")
-    if support_sm121:
-      sm_targets.append("121a")
-  elif torch.cuda.is_available() and torch.cuda.device_count() > 0:
+  elif os.getenv("CACHE_DIT_SVDQUANT_BUILD_MODE", "ALL").upper() == "FAST" and \
+      torch.cuda.is_available() and torch.cuda.device_count() > 0:
     for device_index in range(torch.cuda.device_count()):
       capability = torch.cuda.get_device_capability(device_index)
       sm = _normalize_sm_target(
@@ -445,11 +469,11 @@ def _get_comm_sm_targets() -> list[str]:
       print(f"[cache-dit] Comm: skipping detected SM targets below sm89: {', '.join(skipped)}.")
       sm_targets = [sm for sm in sm_targets if _is_supported_comm_sm_target(sm)]
   else:
-    sm_targets = ["89", "90"]
-    if support_sm120:
-      sm_targets.append("120a")
-    if support_sm121:
-      sm_targets.append("121a")
+    sm_targets = _default_cuda_arch_targets(
+      support_sm90a=support_sm90a,
+      support_sm100=support_sm100,
+      support_sm120=support_sm120,
+    )
 
   return sm_targets
 
