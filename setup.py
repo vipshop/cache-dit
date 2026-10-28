@@ -155,7 +155,7 @@ def _parse_arch_list(raw_arch_list: str) -> list[str]:
 
 def _svdquant_v2_launch_sources() -> list[str]:
   return [
-    f"csrc/kernels/svdq/gemm_w4a4_v2_launch_{dtype}_int4_stage{stage}.cu"
+    f"csrc/kernels/svdq/int4/gemm_w4a4_v2_launch_{dtype}_int4_stage{stage}.cu"
     for dtype in ("fp16", "bf16") for stage in (1, 2, 3)
   ]
 
@@ -164,15 +164,15 @@ def _required_svdquant_sources() -> list[str]:
   return [
     "csrc/kernels/svdq/pybind.cpp",
     "csrc/kernels/svdq/torch.cpp",
-    "csrc/kernels/svdq/gemm_w4a4_v2.cu",
+    "csrc/kernels/svdq/int4/gemm_w4a4_v2.cu",
     *_svdquant_v2_launch_sources(),
     # Build both INT4 and NVFP4 kernels
-    "csrc/kernels/svdq/gemm_w4a4.cu",
-    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4.cu",
-    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
-    "csrc/kernels/svdq/gemm_w4a4_launch_fp16_fp4.cu",
-    "csrc/kernels/svdq/gemm_w4a4_launch_bf16_int4.cu",
-    "csrc/kernels/svdq/gemm_w4a4_launch_bf16_fp4.cu",
+    "csrc/kernels/svdq/core/gemm_w4a4.cu",
+    "csrc/kernels/svdq/int4/gemm_w4a4_launch_fp16_int4.cu",
+    "csrc/kernels/svdq/int4/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
+    "csrc/kernels/svdq/fp4/gemm_w4a4_launch_fp16_fp4.cu",
+    "csrc/kernels/svdq/int4/gemm_w4a4_launch_bf16_int4.cu",
+    "csrc/kernels/svdq/fp4/gemm_w4a4_launch_bf16_fp4.cu",
   ]
 
 

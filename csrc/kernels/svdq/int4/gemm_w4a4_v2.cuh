@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gemm_w4a4.cuh"
+#include "../core/gemm_w4a4.cuh"
 
 namespace svdq::kernels {
 
