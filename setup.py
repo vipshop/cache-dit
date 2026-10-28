@@ -239,7 +239,7 @@ def _required_comm_sources() -> list[str]:
   return [
     "csrc/kernels/comm/comm_ops.cpp",
     "csrc/kernels/comm/fp8_comm.cu",
-    "csrc/kernels/attn/merge_attn_states.cu",
+    "csrc/kernels/attn/merge_states.cu",
   ]
 
 
