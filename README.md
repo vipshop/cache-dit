@@ -176,17 +176,18 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 </div>
 
-### Built-in Pipelines Beyond 🤗Diffusers
-
-Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers:
+<div align="center">
+  <p> <h2>🚀Built-in Pipelines Beyond 🤗Diffusers</h2>
+</div>
 
 <div align="center">
 
 | Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | MOSS-Image 🔥 | [`MOSSImageTransformer`](src/cache_dit/models/pipelines/moss_image.py) | 2 | ✔️/✔️/✖️/✖️ |
-| Image | Ming-Image 0.1 🔥 | [`MingImageTransformer2DModel`](src/cache_dit/models/pipelines/ming_image/transformer.py) | 2 | ✔️/✔️/✖️/✖️ |
+| **Image** | MOSS-Image 🔥 | [`MOSSImageTransformer`](src/cache_dit/models/pipelines/moss_image.py) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`MingImageTransformer2DModel`](src/cache_dit/models/pipelines/ming_image/transformer.py) | 2 | ✔️/✔️/✔️/✔️ |
 
+<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
 
 ## 🤖Agentic Workflows  
