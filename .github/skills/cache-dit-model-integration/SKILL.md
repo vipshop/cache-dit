@@ -1,10 +1,30 @@
 ---
 name: cache-dit-model-integration
-description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, installation, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit."
+description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, installation, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit. Also use when benchmarking or acceptance-testing an already-supported model: full speed + PSNR/SSIM matrix (1-2 GPUs by default, 4/8-GPU hybrid CP+TP on request), see references/perf_matrix.md. 触发词：全量测试矩阵、验收测试、性能与精度对比、加速比、1/2/4/8 卡验收、量化精度损失."
 user-invocable: true
 ---
 
+## ROUTE FIRST — what is the user actually asking for?
+
+Pick one route before reading anything else; the rest of this file is only route 2.
+
+1. **Benchmarking / acceptance of an ALREADY-supported model** — the model runs (`cdit.generate`
+   has an example, cache/CP/TP already work) and the user wants speed + PSNR/SSIM numbers:
+   "跑一遍全量测试矩阵", "4 卡验收", "量化掉多少精度", "和 bf16 比加速比"
+   → read **`./references/perf_matrix.md`**. It owns the row list, command templates, the layout
+   mapping / preflight, and Tier A (1/2 GPUs, default) vs the on-request Tier B (4 GPUs) / Tier C
+   (8 GPUs) extensions (hybrid CP+TP included). **Do NOT open Tier B/C unless the user explicitly
+   asks to extend to 4/8 cards.**
+   The GATE CHECK, the Hard rules and the §0.6 checklist below do not apply to this route.
+2. **Integrating a NEW model** — no `BlockAdapter`, no CLI example, new pipeline/transformer code
+   → continue with the GATE CHECK and §0 below.
+3. **A measured speedup looks wrong, or choosing which optimizations can pay off before
+   benchmarking** → read `./references/perf_analysis.md` (FLOPs budget: attention vs GEMM share).
+
 ## GATE CHECK
+
+> Scope: route 2 (integrating a new model) only. For route 1, go to `./references/perf_matrix.md` —
+> no transformer source paths and no integration plan are needed to run an acceptance matrix.
 
 Before writing any code, confirm the following:
 
@@ -52,6 +72,9 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 ```
 
 **Hard rules:**
+
+> Route 2 only. A route-1 acceptance run is governed by `./references/perf_matrix.md` §2/§7 plus the
+> gates in `./references/testing.md` §7.6 — it needs neither model source paths nor an approved plan.
 
 - **⚠️ MANDATORY: Local model path and code info.** If the user has not explicitly provided (a) the local model path and (b) the pipeline/transformer class names with source file paths (diffusers or third-party), you **MUST** ask the user to specify them via ``vscode_askQuestions`` before any code changes.  Do NOT search the codebase or assume default paths — the user knows their setup best.
 - **⚠️ MANDATORY: `./references/custom_models.md` for BOTH ownership cases.** Read it **before** writing the plan whenever either holds: **(a)** the model is **not part of the diffusers library** (own `pipeline_<model>.py` / transformer code, a `model_index.json` module diffusers cannot import, or code from a third-party package); **(b)** the task **moves a diffusers model's source into cache-dit** (owning the model instead of patching it — the required path when an optimization touches attention/kernel math or the block loop itself, where no hook point is left). Follow its ownership decision (vendor / absorb / depend), its contract checklist and, for (b), its migration runbook: the diffusers-detection branches flip once `__module__` is `cache_dit.*` — `check_forward_pattern` defaults to False, `_relaxed_assert` stops checking, and a leftover `PatchFunctor` is **silently skipped** — while class, block-attribute and state-dict names must stay unchanged. Reference integrations: MOSS-Image (vendored, case a); Boogu-Image (third-party package, case a, adapter only). No case-(b) precedent exists yet — treat its runbook as authoritative.
@@ -169,6 +192,7 @@ flowchart TD
 | Situation | Section |
 |---|---|
 | **Picking the next model to integrate / checking the pending-model list** | `./references/rfc_pending_models.md` |
+| **Benchmarking / acceptance-testing an already-supported model** (row list, commands, 1/2-GPU default, on-request 4/8-GPU hybrid) | `./references/perf_matrix.md`; gates in `./references/testing.md` §7.6 |
 | **A measured speedup looks wrong (fp8/svdq/compile flat), or choosing which optimizations can pay off before benchmarking** | `./references/perf_analysis.md` — FLOPs budget (attention vs GEMM share), the 6-step diagnostic ladder, ffpa case study |
 | **Downloading model weights to the local model root** | `./references/model_download.md` |
 | **The model is a diffusers `ModularPipeline` (e.g. FLUX.3): `pipe` is neither a `DiffusionPipeline` nor an `nn.Module`** | `./references/modular_pipeline.md` |
@@ -318,17 +342,24 @@ Phase 6 — VAE-P: VAE Parallelism
         IF not → create new planner in distributed/autoencoders/<vae>.py
 - [ ] 6.3 Register in distributed/autoencoders/planners.py
 - [ ] 6.4 TEST VAE-P 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-vae --save-path .tmp/<task>/vae2.png
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --parallel-vae --save-path .tmp/<task>/vae2.png
+        - `--parallel-vae` alone is a NO-OP: parallelism_config is only built when `--parallel` is set
 - [ ] 6.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 vae2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
 - [ ] 6.6 [STOP] VAE-P verified (or confirmed not needed)
 
 Phase 7 — Final Integration Tests
-- [ ] 7.1 Hybrid CP + TP: --parallel ulysses_tp (2 GPU)
+- [ ] 7.1 Hybrid CP + TP (4 GPU): --parallel ulysses_tp → U2×T2
+        - on 2 GPUs `ulysses_tp` degenerates to U1×T2 (pure TP2) — that is Phase 4, not a hybrid test
 - [ ] 7.2 CORRECTNESS: vs baseline
-- [ ] 7.3 Fill in results table (`./references/testing.md` results table): latency, PSNR, SSIM, GPU mem per config
+- [ ] 7.3 Fill in results table (`./references/testing.md` §7.5): latency, PSNR, SSIM, GPU mem per config
 - [ ] 7.4 Visual inspection: at least one output image per configuration
-- [ ] 7.5 [DONE] Integration complete ── all checks passed
+- [ ] 7.5 Tier A acceptance matrix (1/2 GPUs): rows + gates per `./references/perf_matrix.md` §1 and
+        `./references/testing.md` §7.6 (Tier B 4-GPU / Tier C 8-GPU rows only if the user asks)
+- [ ] 7.6 Docs updated in the same change: `README.md` model table + `docs/README.md` (keep the two in
+        sync) + `docs/supported_matrix/NVIDIA_GPU.md` (+ `ASCEND_NPU.md` only if NPU-validated)
+        - see §8 Documentation & Examples (Model-support docs)
+- [ ] 7.7 [DONE] Integration complete ── all checks passed
 ```
 
 > **Key discipline**: after each test, record results in the plan before moving on. A failing test at Phase 4 should trigger a re-read of the relevant sections, not a blind "try TP with different flags" loop.
@@ -488,7 +519,7 @@ Cache-dit's `python3 -m cache_dit.generate` CLI discovers models through `Exampl
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-> Installation lives in `./references/install.md`. Detailed local model path setup, command matrix, PSNR/SSIM acceptance criteria, result table, and debugging tips live in [`./references/testing.md`](./references/testing.md).
+> Installation lives in `./references/install.md`. Detailed local model path setup, command matrix, PSNR/SSIM acceptance criteria, result table, and debugging tips live in [`./references/testing.md`](./references/testing.md) (§7.6 = the full-matrix acceptance gates). The matrix itself — rows, commands, 1/2-GPU default, on-request 4/8-GPU hybrid — lives in [`./references/perf_matrix.md`](./references/perf_matrix.md).
 
 ## 8. Reference Code Paths
 
@@ -539,6 +570,11 @@ All paths are relative to the cache-dit repository root.
 
 | Resource                | File                                          | Purpose                                                                          |
 | ----------------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Model-support docs — update in the SAME commit that lands the model** | | |
+| Root README model list  | `README.md` (`## 🚪Supported DiT Models`)  | One row per new model family: Modality / Pipeline Series / Model Sources / Variants / `C/P/Q/OF` |
+| Docs landing page       | `docs/README.md`                            | Docs-site copy of the root README; only the banner block and a couple of wording tweaks differ, so **the model table must stay identical to `README.md`** — edit both in the same commit |
+| GPU support matrix      | `docs/supported_matrix/NVIDIA_GPU.md`       | Per-transformer ✅/✖️ matrix (Hybrid Cache / Context Parallel / Tensor Parallel) plus the Text-Encoder & VAE and ControlNet sections — add the new transformer's row(s) |
+| NPU support matrix      | `docs/supported_matrix/ASCEND_NPU.md`       | Same matrix for Ascend NPU — update only after the model is actually validated on NPU |
 | Developer guide         | `docs/developer_guide/SUPPORT_NEW_MODEL.md` | Official step-by-step integration guide                                          |
 | CLI examples            | `examples/README.md`                        | Comprehensive CLI usage examples (single-GPU, distributed, quantization, hybrid) |
 | Pipeline usage examples | `examples/generate.py`                      | Programmatic pipeline usage examples                                             |
@@ -576,6 +612,7 @@ Read these only when the current phase needs them:
 | CLI | [`./references/cli.md`](./references/cli.md) | Registering `cache_dit.generate` examples and local model path environment variables. |
 | Checkpoint loader | [`./references/loader.md`](./references/loader.md) | Adding a `BaseLoader` subclass to convert FP8/fused/renamed checkpoints inside the patched `from_pretrained`; Ideogram 4 is the reference case. |
 | Install | [`./references/install.md`](./references/install.md) | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
-| Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks. |
+| Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks; §7.6 holds the acceptance gates of the full matrix. |
+| Performance matrix | [`./references/perf_matrix.md`](./references/perf_matrix.md) | Benchmarking an already-supported model: row checklist (Tier A 1/2 GPUs default, Tier B 4 GPUs / Tier C 8 GPUs on request), `--parallel` × world-size mapping and hybrid preflight, command templates, mean/min measurement, table conventions. |
 | Model download | [`./references/model_download.md`](./references/model_download.md) | Fetching model weights to `/workspace/dev/vipdev/hf_models/` — ModelScope first (`modelscope-hub` CLI), HF fallback. |
 | Pending models RFC | [`./references/rfc_pending_models.md`](./references/rfc_pending_models.md) | Models not yet supported by cache-dit, ordered by integration difficulty, with per-model notes, exclusions, and status tracking: diffusers v0.38+ (R.2) plus community-hot models without a diffusers implementation (R.6). |
