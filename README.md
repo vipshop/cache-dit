@@ -218,8 +218,6 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 /cache-dit-model-integration "Run the perf matrix for MiniMax-H3 with 1/2/4/8 GPUs."
 ```
 
-Please note that quantization and layerwise offload in Cache-DiT are generally supported for **nn.Module**, thus no extra integration is needed for new DiT pipelines or transformers. 
-
 ## 🌐Community Integration
 
 - 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
