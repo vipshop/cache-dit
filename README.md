@@ -95,7 +95,7 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
-## 📋Supported DiT Models
+## 🚪Supported DiT Models
 
 Cache-DiT supports **50+ DiT pipeline families (120+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 

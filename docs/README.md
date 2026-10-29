@@ -101,7 +101,7 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
-## 📋Supported DiT Models
+## 🚪Supported DiT Models
 
 Cache-DiT supports **50+ DiT pipeline families (120+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
@@ -209,7 +209,7 @@ Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tr
 gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
 ```
 
-The SKILL guides the Coding Agent to search and download the model (e.g. from 🤗Hugging Face or ModelScope), match it against the corresponding 🤗Diffusers implementation, and then implement support for the model by following the SKILL instructions.
+The SKILL guides the Coding Agent through the whole flow: search and download the model weights (e.g. from [🤗Hugging Face](https://huggingface.co) or [ModelScope](https://www.modelscope.cn/)), match the model against the corresponding [🤗Diffusers](https://github.com/huggingface/diffusers) pipeline and transformer code, and then implement support for it following the SKILL's instructions.
 
 ```bash
 /cache-dit-model-integration "Please download and support MiniMax-H3 in Cache-DiT."
