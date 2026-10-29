@@ -38,6 +38,7 @@ QwenImageControlNetPatchFunctor = _safe_import(".functor_qwen_image_controlnet",
                                                "QwenImageControlNetPatchFunctor")
 QwenImage21PatchFunctor = _safe_import(".functor_qwen_image_21", "QwenImage21PatchFunctor")
 WanVACEPatchFunctor = _safe_import(".functor_wan_vace", "WanVACEPatchFunctor")
+WanAnimate2PatchFunctor = _safe_import(".functor_wan_animate_2", "WanAnimate2PatchFunctor")
 LTX2PatchFunctor = _safe_import(".functor_ltx2", "LTX2PatchFunctor")
 BriaFiboPatchFunctor = _safe_import(".functor_bria_fibo", "BriaFiboPatchFunctor")
 BriaFibo2PatchFunctor = _safe_import(".functor_bria_fibo2", "BriaFibo2PatchFunctor")
