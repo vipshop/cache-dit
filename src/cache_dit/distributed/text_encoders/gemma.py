@@ -25,6 +25,14 @@ except ImportError:  # older transformers
   T5Gemma2Encoder = None
   T5Gemma2EncoderLayer = None
 
+try:
+  # Stable Audio 3 ships the bare encoder as a `PreTrainedModel` wrapper (`encoder.layers`), not the
+  # inner `T5GemmaEncoder` that Lumina-Image / PRX checkpoints hand over.
+  from transformers.models.t5gemma.modeling_t5gemma import (
+    T5GemmaEncoderModel, )
+except ImportError:  # older transformers
+  T5GemmaEncoderModel = None
+
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import (
   ParallelStyle,
@@ -56,6 +64,8 @@ _supported_gemma_classes = (
 )
 if T5Gemma2Encoder is not None:
   _supported_gemma_classes = _supported_gemma_classes + (T5Gemma2Encoder, )
+if T5GemmaEncoderModel is not None:
+  _supported_gemma_classes = _supported_gemma_classes + (T5GemmaEncoderModel, )
 
 _supported_layer_classes = (
   GemmaDecoderLayer,
@@ -106,6 +116,8 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     transformers version: `language_model.model.layers` in v4, `model.language_model.layers` in v5.
     `T5Gemma2Encoder` (transformers 5, Motif-Video) nests the stack at `text_model.layers`;
     its `vision_tower` / `multi_modal_projector` are deliberately left untouched.
+    `T5GemmaEncoderModel` (Stable Audio 3, transformers 5) wraps the bare encoder as
+    `encoder.layers`.
 
     :param text_encoder: Gemma-family text encoder, possibly a multimodal container.
     :returns: `(module, owner, attr)` where `owner.attr` is the module, or `(module, None, None)`
@@ -117,7 +129,7 @@ class GemmaTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
     module = text_encoder
     owner, attr = None, None
     while not hasattr(module, "layers"):
-      for name in ("language_model", "model", "text_model"):
+      for name in ("language_model", "model", "text_model", "encoder"):
         child = getattr(module, name, None)
         if isinstance(child, torch.nn.Module) and child is not module:
           owner, attr = module, name

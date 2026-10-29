@@ -110,6 +110,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | Wan-Animate-2 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Bria-Fibo 2.0 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/briaai/Fibo-2.0-dev) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | Kandinsky 6.0 (T2VA) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | 1 | ✔️/✔️/✔️/✖️ |
+| Audio | Stable Audio 3 (T2A) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/stabilityai/stable-audio-3-medium)¹ | 1 | ✔️/✔️/✔️/✔️ |
 | Audio | LongCat-AudioDiT (TTS) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ruixiangma/LongCat-AudioDiT-1B-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Qwen-Image-2.1 🔥| [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Qwen/Qwen-Image-2.1) | 3 | ✔️/✔️/✔️/✔️ |
 | Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | 6 | ✔️/✔️/✔️/✔️ |
@@ -177,7 +178,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Other | Shap-E | [`🤗diffusers@0.18.0`][diffusers-url], [`🤗HF`](https://huggingface.co/openai/shap-e) | 1 | ✔️/✖️/✔️/✔️ |
 | Image | DiT | [`🤗diffusers@0.12.0`][diffusers-url], [`🤗HF`](https://huggingface.co/facebook/DiT-XL-2-256) | 1 | ✔️/✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP<br>TP/TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; <b>@</b>: Minimum version. </i>
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP<br>TP/TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; <b>@</b>: Minimum version.<br>¹ Stable Audio 3 ships the `stable-audio-tools` format only; convert it once with `diffusers/scripts/convert_stable_audio_3_to_diffusers.py`. </i>
 
 </div>
 

@@ -89,6 +89,7 @@ __all__ = [
   "nucleus_image_example",
   "kandinsky6_ti2va_example",
   "longcat_audio_dit_example",
+  "stable_audio_3_example",
   "hidream_o1_image_example",
   "sana_wm_example",
   "wan_animate_2_example",
@@ -138,6 +139,7 @@ _env_path_mapping = {
   "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
   "LONGCAT_AUDIO_DIT_1B_DIR": "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
   "LONGCAT_AUDIO_DIT_35B_DIR": "saddam213/LongCat-AudioDiT-3.5B-diffusers",
+  "STABLE_AUDIO_3_DIR": "stabilityai/stable-audio-3-medium",
   "GLM_IMAGE_DIR": "zai-org/GLM-Image",
   "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
   "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
@@ -3700,6 +3702,80 @@ def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
       guidance_scale=4.0,
       extra_input_kwargs={
         "audio_duration_s": 10.0,
+      },
+    ),
+  )
+
+
+_STABLE_AUDIO_3_CONVERT_HINT = (
+  "The official `stabilityai/stable-audio-3-*` repositories ship the stable-audio-tools format "
+  "(`model_config.json` + a single `model.safetensors`), not a diffusers layout. Convert it once "
+  "with the script shipped by diffusers and point the CLI at the output directory:\n"
+  "  python scripts/convert_stable_audio_3_to_diffusers.py \\\n"
+  "    --checkpoint_path <sa3-native>/model.safetensors \\\n"
+  "    --model_config_path <sa3-native>/model_config.json \\\n"
+  "    --output_dir <sa3-diffusers> \\\n"
+  "    --text_encoder_repo <sa3-native>/t5gemma-b-b-ul2 --dtype bfloat16")
+
+
+def _assert_stable_audio_3_layout(model_name_or_path: str) -> None:
+  """Fail early when the resolved model path is the native SA3 checkpoint instead of a conversion.
+
+  :param model_name_or_path: Resolved model id or local directory.
+  :raises ValueError: When the directory is a native SA3 checkpoint (no `model_index.json`).
+  """
+
+  if not os.path.isdir(model_name_or_path):
+    return  # a Hub id: `from_pretrained` reports its own error
+  if os.path.exists(os.path.join(model_name_or_path, "model_index.json")):
+    return
+  if os.path.exists(os.path.join(model_name_or_path, "model_config.json")):
+    raise ValueError(f"{model_name_or_path} is a native Stable Audio 3 checkpoint. "
+                     f"{_STABLE_AUDIO_3_CONVERT_HINT}")
+
+
+@ExampleRegister.register("stable_audio_3", default="stabilityai/stable-audio-3-medium")
+def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Stable Audio 3 text-to-audio example (distilled `medium` checkpoint).
+
+  The latent length follows the requested duration (`ceil(duration * 44100 / 4096)` frames), so
+  `duration` goes through `extra_input_kwargs`: there is no dedicated input field for it. 10 s is
+  the reference load used for the acceptance numbers (108 latent frames, i.e. `64 + 108 = 172`
+  transformer tokens after the 64 memory tokens, divisible by 2 and 4 — context parallelism needs that
+  divisibility, or `--ulysses-anything`). Unlike Stable Audio 1/2 the distilled checkpoint default is
+  `guidance_scale=1.0` — CFG is baked into the weights, so every step runs a single velocity forward
+  and 8 steps is the shipped schedule. The non-distilled `-base` checkpoint needs ~100 steps and
+  `guidance_scale > 1`; point `STABLE_AUDIO_3_DIR` at it and override `--steps` / `--guidance-scale`.
+
+  :param args: CLI arguments.
+  :returns: The Stable Audio 3 text-to-audio example.
+  """
+
+  from diffusers import StableAudio3Pipeline
+
+  if getattr(args, "parallel_vae", False):
+    raise NotImplementedError(
+      "Stable Audio 3 has an audio VAE (`AutoencoderSAME`, a 1-D convolutional decoder) and no "
+      "registered VAE parallel planner; its decode is only ~8% of the run, so `--parallel-vae` "
+      "is not applicable.")
+
+  model_name_or_path = _path("stabilityai/stable-audio-3-medium", args)
+  _assert_stable_audio_3_layout(model_name_or_path)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2A,  # Text to Audio
+      model_name_or_path=model_name_or_path,
+      pipeline_class=StableAudio3Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=("A gentle piano melody with soft strings in a concert hall, "
+              "warm and intimate, with a slow build."),
+      num_inference_steps=8,
+      guidance_scale=1.0,
+      extra_input_kwargs={
+        "duration": 10.0,
       },
     ),
   )

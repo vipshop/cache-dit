@@ -38,6 +38,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-2511|✅|✅|✅|
 |LongCat-Image|✅|✅|✅|
 |LongCat-Image-Edit|✅|✅|✅|
+|Stable-Audio-3-Medium|✅|✅|✅|
 |LongCat-AudioDiT-1B|✅|✅|✅|
 |Z-Image-Turbo|✅|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|✅|
