@@ -93,6 +93,7 @@ __all__ = [
   "sana_wm_example",
   "wan_animate_2_example",
   "wan_animate_2_distilled_example",
+  "lingbot_video_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -172,6 +173,7 @@ _env_path_mapping = {
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
   "WAN_ANIMATE_2_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
   "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
+  "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -4011,4 +4013,75 @@ def wan_animate_2_distilled_example(args: argparse.Namespace, **kwargs) -> Examp
     hf_model_id="Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
     pipeline_class=WanAnimate2DistilledModularPipeline,
     steps=10,
+  )
+
+
+# LingBot-Video is trained on the structured JSON caption form produced by its prompt rewriter, so
+# the bundled prompt keeps that shape: a plain sentence leaves most of the conditioning empty.
+_LINGBOT_VIDEO_PROMPT = (
+  '{"comprehensive_description": {"scene_content_description": "A red vintage motorcycle is '
+  'parked on a quiet cobblestone street at sunset. The camera slowly pushes in toward the fuel '
+  'tank while warm light glints off the chrome exhaust pipes and the background buildings blur '
+  'into a soft golden bokeh.", "camera_movement_description": "The camera moves forward slowly at '
+  'eye level, keeping the motorcycle centered."}, "camera_info": {"color": "Warm", "frame_size": '
+  '"Medium", "shot_type_angle": "Eye level", "lens_size": "Medium", "composition": "Center", '
+  '"lighting": "Soft light", "lighting_type": "Sunset"}, "world_knowledge": []}')
+
+
+class _LingBotVideoExample(Example):
+  """LingBot-Video example that exposes `frames` through a plain namespace.
+
+  `LingBotVideoPipelineOutput` subclasses diffusers' `BaseOutput`, i.e. it *is* an `OrderedDict`, so
+  `LingBotVideoPipeline`'s `frames` field would be dropped by the video-output parse (it reads the
+  `videos` key of a dict-shaped output). Wrapping the frame list in a `SimpleNamespace` keeps the
+  `frames[0]` layout that the other video examples use.
+  """
+
+  def call_pipe(self, pipe, kwargs: Dict[str, Any]):
+    from types import SimpleNamespace
+
+    output = super().call_pipe(pipe, kwargs)
+    return SimpleNamespace(frames=output.frames)
+
+
+@ExampleRegister.register(
+  "lingbot_video",
+  default="robbyant/lingbot-video-dense-1.3b",
+)
+def lingbot_video_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LingBot-Video Dense 1.3B text-to-video example.
+
+  The checkpoint ships its own pipeline (`LingBotVideoPipeline`), so cache-dit loads the built-in
+  copy from `cache_dit.models.pipelines.lingbot_video`. Defaults follow the official recipe:
+  480x832, 81 frames (24 fps), 40 steps, CFG 3.0 and flow-matching shift 3.0. `--num-frames 1`
+  renders a single image instead of a clip; `--num-frames/--height/--width/--steps` override the
+  rest.
+
+  :param args: CLI arguments.
+  :returns: The LingBot-Video Dense example.
+  """
+  from ..models.pipelines.lingbot_video import LingBotVideoPipeline
+
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames = 81 if args.num_frames is None else args.num_frames
+  num_inference_steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+
+  return _LingBotVideoExample(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path("robbyant/lingbot-video-dense-1.3b", args),
+      pipeline_class=LingBotVideoPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_LINGBOT_VIDEO_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=num_inference_steps,
+      guidance_scale=3.0,
+      # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
+      extra_input_kwargs={"output_type": "pil"},
+    ),
   )

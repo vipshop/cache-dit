@@ -149,6 +149,8 @@ def _activate_cp_planners():
     ImportErrorContextParallelismPlanner)
   SanaWMContextParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_wm", "SanaWMContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  LingBotVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".lingbot_video", "LingBotVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -250,3 +252,5 @@ def _activate_tp_planners():
     ".kandinsky6", "Kandinsky6TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SanaWMTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_wm", "SanaWMTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  LingBotVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".lingbot_video", "LingBotVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
