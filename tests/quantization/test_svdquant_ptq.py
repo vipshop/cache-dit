@@ -7,6 +7,7 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +34,7 @@ _ENABLE_FLUX2_SLOW_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2", "0").lower() ==
 _ENABLE_FLUX2_COMPILE_TEST = os.getenv("CACHE_DIT_SVDQ_TEST_FLUX2_COMPILE", "0").lower() == "1"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REPO_TMP_DIR = _REPO_ROOT / ".tmp"
-_TORCHRUN_BIN = Path("/workspace/dev/miniconda3/envs/cdit/bin/torchrun")
+_TORCHRUN_BIN = Path(sys.executable).with_name("torchrun")
 _FLUX2_MODEL_SOURCE_ENVVAR = "FLUX_2_KLEIN_4B_DIR"
 _FLUX2_DEFAULT_MODEL_SOURCE = "black-forest-labs/FLUX.2-klein-4B"
 _FLUX2_CPU_SEED = 0
@@ -1182,7 +1183,7 @@ def test_svdq_tp_save_load_roundtrip_two_ranks(tmp_path: Path) -> None:
   if len(visible_devices) < 2:
     pytest.skip("SVDQ TP save/load smoke test requires two visible devices.")
   if not _TORCHRUN_BIN.is_file():
-    pytest.skip("The configured cdit torchrun binary is unavailable.")
+    pytest.skip("The current interpreter's torchrun binary is unavailable.")
 
   checkpoint_path = tmp_path / "svdq_tp_roundtrip.safetensors"
   env = os.environ.copy()

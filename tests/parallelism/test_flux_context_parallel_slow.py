@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +18,8 @@ from cache_dit.metrics import compute_psnr
 _ENABLE_FLUX1_CP_SLOW_TEST = os.getenv("CACHE_DIT_TEST_FLUX1_CP", "0").lower() == "1"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REPO_TMP_DIR = _REPO_ROOT / ".tmp"
-_PYTHON_BIN = Path("/workspace/dev/miniconda3/envs/cdit/bin/python")
-_TORCHRUN_BIN = Path("/workspace/dev/miniconda3/envs/cdit/bin/torchrun")
+_PYTHON_BIN = Path(sys.executable)
+_TORCHRUN_BIN = Path(sys.executable).with_name("torchrun")
 _DEFAULT_VISIBLE_DEVICES = os.getenv("CACHE_DIT_TEST_FLUX1_CP_CUDA_VISIBLE_DEVICES", "6,7")
 _DEFAULT_MODEL_SOURCE = os.getenv("FLUX_DIR", "black-forest-labs/FLUX.1-dev")
 _DEFAULT_PROMPT = os.getenv(
@@ -177,7 +178,7 @@ def test_flux1_context_parallel_ring_and_ulysses_psnr() -> None:
     pytest.skip("FLUX.1-dev context parallel slow test requires two visible devices.")
 
   if not _PYTHON_BIN.is_file() or not _TORCHRUN_BIN.is_file():
-    pytest.skip("The configured cdit python/torchrun binaries are unavailable.")
+    pytest.skip("The current interpreter's python/torchrun binaries are unavailable.")
 
   if _TEST_OUTPUT_DIR.exists():
     shutil.rmtree(_TEST_OUTPUT_DIR)
