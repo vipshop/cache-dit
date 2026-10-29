@@ -141,6 +141,99 @@ def test_layerwise_cpu_offload_preserves_cuda_io_for_full_model() -> None:
   assert all(parameter.device.type == "cpu" for parameter in model.parameters())
 
 
+@pytest.mark.parametrize("async_transfer", [False, True])
+def test_layerwise_cpu_offload_falls_back_to_pageable_memory(monkeypatch,
+                                                             async_transfer: bool) -> None:
+  """A refused pinned allocation degrades to pageable memory instead of failing the setup."""
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=907,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  cpu_inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=908,
+    device="cpu",
+    dtype=torch.float32,
+  )
+  with torch.inference_mode():
+    reference = model(cpu_inputs).clone()
+
+  def refuse_pin(self, *args, **kwargs):
+    raise torch.AcceleratorError("CUDA error: invalid argument")
+
+  monkeypatch.setattr(torch.Tensor, "pin_memory", refuse_pin)
+  monkeypatch.setattr(layerwise_module, "_pin_fallback_warned", False)
+
+  offload_handle = layerwise_cpu_offload(
+    model,
+    onload_device="cuda",
+    async_transfer=async_transfer,
+    transfer_buckets=2,
+  )
+  try:
+    with torch.inference_mode():
+      output = model(cpu_inputs.to("cuda"))
+      torch.cuda.synchronize()
+  finally:
+    offload_handle.remove()
+
+  # The mirror degraded to pageable memory, and the fallback was reported exactly once.
+  assert layerwise_module._pin_fallback_warned is True
+  assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+  assert not any(parameter.is_pinned() for parameter in model.parameters())
+  # Transfers stay correct without the pinned staging buffer, sync and bucketed async alike.
+  torch.testing.assert_close(output.cpu(), reference, atol=2e-5, rtol=1e-5)
+
+
+def test_layerwise_cpu_offload_falls_back_when_pinned_allocation_fails(monkeypatch) -> None:
+  """A CUDA-resident model mirrors through `empty_like(pin_memory=True)`, which must degrade too."""
+  model = make_toy_model(
+    embed_dim=128,
+    num_heads=4,
+    seed=909,
+    device="cpu",
+    dtype=torch.float32,
+  ).to("cuda")
+  inputs = make_token_batch(
+    batch_size=2,
+    seq_len=8,
+    width=128,
+    seed=910,
+    device="cuda",
+    dtype=torch.float32,
+  )
+  with torch.inference_mode():
+    reference = model(inputs).clone()
+
+  real_empty_like = torch.empty_like
+
+  def refuse_pinned_empty_like(tensor, *args, **kwargs):
+    if kwargs.get("pin_memory"):
+      raise torch.AcceleratorError("CUDA error: invalid argument")
+    return real_empty_like(tensor, *args, **kwargs)
+
+  monkeypatch.setattr(torch, "empty_like", refuse_pinned_empty_like)
+  monkeypatch.setattr(layerwise_module, "_pin_fallback_warned", False)
+
+  offload_handle = layerwise_cpu_offload(model, onload_device="cuda")
+  try:
+    with torch.inference_mode():
+      output = model(inputs)
+      torch.cuda.synchronize()
+  finally:
+    offload_handle.remove()
+
+  assert layerwise_module._pin_fallback_warned is True
+  assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+  assert not any(parameter.is_pinned() for parameter in model.parameters())
+  torch.testing.assert_close(output, reference, atol=2e-5, rtol=1e-5)
+
+
 def test_layerwise_cpu_offload_accepts_diffusion_pipeline() -> None:
   pipe = _ToyOffloadPipeline()
   inputs = make_token_batch(
