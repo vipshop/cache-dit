@@ -3872,6 +3872,9 @@ def _wan_animate_2_driving_video(
 
   from diffusers.utils import load_video
 
+  # `--num-frames` also selects how many driving frames to keep, which is how a request asks for more
+  # than one denoising segment: a clip longer than `segment_frame_length` makes the pipeline loop.
+  num_frames = args.num_frames if args.num_frames is not None else _WAN_ANIMATE_2_DRIVING_FRAMES
   candidates = []
   if args.driving_video_path is not None:
     candidates.append(args.driving_video_path)
@@ -3880,14 +3883,14 @@ def _wan_animate_2_driving_video(
     candidates.append(os.path.join(asset_dir, "template.mp4"))
   if len(candidates) > 0:
     frames, fps = load_video(candidates[0], return_fps=True)
-    # Only the request's own frame count is used, so a long demo clip does not blow up the runtime.
-    frames = frames[:_WAN_ANIMATE_2_DRIVING_FRAMES]
+    # Only the requested frame count is used, so a long demo clip does not blow up the runtime.
+    frames = frames[:num_frames]
     fps = args.driving_video_fps if args.driving_video_fps is not None else fps
     return frames, fps
   logger.warning("No Wan-Animate-2 driving video found: replaying the reference image. Pass "
                  "`--driving-video-path` or set `WAN_ANIMATE_2_DEMO_DIR` for a real motion source.")
   fps = args.driving_video_fps if args.driving_video_fps is not None else 24.0
-  return [reference_image] * _WAN_ANIMATE_2_DRIVING_FRAMES, fps
+  return [reference_image] * num_frames, fps
 
 
 def _wan_animate_2_post_init_hook(pipe) -> None:
