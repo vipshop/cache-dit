@@ -174,7 +174,7 @@ Cache-DiT supports **50+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | Other | Shap-E | [`🤗diffusers@0.18.0`][diffusers-url], [`🤗HF`](https://huggingface.co/openai/shap-e) | 1 | ✔️/✖️/✔️/✔️ |
 | Image | DiT | [`🤗diffusers@0.12.0`][diffusers-url], [`🤗HF`](https://huggingface.co/facebook/DiT-XL-2-256) | 1 | ✔️/✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; <b>@</b>: Minimum version </i>
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP<br>TP/TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; <b>@</b>: Minimum version </i>
 
 </div>
 
