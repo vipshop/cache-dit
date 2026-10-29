@@ -88,6 +88,7 @@ __all__ = [
   "ming_image_design_layer_example",
   "nucleus_image_example",
   "kandinsky6_ti2va_example",
+  "longcat_audio_dit_example",
   "hidream_o1_image_example",
 ]
 
@@ -132,6 +133,8 @@ _env_path_mapping = {
   "Z_IMAGE_TURBO_CONTROLNET_2_0_DIR": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
   "LONGCAT_IMAGE_DIR": "meituan-longcat/LongCat-Image",
   "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
+  "LONGCAT_AUDIO_DIT_1B_DIR": "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
+  "LONGCAT_AUDIO_DIT_35B_DIR": "saddam213/LongCat-AudioDiT-3.5B-diffusers",
   "GLM_IMAGE_DIR": "zai-org/GLM-Image",
   "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
   "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
@@ -3657,6 +3660,39 @@ def kandinsky6_ti2va_example(args: argparse.Namespace, **kwargs) -> Example:
       guidance_scale=1.0,
       extra_input_kwargs={
         "frame_rate": 24.0,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("longcat_audio_dit", default="ruixiangma/LongCat-AudioDiT-1B-Diffusers")
+def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongCat-AudioDiT text-to-speech example (1B diffusers conversion).
+
+  The latent length follows the requested duration (24000 / 2048 = 11.72 frames per second), so
+  `audio_duration_s` goes through `extra_input_kwargs`: there is no dedicated input field for it.
+  10 s is the reference load used for the acceptance numbers (117 latent frames, well under the
+  30 s cap the pipeline hardcodes). Note that 117 is odd: context parallelism over two ranks needs
+  `--ulysses-anything`, or a duration whose frame count is even (5 s = 58, 6 s = 70).
+
+  :param args: CLI arguments.
+  :returns: The LongCat-AudioDiT text-to-speech example.
+  """
+  from diffusers import LongCatAudioDiTPipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2A,  # Text to Audio
+      model_name_or_path=_path("ruixiangma/LongCat-AudioDiT-1B-Diffusers", args),
+      pipeline_class=LongCatAudioDiTPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=("The sun is setting over the calm ocean, with gentle waves breaking on the shore."),
+      num_inference_steps=16,
+      guidance_scale=4.0,
+      extra_input_kwargs={
+        "audio_duration_s": 10.0,
       },
     ),
   )

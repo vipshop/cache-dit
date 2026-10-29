@@ -1281,6 +1281,45 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("LongCatAudioDiT")
+def longcat_audio_dit_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the LongCat-AudioDiT text-to-speech pipeline.
+
+  `AudioDiTBlock.forward` takes `hidden_states` first and returns a single tensor, and the
+  transformer calls every block with keyword arguments only, so the cached `Pattern_3` wrapper binds
+  `hidden_states` by name and forwards `timestep_embed / cond / mask / cond_mask / rope / cond_rope /
+  adaln_global_out` untouched: no PatchFunctor is needed. Everything except `hidden_states` is
+  computed once per step before the block loop, which is what makes block-level caching valid on an
+  audio sequence of only 58 (5 s) to 351 (30 s) latent frames.
+
+  :param pipe: LongCat-AudioDiT pipeline.
+  :param kwargs: Extra `BlockAdapter` arguments.
+  :returns: The block adapter for LongCat-AudioDiT.
+  """
+
+  try:
+    from diffusers import LongCatAudioDiTTransformer
+  except ImportError:
+    LongCatAudioDiTTransformer = None  # requires a diffusers build with LongCat-AudioDiT
+
+  _relaxed_assert(pipe.transformer, LongCatAudioDiTTransformer)
+
+  # The pipeline always runs the conditional forward and runs the null forward only when
+  # `guidance_scale > 1` (default 4.0), so the bookkeeping has to follow the reachable default.
+  guidance_scale = _default_call_float(pipe, "guidance_scale")
+  has_separate_cfg = True if guidance_scale is None else guidance_scale > 1.0
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("LongCatImage")
 def longcat_image_adapter(pipe, **kwargs) -> BlockAdapter:
   try:
