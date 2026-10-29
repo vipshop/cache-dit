@@ -103,7 +103,7 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 
 ## 🚪Supported DiT Models
 
-Cache-DiT supports **50+ DiT pipeline families (120+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 [diffusers-url]: https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/transformers
 
