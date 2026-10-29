@@ -18,7 +18,7 @@ pip install cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/
 
 - **必须用 `--extra-index-url`（不是 `--index-url`）**：自建索引只放 `cache-dit` 一个项目、不带依赖，PyPI 必须保持依赖来源。`pip` 合并两个索引取最高版本；`uv`（0.11.28 实测）先搜 extra index 再搜默认 index，所以这条命令对两种安装器都解析到 CUDA 构建。反过来写（`--index-url` 指向自建索引、PyPI 作 extra）对 `pip` 可用，但 `uv` 会只考虑 PyPI 的 release，除非再加 `--index-strategy unsafe-best-match`。
 - **先装 torch**：wheel 只针对 CUDA 13.x 编译（验证基线 `torch==2.11.0+cu130`）。让 pip 从 PyPI 拉 torch 会拿到非 cu13 构建，装完 `import` 时报 `libcudart.so.13` 找不到。先 `pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu130`。
-- 运行前提：Linux x86_64、glibc ≥ 2.38、Python 3.10–3.14（以索引页列为准）、torch cu130、GPU 属于已编译架构（sm 80/86/89/120a/121a）。
+- 运行前提：Linux x86_64、glibc ≥ 2.38、Python 3.10–3.14（以索引页列为准）、torch cu130、GPU 属于已编译架构（默认 setup.py 全架构集，CUDA 13 下 sm 89/90a/100/120a）。
 - pip 行为（实测）：local 版本排序高于同 base 版本，两个索引同时可用时 CUDA 包胜出，且已装的纯包不再满足需求；装过 CUDA 包后 `pip install -U cache-dit`（不带自建索引）**不会**降级回纯包；要退回纯包是「卸载再装」：
 
 ```bash

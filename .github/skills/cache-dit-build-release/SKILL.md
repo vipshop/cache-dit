@@ -1,6 +1,6 @@
 ---
 name: cache-dit-build-release
-description: "cache-dit 发布全流程（给定一个版本号即可执行完）：full profile 一次构建 PyPI 纯 Python wheel 与带 SVDQuant CUDA 扩展的 +cu13 wheel（cp310–cp314，sm 80/86/89/120a/121a，manylinux 平台标签与 $ORIGIN RPATH 归一）、gh-pages 上的 PEP 503 静态索引发布、GitHub Release 资产上传、PyPI 上传，以及发布后验收与安装语义。Use when cutting a cache-dit release, building or publishing the CUDA-extension wheels under whl/cu13, regenerating the wheel index on gh-pages, uploading the pure-Python wheel to PyPI, or verifying an install from the index."
+description: "cache-dit 发布全流程（给定一个版本号即可执行完）：full profile 一次构建 PyPI 纯 Python wheel 与带 SVDQuant CUDA 扩展的 +cu13 wheel（cp310–cp314，默认编译 setup.py 全架构集——CUDA 13 下 sm 89/90a/100/120a，禁止用 CACHE_DIT_RELEASE_ARCH 收窄，manylinux 平台标签与 $ORIGIN RPATH 归一）、gh-pages 上的 PEP 503 静态索引发布、GitHub Release 资产上传、PyPI 上传，以及发布后验收与安装语义。Use when cutting a cache-dit release, building or publishing the CUDA-extension wheels under whl/cu13, regenerating the wheel index on gh-pages, uploading the pure-Python wheel to PyPI, or verifying an install from the index."
 user-invocable: true
 ---
 
@@ -10,6 +10,15 @@ user-invocable: true
 两者同名同包（`cache_dit/`），靠 wheel 的 local 版本区分：CUDA 包是 `1.5.3+cu13`，纯包是 `1.5.3`。
 除版本号 `V`（如 `1.5.4`）外无需其它输入；通道 `CHANNEL` 默认 `cu13`，除新增 CUDA toolkit 外不要改。
 下文所有路径相对 **cache-dit 仓库根目录**（本机 `/workspace/dev/vipshop/cache-dit`）。
+
+> **默认编译全架构（硬性要求，最高优先级）**
+> 发布用的 CUDA wheel 必须用 `setup.py` 的默认 arch 集构建，也就是**不设** `CACHE_DIT_RELEASE_ARCH`（留空）。
+> （mini 档的单 arch 仅用于流水线验证、永不发布，不在此列。）
+> `setup.py` 的 `DEFAULT_CUDA_ARCH_TARGETS` 本身就是全架构集（CUDA 13 下 `89,90a,100,120a`，
+> 再按 nvcc 版本门限裁剪），即发布集。不要手写 arch 列表、不要收窄：收窄会发出只覆盖部分 GPU 的
+> wheel，用户装上直接 `no kernel image is available for execution on the device`。
+> SVDQuant 扩展会自动剔除 sm90a（INT4 kernel 排除 Hopper）、comm 扩展保留 sm90a，
+> 这类差异由 `setup.py` 负责，发布层不干预。
 
 ## 产物清单（以 `${V}` 为例）
 
@@ -66,7 +75,7 @@ CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=$V CACHE_DIT_RELEASE_CH
 ```
 
 - 与 ffpa-attn 不同：cache-dit 没有单独的 pure profile。full 档在同一个 base env（默认 `cdit`）里先出纯 wheel，再逐 env 出 cu13 wheel，最后统一校验（纯包无 `.so`、CUDA 包含 SVDQuant 扩展、平台标签与 `$ORIGIN` RPATH）。
-- 编译 arch 留空即 setup.py 默认集（CUDA 13 下为 `80,86,89,120a,121a`），这就是发布集；不要用 `CACHE_DIT_RELEASE_ARCH` 收窄，也不要包含 sm90（SVDQuant INT4 kernel 排除 Hopper）。
+- **arch 一律留空 = 默认全架构**：不传 `CACHE_DIT_RELEASE_ARCH`，由 `setup.py` 的默认集（`DEFAULT_CUDA_ARCH_TARGETS` / `_default_cuda_arch_targets()`，CUDA 13 下为 `89,90a,100,120a`，按 nvcc 版本门限裁剪）决定，这就是发布集。不要收窄，也不要手写一份 arch 列表（会随 setup.py 漂移）。SVDQuant 扩展自行剔除 sm90a、comm 扩展保留 sm90a，各扩展最终吃哪些 gencode 由 setup.py 决定。
 - 重发同版本：无 incremental 开关，但 ccache 命中后重编很快；workspace 在 `.tmp/release_build/{base,cu13}`，删掉即可全新重来。
 - 只做回归验证、不碰已发布件：`CACHE_DIT_RELEASE_DIST=.tmp/<task>/dist`。
 - 编译耗时较长（ccache 无命中时更久）：发出命令后等它结束，不要轮询。
@@ -148,7 +157,7 @@ CACHE_DIT_SITE_URL=https://deftruth.github.io CACHE_DIT_INDEX_PREFIX=cache-dit \
 | full 档只从已提交源构建 | 产物必须对得上某个 commit |
 | mini 档（`.devN`、单 env、单 arch）永不发布 | 只验证流水线；`publish_index.sh` 拒收 `.dev` 与缺 `+cu13` 的 wheel |
 | cu13 flavor 必须 `CACHE_DIT_BUILD_SVDQUANT=1` 且 `CACHE_DIT_SVDQUANT_BUILD_MODE=ALL`，nvcc ≥ 13.0 | setup.py `_validate_release_configuration()` 硬校验 |
-| 发布 arch 用 setup.py 默认集（`80,86,89,120a,121a`），不收窄 | 脚本定档：full 档 arch 留空即默认集，即发布集；sm90 Hopper 被 SVDQuant INT4 kernel 排除 |
+| 发布 arch 必须留空，走 setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`），不收窄 | `setup.py` 的 `DEFAULT_CUDA_ARCH_TARGETS` 即全架构集；收窄会发出只覆盖部分 GPU 的 wheel。SVDQuant 剔除 sm90a、comm 保留 sm90a 的差异由 setup.py 处理 |
 | 索引只收 CPython + manylinux + 编译版 wheel | `publish_index.sh` 逐个断言；纯包/非 manylinux 直接拒收 |
 | 安装口径用 `--extra-index-url` 指向自建索引 | 索引只放 `cache-dit` 一个项目、不带依赖，PyPI 必须保持依赖来源 |
 

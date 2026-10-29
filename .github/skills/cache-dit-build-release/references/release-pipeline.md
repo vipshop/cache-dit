@@ -26,7 +26,7 @@
 | `CACHE_DIT_RELEASE_DIST` | `dist/` | 产物落点 |
 | `CACHE_DIT_RELEASE_WORK_ROOT` | `.tmp/release_build` | workspace 根（`base/` 与 `<channel>/` 两个子目录） |
 | `CACHE_DIT_RELEASE_CHANNEL` | `cu13` | local 版本后缀 + 索引目录 |
-| `CACHE_DIT_RELEASE_ARCH` | 空 = setup.py 默认集 | mini 默认单 arch（`CACHE_DIT_RELEASE_MINI_ARCH`，默认 `120a`） |
+| `CACHE_DIT_RELEASE_ARCH` | 空 = setup.py 默认全架构集（发布必须留空） | mini 默认单 arch（`CACHE_DIT_RELEASE_MINI_ARCH`，默认 `120a`） |
 | `CACHE_DIT_RELEASE_BASE_ENV` | `cdit` | 纯 wheel 与所有归一/断言步骤所在 env |
 | `CACHE_DIT_RELEASE_JOBS` | 空 | → `MAX_JOBS` |
 | `CACHE_DIT_RELEASE_ALLOW_UNCOMMITTED` | `0` | `1` 允许脏树构建（告警，产物不对应任何 commit） |
@@ -71,7 +71,8 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 `setup.py`：
 
 - `_validate_release_configuration()`：cu13 flavor 必须 `CACHE_DIT_BUILD_SVDQUANT=1` + `CACHE_DIT_SVDQUANT_BUILD_MODE=ALL` + nvcc ≥ 13.0。
-- SVDQuant SM 目标：显式 arch 列表经 `_is_supported_svdquant_sm_target` 过滤（sm90 Hopper 排除，INT4 kernel 要求 ≥ sm80）；无显式列表时默认 `80,86,89`，nvcc ≥ 12.8 加 `120a`，nvcc ≥ 13.0 加 `121a`。
+- SM 目标：`DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")` 是默认全架构集，`_default_cuda_arch_targets()` 按 nvcc 版本门限裁剪（sm90a ≥ 12.0，sm100 / sm120a ≥ 12.8；CUDA 13 下四个全在）。显式 arch 列表（`CACHE_DIT_CUDA_ARCH_LIST` 优先于 `TORCH_CUDA_ARCH_LIST`）会覆盖默认集。
+- 两个扩展各自过滤：SVDQuant 走 `_is_supported_svdquant_sm_target`（≥ sm80 且剔除 sm90），comm 走 `_is_supported_comm_sm_target`（≥ sm89、保留 sm90）——同一次构建里两者的 gencode 集合可以不同，这是预期行为。
 
 `publish_index.sh`：
 
@@ -87,7 +88,7 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 | profile | envs | arch | 版本 | 产物 | 用途 |
 |---|---|---|---|---|---|
 | `mini` | `py312` | 单 arch（默认 `120a`） | scm 推导 `1.5.x.devN` | 纯 wheel + 1 个 cu13 wheel | 流水线验证；禁止发布 |
-| `full` | `py310`–`py314` | setup.py 默认集（CUDA 13 下 `80,86,89,120a,121a`） | 必给 V | 1 纯 wheel + 5 cu13 wheel（各 ~32 MB） | 发布 |
+| `full` | `py310`–`py314` | setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`；arch 留空） | 必给 V | 1 纯 wheel + 5 cu13 wheel（各 ~32 MB） | 发布 |
 
 ## 6. 版本推导
 
