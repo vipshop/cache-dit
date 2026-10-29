@@ -9,6 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|SANA-WM-I2V|✅|✖️|✅|
 |FLUX.2-Klein-9b-kv|✖️|✖️|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
 |FLUX.2-Klein-base-4B|✅|✅|✅|
@@ -200,6 +201,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |ChronoEdit-14B|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅|
 |Kandinsky-6.0-T2VA|✅|✅|
+|SANA-WM-I2V|✅|✅|
 |NucleusMoE-Image|✅|✅|
 |PRX-512-t2i-sft|✅|✖️|
 |PRXPixel-t2i|✅|✖️|

@@ -47,3 +47,4 @@ ZImageControlNetPatchFunctor = _safe_import(".functor_zimage_controlnet",
                                             "ZImageControlNetPatchFunctor")
 GlmImagePatchFunctor = _safe_import(".functor_glm_image", "GlmImagePatchFunctor")
 ErnieImagePatchFunctor = _safe_import(".functor_ernie_image", "ErnieImagePatchFunctor")
+SanaWMRefinerPatchFunctor = _safe_import(".functor_sana_wm_refiner", "SanaWMRefinerPatchFunctor")

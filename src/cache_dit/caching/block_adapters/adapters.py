@@ -946,6 +946,70 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+# NOTE: `SanaWMTransformer3DModel` and `SanaWMLTX2RefinerTransformer3DModel` share the `SanaWM`
+# prefix, and the registry returns the first matching prefix, so a single registration dispatches
+# on the block-stack attribute instead of depending on registration order.
+@BlockAdapterRegister.register("SanaWM")
+def sana_wm_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for SANA-WM (`SanaWMPipeline` and `SanaWMLTX2Refiner`).
+
+  Two transformers share the `SanaWM` prefix and are dispatched here by their block stack:
+
+  * Stage 1 (`SanaWMTransformer3DModel`) caches `blocks` with `Pattern_3`: the block contract is
+    `(x, y, t, mask, THW, rotary_emb, block_mask, camera_conditions, ucpe_ray_transforms,
+    plucker_emb, frame_valid_mask, chunk_size) -> x`, called positionally, so the cached
+    wrapper's `block(hidden_states, *args)` call carries all eleven extra arguments through
+    unchanged and no PatchFunctor is needed. Every one of those extras (text embeddings,
+    modulation, RoPE, camera raymaps, UCPE transforms, Plücker embeddings) is built once per
+    forward *outside* the loop, so a cached step cannot go stale. The parameters are named `x` /
+    `y` instead of `hidden_states` / `encoder_hidden_states`, hence the disabled signature check.
+  * Stage 2 (`SanaWMLTX2RefinerTransformer3DModel`) caches `transformer_blocks` with `Pattern_3`
+    and needs `SanaWMRefinerPatchFunctor`: the collapsed block loop would hand every layer the
+    first layer's KV slot, and the two `kv_cache_mode` passes that *write* the sliding-window
+    cache must not be skipped.
+
+  CFG runs inside a single forward (the pipeline concatenates `[negative, conditional]` into one
+  batch), so `has_separate_cfg` stays `False`.
+
+  :param pipe: `SanaWMPipeline` or `SanaWMLTX2Refiner` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the stage-1 or stage-2 denoising stack.
+  """
+  from diffusers import SanaWMTransformer3DModel
+  from diffusers.models.transformers.transformer_sana_wm_refiner import (
+    SanaWMLTX2RefinerTransformer3DModel, )
+
+  transformer = getattr(pipe, "transformer", None)
+  if isinstance(transformer, SanaWMLTX2RefinerTransformer3DModel):
+    from ..patch_functors import SanaWMRefinerPatchFunctor
+
+    # The functor only rebinds `forward` (it keeps the `ModuleList` object), so letting
+    # `__post_init__` apply it is enough -- `blocks` below is the same list either way.
+    patch_functor = SanaWMRefinerPatchFunctor()
+    return BlockAdapter(
+      pipe=pipe,
+      transformer=transformer,
+      blocks=transformer.transformer_blocks,
+      blocks_name="transformer_blocks",
+      forward_pattern=ForwardPattern.Pattern_3,
+      patch_functor=patch_functor,
+      has_separate_cfg=False,
+      **kwargs,
+    )
+
+  _relaxed_assert(transformer, SanaWMTransformer3DModel)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=False,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Sana")
 def sana_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import SanaTransformer2DModel

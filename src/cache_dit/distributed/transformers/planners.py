@@ -147,6 +147,8 @@ def _activate_cp_planners():
   HiDreamO1ImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".hidream_o1_image", "HiDreamO1ImageContextParallelismPlanner",
     ImportErrorContextParallelismPlanner)
+  SanaWMContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_wm", "SanaWMContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -246,3 +248,5 @@ def _activate_tp_planners():
     ImportErrorTensorParallelismPlanner)
   Kandinsky6TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".kandinsky6", "Kandinsky6TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  SanaWMTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_wm", "SanaWMTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
