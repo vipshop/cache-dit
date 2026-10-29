@@ -137,6 +137,12 @@ class FastH3Contract:
     if forwards < 1 or len(steps) != forwards:
       raise ValueError(f"{contract_path} is inconsistent: transformer_forwards={forwards} but "
                        f"dmd_denoising_steps={steps}.")
+    ladder = [int(step) for step in steps]
+    if any(step < 0 or step > 1000 for step in ladder):
+      raise ValueError(f"{contract_path} has rungs outside the 0..1000 training clock: {ladder}.")
+    if any(earlier <= later for earlier, later in zip(ladder, ladder[1:])):
+      raise ValueError(f"{contract_path} rungs must be strictly decreasing (noise level order): "
+                       f"{ladder}.")
     grid_points = int(payload.get("num_inference_steps", forwards + 1))
     if grid_points != forwards + 1:
       raise ValueError(f"{contract_path} declares {grid_points} sigma grid points for {forwards} "
@@ -149,7 +155,7 @@ class FastH3Contract:
     return cls(
       num_inference_steps=grid_points,
       transformer_forwards=forwards,
-      dmd_denoising_steps=tuple(int(step) for step in steps),
+      dmd_denoising_steps=tuple(ladder),
       guidance_scale=float(payload.get("guidance_scale", 1.0)),
       vsa_tile_size=tile_size,
       vsa_sparsity=float(payload.get("vsa_sparsity", 0.0)),
@@ -175,12 +181,18 @@ def _transformer_mounts_vsa_gates(path: str | os.PathLike, subfolder: str = "tra
     with open(index_path, encoding="utf-8") as handle:
       keys = json.load(handle).get("weight_map", {})
     return any("to_gate_compress" in key for key in keys)
-  for name in sorted(os.listdir(root)) if os.path.isdir(root) else []:
-    if name.endswith(".safetensors"):
-      from safetensors import safe_open
+  if not os.path.isdir(root):
+    raise ValueError(f"FastH3 expects the transformer shards under `{root}`, which does not exist.")
+  from safetensors import safe_open
 
-      with safe_open(os.path.join(root, name), framework="pt") as handle:
-        return any("to_gate_compress" in key for key in handle.keys())
+  shards = sorted(name for name in os.listdir(root) if name.endswith(".safetensors"))
+  if not shards:
+    raise ValueError(f"FastH3 found no `.safetensors` shards in `{root}`; the download may be "
+                     "incomplete.")
+  for name in shards:
+    with safe_open(os.path.join(root, name), framework="pt") as handle:
+      if any("to_gate_compress" in key for key in handle.keys()):
+        return True
   return False
 
 
@@ -481,6 +493,16 @@ def _build_transformer_class():
       video_indices = kwargs.get("video_indices")
       audio_indices = kwargs.get("audio_indices")
       text_indices = kwargs.get("text_indices")
+      if position_ids is None and args:
+        # The modular denoise step passes the layout as keywords, but a caller may bind them
+        # positionally; resolve by name so the sparse path does not silently degrade to dense.
+        import inspect
+
+        bound = inspect.signature(self.forward).bind_partial(self, *args, **kwargs)
+        position_ids = bound.arguments.get("position_ids")
+        video_indices = bound.arguments.get("video_indices")
+        audio_indices = bound.arguments.get("audio_indices")
+        text_indices = bound.arguments.get("text_indices")
       if position_ids is None or video_indices is None or audio_indices is None or text_indices is None:
         return None
       key = (
