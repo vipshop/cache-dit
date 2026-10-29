@@ -103,76 +103,76 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 <div align="center">
 
-| Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
+| Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | FLUX | [`FluxTransformer2DModel`][diffusers-url] | 10+ | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 🔥 | [`Flux2Transformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 Klein 🔥 | [`Flux2Transformer2DModel`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.3 Klein 🔥 | [`Flux3Transformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | ERNIE-Image 🔥 | [`ErnieImageTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Qwen-Image 🔥 | [`QwenImageTransformer2DModel`][diffusers-url] | 9+ | ✔️/✔️/✔️/✔️ |
-| Image | Qwen-Image-2.1 🔥| [`QwenImage21Transformer2DModel`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | Z-Image 🔥 | [`ZImageTransformer2DModel`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Image | Joy-Image| [`JoyImageEditTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Krea-2 | [`Krea2Transformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Ideogram 4 🔥 | [`Ideogram4Transformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo | [`BriaFiboTransformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo 2.0 🔥 | [`BriaFibo2Transformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | NucleusMoE-Image 🔥 | [`NucleusMoEImageTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | GLM-Image 🔥 | [`GlmImageTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | LongCat-Image 🔥 | [`LongCatImageTransformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ovis-Image | [`OvisImageTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | SD3 | [`SD3Transformer2DModel`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
-| Image | PixArt-Alpha | [`PixArtTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | PixArt-Sigma | [`PixArtTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Sana (image) | [`SanaTransformer2DModel`][diffusers-url] | 4 | ✔️/✖️/✔️/✔️ |
-| Image | DiT | [`DiTTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | HunyuanDiT | [`HunyuanDiT2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | HunyuanDiT-PAG | [`HunyuanDiT2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | AuraFlow | [`AuraFlowTransformer2DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | CogView4 | [`CogView4Transformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | CogView3Plus | [`CogView3PlusTransformer2DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Hunyuan-Image 🔥 | [`HunyuanImageTransformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream | [`HiDreamImageTransformer2DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Bria | [`BriaTransformer2DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Chroma | [`ChromaTransformer2DModel`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | PRX / PRXPixel 🔥| [`PRXTransformer2DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Anima | [`CosmosTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | OmniGen | [`OmniGenTransformer2DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina | [`LuminaNextDiT2DModel`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina 2 | [`Lumina2Transformer2DModel`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Image | VisualCloze | [`FluxTransformer2DModel`][diffusers-url]  | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Amused | [`UVit2DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| **Video** | CogVideoX | [`CogVideoXTransformer3DModel`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | Wan 2.1 (T2V/I2V) 🔥| [`WanTransformer3DModel`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Video | Wan 2.2 (T2V/I2V) 🔥| [`WanTransformer3DModel`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow | [`AnyFlowTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow-FAR | [`AnyFlowFARTransformer3DModel`][diffusers-url] | 1 | ✖️/✖️/✔️/✔️ |
-| Video | Wan-VACE 🔥| [`WanVACETransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | HunyuanVideo | [`HunyuanVideoTransformer3DModel`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | HunyuanVideo 1.5 🔥| [`HunyuanVideo15Transformer3DModel`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Video | Mochi | [`MochiTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Allegro | [`AllegroTransformer3DModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Video | EasyAnimate | [`EasyAnimateTransformer3DModel`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
-| Video | ConsisID | [`ConsisIDTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Cosmos | [`CosmosTransformer3DModel`][diffusers-url] | 7+ | ✔️/✖️/✔️/✔️ |
-| Video | Cosmos3 (Omni) 🔥| [`Cosmos3OmniTransformer`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Video | LTX | [`LTXVideoTransformer3DModel`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2 | [`LTX2VideoTransformer3DModel`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`LTX2VideoTransformer3DModel`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Video | Echo (JoyAI-Echo) 🔥 | [`LTX2VideoTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Helios 🔥 | [`HeliosTransformer3DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Video | ChronoEdit | [`ChronoEditTransformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | SkyReelsV2 | [`SkyReelsV2Transformer3DModel`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky5 (T2V/I2V) | [`Kandinsky5Transformer3DModel`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky 6.0 (T2VA) 🔥 | [`Kandinsky6Transformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✖️ |
-| Video | MiniMax-H3 (T2VA) 🔥 | [`MiniMaxH3Transformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MiniMax-H3 (FL2VA) 🔥 | [`MiniMaxH3Transformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | MiniMax-H3 (Ref2VA) 🔥 | [`MiniMaxH3Transformer3DModel`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | Motif-Video (T2V/I2V) 🔥 | [`MotifVideoTransformer3DModel`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| **Audio** | StableAudio | [`StableAudioDiTModel`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| **3D/Other** | Shap-E | [`PriorTransformer`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Other | LucyEdit | [`WanTransformer3DModel`][diffusers-url]  | 1 | ✔️/✔️/✔️/✔️ |
+| **Image** | FLUX | [`diffusers`][diffusers-url] | 10+ | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 Klein 🔥 | [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.3 Klein 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | ERNIE-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image 🔥 | [`diffusers`][diffusers-url] | 9+ | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image-2.1 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Image | Z-Image 🔥 | [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Image | Joy-Image| [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Krea-2 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Ideogram 4 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo 2.0 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | NucleusMoE-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | GLM-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | LongCat-Image 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ovis-Image | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | SD3 | [`diffusers`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
+| Image | PixArt-Alpha | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | PixArt-Sigma | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Sana (image) | [`diffusers`][diffusers-url] | 4 | ✔️/✖️/✔️/✔️ |
+| Image | DiT | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT-PAG | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | AuraFlow | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | CogView4 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | CogView3Plus | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Hunyuan-Image 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Bria | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Chroma | [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Image | PRX / PRXPixel 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Anima | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | OmniGen | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina | [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina 2 | [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Image | VisualCloze | [`diffusers`][diffusers-url]  | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Amused | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| **Video** | CogVideoX | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Wan 2.1 (T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Video | Wan 2.2 (T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow-FAR | [`diffusers`][diffusers-url] | 1 | ✖️/✖️/✔️/✔️ |
+| Video | Wan-VACE 🔥| [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo 1.5 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Mochi | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Allegro | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Video | EasyAnimate | [`diffusers`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
+| Video | ConsisID | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Cosmos | [`diffusers`][diffusers-url] | 7+ | ✔️/✖️/✔️/✔️ |
+| Video | Cosmos3 (Omni) 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | LTX | [`diffusers`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2 | [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Echo (JoyAI-Echo) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Helios 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Video | ChronoEdit | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | SkyReelsV2 | [`diffusers`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky5 (T2V/I2V) | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky 6.0 (T2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✖️ |
+| Video | MiniMax-H3 (T2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (FL2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | MiniMax-H3 (Ref2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | Motif-Video (T2V/I2V) 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| **Audio** | StableAudio | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| **3D/Other** | Shap-E | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Other | LucyEdit | [`diffusers`][diffusers-url]  | 1 | ✔️/✔️/✔️/✔️ |
 
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
 
@@ -186,11 +186,11 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 <div align="center">
 
-| Modality | Pipeline Series | Transformer | Variants | C/P/Q/OF |
+| Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | MOSS-Image 🔥 | [`MOSSImageTransformer`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ming-Image 0.1 🔥 | [`MingImageTransformer2DModel`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream-O1-Image 🔥 | [`HiDreamO1ImageTransformer2DModel`][cache-dit-url] | 1 | ✔️/✔️/✔️/✔️ |
+| **Image** | MOSS-Image 🔥 | [`cache-dit`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`cache-dit`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream-O1-Image 🔥 | [`cache-dit`][cache-dit-url] | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
