@@ -202,6 +202,9 @@ Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tr
 ```bash
 gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
 ```
+
+The SKILL guides the Coding Agent to search and download the model (e.g. from 🤗Hugging Face or ModelScope), match it against the corresponding 🤗Diffusers implementation, and then implement support for the model by following the SKILL instructions.
+
 ```bash
 /cache-dit-model-integration "Please download and support MiniMax-H3 in Cache-DiT."
 ```
