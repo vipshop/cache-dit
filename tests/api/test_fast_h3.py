@@ -223,3 +223,19 @@ def test_vsa_rejects_a_head_count_that_does_not_divide_the_ulysses_degree():
   q = torch.zeros(1, 8, 56, 128)
   with pytest.raises(ValueError, match="divide the Ulysses degree"):
     _ulysses_gather_sequence(q, q, q, None, 56, config)
+
+
+def test_contract_shift_wins_over_a_stale_scheduler_config(tmp_path):
+  """The contract is the distillation record; a disagreeing scheduler config must not win."""
+  contract = dict(BASE_CONTRACT, video_scheduler_shift=10.0, audio_scheduler_shift=3.0)
+  root = _write_checkpoint(tmp_path, contract, video_shift=12.0, audio_shift=3.0)
+  parsed = FastH3Contract.from_checkpoint(root)
+  assert parsed.video_shift == 10.0, "the contract shift must override the stale config"
+  assert parsed.audio_shift == 3.0
+
+
+def test_contract_falls_back_to_the_scheduler_config(tmp_path):
+  """The 4-step preview ships no shift in its contract."""
+  root = _write_checkpoint(tmp_path, BASE_CONTRACT, video_shift=12.0, audio_shift=3.0)
+  parsed = FastH3Contract.from_checkpoint(root)
+  assert (parsed.video_shift, parsed.audio_shift) == (12.0, 3.0)

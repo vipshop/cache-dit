@@ -165,18 +165,47 @@ class FastH3Contract:
       guidance_scale=float(payload.get("guidance_scale", 1.0)),
       vsa_tile_size=tile_size,
       vsa_sparsity=float(payload.get("vsa_sparsity", 0.0)),
-      video_shift=_read_scheduler_shift(path, "scheduler"),
-      audio_shift=_read_scheduler_shift(path, "audio_scheduler"),
+      video_shift=_resolve_shift(path, payload, "scheduler", "video_scheduler_shift"),
+      audio_shift=_resolve_shift(path, payload, "audio_scheduler", "audio_scheduler_shift"),
       task=str(payload.get("task", "t2av")),
     )
 
 
-def _read_scheduler_shift(path: str | os.PathLike, subfolder: str) -> float:
+def _resolve_shift(
+  path: str | os.PathLike,
+  payload: dict,
+  subfolder: str,
+  contract_key: str,
+) -> float:
+  """Pick the modality shift, preferring the contract over the scheduler config.
+
+  The contract is the distillation record, so it wins when it states a shift (the 8-step release
+  carries `video_scheduler_shift` / `audio_scheduler_shift`; the 4-step preview only ships the two
+  scheduler configs). A config that disagrees is reported, because that is exactly the kind of
+  stale-file drift that would silently resample the student off its ladder.
+
+  :param path: checkpoint directory.
+  :param payload: parsed `fastvideo_inference.json`.
+  :param subfolder: scheduler subfolder in the repository.
+  :param contract_key: key that may carry the shift in the contract.
+  :returns: The shift to apply to that modality's sigma grid.
+  """
   config_path = os.path.join(str(path), subfolder, "scheduler_config.json")
-  if not os.path.isfile(config_path):
-    raise ValueError(f"FastH3 needs `{config_path}` to build the sigma grid.")
-  with open(config_path, encoding="utf-8") as handle:
-    return float(json.load(handle).get("shift", 1.0))
+  config_shift = None
+  if os.path.isfile(config_path):
+    with open(config_path, encoding="utf-8") as handle:
+      config_shift = float(json.load(handle).get("shift", 1.0))
+  contract_shift = payload.get(contract_key)
+  if contract_shift is None:
+    if config_shift is None:
+      raise ValueError(f"FastH3 needs either `{contract_key}` in the contract or `{config_path}` "
+                       "to build the sigma grid.")
+    return config_shift
+  contract_shift = float(contract_shift)
+  if config_shift is not None and abs(config_shift - contract_shift) > 1e-6:
+    logger.warning(f"FastH3 {subfolder}: the contract says shift={contract_shift} but "
+                   f"{config_path} says shift={config_shift}; using the contract.")
+  return contract_shift
 
 
 def _transformer_mounts_vsa_gates(path: str | os.PathLike, subfolder: str = "transformer") -> bool:
