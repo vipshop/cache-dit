@@ -31,3 +31,8 @@ _IMAGE_EXTENSIONS = [
 _VIDEO_EXTENSIONS = [
   "mp4",
 ]
+
+_AUDIO_EXTENSIONS = [
+  "wav",
+  "flac",
+]
