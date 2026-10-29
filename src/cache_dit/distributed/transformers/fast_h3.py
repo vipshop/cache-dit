@@ -57,11 +57,9 @@ class FastH3ContextParallelismPlanner(MiniMaxH3ContextParallelismPlanner):
     parallelism_config,
     **kwargs,
   ) -> dict:
-    if getattr(transformer, "enable_vsa", False):
-      raise NotImplementedError(
-        "FastH3 runs video sparse attention, which is not context-parallel yet: tile selection "
-        "needs the whole sequence and the compression gate has to travel with Q/K/V. Disable VSA "
-        "(`set_vsa_enabled(False)`) to use context parallelism, or run without --parallel.")
+    # Video sparse attention is context-parallel safe: the FastH3 processor runs the Ulysses
+    # all-to-all itself, carrying the compression gate along with Q/K/V, so every rank holds the
+    # full packed sequence and ranks tiles identically. The MiniMax-H3 plan is reused unchanged.
     return super()._apply(transformer, parallelism_config, **kwargs)
 
 
@@ -85,14 +83,6 @@ class FastH3TensorParallelismPlanner(MiniMaxH3TensorParallelismPlanner):
     :param tp_mesh: TP device mesh.
     :returns: The sharded transformer and the applied layer plans.
     """
-    if getattr(transformer, "enable_vsa", False):
-      # The sparse path calls index_select / gather / topk / BlockMask.from_kv_blocks and then adds
-      # a gate gathered per tile; none of those has a DTensor strategy yet, and the failure would
-      # surface inside DTensor dispatch. Refuse up front, symmetrically with the CP planner.
-      raise NotImplementedError(
-        "FastH3 runs video sparse attention, which is not tensor-parallel yet: tile selection "
-        "indexes the full sequence and the block mask is a local index tensor. Call "
-        "`set_vsa_enabled(False)` to use tensor parallelism, or drop --parallel-tp.")
     tp_size = tp_mesh.size()
     heads = transformer.config.num_attention_heads
     head_dim = transformer.config.attention_head_dim

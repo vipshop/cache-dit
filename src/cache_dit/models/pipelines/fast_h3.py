@@ -44,13 +44,17 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
 
 from ...attention.backends.register import _dispatch_attention_fn
 from ...attention.vsa_h3 import vsa_h3_attention
+from ...distributed.core._distributed_primitives import (
+  _all_to_all_single_o_custom_heads,
+  _all_to_all_single_qkv_custom_heads,
+)
 from ...attention.vsa_h3_geometry import VsaH3Meta, vsa_h3_meta_from_layout
 from ...logger import init_logger
 
@@ -180,6 +184,107 @@ def _transformer_mounts_vsa_gates(path: str | os.PathLike, subfolder: str = "tra
   return False
 
 
+def _is_dtensor(tensor: Any) -> bool:
+  from torch.distributed.tensor import DTensor
+
+  return isinstance(tensor, DTensor)
+
+
+def _to_local(tensor: torch.Tensor) -> torch.Tensor:
+  """Unwrap a DTensor to its local shard; a plain tensor passes through."""
+  return tensor.to_local() if _is_dtensor(tensor) else tensor
+
+
+def _to_local_tensors(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+  """Move Q/K/V out of the DTensor world for the sparse kernel.
+
+  Tile selection calls `index_select` / `gather` / `topk` and then hands a local block mask to
+  FlexAttention; none of those has a DTensor strategy, and the failure would surface inside
+  dispatch. The attention is head-wise, so the local shard is the whole computation for this rank.
+
+  :param query: query tensor, possibly a DTensor sharded on the head axis.
+  :param key: key tensor.
+  :param value: value tensor.
+  :returns: Local Q/K/V and the tensor whose placement the output must be rewrapped with.
+  """
+  reference = next((t for t in (query, key, value) if _is_dtensor(t)), None)
+  return _to_local(query), _to_local(key), _to_local(value), reference
+
+
+def _restore_placement(local: torch.Tensor, reference: Optional[torch.Tensor]) -> torch.Tensor:
+  """Wrap a local attention output back into the placement its inputs had."""
+  if reference is None:
+    return local
+  from torch.distributed.tensor import DTensor
+
+  return DTensor.from_local(local, reference.device_mesh, reference.placements, run_check=False)
+
+
+def _ulysses_world(parallel_config: Any) -> int:
+  return int(getattr(parallel_config, "ulysses_degree", 1) or 1)
+
+
+def _ulysses_group(parallel_config: Any):
+  mesh = getattr(parallel_config, "_ulysses_mesh", None)
+  if mesh is None:
+    raise ValueError("FastH3 video sparse attention needs a Ulysses mesh for context parallelism.")
+  return mesh.get_group()
+
+
+def _ulysses_gather_sequence(
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+  gate: Optional[torch.Tensor],
+  heads: int,
+  parallel_config: Any,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], list[int], int]:
+  """Turn ``(B, S_local, H, D)`` row shards into ``(B, S_global, H_local, D)``.
+
+  Ulysses scatters heads and gathers the sequence, so after this call every rank holds the whole
+  packed sequence and is therefore able to rank tiles exactly like the single-GPU path. The
+  compression gate rides the same all-to-all — it is per head and per channel, so it must land in
+  the same layout as Q/K/V (this is what FastVideo and vllm-omni do; sglang leaves the gate in the
+  row shard and folds after the output exchange instead).
+
+  :param query: local query shard, shape ``(B, S_local, H_global, D)``.
+  :param key: local key shard.
+  :param value: local value shard.
+  :param gate: optional per-head compression gate in the same layout as ``query``.
+  :param heads: global attention head count.
+  :param parallel_config: cache-dit context-parallel config.
+  :returns: Communicated Q/K/V/gate, the per-rank head split sizes and the local row count.
+  """
+  world = _ulysses_world(parallel_config)
+  if heads % world:
+    raise ValueError(f"FastH3 VSA needs the head count ({heads}) to divide the Ulysses degree "
+                     f"({world}); 56 heads allow {[d for d in range(1, 57) if 56 % d == 0]}.")
+  group = _ulysses_group(parallel_config)
+  split_sizes = [heads // world] * world
+  local_rows = int(query.shape[1])
+  query = _all_to_all_single_qkv_custom_heads(query, group, split_sizes)
+  key = _all_to_all_single_qkv_custom_heads(key, group, split_sizes)
+  value = _all_to_all_single_qkv_custom_heads(value, group, split_sizes)
+  if gate is not None:
+    gate = _all_to_all_single_qkv_custom_heads(gate, group, split_sizes)
+  return query, key, value, gate, split_sizes, local_rows
+
+
+def _ulysses_split_sequence(
+  out: torch.Tensor,
+  split_sizes: list[int],
+  local_rows: int,
+  parallel_config: Any,
+) -> torch.Tensor:
+  """Undo :func:`_ulysses_gather_sequence`: heads back to global, sequence back to rows."""
+  return _all_to_all_single_o_custom_heads(out, _ulysses_group(parallel_config), split_sizes,
+                                           local_rows)
+
+
 class FastH3AttnProcessor:
   """MiniMax-H3 attention with FastH3's video sparse attention on top.
 
@@ -230,16 +335,29 @@ class FastH3AttnProcessor:
       gate = attn.to_gate_compress(hidden_states).unflatten(-1, (attn.heads, -1))
       parallel_config = getattr(self, "_parallel_config", None)
       if parallel_config is not None and getattr(parallel_config, "ulysses_degree", 1) > 1:
-        raise NotImplementedError(
-          "FastH3 video sparse attention does not run under context parallelism yet: VSA needs the "
-          "full sequence to select tiles and the compression gate has to ride the same all-to-all "
-          "as Q/K/V. Drop --parallel or run the model with dense attention.")
-      hidden_states = vsa_h3_attention(query,
-                                       key,
-                                       value,
-                                       meta,
-                                       gate=gate,
-                                       sparsity=getattr(attn, "_vsa_sparsity", meta.sparsity))
+        # Ulysses gathers the packed sequence back on every rank (heads are split instead), which
+        # is exactly the layout tile selection needs; the compression gate rides the same
+        # all-to-all so it stays aligned with Q/K/V (FastVideo / vllm-omni do the same).
+        query, key, value, gate, split_sizes, local_rows = _ulysses_gather_sequence(
+          query, key, value, gate, attn.heads, parallel_config)
+        hidden_states = vsa_h3_attention(query,
+                                         key,
+                                         value,
+                                         meta,
+                                         gate=gate,
+                                         sparsity=getattr(attn, "_vsa_sparsity", meta.sparsity))
+        hidden_states = _ulysses_split_sequence(hidden_states, split_sizes, local_rows,
+                                                parallel_config)
+      else:
+        query, key, value, hidden_ref = _to_local_tensors(query, key, value)
+        gate_local = _to_local(gate)
+        hidden_states = vsa_h3_attention(query,
+                                         key,
+                                         value,
+                                         meta,
+                                         gate=gate_local,
+                                         sparsity=getattr(attn, "_vsa_sparsity", meta.sparsity))
+        hidden_states = _restore_placement(hidden_states, hidden_ref)
     else:
       hidden_states = _dispatch_attention_fn(query,
                                              key,

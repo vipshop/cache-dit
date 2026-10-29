@@ -211,3 +211,15 @@ def test_load_components_swaps_in_the_vsa_transformer(tmp_path):
   for block in pipe.transformer.transformer_blocks:
     assert block.attn.to_gate_compress is not None
     assert block.attn._vsa_gate_active, "a loaded non-zero gate must switch the branch on"
+
+
+def test_vsa_rejects_a_head_count_that_does_not_divide_the_ulysses_degree():
+  """The Ulysses exchange splits heads, so a non-dividing degree must fail before any collective."""
+  from types import SimpleNamespace
+
+  from cache_dit.models.pipelines.fast_h3 import _ulysses_gather_sequence
+
+  config = SimpleNamespace(ulysses_degree=5, _ulysses_mesh=None)
+  q = torch.zeros(1, 8, 56, 128)
+  with pytest.raises(ValueError, match="divide the Ulysses degree"):
+    _ulysses_gather_sequence(q, q, q, None, 56, config)
