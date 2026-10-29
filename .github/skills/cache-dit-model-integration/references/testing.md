@@ -2,6 +2,8 @@
 
 When to read this: read this file before running baseline, Cache, CP, TP, TE-P, VAE-P, or final integration tests. It contains local model path setup, command templates, PSNR/SSIM acceptance criteria, result tables, and debugging tips. Read [`./install.md`](./install.md) first when the environment or editable install needs to be prepared. Return to `../SKILL.md` for phase gates.
 
+Companion file: [`./perf_matrix.md`](./perf_matrix.md) owns the **full acceptance matrix** (row checklist, commands, 1/2-GPU default, on-request 4/8-GPU hybrid CP+TP). §7.6 below turns that matrix into pass/fail gates; read both when the deliverable is a performance + accuracy table for an already-supported model.
+
 ## 7. Testing & Verification
 
 ```text
@@ -89,6 +91,10 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
     --parallel tp --parallel-vae --save-path .tmp/{task}/<new_model>_tp2_vaep2.png
 ```
 
+> The commands above are **smoke-level**: none of them passes `--warmup/--repeat`, so their latency
+> is a single un-warmed run. Before a number goes into a table, re-run it with `--warmup 2 --repeat 2`
+> (§7.5), or use the `run()` helper in [`./perf_matrix.md`](./perf_matrix.md) §4.
+
 ### 7.4 Correctness Verification
 
 > ⚠️ **PSNR AND SSIM ARE BOTH MANDATORY — NEVER OMIT SSIM.**
@@ -114,9 +120,10 @@ cache-dit-metrics psnr ssim -i1 .tmp/{task}/<new_model>_base.png -i2 .tmp/{task}
 - **⚠️ Garbled-image red flag**: If PSNR is "reasonable" (e.g., 28 dB) but SSIM is below 0.5, the image is almost certainly visually corrupted. **Do not accept the result** — investigate the root cause (common culprits: missing/wrong `shard_div_attr`, DTensor placement mismatch, incorrect GQA handling).
 - Always **visually inspect** at least one output image per configuration.
 
-### 7.5 Results Table
+### 7.5 Results Table (integration phase)
 
-Record your results in this format:
+The integration-phase table is deliberately coarse — it exists to prove each feature works, not to
+rank configurations:
 
 | Configuration | Latency (s) | PSNR (dB) | SSIM | GPU Mem (GB) |
 | --- | --- | --- | --- | --- |
@@ -128,9 +135,65 @@ Record your results in this format:
 | TP + TE-P (2GPU) | — | — | — | — |
 | TP + VAE-P (2GPU) | — | — | — | — |
 
-**Tips for collecting latency:** Use `--warmup 1 --repeat 1` is enough for stable timing. Use `--track-memory` to log peak GPU memory (usually unnecessary).
+> The **acceptance** table is a different shape (PSNR/SSIM in `mean / min`, cache hit counts, the
+> full 1/2-GPU row set, and the on-request 4/8-GPU rows). Its template lives in
+> [`./perf_matrix.md`](./perf_matrix.md) §5 — use that one whenever the deliverable is a full matrix.
 
-### 7.6 Debugging Tips
+**Tips for collecting latency:** `--warmup 2 --repeat 2` for any number you intend to publish
+(compile cost lands in warmup, and `Inference Time` is the mean over `--repeat`); `--warmup 1
+--repeat 1` is only enough for a quick smoke check. Use `--track-memory` to log peak GPU memory.
+
+### 7.6 Full Test Matrix — acceptance standard
+
+Row list and command templates: [`./perf_matrix.md`](./perf_matrix.md) — Tier A = 1/2 GPUs (always),
+Tier B = 4 GPUs, Tier C = 8 GPUs (both only when the user explicitly asks). This section defines what
+"pass" means for those rows.
+
+> **Authority**: (b) governs an **acceptance / benchmark run** of the full matrix, and for cache and
+> parallel rows it supersedes the single-number thresholds in §7.4 and in `../SKILL.md` §0.6 — those
+> stay the **integration** gate for a planner you are still writing. Two different products, two
+> different gates; mixing them makes a healthy 2-GPU planner "fail" or a broken one "pass".
+
+**(a) Integration gate — while writing a planner.** Unchanged from §7.4: CP / TP / TE-P / VAE-P
+against the single-GPU bf16 baseline → **mean PSNR > 35 dB, SSIM > 0.90**. A planner that just
+landed should be numerically near-identical; 32 dB on 2 GPUs means go read the plan.
+
+**(b) Acceptance gate — the matrix table.**
+
+Step 0, determinism baseline (mandatory, cheap): run single-GPU bf16 twice with the same seed under
+two different tags, then compare.
+
+- `PSNR = inf` → deterministic model. Any **non-quantized, non-cache** row (bf16 parallel / compile /
+  offload + compile) below ~25 dB mean is then an integration bug, not drift.
+- not `inf` → record `baseline run-to-run = X dB` in the caption and judge rows relative to it.
+
+Per-row-class gates (PSNR mean / min, SSIM mean / min):
+
+| Row class | PSNR mean | PSNR min | SSIM mean | SSIM min | note |
+|---|---|---|---|---|---|
+| bf16 parallel / compile | ≥ 28 (≈30) | > 20 | > 0.90 | > 0.88 | not bit-exact: reduction order and kernels differ per card count |
+| fp8_per_row (+ compile) | > 25 | > 22 | > 0.88 | > 0.86 | GEMM-only quantization; pays off only with `--compile` |
+| W4A4 svdq nvfp4 / int4 (+ compile) | > 22 | > 19 | > 0.75 | > 0.60 | min SSIM falls first — a visual check is mandatory |
+| layerwise offload (no compile) | inf | inf | 1.000 | 1.000 | bit-exactness **is** its correctness proof |
+| layerwise offload + compile | ≥ 28 (≈30) | > 20 | > 0.90 | > 0.88 | compile drift applies; this is **not** an `inf` row |
+| cache (lossy), ± compile | — | > 20 | — | > 0.60 | record the effective threshold + hit count; a 0-hit cache is not a speedup |
+| TE-P / VAE-P (run-only) | > 30 | > 20 | > 0.90 | > 0.88 | pass/fail plus numbers; never a speedup claim |
+
+These bands are calibrated on one recorded DFR run ([`./perf_matrix.md`](./perf_matrix.md) §5) with
+±2 dB model variance — a guide for reading a result, not a CI-validated baseline. Falling below a
+band is a finding to report, not a threshold to lower.
+
+**Tier B / Tier C** — 4 GPUs / 8 GPUs, run **only when the user explicitly asks**:
+
+- Tier B must include the hybrid **TP2+CP2** row (`--parallel ulysses_tp`); Tier C must include both
+  hybrid rows (**TP2+CP4** = `ulysses_tp`, **TP4+CP2** = `tp_ulysses`), each ± `--compile`, plus one
+  quantized hybrid row. Rows, tags, commands: [`./perf_matrix.md`](./perf_matrix.md) §1/§4.
+- Same gates, with preflight checks that must pass **before** a failure is called a bug:
+  `ulysses_size * tp_size == world_size`, `heads % tp_size == 0`, and post-TP head divisibility
+  `(heads // tp_size) % ulysses_size == 0` (or `--ulysses-anything` when the model accepts it) —
+  [`./perf_matrix.md`](./perf_matrix.md) §3.
+
+### 7.7 Debugging Tips
 
 1. **Model not found**: Run `python3 -m cache_dit.generate list` to verify your model appears in the example list.
 2. **BlockAdapter not activating**: Check that `check_forward_pattern=True` and verify the block forward signature matches the declared pattern.
