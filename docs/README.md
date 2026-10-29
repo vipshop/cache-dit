@@ -22,7 +22,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
 </div>
 
-Cache-DiT is compatible with compilation, CPU Offloading, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), ComfyUI, and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
+Cache-DiT is compatible with compilation, offload, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
 
 <div align="center">
   <p align="center">
@@ -101,12 +101,128 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
 
+## 🚪Supported DiT Models
+
+Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+
+[diffusers-url]: https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/transformers
+
+<div align="center">
+
+| Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
+|:----------|:----------------|:-------------|:----------|:-------|
+| Image | FLUX.3 Klein 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo 2.0 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/briaai/Fibo-2.0-dev) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky 6.0 (T2VA) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | 1 | ✔️/✔️/✔️/✖️ |
+| Image | Qwen-Image-2.1 🔥| [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Qwen/Qwen-Image-2.1) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Echo (JoyAI-Echo) 🔥 | [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Echo) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (T2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (FL2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | MiniMax-H3 (Ref2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Image | Joy-Image| [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Krea-2 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Ideogram 4 🔥 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Anima | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/circlestone-labs/Anima-Base-v1.0-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow-FAR | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers) | 1 | ✖️/✖️/✔️/✔️ |
+| Video | Cosmos3 (Omni) 🔥| [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/Cosmos3-Super) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Motif-Video (T2V/I2V) 🔥 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Motif-Technologies/Motif-Video-2B) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | ERNIE-Image 🔥 | [`🤗diffusers@0.38.0`][diffusers-url], [`🤗HF`](https://huggingface.co/baidu/ERNIE-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | NucleusMoE-Image 🔥 | [`🤗diffusers@0.38.0`][diffusers-url], [`🤗HF`](https://huggingface.co/NucleusAI/Nucleus-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 Klein 🔥 | [`🤗diffusers@0.37.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9B) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | GLM-Image 🔥 | [`🤗diffusers@0.37.0`][diffusers-url], [`🤗HF`](https://huggingface.co/zai-org/GLM-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | LongCat-Image 🔥 | [`🤗diffusers@0.37.0`][diffusers-url], [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Image) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2 | [`🤗diffusers@0.37.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Lightricks/LTX-2) | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Helios 🔥 | [`🤗diffusers@0.37.0`][diffusers-url], [`🤗HF`](https://huggingface.co/BestWishYsh/Helios-Base) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 🔥 | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/FLUX.2-dev) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Z-Image 🔥 | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) | 6 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/briaai/FIBO) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ovis-Image | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ATH-MaaS/Ovis-Image-7B) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Hunyuan-Image 🔥 | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/hunyuanvideo-community/HunyuanImage-2.1-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Bria | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/briaai/BRIA-3.2) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PRX / PRXPixel 🔥| [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Photoroom/prx-512-t2i-sft) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo 1.5 🔥| [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | ChronoEdit | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky5 (T2V/I2V) | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 4 | ✔️/✔️/✔️/✔️ |
+| Other | LucyEdit | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/decart-ai/Lucy-Edit-Dev)  | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image 🔥 | [`🤗diffusers@0.35.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Qwen/Qwen-Image) | 9+ | ✔️/✔️/✔️/✔️ |
+| Video | Wan 2.2 (T2V/I2V) 🔥| [`🤗diffusers@0.35.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-T2V-A14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | SkyReelsV2 | [`🤗diffusers@0.35.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Skywork/SkyReels-V2-T2V-14B-720P-Diffusers) | 5 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream | [`🤗diffusers@0.34.0`][diffusers-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-I1-Full) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Chroma | [`🤗diffusers@0.34.0`][diffusers-url], [`🤗HF`](https://huggingface.co/lodestones/Chroma1-HD) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | VisualCloze | [`🤗diffusers@0.34.0`][diffusers-url], [`🤗HF`](https://huggingface.co/VisualCloze/VisualClozePipeline-384)  | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Cosmos | [`🤗diffusers@0.34.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Text2World) | 7+ | ✔️/✖️/✔️/✔️ |
+| Video | Wan-VACE 🔥| [`🤗diffusers@0.34.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | CogView4 | [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/zai-org/CogView4-6B) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | OmniGen | [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Shitao/OmniGen-v1-diffusers) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina 2 | [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Wan 2.1 (T2V/I2V) 🔥| [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.1-T2V-14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | EasyAnimate | [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/alibaba-pai/EasyAnimateV5.1-12b-zh-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
+| Video | ConsisID | [`🤗diffusers@0.33.0`][diffusers-url], [`🤗HF`](https://huggingface.co/BestWishYsh/ConsisID-preview) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Sana (image) | [`🤗diffusers@0.32.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers) | 4 | ✔️/✖️/✔️/✔️ |
+| Video | HunyuanVideo | [`🤗diffusers@0.32.0`][diffusers-url], [`🤗HF`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Mochi | [`🤗diffusers@0.32.0`][diffusers-url], [`🤗HF`](https://huggingface.co/genmo/mochi-1-preview) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Allegro | [`🤗diffusers@0.32.0`][diffusers-url], [`🤗HF`](https://huggingface.co/rhymes-ai/Allegro) | 1 | ✔️/✖️/✔️/✔️ |
+| Video | LTX | [`🤗diffusers@0.32.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Lightricks/LTX-Video) | 5 | ✔️/✔️/✔️/✔️ |
+| Image | CogView3Plus | [`🤗diffusers@0.31.0`][diffusers-url], [`🤗HF`](https://huggingface.co/zai-org/CogView3-Plus-3B) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/FLUX.1-dev) | 10+ | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT-PAG | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | AuraFlow | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/fal/AuraFlow) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Alpha-VLLM/Lumina-Next-SFT-diffusers) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | CogVideoX | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/zai-org/CogVideoX-5b) | 4 | ✔️/✔️/✔️/✔️ |
+| Audio | StableAudio | [`🤗diffusers@0.30.0`][diffusers-url], [`🤗HF`](https://huggingface.co/stabilityai/stable-audio-open-1.0) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | SD3 | [`🤗diffusers@0.29.0`][diffusers-url], [`🤗HF`](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
+| Image | HunyuanDiT | [`🤗diffusers@0.28.1`][diffusers-url], [`🤗HF`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | PixArt-Sigma | [`🤗diffusers@0.28.0`][diffusers-url], [`🤗HF`](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Amused | [`🤗diffusers@0.25.0`][diffusers-url], [`🤗HF`](https://huggingface.co/amused/amused-512) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PixArt-Alpha | [`🤗diffusers@0.22.0`][diffusers-url], [`🤗HF`](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
+| Other | Shap-E | [`🤗diffusers@0.18.0`][diffusers-url], [`🤗HF`](https://huggingface.co/openai/shap-e) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | DiT | [`🤗diffusers@0.12.0`][diffusers-url], [`🤗HF`](https://huggingface.co/facebook/DiT-XL-2-256) | 1 | ✔️/✔️/✔️/✔️ |
+
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP<br>TP/TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; <b>@</b>: Minimum version. </i>
+
+</div>
+
+<div align="center">
+  <p> <h2>🚀Built-in Pipelines Beyond 🤗Diffusers</h2>
+</div>
+
+[cache-dit-url]: https://github.com/vipshop/cache-dit/tree/main/src/cache_dit/models/pipelines
+
+<div align="center">
+
+| Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
+|:----------|:----------------|:-------------|:----------|:-------|
+| **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
+
+<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
+</div>
+
+## 🤖Agentic Workflows  
+
+Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tree/main/.github/skills/cache-dit-model-integration) SKILL to help users integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
+
+```bash
+gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
+```
+
+The SKILL guides the Coding Agent through the whole flow: search and download the model weights (e.g. from [🤗Hugging Face](https://huggingface.co) or [ModelScope](https://www.modelscope.cn/)), match the model against the corresponding [🤗Diffusers](https://github.com/huggingface/diffusers) pipeline and transformer code, and then implement support for it following the SKILL's instructions.
+
+```bash
+/cache-dit-model-integration "Please download and support MiniMax-H3 in Cache-DiT."
+```
+
+> [!NOTE]
+> Please note that quantization and layerwise offload in Cache-DiT are generally supported for **nn.Module**, thus no extra integration is needed for new DiT pipelines or transformers. 
+
 ## 🌐Community Integration
 
 - 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
-- 🎉[(Intel) llm-scaler x Cache-DiT](https://github.com/intel/llm-scaler/tree/main/omni#cache-dit--torchcompile-acceleration)
 - 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
 - 🎉[TensorRT-LLM x Cache-DiT](https://github.com/NVIDIA/TensorRT-LLM/pull/12548)
 - 🎉[SGLang Omni x Cache-DiT](https://github.com/sgl-project/sglang-omni/blob/abc7640446629a837d043355ff7a756eb2a0190a/sglang_omni/models/minimax_music3/dit.py#L329)
