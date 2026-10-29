@@ -188,9 +188,9 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | MOSS-Image 🔥 | [`cache-dit`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ming-Image 0.1 🔥 | [`cache-dit`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream-O1-Image 🔥 | [`cache-dit`][cache-dit-url] | 1 | ✔️/✔️/✔️/✔️ |
+| **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url] | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
