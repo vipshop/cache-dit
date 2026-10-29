@@ -167,6 +167,20 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help=("Path of the *last* frame for first/last-frame conditioning (MiniMax-H3 `fl2va`, which "
           "takes `image` and `last_image` together)"),
   )
+  parser.add_argument(
+    "--driving-video-path",
+    type=str,
+    default=None,
+    help=("Path of the driving video for a character-animation model (Wan-Animate-2). Falls back "
+          "to `$WAN_ANIMATE_2_DEMO_DIR/template.mp4`, then to frames synthesized from the "
+          "reference image"),
+  )
+  parser.add_argument(
+    "--driving-video-fps",
+    type=float,
+    default=None,
+    help="Frame rate of the driving video, used to resample it to the model fps",
+  )
   for _flag, _kind in (
     ("--reference-image-path", "image"),
     ("--reference-video-path", "video"),

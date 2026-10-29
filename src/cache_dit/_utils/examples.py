@@ -91,6 +91,8 @@ __all__ = [
   "longcat_audio_dit_example",
   "hidream_o1_image_example",
   "sana_wm_example",
+  "wan_animate_2_example",
+  "wan_animate_2_distilled_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -168,6 +170,8 @@ _env_path_mapping = {
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
   "SANA_WM_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
+  "WAN_ANIMATE_2_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
+  "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3798,4 +3802,213 @@ def sana_wm_example(args: argparse.Namespace, **kwargs) -> Example:
         "output_type": "pil",
       },
     ),
+  )
+
+
+_WAN_ANIMATE_2_PROMPT = ("人物外观描述：一只银灰色虎斑纹的小猫，拥有圆润的脸庞、竖立的耳朵和巨大的圆形眼睛。"
+                         "它身穿一套深蓝色的制服套装，包括一件带有金色纽扣的西装外套和一条百褶裙。"
+                         "外套里面搭配着白色衬衫，领口处系着一个红色的蝴蝶结，袖口露出白色的衬衫边缘。"
+                         "背景描述：背景为纯白色，光线均匀明亮，无其他杂物或装饰。")
+
+# 4k+1 keeps the per-segment token count small enough for the verification matrix; the model default
+# is 81 (a full Wan VAE period). The driving video is resampled to the model fps and zigzag-padded up
+# to a whole segment by the pipeline, so any length is accepted.
+_WAN_ANIMATE_2_SEGMENT_FRAMES = 25
+_WAN_ANIMATE_2_DRIVING_FRAMES = 25
+
+
+def _wan_animate_2_asset_dir() -> Optional[str]:
+  """Return the directory holding the official demo assets, if registered.
+
+  :returns: `$WAN_ANIMATE_2_DEMO_DIR` when set and present, else `None`.
+  """
+
+  demo_dir = os.environ.get("WAN_ANIMATE_2_DEMO_DIR", None)
+  if demo_dir is not None and os.path.isdir(demo_dir):
+    return demo_dir
+  return None
+
+
+def _wan_animate_2_reference_image(args: argparse.Namespace,
+                                   model_name_or_path: str) -> PIL.Image.Image:
+  """Resolve the reference character image.
+
+  :param args: CLI arguments, honoring `--image-path`.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :returns: The reference image in RGB.
+  """
+
+  if args.image_path is not None:
+    return load_image(args.image_path).convert("RGB")
+  asset_dir = _wan_animate_2_asset_dir()
+  if asset_dir is not None and os.path.isfile(os.path.join(asset_dir, "reference.png")):
+    return load_image(os.path.join(asset_dir, "reference.png")).convert("RGB")
+  local_asset = os.path.join(model_name_or_path, "assets", "reference.png")
+  if os.path.isfile(local_asset):
+    return load_image(local_asset).convert("RGB")
+  logger.warning("No Wan-Animate-2 reference image found: falling back to the bundled cat image. "
+                 "Pass `--image-path` or set `WAN_ANIMATE_2_DEMO_DIR` for a meaningful sample.")
+  if CACHE_DIT_DIR is not None and os.path.isfile(
+      os.path.join(CACHE_DIT_DIR, "examples/data/cat.png")):
+    return load_image(os.path.join(CACHE_DIT_DIR, "examples/data/cat.png")).convert("RGB")
+  return load_image("https://github.com/vipshop/cache-dit/raw/main/examples/data/cat.png").convert(
+    "RGB")
+
+
+def _wan_animate_2_driving_video(
+  args: argparse.Namespace,
+  reference_image: PIL.Image.Image,
+) -> Tuple[List[PIL.Image.Image], Optional[float]]:
+  """Resolve the driving video as a list of frames.
+
+  Order of preference: `--driving-video-path`, the official demo clip in
+  `$WAN_ANIMATE_2_DEMO_DIR/template.mp4`, a clip next to the model, then frames synthesized from the
+  reference image so that the pipeline still runs offline.
+
+  :param args: CLI arguments.
+  :param reference_image: Reference image used for the synthesized fallback.
+  :returns: `(frames, fps)` where `fps` is `None` when it cannot be determined.
+  """
+
+  from diffusers.utils import load_video
+
+  # `--num-frames` also selects how many driving frames to keep, which is how a request asks for more
+  # than one denoising segment: a clip longer than `segment_frame_length` makes the pipeline loop.
+  num_frames = args.num_frames if args.num_frames is not None else _WAN_ANIMATE_2_DRIVING_FRAMES
+  candidates = []
+  if args.driving_video_path is not None:
+    candidates.append(args.driving_video_path)
+  asset_dir = _wan_animate_2_asset_dir()
+  if asset_dir is not None:
+    candidates.append(os.path.join(asset_dir, "template.mp4"))
+  if len(candidates) > 0:
+    frames, fps = load_video(candidates[0], return_fps=True)
+    # Only the requested frame count is used, so a long demo clip does not blow up the runtime.
+    frames = frames[:num_frames]
+    fps = args.driving_video_fps if args.driving_video_fps is not None else fps
+    return frames, fps
+  logger.warning("No Wan-Animate-2 driving video found: replaying the reference image. Pass "
+                 "`--driving-video-path` or set `WAN_ANIMATE_2_DEMO_DIR` for a real motion source.")
+  fps = args.driving_video_fps if args.driving_video_fps is not None else 24.0
+  return [reference_image] * num_frames, fps
+
+
+def _wan_animate_2_post_init_hook(pipe) -> None:
+  """Patch the Wan-Animate-2 transformer before any optimization touches it.
+
+  The patch functor resolves the per-layer reference K/V inside the block and derives the RoPE
+  device from the latents instead of `patch_embedding.weight`, which layerwise offload parks on CPU.
+  Cache-dit applies it through the block adapter when caching is enabled; offload-only and parallel
+  runs need it too, and `apply()` is idempotent.
+
+  :param pipe: The freshly constructed modular pipeline.
+  """
+
+  from ..caching.patch_functors import WanAnimate2PatchFunctor
+
+  transformer = getattr(pipe, "transformer", None)
+  if transformer is not None and not getattr(transformer, "_is_patched", False):
+    WanAnimate2PatchFunctor().apply(transformer)
+
+
+def _wan_animate_2_example(
+  args: argparse.Namespace,
+  hf_model_id: str,
+  pipeline_class: type,
+  steps: int,
+) -> Example:
+  """Build the Wan-Animate-2 example shared by the base and distilled checkpoints.
+
+  :param args: CLI arguments.
+  :param hf_model_id: Hub id (or env-mapped local directory) of the checkpoint.
+  :param pipeline_class: Modular pipeline class to instantiate.
+  :param steps: Default number of inference steps.
+  :returns: The configured example.
+  """
+
+  model_name_or_path = _path(hf_model_id, args=args)
+  num_inference_steps = steps if args.num_inference_steps is None else args.num_inference_steps
+  height = 320 if args.height is None else args.height
+  width = 256 if args.width is None else args.width
+  reference_image = _wan_animate_2_reference_image(args, model_name_or_path)
+  driving_video, driving_video_fps = _wan_animate_2_driving_video(args, reference_image)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.ANIMATE,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=pipeline_class,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      post_init_hook=_wan_animate_2_post_init_hook,
+      # The released checkpoint has no `guider/` component: the denoise blocks construct the
+      # `ClassifierFreeGuidance` guider from their own spec (3.0 for base, 1.0 for distilled).
+      modular_component_dtypes={
+        "default": torch.bfloat16,
+        "vae": torch.float32,
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_WAN_ANIMATE_2_PROMPT,
+      height=height,
+      width=width,
+      num_inference_steps=num_inference_steps,
+      # The canvas is derived from the reference aspect ratio inside the pipeline, so resizing here
+      # would resample twice and shift the crop the model computes.
+      skip_image_resize=True,
+      image=reference_image,
+      extra_input_kwargs={
+        "driving_video": driving_video,
+        "driving_video_fps": driving_video_fps,
+        "segment_frame_length": _WAN_ANIMATE_2_SEGMENT_FRAMES,
+        # The writer and the metrics CLI both take PIL frames; the pipeline default returns one
+        # `[T, H, W, C]` array per sample instead.
+        "output_type": "pil",
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("wan_animate_2", default="Wan-AI/Wan2.2-Animate-2-14B-Diffusers")
+def wan_animate_2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Wan-Animate-2 character animation example (base checkpoint, 40 steps + CFG 3.0).
+
+  A reference character image plus a driving video produce a video of that character following the
+  motion. The pipeline is a diffusers `ModularPipeline` that keeps a reference K/V cache per
+  transformer layer and denoises in segments of `segment_frame_length` frames, so the verification
+  runs shrink the segment length, the canvas and the step count.
+
+  :param args: CLI arguments.
+  :returns: The Wan-Animate-2 base example.
+  """
+
+  from diffusers import WanAnimate2ModularPipeline
+
+  return _wan_animate_2_example(
+    args=args,
+    hf_model_id="Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
+    pipeline_class=WanAnimate2ModularPipeline,
+    steps=40,
+  )
+
+
+@ExampleRegister.register("wan_animate_2_distilled",
+                          default="Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers")
+def wan_animate_2_distilled_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Wan-Animate-2 character animation example (distilled checkpoint, 10 steps, no CFG).
+
+  The distilled guider runs at `guidance_scale=1.0`, i.e. one transformer forward per step, so the
+  adapter disables separate-CFG cache bookkeeping for it.
+
+  :param args: CLI arguments.
+  :returns: The Wan-Animate-2 distilled example.
+  """
+
+  from diffusers import WanAnimate2DistilledModularPipeline
+
+  return _wan_animate_2_example(
+    args=args,
+    hf_model_id="Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
+    pipeline_class=WanAnimate2DistilledModularPipeline,
+    steps=10,
   )

@@ -10,7 +10,9 @@ Key design ingredients
 
 * **Pinned CPU mirror.** Every selected target keeps its parameters and buffers on a pinned CPU
   tensor (``_LayerwiseTensorState``). Onload H2D and offload D2H copy directly between this
-  mirror and reusable GPU storage, never going through pageable memory.
+  mirror and reusable GPU storage, never going through pageable memory. Pinning is best-effort: a
+  refused host allocation degrades that mirror to pageable memory (correct, but the prefetch
+  overlap mostly collapses into synchronous copies).
 
 * **Two independent CUDA copy stream pools.** Onload and offload each own a stream pool sized by
   ``transfer_buckets`` / ``max_copy_streams`` and bookkept by ``_CopyStreamPool``. Streams are
@@ -630,7 +632,7 @@ class _LayerwiseTensorState:
   :ivar kind: ``"parameter"`` or ``"buffer"``.
   :ivar name: Direct attribute name on the target module.
   :ivar requires_grad: Original ``requires_grad`` flag (only meaningful for parameters).
-  :ivar cpu_tensor: Pinned CPU storage backing the mirror.
+  :ivar cpu_tensor: CPU storage backing the mirror (pinned when the host allocator allows it).
   """
   kind: str
   name: str
@@ -1666,12 +1668,95 @@ class LayerwiseOffloadHandle:
       delattr(self.root_module, "_hf_hook")
 
 
+_pin_fallback_warned = False
+
+
+def _warn_pin_fallback(module_name: str, tensor_name: str, tensor: torch.Tensor,
+                       exc: BaseException) -> None:
+  """Report one pageable-memory fallback, then keep the remaining ones at debug level.
+
+  :param module_name: Owning submodule name.
+  :param tensor_name: Parameter or buffer name inside ``module_name``.
+  :param tensor: Tensor whose host copy could not be pinned.
+  :param exc: Error raised by the pinned allocator.
+  """
+  global _pin_fallback_warned  # pylint: disable=global-statement
+  if _pin_fallback_warned:
+    logger.debug(
+      "Pinned host memory is still unavailable, keeping pageable memory for %s.%s.",
+      module_name,
+      tensor_name,
+    )
+    return
+  _pin_fallback_warned = True
+  logger.warning(
+    "Pinned host memory is unavailable for %s.%s (%s, %.1f MiB): %s. Continuing with pageable "
+    "memory: layerwise transfers stay correct, but host staging and the prefetch overlap mostly "
+    "degrade to synchronous copies. This is usually a transient host/driver condition, rerunning "
+    "the job normally clears it.",
+    module_name,
+    tensor_name,
+    tensor.dtype,
+    tensor.numel() * tensor.element_size() / 2 ** 20,
+    exc,
+  )
+
+
+def _raise_if_host_oom(exc: RuntimeError) -> None:
+  """Re-raise when the pinned allocation failed for lack of host memory.
+
+  A refused host registration is recoverable (pageable memory still works), but an exhausted host
+  allocator or host RAM is a real capacity problem: swallowing it would turn a clear OOM into a
+  mysterious slowdown.
+
+  :param exc: Error raised by the pinned allocator.
+  :raises torch.OutOfMemoryError: When ``exc`` reports an out-of-memory condition.
+  """
+  if isinstance(exc, torch.OutOfMemoryError):
+    raise exc
+
+
+def _pinned_cpu_mirror(tensor: torch.Tensor, *, module_name: str, tensor_name: str) -> torch.Tensor:
+  """Return the canonical CPU mirror of ``tensor``, pinned when the allocator allows it.
+
+  Pinning only stages the host copy for overlapped device transfers: the transfer path stays
+  correct from pageable memory. Host registration can fail for reasons unrelated to the tensor (a
+  transient driver-side ``cudaErrorInvalidValue`` out of the pinned allocator has been observed),
+  so a failure degrades to pageable memory instead of aborting the offload setup.
+
+  :param tensor: Parameter or buffer to mirror on the host.
+  :param module_name: Owning submodule name, used for the fallback warning.
+  :param tensor_name: Parameter or buffer name inside ``module_name``.
+  :returns: CPU tensor with the same values, pinned if pinning succeeded.
+  """
+  if tensor.device.type == "cpu":
+    cpu_tensor = tensor.detach()
+    try:
+      if cpu_tensor.is_pinned():
+        return cpu_tensor
+      return cpu_tensor.pin_memory()
+    except RuntimeError as exc:
+      _raise_if_host_oom(exc)
+      _warn_pin_fallback(module_name, tensor_name, tensor, exc)
+      return cpu_tensor
+
+  try:
+    cpu_tensor = torch.empty_like(tensor, device="cpu", pin_memory=True)
+  except RuntimeError as exc:
+    _raise_if_host_oom(exc)
+    _warn_pin_fallback(module_name, tensor_name, tensor, exc)
+    cpu_tensor = torch.empty_like(tensor, device="cpu")
+  cpu_tensor.copy_(tensor, non_blocking=False)
+  return cpu_tensor
+
+
 def _prepare_async_target(module: nn.Module, *, index: int, name: str) -> _LayerwiseTarget:
-  """Create a :class:`_LayerwiseTarget` for ``module`` and build its pinned CPU mirror.
+  """Create a :class:`_LayerwiseTarget` for ``module`` and build its CPU mirror.
 
   Each direct parameter and buffer is detached into pinned CPU memory (allocating new pinned
-  storage when the original is not already pinned). Module attributes are then rebound to point
-  at the pinned tensors, establishing the canonical CPU mirror used by every subsequent transfer.
+  storage when the original is not already pinned), falling back to pageable memory when the
+  host allocator refuses to pin. Module attributes are then rebound to point at those tensors,
+  establishing the canonical CPU mirror used by every subsequent transfer.
 
   :param module: Submodule selected for layerwise offload.
   :param index: Position in the target list (used for prefetch bookkeeping).
@@ -1686,13 +1771,7 @@ def _prepare_async_target(module: nn.Module, *, index: int, name: str) -> _Layer
 
   tensor_states: list[_LayerwiseTensorState] = []
   for kind, tensor_name, tensor, requires_grad in _iter_direct_state_entries(module):
-    if tensor.device.type == "cpu":
-      cpu_tensor = tensor.detach()
-      if not cpu_tensor.is_pinned():
-        cpu_tensor = cpu_tensor.pin_memory()
-    else:
-      cpu_tensor = torch.empty_like(tensor, device="cpu", pin_memory=True)
-      cpu_tensor.copy_(tensor, non_blocking=False)
+    cpu_tensor = _pinned_cpu_mirror(tensor, module_name=name, tensor_name=tensor_name)
     tensor_states.append(
       _LayerwiseTensorState(
         kind=kind,

@@ -193,6 +193,37 @@ def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+# NOTE: The registry returns the first class-name prefix that matches, so "WanAnimate2" must be
+# registered before "Wan" ("WanAnimate2*" class names also start with "Wan").
+@BlockAdapterRegister.register("WanAnimate2")
+def wan_animate_2_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import WanAnimate2Transformer3DModel
+
+  _relaxed_assert(pipe.transformer, WanAnimate2Transformer3DModel)
+
+  from cache_dit.caching.patch_functors import WanAnimate2PatchFunctor
+
+  # Wan-Animate-2 guides with `ClassifierFreeGuidance`: `num_conditions == 2` runs the conditional
+  # and unconditional passes as two sequential transformer calls (the base checkpoint uses
+  # `guidance_scale=3.0`), while the distilled checkpoint keeps `guidance_scale=1.0` and runs a
+  # single call per step. The two cases need different cond/uncond cache bookkeeping.
+  guider = getattr(pipe, "guider", None)
+  has_separate_cfg = bool(guider is not None and getattr(guider, "num_conditions", 1) > 1)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    # The block list is named `blocks` (not `transformer_blocks`), and the blocks return a single
+    # tensor with only `hidden_states` in their signature.
+    blocks=pipe.transformer.blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    patch_functor=WanAnimate2PatchFunctor(),
+    check_forward_pattern=True,
+    has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import (

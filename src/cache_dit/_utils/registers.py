@@ -49,6 +49,8 @@ class ExampleType(Enum):
   # Audio-only: the pipeline returns a waveform and no frames, so the output parse and the writer
   # take the waveform path instead of the image / video one.
   T2A = "T2A - Text to Audio"
+  # Character animation: a reference character image plus a driving video produce a video.
+  ANIMATE = "ANIMATE - Reference Image + Driving Video to Video"
 
 
 # Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
@@ -58,6 +60,16 @@ class ExampleType(Enum):
 _AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA, ExampleType.REF2VA})
 # Audio-only tasks: no frames, the whole output is a waveform.
 _AUDIO_TASKS = frozenset({ExampleType.T2A})
+
+# Video-only tasks. A modular pipeline returns the whole `PipelineState` unless it is asked for the
+# output key, so `call_pipe` requests `videos` for these and `run` parses a dict or an object alike.
+_VIDEO_TASKS = frozenset({
+  ExampleType.T2V,
+  ExampleType.I2V,
+  ExampleType.FLF2V,
+  ExampleType.VACE,
+  ExampleType.ANIMATE,
+})
 
 # `--reference-*-path` flags and the diffusers class that loads them. Order is semantic: a pipeline
 # consumes references in the order it receives them.
@@ -1033,13 +1045,22 @@ class Example:
       parsed = parse_audio_output(output, self.init_config.task_type, pipe=pipe)
       output_data.audio = parsed["audio"]
       output_data.audio_sampling_rate = parsed["audio_sampling_rate"]
-    elif self.init_config.task_type in [
-        ExampleType.T2V,
-        ExampleType.I2V,
-        ExampleType.FLF2V,
-        ExampleType.VACE,
-    ]:
-      output_data.video = output.frames[0] if hasattr(output, "frames") else output
+    elif self.init_config.task_type in _VIDEO_TASKS:
+      # A modular pipeline asked for `output="videos"` returns the value itself, while a regular
+      # pipeline hides it behind `output.frames`. Unwrap exactly one batch level, keyed on the rank
+      # of the container rather than on its type, so a `list[frames]` result stays a frame list.
+      if isinstance(output, dict):
+        videos = output.get("videos", output)
+      elif getattr(output, "videos", None) is not None:
+        videos = output.videos
+      else:
+        videos = getattr(output, "frames", output)
+      if torch.is_tensor(videos) or isinstance(videos, np.ndarray):
+        if videos.ndim == 5:
+          videos = videos[0]
+      elif isinstance(videos, (list, tuple)):
+        videos = videos[0]
+      output_data.video = videos
 
     self.output_data = output_data
 
@@ -1071,6 +1092,8 @@ class Example:
     elif self.init_config.task_type in _AUDIO_VIDEO_TASKS:
       # Joint video + audio models return both streams plus the rate the soundtrack runs at.
       kwargs["output"] = ["videos", "audio", "sampling_rate"]
+    elif self.init_config.task_type in _VIDEO_TASKS:
+      kwargs["output"] = "videos"
     return pipe(**kwargs)
 
   def new_generator(

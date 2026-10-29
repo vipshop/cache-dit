@@ -24,12 +24,14 @@ class BlockAdapterRegister:
   _adapters: Dict[str, Callable[..., BlockAdapter]] = {}
   # Modular pipeline families whose adapter has been verified end to end (see the
   # cache-dit-model-integration skill, `references/modular_pipeline.md`).
-  _verified_modular_pipelines: Tuple[str,
-                                     ...] = ("Flux3", "QwenImage21", "MiniMaxH3", "Anima", "Echo")
+  _verified_modular_pipelines: Tuple[str, ...] = ("Flux3", "QwenImage21", "MiniMaxH3", "Anima",
+                                                  "Echo", "WanAnimate2")
   # QwenImage / QwenImage21 are deliberately absent: their adapters decide per checkpoint
   # (Qwen-Image 2.1 samples without guidance by default, so a fixed True would halve the step count).
+  # Wan is absent for the same reason: `WanAnimate2` shares the "Wan" prefix but its distilled
+  # checkpoint runs a single guidance-free forward per step, and this list is a prefix fallback that
+  # would overrule the adapter's own (and correct) `False`.
   _predefined_adapters_has_separate_cfg: List[str] = [
-    "Wan",
     "CogView4",
     "Cosmos",
     "SkyReelsV2",

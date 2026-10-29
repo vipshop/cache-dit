@@ -83,4 +83,6 @@ ming_image_design_layer_example = _safe_import(".examples", "ming_image_design_l
 hidream_o1_image_example = _safe_import(".examples", "hidream_o1_image_example")
 nucleus_image_example = _safe_import(".examples", "nucleus_image_example")
 kandinsky6_ti2va_example = _safe_import(".examples", "kandinsky6_ti2va_example")
+wan_animate_2_example = _safe_import(".examples", "wan_animate_2_example")
+wan_animate_2_distilled_example = _safe_import(".examples", "wan_animate_2_distilled_example")
 sana_wm_example = _safe_import(".examples", "sana_wm_example")
