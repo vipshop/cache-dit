@@ -93,6 +93,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |ChronoEdit-14B|✅|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅️|✅️|
 |Kandinsky-6.0-T2VA|✅|✅|✅|
+|FastH3-4step-T2VA|✅|✖️|✖️|
+|FastH3-8step-V2-T2VA|✅|✖️|✖️|
 |NucleusMoE-Image|✅|✖️|✅|
 |PRX-512-t2i-sft|✅|✖️|✖️|
 |PRXPixel-t2i|✅|✅|✅|

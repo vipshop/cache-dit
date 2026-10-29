@@ -1,0 +1,502 @@
+"""FastH3: the few-step DMD2 students of MiniMax-H3, with video sparse attention.
+
+`FastVideo/FastVideo-FastH3-*` releases are MiniMax-H3 checkpoints distilled to 4 or 8 transformer
+evaluations. They differ from the base model in exactly three ways, and all three live here:
+
+* **A VSA compression gate per block.** Every `transformer_blocks[i].attn` gains a
+  `to_gate_compress` linear (`hidden -> heads * head_dim`, no bias). The base checkpoint has no such
+  parameter, so a plain `from_pretrained` silently drops the 50 tensors (diffusers only logs
+  unexpected keys) and the attention degrades to dense — which is a different model.
+* **A fixed DMD sigma ladder.** The repository ships `fastvideo_inference.json` with the rungs, the
+  forward count and the attention recipe; the per-modality shift comes from the two scheduler
+  configs. `set_timesteps(sigmas=...)` uses the values verbatim, so the shift has to be applied
+  here, once per modality.
+* **Video sparse attention.** Video rows attend to the dense prefix plus the top-k 3-D tiles of
+  video keys, and the gate adds a compression branch over the pooled tile means.
+
+The class stays a `MiniMaxH3Transformer3DModel` subclass so cache-dit's dispatch keeps working:
+
+Note:
+  Keep the constraints below intact, cache-dit's dispatch depends on them:
+
+  * The class must stay a `MiniMaxH3Transformer3DModel` subclass with the parent's module tree
+    (`transformer_blocks`, `token_refiner`, `norm_out`, `proj_in`, `proj_out`, ...), so
+    `ForwardPattern.Pattern_3`, the MiniMax-H3 context/tensor parallel planners and the layerwise
+    offload groups keep resolving.
+  * `_repeated_blocks` and `_keep_in_fp32_modules` are inherited: regional quantization and
+    `compile_repeated_blocks()` find the denoising stack, and the float32 projections keep their
+    dtype.
+  * `forward` is **not** overridden. Its signature is what the modular pipeline inspects to decide
+    which layout tensors to pass, and it carries the LoRA scale decorator; the VSA geometry is read
+    from a forward pre-hook instead.
+  * `to_gate_compress` is created in `__init__`, i.e. before `from_pretrained` walks the state
+    dict, so the 50 gate tensors are consumed rather than reported as unexpected keys. For a
+    checkpoint without gates (`-Dense-DataFree`) the parameter is not built at all: the model loads
+    with `low_cpu_mem_usage` under `init_empty_weights`, so a parameter that no checkpoint shard
+    fills would stay on the meta device and crash on the first `.to(device)`.
+  * Only the transformer is owned here. The text encoder, both VAEs and the schedulers stay
+    diffusers classes, because cache-dit detects encoders by module path (`_is_auto_encoder`,
+    `_is_text_encoder`); vendoring them would silently disable `--parallel-vae` / `--parallel-text`.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+from typing import Optional
+
+import torch
+from torch import nn
+
+from ...attention.backends.register import _dispatch_attention_fn
+from ...attention.vsa_h3 import vsa_h3_attention
+from ...attention.vsa_h3_geometry import VsaH3Meta, vsa_h3_meta_from_layout
+from ...logger import init_logger
+
+logger = init_logger(__name__)
+
+__all__ = [
+  "FastH3AttnProcessor",
+  "FastH3Contract",
+  "FastH3ModularPipeline",
+  "FastH3Transformer3DModel",
+  "FASTH3_INFERENCE_FILE",
+]
+
+FASTH3_INFERENCE_FILE = "fastvideo_inference.json"
+FASTH3_TILE_SHAPE = (4, 4, 4)
+FASTH3_TILE_ELEMENTS = 64
+
+
+@dataclasses.dataclass(frozen=True)
+class FastH3Contract:
+  """Sampling contract of one FastH3 release, as published next to its weights.
+
+  :param num_inference_steps: sigma grid points; the transformer runs one fewer forward.
+  :param transformer_forwards: number of transformer evaluations the student was distilled for.
+  :param dmd_denoising_steps: DMD rungs on the 1000-step training clock, before the shift.
+  :param guidance_scale: guidance the student expects; FastH3 is guidance-distilled, i.e. ``1.0``.
+  :param vsa_tile_size: VSA tile volume in tokens, ``64`` for every shipped student.
+  :param vsa_sparsity: fraction of video tiles the attention drops.
+  :param video_shift: exponential sigma shift of the video scheduler.
+  :param audio_shift: exponential sigma shift of the audio scheduler.
+  :param task: task the student was distilled for; only ``t2av`` exists.
+  """
+
+  num_inference_steps: int
+  transformer_forwards: int
+  dmd_denoising_steps: tuple[int, ...]
+  guidance_scale: float
+  vsa_tile_size: int
+  vsa_sparsity: float
+  video_shift: float
+  audio_shift: float
+  task: str
+
+  @property
+  def requires_vsa(self) -> bool:
+    """Whether the release was distilled with the sparse recipe (all but `-Dense-DataFree`)."""
+    return self.vsa_tile_size > 0 and self.vsa_sparsity > 0.0
+
+  def sigmas(self, shift: float, device: torch.device | str = "cpu") -> torch.Tensor:
+    """Shifted sigma grid of one modality, terminal zero included.
+
+    The rungs are noise levels on the 1000-step clock, so they are divided first and shifted once
+    with ``sigma' = shift * sigma / (1 + (shift - 1) * sigma)``; the scheduler consumes the result
+    verbatim.
+
+    :param shift: exponential shift of the modality's scheduler.
+    :param device: device of the returned tensor.
+    :returns: sigma grid, shape ``(num_inference_steps,)``.
+    """
+    base = torch.tensor([step / 1000.0 for step in self.dmd_denoising_steps] + [0.0],
+                        dtype=torch.float32,
+                        device=device)
+    return float(shift) * base / (1.0 + (float(shift) - 1.0) * base)
+
+  @classmethod
+  def from_checkpoint(cls, path: str | os.PathLike) -> Optional["FastH3Contract"]:
+    """Read the contract of a FastH3 repository, or ``None`` for a base MiniMax-H3 checkpoint.
+
+    :param path: checkpoint directory.
+    :returns: The contract, or ``None`` when the repository does not ship one.
+    """
+    contract_path = os.path.join(str(path), FASTH3_INFERENCE_FILE)
+    if not os.path.isfile(contract_path):
+      return None
+    with open(contract_path, encoding="utf-8") as handle:
+      payload = json.load(handle)
+
+    forwards = int(payload.get("transformer_forwards", 0))
+    steps = payload.get("dmd_denoising_steps") or []
+    if forwards < 1 or len(steps) != forwards:
+      raise ValueError(f"{contract_path} is inconsistent: transformer_forwards={forwards} but "
+                       f"dmd_denoising_steps={steps}.")
+    grid_points = int(payload.get("num_inference_steps", forwards + 1))
+    if grid_points != forwards + 1:
+      raise ValueError(f"{contract_path} declares {grid_points} sigma grid points for {forwards} "
+                       "transformer forward passes; the scheduler needs exactly one more point "
+                       "than forward passes.")
+    tile_size = int(payload.get("vsa_tile_size", FASTH3_TILE_ELEMENTS))
+    if tile_size not in (0, FASTH3_TILE_ELEMENTS):
+      raise ValueError(f"{contract_path} asks for {tile_size}-token VSA tiles; the FastH3 students "
+                       f"are distilled with {FASTH3_TILE_ELEMENTS}-token tiles.")
+    return cls(
+      num_inference_steps=grid_points,
+      transformer_forwards=forwards,
+      dmd_denoising_steps=tuple(int(step) for step in steps),
+      guidance_scale=float(payload.get("guidance_scale", 1.0)),
+      vsa_tile_size=tile_size,
+      vsa_sparsity=float(payload.get("vsa_sparsity", 0.0)),
+      video_shift=_read_scheduler_shift(path, "scheduler"),
+      audio_shift=_read_scheduler_shift(path, "audio_scheduler"),
+      task=str(payload.get("task", "t2av")),
+    )
+
+
+def _read_scheduler_shift(path: str | os.PathLike, subfolder: str) -> float:
+  config_path = os.path.join(str(path), subfolder, "scheduler_config.json")
+  if not os.path.isfile(config_path):
+    raise ValueError(f"FastH3 needs `{config_path}` to build the sigma grid.")
+  with open(config_path, encoding="utf-8") as handle:
+    return float(json.load(handle).get("shift", 1.0))
+
+
+def _transformer_mounts_vsa_gates(path: str | os.PathLike, subfolder: str = "transformer") -> bool:
+  """Whether the transformer shards carry `attn.to_gate_compress` weights."""
+  root = os.path.join(str(path), subfolder)
+  index_path = os.path.join(root, "diffusion_pytorch_model.safetensors.index.json")
+  if os.path.isfile(index_path):
+    with open(index_path, encoding="utf-8") as handle:
+      keys = json.load(handle).get("weight_map", {})
+    return any("to_gate_compress" in key for key in keys)
+  for name in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+    if name.endswith(".safetensors"):
+      from safetensors import safe_open
+
+      with safe_open(os.path.join(root, name), framework="pt") as handle:
+        return any("to_gate_compress" in key for key in handle.keys())
+  return False
+
+
+class FastH3AttnProcessor:
+  """MiniMax-H3 attention with FastH3's video sparse attention on top.
+
+  Mirrors `MiniMaxH3AttnProcessor` up to the attention call, then routes to
+  :func:`cache_dit.attention.vsa_h3.vsa_h3_attention` when the request's tile geometry is
+  available and to the configured dense backend otherwise.
+  """
+
+  _attention_backend = None
+  _parallel_config = None
+
+  def __call__(
+    self,
+    attn: nn.Module,
+    hidden_states: torch.Tensor,
+    rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+  ) -> torch.Tensor:
+    from diffusers.models.transformers.transformer_minimax_h3 import _apply_rotary_emb
+
+    if getattr(attn, "fused_projections", False):
+      query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+    else:
+      query = attn.to_q(hidden_states)
+      key = attn.to_k(hidden_states)
+      value = attn.to_v(hidden_states)
+
+    query = query.unflatten(-1, (attn.heads, -1))
+    key = key.unflatten(-1, (attn.heads, -1))
+    value = value.unflatten(-1, (attn.heads, -1))
+    query = attn.norm_q(query)
+    key = attn.norm_k(key)
+    if rotary_emb is not None:
+      query = _apply_rotary_emb(query, *rotary_emb)
+      key = _apply_rotary_emb(key, *rotary_emb)
+
+    meta = getattr(attn, "_vsa_meta", None)
+    gate = None
+    if meta is not None and not getattr(attn, "_vsa_gate_active", False):
+      # No trained gate: this checkpoint was not distilled with VSA (base MiniMax-H3 or
+      # `-Dense-DataFree`), so the faithful path is plain dense attention.
+      meta = None
+    if meta is not None:
+      if attention_mask is not None:
+        raise ValueError(
+          "FastH3 video sparse attention does not accept an attention mask: the packed sequence "
+          "carries no padding and the tile geometry supplies the visibility.")
+      gate = attn.to_gate_compress(hidden_states).unflatten(-1, (attn.heads, -1))
+      parallel_config = getattr(self, "_parallel_config", None)
+      if parallel_config is not None and getattr(parallel_config, "ulysses_degree", 1) > 1:
+        raise NotImplementedError(
+          "FastH3 video sparse attention does not run under context parallelism yet: VSA needs the "
+          "full sequence to select tiles and the compression gate has to ride the same all-to-all "
+          "as Q/K/V. Drop --parallel or run the model with dense attention.")
+      hidden_states = vsa_h3_attention(query,
+                                       key,
+                                       value,
+                                       meta,
+                                       gate=gate,
+                                       sparsity=getattr(attn, "_vsa_sparsity", meta.sparsity))
+    else:
+      hidden_states = _dispatch_attention_fn(query,
+                                             key,
+                                             value,
+                                             attn_mask=attention_mask,
+                                             dropout_p=0.0,
+                                             is_causal=False,
+                                             backend=self._attention_backend,
+                                             parallel_config=self._parallel_config)
+    hidden_states = hidden_states.flatten(2, 3).type_as(query)
+    hidden_states = attn.to_out[0](hidden_states)
+    hidden_states = attn.to_out[1](hidden_states)
+    return hidden_states
+
+
+def _build_transformer_class():
+  from diffusers.configuration_utils import register_to_config
+  from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3Transformer3DModel
+
+  class _FastH3Transformer3DModel(MiniMaxH3Transformer3DModel):
+    """MiniMax-H3 transformer with FastH3's compression gates and sparse attention."""
+
+    # The parent's parameters are repeated instead of absorbed by `**kwargs`: diffusers builds a
+    # model with `extract_init_dict`, which keeps only the config keys that appear in
+    # `inspect.signature(cls.__init__)`. A catch-all signature would silently drop the checkpoint's
+    # architecture and build the default 56-head / 50-layer model instead.
+    @register_to_config
+    def __init__(
+      self,
+      num_attention_heads: int = 56,
+      attention_head_dim: int = 128,
+      hidden_size: int = 5376,
+      num_layers: int = 50,
+      num_refiner_layers: int = 2,
+      ffn_dim: int = 14336,
+      in_channels: int = 24,
+      audio_in_channels: int = 32,
+      patch_size: tuple[int, int, int] = (1, 2, 2),
+      text_dim: int = 5120,
+      freq_dim: int = 256,
+      time_embed_hidden_dim: int = 5376,
+      time_embed_dim: int = 2688,
+      rope_freq_dim: int = 16,
+      rope_theta: float = 10000.0,
+      norm_eps: float = 1e-5,
+      qk_norm_eps: float = 1e-5,
+      final_norm_eps: float = 1e-5,
+      enable_vsa: bool = True,
+      vsa_sparsity: float = 0.9,
+    ) -> None:
+      super().__init__(
+        num_attention_heads=num_attention_heads,
+        attention_head_dim=attention_head_dim,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        num_refiner_layers=num_refiner_layers,
+        ffn_dim=ffn_dim,
+        in_channels=in_channels,
+        audio_in_channels=audio_in_channels,
+        patch_size=patch_size,
+        text_dim=text_dim,
+        freq_dim=freq_dim,
+        time_embed_hidden_dim=time_embed_hidden_dim,
+        time_embed_dim=time_embed_dim,
+        rope_freq_dim=rope_freq_dim,
+        rope_theta=rope_theta,
+        norm_eps=norm_eps,
+        qk_norm_eps=qk_norm_eps,
+        final_norm_eps=final_norm_eps,
+      )
+      self.enable_vsa = bool(enable_vsa)
+      self.vsa_sparsity = float(vsa_sparsity)
+      self._vsa_meta_cache: dict[tuple, VsaH3Meta] = {}
+      if self.enable_vsa:
+        self._install_vsa_attention()
+      self.register_forward_pre_hook(self._vsa_layout_hook, with_kwargs=True)
+
+    def _install_vsa_attention(self) -> None:
+      heads = self.config.num_attention_heads
+      head_dim = self.config.attention_head_dim
+      for block in self.transformer_blocks:
+        attn = block.attn
+        attn.to_gate_compress = nn.Linear(self.config.hidden_size, heads * head_dim, bias=False)
+        # Zero init matches the reference: an unfilled gate contributes exactly nothing, so a
+        # checkpoint without gates (`-Dense-DataFree`, or the base MiniMax-H3) runs dense instead
+        # of silently mixing in a random projection.
+        nn.init.zeros_(attn.to_gate_compress.weight)
+        attn._vsa_gate_active = None
+        attn._vsa_sparsity = self.vsa_sparsity
+        attn._vsa_meta = None
+        attn.set_processor(FastH3AttnProcessor())
+
+    def refresh_vsa_gate_state(self) -> None:
+      """Decide once whether the compression branch contributes, after the weights are loaded.
+
+      The branch is a `Linear` the checkpoint may fill with zeros (base MiniMax-H3 has no gate at
+      all); a structurally zero gate makes the whole branch a guaranteed zero, so it is skipped
+      instead of running one extra GEMM plus a wider all-to-all per layer.
+      """
+      if not self.enable_vsa:
+        return
+      for block in self.transformer_blocks:
+        attn = block.attn
+        weight = getattr(attn, "to_gate_compress", None)
+        attn._vsa_gate_active = weight is not None and bool(
+          torch.count_nonzero(weight.weight).item())
+      self._vsa_state_resolved = True
+      active = sum(1 for block in self.transformer_blocks if block.attn._vsa_gate_active)
+      logger.info(f"FastH3 VSA gates: {active}/{len(self.transformer_blocks)} blocks carry a "
+                  "trained compression gate.")
+
+    def _vsa_layout_hook(self, module: nn.Module, args: tuple, kwargs: dict) -> None:
+      if not self.enable_vsa:
+        return None
+      if not getattr(self, "_vsa_state_resolved", False):
+        # One host sync, on the first step, whichever entry point built the model: loading through
+        # the pipeline resolves it right after `load_components`, a bare
+        # `FastH3Transformer3DModel.from_pretrained` resolves it here.
+        self.refresh_vsa_gate_state()
+      position_ids = kwargs.get("position_ids")
+      video_indices = kwargs.get("video_indices")
+      audio_indices = kwargs.get("audio_indices")
+      text_indices = kwargs.get("text_indices")
+      if position_ids is None or video_indices is None or audio_indices is None or text_indices is None:
+        return None
+      key = (
+        int(position_ids.shape[0]),
+        int(video_indices.numel()),
+        int(audio_indices.numel()),
+        int(text_indices.numel()),
+        str(position_ids.device),
+      )
+      meta = self._vsa_meta_cache.get(key)
+      if meta is None:
+        meta = vsa_h3_meta_from_layout(position_ids,
+                                       video_indices,
+                                       audio_indices,
+                                       text_indices,
+                                       sparsity=self.vsa_sparsity,
+                                       tile_shape=FASTH3_TILE_SHAPE)
+        self._vsa_meta_cache[key] = meta
+        logger.debug(f"FastH3 VSA geometry: {meta.num_tiles} tiles "
+                     f"({meta.num_prefix_tiles} dense prefix), {meta.num_video_tiles} video.")
+      for block in self.transformer_blocks:
+        block.attn._vsa_meta = meta
+      return None
+
+    def set_vsa_enabled(self, enabled: bool) -> None:
+      """Turn the sparse path on or off without rebuilding the model (acceptance sweeps)."""
+      self.enable_vsa = bool(enabled)
+      for block in self.transformer_blocks:
+        attn = block.attn
+        if enabled:
+          if not isinstance(attn.processor, FastH3AttnProcessor):
+            attn.set_processor(FastH3AttnProcessor())
+          attn._vsa_meta = attn._vsa_meta if hasattr(attn, "_vsa_meta") else None
+        else:
+          attn._vsa_meta = None
+          if isinstance(attn.processor, FastH3AttnProcessor):
+            attn.set_processor(attn._default_processor_cls())
+
+  # cache-dit resolves adapters and parallel planners by class-name prefix, and a checkpoint's
+  # component spec records this name, so the public name has to be the real class name.
+  _FastH3Transformer3DModel.__name__ = "FastH3Transformer3DModel"
+  _FastH3Transformer3DModel.__qualname__ = "FastH3Transformer3DModel"
+  return _FastH3Transformer3DModel
+
+
+FastH3Transformer3DModel = _build_transformer_class()
+
+
+def _load_fast_h3_pipeline_class():
+  from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3ModularPipeline
+
+  class FastH3ModularPipeline(MiniMaxH3ModularPipeline):
+    """MiniMax-H3 modular pipeline that loads the FastH3 transformer and its DMD schedule."""
+
+    contract: Optional[FastH3Contract] = None
+
+    def load_components(self, names=None, workflow=None, **kwargs):
+      """Load the components, swapping in the FastH3 transformer and its sigma grid.
+
+      :param names: component names to load, forwarded to the parent.
+      :param workflow: workflow whose components to load, forwarded to the parent.
+      :param kwargs: extra loading kwargs, forwarded to the parent.
+      """
+      root = self._pretrained_model_name_or_path
+      contract = FastH3Contract.from_checkpoint(root) if root is not None else None
+      if contract is not None:
+        if contract.task != "t2av":
+          raise ValueError(f"FastH3 only ships the {contract.task!r} task; this build supports "
+                           "'t2av'.")
+        has_gates = _transformer_mounts_vsa_gates(root)
+        if has_gates != contract.requires_vsa:
+          raise ValueError(f"FastH3 checkpoint at {root} is inconsistent: the contract asks for "
+                           f"VSA ({contract.requires_vsa}) but the transformer shards "
+                           f"{'carry' if has_gates else 'do not carry'} to_gate_compress weights.")
+        spec = self._component_specs.get("transformer")
+        if spec is not None:
+          spec.type_hint = FastH3Transformer3DModel
+        overrides = dict(kwargs)
+        enable_vsa = overrides.pop("enable_vsa", None)
+        enable_vsa = {} if enable_vsa is None else dict(enable_vsa)
+        enable_vsa["transformer"] = has_gates
+        overrides["enable_vsa"] = enable_vsa
+        overrides.setdefault("vsa_sparsity", {"transformer": contract.vsa_sparsity})
+        super().load_components(names=names, workflow=workflow, **overrides)
+        self.contract = contract
+        transformer = getattr(self, "transformer", None)
+        if transformer is not None:
+          transformer.refresh_vsa_gate_state()
+        self._install_dmd_schedule(contract)
+        return None
+      self.contract = None
+      return super().load_components(names=names, workflow=workflow, **kwargs)
+
+    def _install_dmd_schedule(self, contract: FastH3Contract) -> None:
+      """Force the two schedulers onto the student's sigma ladder.
+
+      Idempotency lives in `_wrap_scheduler_timesteps`: it marks every scheduler it wraps. A flag
+      on the pipeline would be wrong, because components can be loaded in any order and reloaded
+      (`load_components(names=["transformer"])` first, scheduler later, or after
+      `unload_components`), and a pipeline-level flag would then skip the ladder silently.
+      """
+      for name, shift in (("scheduler", contract.video_shift), ("audio_scheduler",
+                                                                contract.audio_shift)):
+        scheduler = getattr(self, name, None)
+        if scheduler is None:
+          continue
+        sigmas = contract.sigmas(shift)
+        _wrap_scheduler_timesteps(scheduler, sigmas, name)
+
+  return FastH3ModularPipeline
+
+
+def _wrap_scheduler_timesteps(scheduler, sigmas: torch.Tensor, name: str) -> None:
+  """Replace ``scheduler.set_timesteps`` with one that always uses the student's ladder.
+
+  The modular pipeline only forwards `num_inference_steps`, and `MiniMaxH3Scheduler.set_timesteps`
+  uses explicit `sigmas` verbatim (no shift, no deduplication), so the contract is injected here.
+
+  :param scheduler: one of the pipeline's two MiniMax-H3 schedulers.
+  :param sigmas: shifted sigma grid of that modality.
+  :param name: component name, for error messages.
+  """
+  if getattr(scheduler, "_cache_dit_dmd_sigmas", None) is not None:
+    return
+  original = scheduler.set_timesteps
+
+  def set_timesteps(num_inference_steps=None, device=None, sigmas_arg=None, **extra):
+    if num_inference_steps is not None and int(num_inference_steps) != int(sigmas.numel()):
+      raise ValueError(f"FastH3 `{name}` has a {int(sigmas.numel())}-point sigma ladder but the "
+                       f"pipeline asked for {num_inference_steps} inference steps.")
+    return original(num_inference_steps=None, device=device, sigmas=sigmas.to(device), **extra)
+
+  scheduler.set_timesteps = set_timesteps
+  scheduler._cache_dit_dmd_sigmas = sigmas
+
+
+FastH3ModularPipeline = _load_fast_h3_pipeline_class()

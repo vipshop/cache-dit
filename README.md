@@ -116,7 +116,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | Echo (JoyAI-Echo) 🔥 | [`🤗diffusers@0.41.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Echo) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | MiniMax-H3 (T2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | MiniMax-H3 (FL2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | MiniMax-H3 (Ref2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | MiniMax-H3 (Ref2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ | 
 | Image | Joy-Image| [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Krea-2 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Ideogram 4 🔥 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
@@ -194,6 +194,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Fast-H3 ([`fastvideo`](https://github.com/hao-ai-lab/fastvideo), 4/8-step) 🔥 |  [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✖️/✔️/✔️ | 
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
