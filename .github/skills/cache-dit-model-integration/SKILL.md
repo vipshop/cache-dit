@@ -342,13 +342,15 @@ Phase 6 — VAE-P: VAE Parallelism
         IF not → create new planner in distributed/autoencoders/<vae>.py
 - [ ] 6.3 Register in distributed/autoencoders/planners.py
 - [ ] 6.4 TEST VAE-P 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-vae --save-path .tmp/<task>/vae2.png
+        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --parallel-vae --save-path .tmp/<task>/vae2.png
+        - `--parallel-vae` alone is a NO-OP: parallelism_config is only built when `--parallel` is set
 - [ ] 6.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 vae2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
 - [ ] 6.6 [STOP] VAE-P verified (or confirmed not needed)
 
 Phase 7 — Final Integration Tests
-- [ ] 7.1 Hybrid CP + TP: --parallel ulysses_tp (2 GPU)
+- [ ] 7.1 Hybrid CP + TP (4 GPU): --parallel ulysses_tp → U2×T2
+        - on 2 GPUs `ulysses_tp` degenerates to U1×T2 (pure TP2) — that is Phase 4, not a hybrid test
 - [ ] 7.2 CORRECTNESS: vs baseline
 - [ ] 7.3 Fill in results table (`./references/testing.md` §7.5): latency, PSNR, SSIM, GPU mem per config
 - [ ] 7.4 Visual inspection: at least one output image per configuration

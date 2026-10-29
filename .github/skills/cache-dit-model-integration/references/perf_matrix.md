@@ -322,45 +322,16 @@ Tier B/C tables are the same columns with the rows from §1 (B: TP4 / CP4 / TP2+
 TP2+CP4 / TP4+CP2, plus the optional USP+TP row). Keep them in a separate table — a 4-card row must
 not be mixed into a 1/2-card baseline table.
 
-Format reference — **read the shape, not the numbers**:
+No filled example table here on purpose: a set of numbers belongs to one model, one schedule and one
+card count, and reusing them as "the expected level" is how wrong conclusions start. The caption of
+a finished table must still carry:
 
-> DFR 512×768×121, 8-step distilled, 2×RTX PRO 5000 72GB, `--warmup 2` (the `--repeat` of that
-> historical run was not recorded; every number is what `Inference Time` printed). This is one
-> recorded run, not a CI-validated baseline: distilled short schedules are far more sensitive to
-> cache/quantization than 30+ step guided models, so neither the times nor the accuracy drops may be
-> reused as "normal" for another model.
-
-| Configuration | Inference | Speedup | PSNR mean/min | SSIM mean/min |
-|---|---|---|---|---|
-| single-GPU bf16 (reference) | 19.13 s | 1.00× | – | – |
-| single-GPU + compile | 15.93 s | 1.20× | 31.12 / 29.64 | 0.939 / 0.930 |
-| single-GPU + cache (thr=0.12, 0 hits) | 19.21 s | 1.00× | inf (bit-exact) | 1.000 |
-| single-GPU + cache (thr=0.20, 2/8 hits) | 15.01 s | 1.27× | 21.96 / 20.66 | 0.701 / 0.640 |
-| single-GPU + cache (thr=0.20) + compile | 12.67 s | 1.51× | 22.12 / 21.15 | 0.705 / 0.645 |
-| TP2 | 16.49 s | 1.16× | 32.13 / 30.81 | 0.947 / 0.942 |
-| TP2 + compile | 12.61 s | 1.52× | 31.31 / 30.07 | 0.947 / 0.941 |
-| CP2 | 12.72 s | 1.50× | 30.58 / 28.59 | 0.943 / 0.936 |
-| CP2 + compile | 11.37 s | 1.68× | 30.39 / 28.18 | 0.941 / 0.931 |
-| single-GPU + fp8_per_row + compile | 10.66 s | 1.79× | 26.13 / 25.29 | 0.902 / 0.884 |
-| single-GPU + W4A4 (svdq nvfp4 r64) + compile | 9.77 s | 1.96× | 23.48 / 21.22 | 0.779 / 0.662 |
-| CP2 + fp8_per_row + compile | 8.36 s | 2.29× | 25.18 / 23.71 | 0.896 / 0.875 |
-| CP2 + W4A4 + compile | 8.31 s | 2.30× | 22.88 / 22.08 | 0.780 / 0.741 |
-| single-GPU + layerwise offload (sync) | 26.02 s | 0.73× | inf (bit-exact) | 1.000 |
-| single-GPU + layerwise offload + async transfer | 24.13 s | 0.79× | inf (bit-exact) | 1.000 |
-| single-GPU + offload + compile | 23.30 s | 0.82× | 32.29 / 30.67 | 0.950 / 0.942 |
-| single-GPU + offload + async + compile | 21.89 s | 0.87× | 33.72 / 32.57 | 0.955 / 0.949 |
-
-What that reference table teaches (applies to any model):
-
-- 72 GB cards already hold DFR, so offload is a **negative** result there (0.73–0.87×). Say so
-  explicitly: offload exists for the VRAM-limited case, and the row is there to prove correctness.
-- svdq r64 needs `--quantize-exclude-layers to_gate_logits` on the gating `Linear(inner, heads=32)`
-  (`rank 64 exceeds the maximum supported rank 32`) — put that in the caption, not in a footnote of
-  your own head.
-- At equal speed prefer quality: CP2 + fp8 + compile (8.36 s / 25.2 dB) over svdq (8.31 s / 22.9 dB)
-  became the recommended entry.
-- Cache at the default threshold cached **0 of 8** steps here: that row is "verified, no gain", and
-  the raised-threshold row is what actually measures the technique. A 0-hit row is never a speedup.
+- the workload (resolution / frames / steps), the card count and the layout (`tp2`, `u2`, `u2t2`, ...);
+- the flags that changed behaviour: excluded quant layers, `--svdq-smooth-strategy`, `--ulysses-anything`,
+  effective cache threshold;
+- the determinism baseline (`inf` or `X dB`) — it sets the floor for every other row;
+- whether offload was a win or a loss **on this hardware**: on a card that already holds the weights
+  it is a negative result that exists to prove correctness, and that has to be said out loud.
 
 ## 6. Measuring: mean, min, and the auto table
 

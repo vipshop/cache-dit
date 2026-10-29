@@ -179,9 +179,9 @@ Per-row-class gates (PSNR mean / min, SSIM mean / min):
 | cache (lossy), ± compile | — | > 20 | — | > 0.60 | record the effective threshold + hit count; a 0-hit cache is not a speedup |
 | TE-P / VAE-P (run-only) | > 30 | > 20 | > 0.90 | > 0.88 | pass/fail plus numbers; never a speedup claim |
 
-These bands are calibrated on one recorded DFR run ([`./perf_matrix.md`](./perf_matrix.md) §5) with
-±2 dB model variance — a guide for reading a result, not a CI-validated baseline. Falling below a
-band is a finding to report, not a threshold to lower.
+These bands are the shipped reading levels (bf16 parallel/compile ≈30 dB, fp8 ≈26 dB, W4A4 ≈23 dB)
+with ±2 dB model variance — a guide for reading a result, not a CI-validated baseline. Falling below
+a band is a finding to report, not a threshold to lower.
 
 **Tier B / Tier C** — 4 GPUs / 8 GPUs, run **only when the user explicitly asks**:
 

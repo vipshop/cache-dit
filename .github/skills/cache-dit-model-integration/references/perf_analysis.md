@@ -106,3 +106,10 @@ Readings from this table:
   (`cache_dit/attention/backends/register.py`, `_ATTENTION_OPS_ALLOW_ATTN_MASK`).
   Models with a persistent text-padding mask (Motif t2v) must choose between CP and
   ffpa until ffpa ops join the allowlist.
+
+## Next: turn the budget into a table
+
+Once the budget says which levers *can* pay off, run the matrix instead of ad-hoc commands:
+[`./perf_matrix.md`](./perf_matrix.md) — row checklist (Tier A 1/2 GPUs by default, Tier B 4 GPUs /
+Tier C 8 GPUs on request), command templates, and the measurement/table conventions. Pass/fail gates:
+[`./testing.md`](./testing.md) §7.6.
