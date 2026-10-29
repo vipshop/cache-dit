@@ -1,6 +1,6 @@
 ---
 name: cache-dit-model-integration
-description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, installation, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit. Also use when benchmarking or acceptance-testing an already-supported model: full speed + PSNR/SSIM matrix (1-2 GPUs by default, 4/8-GPU hybrid CP+TP on request), see references/perf_matrix.md. 触发词：全量测试矩阵、验收测试、性能与精度对比、加速比、1/2/4/8 卡验收、量化精度损失."
+description: "High-level guide for integrating a new DiT model into cache-dit: Cache (BlockAdapter/ForwardPattern), Context Parallelism, Tensor Parallelism, Text Encoder Parallelism (TE-P), VAE Parallelism (VAE-P), generate CLI, installation, testing workflow, and detailed references. Use when adding support for a new diffusion transformer model in cache-dit; audio-only (TTS / text-to-audio) models have their own modality notes in references/audio.md (latent layout, CP obstacles, wav CLI path, SI-SDR / mel metrics and their noise floor). Also use when benchmarking or acceptance-testing an already-supported model: full speed + PSNR/SSIM matrix (1-2 GPUs by default, 4/8-GPU hybrid CP+TP on request), see references/perf_matrix.md. 触发词：全量测试矩阵、验收测试、性能与精度对比、加速比、1/2/4/8 卡验收、量化精度损失、语音模型、TTS、音频扩散、text-to-audio、SI-SDR、mel PSNR."
 user-invocable: true
 ---
 
@@ -20,6 +20,12 @@ Pick one route before reading anything else; the rest of this file is only route
    → continue with the GATE CHECK and §0 below.
 3. **A measured speedup looks wrong, or choosing which optimizations can pay off before
    benchmarking** → read `./references/perf_analysis.md` (FLOPs budget: attention vs GEMM share).
+4. **The model is audio-only** (TTS / text-to-audio: it returns a waveform, not frames) → read
+   `./references/audio.md` **before** the Cache chapter. It covers the latent layout and duration
+   semantics, the CP obstacles specific to audio (dataclass return, per-rank RoPE, replicated text,
+   duration mask), the wav output path in the CLI, and the audio metrics + their noise floor — the
+   image PSNR/SSIM gates below do **not** transfer. The rest of this file (GATE CHECK, phases) still
+   applies — only route 1 skips them.
 
 ## GATE CHECK
 
@@ -69,6 +75,13 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
   (pipe is NOT a DiffusionPipeline / nn.Module; its steps live in ModularPipelineBlocks)
   YES → Read `./references/modular_pipeline.md` FIRST (core plumbing, which block list to cache,
          CLI template, CP/TP status), then continue with the phases below.
+
+STOP — Is the model audio-only (TTS / text-to-audio: the pipeline returns a waveform, no frames)?
+  YES → Read `./references/audio.md` BEFORE the Cache chapter. It owns the request shape
+         (`duration` -> latent frames, per-call seq len), the CP obstacles (dataclass return,
+         per-rank RoPE table, replicated text cross-attn, all-True duration mask), the T2A wav
+         path in the CLI, and the audio metrics with their noise floor. The image PSNR/SSIM
+         thresholds elsewhere in this skill do NOT apply to a chaotic TTS trajectory.
 ```
 
 **Hard rules:**
@@ -80,7 +93,7 @@ STOP — Is the model only available as a diffusers ModularPipeline (e.g. FLUX.3
 - **⚠️ MANDATORY: `./references/custom_models.md` for BOTH ownership cases.** Read it **before** writing the plan whenever either holds: **(a)** the model is **not part of the diffusers library** (own `pipeline_<model>.py` / transformer code, a `model_index.json` module diffusers cannot import, or code from a third-party package); **(b)** the task **moves a diffusers model's source into cache-dit** (owning the model instead of patching it — the required path when an optimization touches attention/kernel math or the block loop itself, where no hook point is left). Follow its ownership decision (vendor / absorb / depend), its contract checklist and, for (b), its migration runbook: the diffusers-detection branches flip once `__module__` is `cache_dit.*` — `check_forward_pattern` defaults to False, `_relaxed_assert` stops checking, and a leftover `PatchFunctor` is **silently skipped** — while class, block-attribute and state-dict names must stay unchanged. Reference integrations: MOSS-Image (vendored, case a); Boogu-Image (third-party package, case a, adapter only). No case-(b) precedent exists yet — treat its runbook as authoritative.
 - **⚠️ MANDATORY: Plan before code.** Before writing ANY implementation code, you **MUST**: (1) thoroughly analyze the model's pipeline and transformer source code, (2) create a detailed integration plan following this skill's workflow and read the relevant references (Cache → CP → TP → TE-P → VAE-P → CLI → Testing), (3) present the plan to the user for review and approval.  **Do NOT start implementing until the user explicitly approves the plan.**  This prevents wasted effort from incorrect assumptions about the model architecture.
 - ALWAYS set up local model paths via environment variables BEFORE testing — downloading from HuggingFace Hub is extremely slow. Download flows (ModelScope first, HF fallback): [`./references/model_download.md`](./references/model_download.md).
-- ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (garbled output).
+- ALWAYS compute BOTH PSNR and SSIM when verifying correctness — PSNR alone cannot detect image corruption (garbled output). For **audio** models the equivalent pair is a spectrogram metric (`mel_psnr` / `mel_ssim` via `cache_dit.metrics`) plus `si_sdr` on the waveform, and the gate must be calibrated against a **same-configuration rerun** (a diffusion TTS run is chaotic; measured floor: mel PSNR ≈ 21 dB / SSIM ≈ 0.75 / SI-SDR ≈ −5 dB). See [`./references/audio.md`](./references/audio.md) §6.
 - For Python-only changes, `pip install -e "." --no-build-isolation` is sufficient; SVDQuant C++ compilation is NOT required.
 - **Do NOT alter core dependency versions** (torch, torchvision, transformers, diffusers, cache-dit, triton) in the `cdit` conda environment. Other dependencies may be installed only if they do not conflict with these.
 - **Do NOT modify any code in the diffusers library.** If a model requires patches (e.g., monkey-patching `forward()`, attention processors, etc.), write all patch code inside the cache-dit repository. Diffusers is a third-party dependency and must not be altered.
@@ -197,6 +210,9 @@ flowchart TD
 | **Downloading model weights to the local model root** | `./references/model_download.md` |
 | **The model is a diffusers `ModularPipeline` (e.g. FLUX.3): `pipe` is neither a `DiffusionPipeline` nor an `nn.Module`** | `./references/modular_pipeline.md` |
 | The pipeline has an optional prompt-rewrite / prompt-upsampling stage (FLUX.3 `pup`, ...) | `./references/modular_pipeline.md` §4.1 |
+| **The model is audio-only (TTS / text-to-audio, returns a waveform)** | **`./references/audio.md`** — modality deltas (latent `(B,T,dim)`, 58–351 frames, duration is a request parameter), Pattern_3 adapter with `has_separate_cfg` from guidance, T2A wav CLI path, CP obstacles (dataclass return / per-rank RoPE / replicated text cross-attn / duration mask), TP `heads`+`inner_dim`+distributed RMSNorm, VAE-P N/A rule |
+| Audio: a "bad" SI-SDR next to audio that sounds fine (which metric decides) | `./references/audio.md` §6 — SI-SDR vs SNR vs mel PSNR/SSIM, the chaos noise floor, and the gate table |
+| Audio: `cache_dit.generate` runs but saves nothing (pure-audio output dropped) | `./references/audio.md` §4.3 — `ExampleType.T2A` + `_save_audio` + `parse_audio_output` |
 | Choosing the block I/O pattern | `./references/cache.md` and the ForwardPattern table below |
 | Block loop calls blocks with keyword args, or has extra ops inside the loop | `./references/cache.md` PatchFunctor pitfalls |
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | `./references/cache.md` advanced PatchFunctor cases |
@@ -603,6 +619,7 @@ Read these only when the current phase needs them:
 |---|---|---|
 | Custom / owned model | [`./references/custom_models.md`](./references/custom_models.md) | **Two entry points**: (a) the model is **not in the diffusers library** — vendor-vs-depend decision, dispatch contracts, `from_pretrained` contract, block-level skip/branch state, CP identity markers, TP fused-FFN rearrangement, CLI, CPU tests; (b) **absorbing a diffusers model into cache-dit** — migration runbook, diffusers-detection flips, name/state-dict compatibility, fold-and-delete patches, drift control. **Mandatory before the Cache chapter.** |
 | Modular pipeline | [`./references/modular_pipeline.md`](./references/modular_pipeline.md) | The model ships only as a diffusers `ModularPipeline` (FLUX.3): core plumbing, which block list to cache, CLI template, CP/TP status, verification checklist. |
+| Audio-only model | [`./references/audio.md`](./references/audio.md) | Integrating a TTS / text-to-audio DiT (LongCat-AudioDiT is the worked case): how audio differs from image/video, checkpoint layout for waveform-latent TTS, the Pattern_3 adapter, the T2A CLI writer, the three CP obstacles, the TP sharding pair, the VAE-P N/A rule, and the audio metrics (`si_sdr` / `snr` / `mel_psnr` / `mel_ssim`) with their measured noise floor. |
 | Cache | [`./references/cache.md`](./references/cache.md) | Implementing `BlockAdapter`, selecting `ForwardPattern`, handling third-party models, or writing `PatchFunctor`. |
 | Attention | [`./references/attention.md`](./references/attention.md) | Writing a model-specific attention processor, selecting a backend, using `_dispatch_attention_fn`, or implementing CP attention without duplicate communication. |
 | CP | [`./references/cp.md`](./references/cp.md) | Implementing hook-based or hybrid CP, UAA, attention processor patches, or mask permutation fixes. |
