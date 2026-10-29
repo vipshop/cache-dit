@@ -90,6 +90,7 @@ __all__ = [
   "kandinsky6_ti2va_example",
   "longcat_audio_dit_example",
   "hidream_o1_image_example",
+  "sana_wm_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -165,6 +166,8 @@ _env_path_mapping = {
   "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
+  "SANA_WM_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
+  "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3693,6 +3696,106 @@ def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
       guidance_scale=4.0,
       extra_input_kwargs={
         "audio_duration_s": 10.0,
+      },
+    ),
+  )
+
+
+_SANA_WM_PROMPT = ("A young girl holding a white sign stands on a busy city street at dusk, "
+                   "pedestrians walking behind her.")
+
+
+def _sana_wm_intrinsics(image: PIL.Image.Image) -> List[float]:
+  """Estimate `[fx, fy, cx, cy]` for a first frame when the caller has no calibration.
+
+  The pipeline treats them as pixels of the *source* image and rescales them onto its own resize +
+  center-crop, so a plain pinhole estimate with a ~45° vertical FOV keeps the camera conditioning
+  consistent with the frame it actually reads.
+
+  :param image: First-frame image.
+  :returns:`[fx, fy, cx, cy]` in source-image pixels.
+  """
+  width, height = image.size
+  focal = 1.2 * max(width, height)
+  return [float(focal), float(focal), width / 2.0, height / 2.0]
+
+
+class _SanaWMExample(Example):
+  """SANA-WM example that normalizes the pipeline's un-batched video output.
+
+  `SanaWMPipeline` returns `frames` already un-batched: a `list[PIL.Image]` of length `T` for
+  `output_type="pil"` (an `(T, H, W, 3)` array for `"np"`), while `Example.run` reads the batched
+  `output.frames[0]` layout that every other video pipeline uses. Wrapping the frame list here
+  keeps `run`/`save` unchanged.
+  """
+
+  def call_pipe(self, pipe, kwargs: Dict[str, Any]):
+    from types import SimpleNamespace
+
+    output = super().call_pipe(pipe, kwargs)
+    return SimpleNamespace(frames=[output.frames], c2w=output.c2w)
+
+
+@ExampleRegister.register(
+  "sana_wm",
+  default="Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
+)
+def sana_wm_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-WM camera-controlled image-to-video example.
+
+  Stage 1 only: the optional LTX-2 refiner is a separate pipeline
+  (`Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner`) and is not part of this
+  example.
+
+  The released recipe is 704×1280 at 161 frames / 60 steps, which is far too heavy for a
+  functional check, so the defaults keep the official canvas but shorten the clip to 25 frames
+  (`8k + 1` is a hard LTX-2 VAE constraint; the pipeline snaps silently, so a wrong count would
+  only show up as a different length) and 8 steps. `--height/--width/--num-frames` override both.
+
+  `action` and `intrinsics` are passed through `extra_input_kwargs` because the CLI has no flags
+  for camera trajectories: `action` is the WASD/IJKL DSL (`w-25` = walk forward for 25 frames) and
+  `intrinsics` is `[fx, fy, cx, cy]` of the input image. `skip_image_resize` keeps the first frame
+  at its native geometry — the pipeline resizes and center-crops it itself and rescales the
+  intrinsics to match, so resizing here would resample twice and desync the camera conditioning.
+
+  :param args: CLI arguments.
+  :returns: The SANA-WM image-to-video example.
+  """
+  from diffusers import SanaWMPipeline
+
+  height = 704 if args.height is None else args.height
+  width = 1280 if args.width is None else args.width
+  if args.image_path is not None:
+    image = load_image(args.image_path).convert("RGB")
+  else:
+    image = load_image(
+      "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/"
+      "images/8.png").convert("RGB")
+  # The camera trajectory, not `num_frames`, decides the clip length: `prepare_camera_trajectory`
+  # trims `num_frames` to the number of poses an action string produces. Deriving the action from
+  # the requested length keeps the two in sync instead of silently shortening the clip.
+  num_frames = 25 if args.num_frames is None else args.num_frames
+
+  return _SanaWMExample(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,
+      model_name_or_path=_path("Efficient-Large-Model/SANA-WM_bidirectional-diffusers", args),
+      pipeline_class=SanaWMPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_WM_PROMPT,
+      image=image,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=8,
+      guidance_scale=5.0,
+      skip_image_resize=True,
+      extra_input_kwargs={
+        "action": f"w-{num_frames}",
+        "intrinsics": _sana_wm_intrinsics(image),
+        "output_type": "pil",
       },
     ),
   )
