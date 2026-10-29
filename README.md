@@ -206,14 +206,17 @@ Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tr
 gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
 ```
 
-The SKILL guides the Coding Agent through the whole flow: search and download the model weights (e.g. from [🤗Hugging Face](https://huggingface.co) or [ModelScope](https://www.modelscope.cn/)), match the model against the corresponding [🤗Diffusers](https://github.com/huggingface/diffusers) pipeline and transformer code, and then implement support for it following the SKILL's instructions.
+<b>Model integration</b>: The SKILL guides the Coding Agent through: search and download the model weights (e.g. from [🤗Hugging Face](https://huggingface.co) or [ModelScope](https://www.modelscope.cn/)), match the model against the corresponding [🤗Diffusers](https://github.com/huggingface/diffusers) pipeline and transformer code, and then implement support for it following the SKILL's instructions.
 
 ```bash
 /cache-dit-model-integration "Please download and support MiniMax-H3 in Cache-DiT."
 ```
 
-> [!NOTE]
-> Please note that quantization and layerwise offload in Cache-DiT are generally supported for **nn.Module**, thus no extra integration is needed for new DiT pipelines or transformers. 
+<b>Performance</b>: It can also run the **performance matrix** for models that Cache-DiT already supports. For examples:
+
+```bash
+/cache-dit-model-integration "Run the perf matrix for MiniMax-H3 with 1/2/4/8 GPUs."
+```
 
 ## 🌐Community Integration
 
