@@ -14,6 +14,7 @@ from skimage.metrics import structural_similarity
 from .utils import _safe_import
 from .config import set_metrics_verbose
 from .config import get_metrics_verbose
+from .config import _AUDIO_EXTENSIONS
 from .config import _IMAGE_EXTENSIONS
 from .config import _VIDEO_EXTENSIONS
 from ..logger import init_logger
@@ -150,6 +151,295 @@ def compute_ssim_file(
     multichannel=True,
     channel_axis=2,
   )
+
+
+# Array inputs carry no sample rate, and the mel band layout depends on it. 24 kHz is the rate of
+# the TTS models cache-dit currently serves; file inputs always use their own rate.
+DEFAULT_AUDIO_SAMPLE_RATE = 24000
+
+
+def _load_audio(
+  audio: np.ndarray | str,
+  expected_rate: int | None = None,
+) -> Tuple[np.ndarray, int | None]:
+  """Load an audio file into a mono float32 waveform, or pass an array through.
+
+  Multi-channel audio is mixed down to mono: the audio metrics compare a single waveform, and a
+  channel-wise average keeps the value independent of the channel count.
+
+  :param audio: Waveform array (`(samples,)` or `(samples, channels)`) or path to an audio file.
+  :param expected_rate: Sampling rate of the reference, used to reject mismatched pairs.
+  :returns: A tuple `(mono_waveform, sample_rate)`. The rate is `None` for array inputs.
+  """
+
+  if isinstance(audio, str):
+    import soundfile as sf
+
+    waveform, rate = sf.read(audio, dtype="float32", always_2d=True)
+    mono = waveform.mean(axis=1)
+  else:
+    waveform = np.asarray(audio, dtype=np.float32)
+    if waveform.ndim == 1:
+      mono = waveform
+    elif waveform.ndim == 2:
+      mono = waveform.mean(axis=1)
+    else:
+      raise ValueError(f"Expected a 1-D or 2-D waveform, but got shape {waveform.shape}.")
+    rate = expected_rate
+  if expected_rate is not None and rate is not None and int(rate) != int(expected_rate):
+    raise ValueError(f"Audio sample rates must match, but got {int(rate)} vs {int(expected_rate)}. "
+                     f"Resample one side first.")
+  return mono.astype(np.float32, copy=False), (None if rate is None else int(rate))
+
+
+def _align_audio(
+  audio_true: np.ndarray,
+  audio_test: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+  """Truncate a waveform pair to the same length.
+
+  :param audio_true: Reference waveform.
+  :param audio_test: Test waveform.
+  :returns: Both waveforms truncated to the shorter length.
+  """
+
+  length = min(len(audio_true), len(audio_test))
+  if length == 0:
+    raise ValueError("Cannot compare empty waveforms.")
+  return audio_true[:length], audio_test[:length]
+
+
+def calculate_si_sdr(
+  audio_true: np.ndarray | str,
+  audio_test: np.ndarray | str,
+) -> float:
+  """Calculate SI-SDR (scale-invariant signal-to-distortion ratio).
+
+  The estimate is first rescaled by the least-squares factor `alpha = <est, ref> / <ref, ref>`, so a
+  global gain difference does not count as distortion; what remains is the sample-level error. Both
+  waveforms are mean-removed first, which makes the value insensitive to a DC offset. Note that the
+  metric is **not symmetric**: `audio_true` is always the target.
+
+  Audio for TTS is not a reconstruction problem: a different sampling trajectory produces a
+  different but equally valid waveform, so a low SI-SDR means "not the same samples", not "bad
+  audio". Combine it with the spectrogram metrics (`mel_psnr` / `mel_ssim`) before drawing
+  conclusions.
+
+  :param audio_true: Reference waveform array or audio file path.
+  :param audio_test: Test waveform array or audio file path.
+  :returns: SI-SDR in dB, `inf` when the two waveforms are identical.
+  """
+
+  reference, rate = _load_audio(audio_true)
+  estimate, _ = _load_audio(audio_test, expected_rate=rate)
+  reference, estimate = _align_audio(reference, estimate)
+  reference = reference - reference.mean()
+  estimate = estimate - estimate.mean()
+  target = np.dot(estimate, reference) / (np.dot(reference, reference) + 1e-12) * reference
+  noise = estimate - target
+  signal_power = float(np.dot(target, target))
+  noise_power = float(np.dot(noise, noise))
+  if noise_power <= 1e-20:
+    return float("inf")
+  return 10 * np.log10(signal_power / noise_power)
+
+
+def calculate_snr(
+  audio_true: np.ndarray | str,
+  audio_test: np.ndarray | str,
+) -> float:
+  """Calculate SNR (signal-to-noise ratio) without gain compensation.
+
+  Unlike SI-SDR this keeps the absolute scale: an estimate that is louder or quieter than the
+  reference is penalized. Use it for reconstruction-style checks (offload, tiling) and prefer
+  SI-SDR when only the waveform shape matters.
+
+  :param audio_true: Reference waveform array or audio file path.
+  :param audio_test: Test waveform array or audio file path.
+  :returns: SNR in dB, `inf` when the two waveforms are identical.
+  """
+
+  reference, rate = _load_audio(audio_true)
+  estimate, _ = _load_audio(audio_test, expected_rate=rate)
+  reference, estimate = _align_audio(reference, estimate)
+  signal_power = float(np.dot(reference, reference))
+  noise = estimate - reference
+  noise_power = float(np.dot(noise, noise))
+  if noise_power <= 1e-20:
+    return float("inf")
+  if signal_power <= 1e-20:
+    return float("-inf")
+  return 10 * np.log10(signal_power / noise_power)
+
+
+def _log_mel(
+  waveform: np.ndarray,
+  sample_rate: int,
+  n_mels: int = 80,
+  n_fft: int = 1024,
+  hop_length: int = 256,
+) -> np.ndarray:
+  """Convert a mono waveform into a log-mel spectrogram `(n_mels, frames)`.
+
+  :param waveform: Mono waveform.
+  :param sample_rate: Sampling rate of `waveform`.
+  :param n_mels: Number of mel filter banks.
+  :param n_fft: FFT size of the STFT.
+  :param hop_length: Hop length of the STFT.
+  :returns: Log-mel spectrogram as `float32`.
+  """
+
+  import torch
+  import torchaudio
+
+  mel = torchaudio.transforms.MelSpectrogram(
+    sample_rate=int(sample_rate),
+    n_fft=n_fft,
+    hop_length=hop_length,
+    n_mels=n_mels,
+  )(torch.from_numpy(waveform))
+  return torch.log(mel.clamp_min(1e-5)).numpy()
+
+
+def calculate_mel_psnr(
+  audio_true: np.ndarray | str,
+  audio_test: np.ndarray | str,
+) -> float:
+  """Calculate PSNR between the log-mel spectrograms of two waveforms.
+
+  A waveform-level PSNR is unusable for generated audio: it is destroyed by a phase flip or a
+  one-sample shift that nobody can hear. Comparing the log-mel spectrograms drops phase and
+  absolute time alignment, so the value measures how close the two spectral envelopes are. The
+  peak is the dynamic range of the reference spectrogram (instead of the image `255`), which keeps
+  the value comparable as long as the STFT / mel settings stay fixed.
+
+  :param audio_true: Reference waveform array or audio file path.
+  :param audio_test: Test waveform array or audio file path.
+  :returns: PSNR in dB, `inf` when the spectrograms are identical.
+  """
+
+  reference, rate = _load_audio(audio_true)
+  estimate, _ = _load_audio(audio_test, expected_rate=rate)
+  reference, estimate = _align_audio(reference, estimate)
+  mel_true = _log_mel(reference, rate or DEFAULT_AUDIO_SAMPLE_RATE)
+  mel_test = _log_mel(estimate, rate or DEFAULT_AUDIO_SAMPLE_RATE)
+
+  frames = min(mel_true.shape[1], mel_test.shape[1])
+  mel_true = mel_true[:, :frames]
+  mel_test = mel_test[:, :frames]
+  mse = np.mean((mel_true - mel_test) ** 2)
+  if mse == 0:
+    return float("inf")
+  data_range = float(mel_true.max() - mel_true.min())
+  if data_range <= 0:
+    return float("-inf")
+  return 10 * np.log10(data_range ** 2 / mse)
+
+
+def calculate_mel_ssim(
+  audio_true: np.ndarray | str,
+  audio_test: np.ndarray | str,
+) -> float:
+  """Calculate SSIM between the log-mel spectrograms of two waveforms.
+
+  The spectrogram is treated as a `(n_mels, frames)` image, so SSIM scores the time-frequency
+  structure (harmonics, formants, syllable onsets): it tolerates a global gain change and small
+  shifts while penalizing smeared harmonics or merged syllables. This is a borrowed proxy metric —
+  the values are only comparable under the same STFT / mel settings.
+
+  :param audio_true: Reference waveform array or audio file path.
+  :param audio_test: Test waveform array or audio file path.
+  :returns: SSIM, `1.0` when the spectrograms are identical. The value is not clamped to `[0, 1]`:
+    a highly peaky spectrogram whose local correlation flips sign can score below zero.
+  """
+
+  reference, rate = _load_audio(audio_true)
+  estimate, _ = _load_audio(audio_test, expected_rate=rate)
+  reference, estimate = _align_audio(reference, estimate)
+  mel_true = _log_mel(reference, rate or DEFAULT_AUDIO_SAMPLE_RATE)
+  mel_test = _log_mel(estimate, rate or DEFAULT_AUDIO_SAMPLE_RATE)
+
+  frames = min(mel_true.shape[1], mel_test.shape[1])
+  mel_true = mel_true[:, :frames]
+  mel_test = mel_test[:, :frames]
+  data_range = float(mel_true.max() - mel_true.min())
+  if data_range <= 0:
+    return 1.0 if np.array_equal(mel_true, mel_test) else 0.0
+  win_size = min(7, mel_true.shape[0], mel_true.shape[1])
+  if win_size % 2 == 0:
+    win_size -= 1
+  if win_size < 3:
+    raise ValueError(f"Audio is too short for SSIM: the log-mel spectrogram is {mel_true.shape}, "
+                     f"which needs at least 3 frames and 3 mel bins.")
+  return structural_similarity(
+    mel_true,
+    mel_test,
+    data_range=data_range,
+    win_size=win_size,
+  )
+
+
+def compute_audio_metric(
+  audio_true: np.ndarray | str,
+  audio_test: np.ndarray | str,
+  compute_file_func: callable = calculate_si_sdr,
+) -> Union[Tuple[float, int], Tuple[None, None]]:
+  """Compute one audio metric across a matched audio pair or audio directory pair.
+
+  Unlike the image path, an `inf` value is not dropped: for audio it means "the two waveforms are
+  identical", which is exactly the signal a caching or offloading check is looking for.
+
+  :param audio_true: Reference audio path or directory.
+  :param audio_test: Test audio path or directory.
+  :param compute_file_func: Callable used to score each matched pair.
+  :returns: A tuple `(metric_value, valid_pair_count)`, or `(None, None)` when no valid pair is
+    found.
+  """
+
+  if isinstance(audio_true, np.ndarray) or isinstance(audio_test, np.ndarray):
+    return compute_file_func(audio_true, audio_test), 1
+
+  if not os.path.isdir(audio_true) or not os.path.isdir(audio_test):
+    return compute_file_func(audio_true, audio_test), 1
+
+  def natural_sort_key(filename):
+    match = re.search(r"(\d+)\D*$", filename)
+    return int(match.group(1)) if match else filename
+
+  audio_true_dir: pathlib.Path = pathlib.Path(audio_true)
+  audio_test_dir: pathlib.Path = pathlib.Path(audio_test)
+  audio_true_files = [
+    file.as_posix() for ext in _AUDIO_EXTENSIONS
+    for file in audio_true_dir.rglob("*.{}".format(ext))
+  ]
+  audio_test_files = [
+    file.as_posix() for ext in _AUDIO_EXTENSIONS
+    for file in audio_test_dir.rglob("*.{}".format(ext))
+  ]
+  audio_true_files = sorted(audio_true_files, key=natural_sort_key)
+  audio_test_files = sorted(audio_test_files, key=natural_sort_key)
+
+  pairs = []
+  for i in range(min(len(audio_true_files), len(audio_test_files))):
+    if os.path.basename(audio_true_files[i]) == os.path.basename(audio_test_files[i]):
+      pairs.append((audio_true_files[i], audio_test_files[i]))
+  if len(pairs) == 0:
+    logger.error("No valid Audio pairs, please note that Audio "
+                 "pairs must have the same basename.")
+    return None, None
+
+  logger.debug(f"audio pairs: {pairs}")
+  metrics = [
+    compute_file_func(audio_true_, audio_test_)
+    for audio_true_, audio_test_ in tqdm(pairs, disable=DISABLE_VERBOSE)
+  ]
+  finite = [metric for metric in metrics if metric != float("inf")]
+  if len(finite) == 0:
+    return float("inf"), len(pairs)
+  if len(finite) != len(metrics):
+    logger.debug(f"{len(metrics) - len(finite)} pair(s) are bit-identical (inf) and were skipped "
+                 f"in the average.")
+  return float(np.mean(finite)), len(pairs)
 
 
 def compute_dir_metric(
@@ -396,6 +686,23 @@ compute_video_mse: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = 
   compute_frame_func=compute_mse_file,
 )
 
+compute_si_sdr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+  compute_audio_metric,
+  compute_file_func=calculate_si_sdr,
+)
+compute_snr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+  compute_audio_metric,
+  compute_file_func=calculate_snr,
+)
+compute_mel_psnr: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+  compute_audio_metric,
+  compute_file_func=calculate_mel_psnr,
+)
+compute_mel_ssim: Callable[..., Union[Tuple[float, int], Tuple[None, None]]] = partial(
+  compute_audio_metric,
+  compute_file_func=calculate_mel_ssim,
+)
+
 METRICS_CHOICES = [
   "lpips",  # img vs img
   "psnr",  # img vs img
@@ -405,6 +712,10 @@ METRICS_CHOICES = [
   "all",  # img vs img
   "clip_score",  # img vs prompt
   "image_reward",  # img vs prompt
+  "si_sdr",  # audio vs audio
+  "snr",  # audio vs audio
+  "mel_psnr",  # audio vs audio
+  "mel_ssim",  # audio vs audio
 ]
 
 
@@ -457,6 +768,20 @@ def get_args():
     type=str,
     default=None,
     help="Path to predicted video or Dir to predicted videos",
+  )
+  parser.add_argument(
+    "--audio-true",
+    "-a1",
+    type=str,
+    default=None,
+    help="Path to ground truth audio or Dir to ground truth audio, for SI-SDR / SNR / mel metrics",
+  )
+  parser.add_argument(
+    "--audio-test",
+    "-a2",
+    type=str,
+    default=None,
+    help="Path to predicted audio or Dir to predicted audio, for SI-SDR / SNR / mel metrics",
   )
 
   # Image 1 vs N pattern
@@ -597,6 +922,8 @@ def entrypoint():
     img_test: str = None,
     video_true: str = None,
     video_test: str = None,
+    audio_true: str = None,
+    audio_test: str = None,
   ) -> None:
     nonlocal METRICS_META
     metric = metric.lower()
@@ -697,6 +1024,38 @@ def entrypoint():
       if metric == "fid" or metric == "all":
         video_fid, n = compute_video_fid(video_true, video_test)
         _logging_msg(video_fid, "fid", n)
+
+    if audio_true is not None and audio_test is not None:
+      if any((
+          not os.path.exists(audio_true),
+          not os.path.exists(audio_test),
+      )):
+        logger.error(f"Not exist: {audio_true} or {audio_test}, skip.")
+        return
+
+      audio_true_info = os.path.basename(audio_true)
+      audio_test_info = os.path.basename(audio_test)
+
+      def _logging_msg(value: float, name, n: int):
+        if value is None or n is None:
+          return
+        msg = (f"{audio_true_info} vs {audio_test_info}, "
+               f"Num: {n}, {name.upper()}: {value:.5f}")
+        METRICS_META[msg] = value
+        logger.info(msg)
+
+      if metric == "si_sdr" or metric == "all":
+        audio_si_sdr, n = compute_si_sdr(audio_true, audio_test)
+        _logging_msg(audio_si_sdr, "si_sdr", n)
+      if metric == "snr" or metric == "all":
+        audio_snr, n = compute_snr(audio_true, audio_test)
+        _logging_msg(audio_snr, "snr", n)
+      if metric == "mel_psnr" or metric == "all":
+        audio_mel_psnr, n = compute_mel_psnr(audio_true, audio_test)
+        _logging_msg(audio_mel_psnr, "mel_psnr", n)
+      if metric == "mel_ssim" or metric == "all":
+        audio_mel_ssim, n = compute_mel_ssim(audio_true, audio_test)
+        _logging_msg(audio_mel_ssim, "mel_ssim", n)
 
   # run selected metrics
   if not DISABLE_VERBOSE:
@@ -823,6 +1182,8 @@ def entrypoint():
         img_test=args.img_test,
         video_true=args.video_true,
         video_test=args.video_test,
+        audio_true=args.audio_true,
+        audio_test=args.audio_test,
       )
 
   if args.summary:

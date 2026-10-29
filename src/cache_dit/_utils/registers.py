@@ -46,6 +46,9 @@ class ExampleType(Enum):
   FL2VA = "FL2VA - First Last Frames to Video with Audio"
   # Reference-conditioned: image / video / audio references plus a prompt.
   REF2VA = "REF2VA - Reference to Video with Audio"
+  # Audio-only: the pipeline returns a waveform and no frames, so the output parse and the writer
+  # take the waveform path instead of the image / video one.
+  T2A = "T2A - Text to Audio"
 
 
 # Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
@@ -53,6 +56,8 @@ class ExampleType(Enum):
 # set: a mismatch leaves `output` as the whole `PipelineState`, and the parse step then fails only
 # after the full inference has already run.
 _AUDIO_VIDEO_TASKS = frozenset({ExampleType.T2VA, ExampleType.FL2VA, ExampleType.REF2VA})
+# Audio-only tasks: no frames, the whole output is a waveform.
+_AUDIO_TASKS = frozenset({ExampleType.T2A})
 
 # `--reference-*-path` flags and the diffusers class that loads them. Order is semantic: a pipeline
 # consumes references in the order it receives them.
@@ -422,7 +427,9 @@ class ExampleOutputData:
           img.save(img_save_path)
           logger.info(f"Image {i} saved to {img_save_path}")
 
-    if self.video is not None:
+    if self.video is None and self.audio is not None:
+      self._save_audio(save_path)
+    elif self.video is not None:
       fps = self.video_fps if self.video_fps is not None else args.saved_fps
       # `encode_video` needs both the waveform and its rate; a model that reports only one of them
       # falls back to the video-only writer instead of failing after a long inference.
@@ -457,6 +464,32 @@ class ExampleOutputData:
       else:
         export_to_video(self.video, save_path, fps=fps)
       logger.info(f"Video saved to {save_path}")
+
+  def _save_audio(self, save_path: str) -> bool:
+    """Write the generated waveform to `save_path` as a WAV file.
+
+    `self.audio` follows the pipeline convention `(channels, samples)`, while `soundfile` expects
+    `(frames, channels)`, so the waveform is transposed before it is written.
+
+    :param save_path: Destination path, normally ending in `.wav`.
+    :returns: Whether the file was written.
+    """
+    if self.audio_sampling_rate is None:
+      logger.warning("Audio was generated but no sampling rate was reported: skipping the write.")
+      return False
+    try:
+      import soundfile as sf
+    except ImportError:
+      # `soundfile` is not a cache-dit dependency; only audio models need it.
+      logger.warning("`soundfile` is required to write the generated audio: skipping the write.")
+      return False
+    audio = self.audio
+    if hasattr(audio, "detach"):
+      audio = audio.detach().float().cpu().numpy()
+    audio = np.ascontiguousarray(np.asarray(audio).T)
+    sf.write(save_path, audio, int(self.audio_sampling_rate))
+    logger.info(f"Audio saved to {save_path}")
+    return True
 
   def _default_save_path(self) -> Optional[str]:
     if self.image is not None:
@@ -500,6 +533,8 @@ class ExampleOutputData:
           return f"{self.model_tag}.{self.strify_tag}.mp4"
       else:
         return f"{self.model_tag}.{self.strify_tag}.mp4"
+    elif self.audio is not None:
+      return f"{self.model_tag}.{self.strify_tag}.wav"
     else:
       return None
 
@@ -830,6 +865,41 @@ def parse_audio_video_output(
   }
 
 
+def parse_audio_output(
+  output: Any,
+  task_type: ExampleType,
+  pipe: Any = None,
+) -> Dict[str, Any]:
+  """Parse the output of an audio-only task.
+
+  Audio pipelines return a waveform under `audios` with shape `(batch, channels, num_samples)` and
+  usually do not report the rate on the output object, so it is read from the pipeline.
+
+  :param output: Pipeline output.
+  :param task_type: Task being parsed, used in the error message.
+  :param pipe: Pipeline instance, used to read the sampling rate.
+  :returns: `audio` / `audio_sampling_rate` keys.
+  :raises ValueError: When the output carries no `audios`.
+  """
+  if isinstance(output, dict):
+    audios = output.get("audios")
+    sampling_rate = output.get("sampling_rate")
+  else:
+    audios = getattr(output, "audios", None)
+    sampling_rate = getattr(output, "sampling_rate", None)
+  if audios is None:
+    raise ValueError(f"{task_type.name} expects the pipeline to return `audios`, got "
+                     f"{type(output).__name__}.")
+  if sampling_rate is None:
+    sampling_rate = getattr(pipe, "sample_rate", None) or _resolve_audio_sampling_rate(pipe)
+  # `(batch, channels, num_samples)` -> `(channels, num_samples)` for the writer.
+  audio = audios[0]
+  return {
+    "audio": audio,
+    "audio_sampling_rate": int(sampling_rate) if sampling_rate is not None else None,
+  }
+
+
 class Example:
 
   def __init__(
@@ -959,6 +1029,10 @@ class Example:
       output_data.audio = parsed["audio"]
       output_data.audio_sampling_rate = parsed["audio_sampling_rate"]
       output_data.video_fps = parsed["video_fps"]
+    elif self.init_config.task_type in _AUDIO_TASKS:
+      parsed = parse_audio_output(output, self.init_config.task_type, pipe=pipe)
+      output_data.audio = parsed["audio"]
+      output_data.audio_sampling_rate = parsed["audio_sampling_rate"]
     elif self.init_config.task_type in [
         ExampleType.T2V,
         ExampleType.I2V,

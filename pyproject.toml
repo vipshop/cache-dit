@@ -38,6 +38,9 @@ metrics = [
     "scikit-image",
     "image-reward",
     "lpips==0.1.4",
+    # Audio metrics: `soundfile` reads wav/flac, `torchaudio` builds the log-mel spectrogram.
+    "soundfile",
+    "torchaudio",
 ]
 
 dev = [
