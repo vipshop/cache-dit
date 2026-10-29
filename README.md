@@ -105,76 +105,76 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | FLUX | [`diffusers`][diffusers-url] | 10+ | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 Klein 🔥 | [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.3 Klein 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | ERNIE-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Qwen-Image 🔥 | [`diffusers`][diffusers-url] | 9+ | ✔️/✔️/✔️/✔️ |
-| Image | Qwen-Image-2.1 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | Z-Image 🔥 | [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Image | Joy-Image| [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Krea-2 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Ideogram 4 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo 2.0 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | NucleusMoE-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | GLM-Image 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | LongCat-Image 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ovis-Image | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | SD3 | [`diffusers`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
-| Image | PixArt-Alpha | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | PixArt-Sigma | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Sana (image) | [`diffusers`][diffusers-url] | 4 | ✔️/✖️/✔️/✔️ |
-| Image | DiT | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | HunyuanDiT | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | HunyuanDiT-PAG | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | AuraFlow | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | CogView4 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | CogView3Plus | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Hunyuan-Image 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Bria | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Chroma | [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Image | PRX / PRXPixel 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Anima | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Image | OmniGen | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina | [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina 2 | [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Image | VisualCloze | [`diffusers`][diffusers-url]  | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Amused | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| **Video** | CogVideoX | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | Wan 2.1 (T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Video | Wan 2.2 (T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow-FAR | [`diffusers`][diffusers-url] | 1 | ✖️/✖️/✔️/✔️ |
-| Video | Wan-VACE 🔥| [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | HunyuanVideo | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | HunyuanVideo 1.5 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Video | Mochi | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Allegro | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Video | EasyAnimate | [`diffusers`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
-| Video | ConsisID | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Cosmos | [`diffusers`][diffusers-url] | 7+ | ✔️/✖️/✔️/✔️ |
-| Video | Cosmos3 (Omni) 🔥| [`diffusers`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
-| Video | LTX | [`diffusers`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2 | [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`diffusers`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
-| Video | Echo (JoyAI-Echo) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Helios 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| Video | ChronoEdit | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | SkyReelsV2 | [`diffusers`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky5 (T2V/I2V) | [`diffusers`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky 6.0 (T2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✖️ |
-| Video | MiniMax-H3 (T2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MiniMax-H3 (FL2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | MiniMax-H3 (Ref2VA) 🔥 | [`diffusers`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | Motif-Video (T2V/I2V) 🔥 | [`diffusers`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
-| **Audio** | StableAudio | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| **3D/Other** | Shap-E | [`diffusers`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
-| Other | LucyEdit | [`diffusers`][diffusers-url]  | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.3 Klein 🔥 | [`diffusers@0.42.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo 2.0 🔥 | [`diffusers@0.42.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky 6.0 (T2VA) 🔥 | [`diffusers@0.42.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✖️ |
+| Image | Qwen-Image-2.1 🔥| [`diffusers@0.41.0`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`diffusers@0.41.0`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Echo (JoyAI-Echo) 🔥 | [`diffusers@0.41.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (T2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (FL2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | MiniMax-H3 (Ref2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |  
+| Image | Joy-Image| [`diffusers@0.39.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Krea-2 | [`diffusers@0.39.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Ideogram 4 🔥 | [`diffusers@0.39.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Anima | [`diffusers@0.39.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow | [`diffusers@0.39.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow-FAR | [`diffusers@0.39.0`][diffusers-url] | 1 | ✖️/✖️/✔️/✔️ |
+| Video | Cosmos3 (Omni) 🔥| [`diffusers@0.39.0`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Motif-Video (T2V/I2V) 🔥 | [`diffusers@0.39.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | ERNIE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | NucleusMoE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 Klein 🔥 | [`diffusers@0.37.0`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Image | GLM-Image 🔥 | [`diffusers@0.37.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | LongCat-Image 🔥 | [`diffusers@0.37.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2 | [`diffusers@0.37.0`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Helios 🔥 | [`diffusers@0.37.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 🔥 | [`diffusers@0.36.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Z-Image 🔥 | [`diffusers@0.36.0`][diffusers-url] | 6 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo | [`diffusers@0.36.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ovis-Image | [`diffusers@0.36.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Hunyuan-Image 🔥 | [`diffusers@0.36.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Bria | [`diffusers@0.36.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PRX / PRXPixel 🔥| [`diffusers@0.36.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo 1.5 🔥| [`diffusers@0.36.0`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | ChronoEdit | [`diffusers@0.36.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky5 (T2V/I2V) | [`diffusers@0.36.0`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Other | LucyEdit | [`diffusers@0.36.0`][diffusers-url]  | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image 🔥 | [`diffusers@0.35.0`][diffusers-url] | 9+ | ✔️/✔️/✔️/✔️ |
+| Video | Wan 2.2 (T2V/I2V) 🔥| [`diffusers@0.35.0`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Video | SkyReelsV2 | [`diffusers@0.35.0`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream | [`diffusers@0.34.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Chroma | [`diffusers@0.34.0`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Image | VisualCloze | [`diffusers@0.34.0`][diffusers-url]  | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Cosmos | [`diffusers@0.34.0`][diffusers-url] | 7+ | ✔️/✖️/✔️/✔️ |
+| Video | Wan-VACE 🔥| [`diffusers@0.34.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | CogView4 | [`diffusers@0.33.0`][diffusers-url] | 2 | ✔️/✔️/✔️/✔️ |
+| Image | OmniGen | [`diffusers@0.33.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina 2 | [`diffusers@0.33.0`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Wan 2.1 (T2V/I2V) 🔥| [`diffusers@0.33.0`][diffusers-url] | 3 | ✔️/✔️/✔️/✔️ |
+| Video | EasyAnimate | [`diffusers@0.33.0`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
+| Video | ConsisID | [`diffusers@0.33.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Sana (image) | [`diffusers@0.32.0`][diffusers-url] | 4 | ✔️/✖️/✔️/✔️ |
+| Video | HunyuanVideo | [`diffusers@0.32.0`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Mochi | [`diffusers@0.32.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Allegro | [`diffusers@0.32.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Video | LTX | [`diffusers@0.32.0`][diffusers-url] | 5 | ✔️/✔️/✔️/✔️ |
+| Image | CogView3Plus | [`diffusers@0.31.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX | [`diffusers@0.30.0`][diffusers-url] | 10+ | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT-PAG | [`diffusers@0.30.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | AuraFlow | [`diffusers@0.30.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina | [`diffusers@0.30.0`][diffusers-url] | 2 | ✔️/✖️/✔️/✔️ |
+| Video | CogVideoX | [`diffusers@0.30.0`][diffusers-url] | 4 | ✔️/✔️/✔️/✔️ |
+| Audio | StableAudio | [`diffusers@0.30.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | SD3 | [`diffusers@0.29.0`][diffusers-url] | 3 | ✔️/✖️/✔️/✔️ |
+| Image | HunyuanDiT | [`diffusers@0.28.1`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | PixArt-Sigma | [`diffusers@0.28.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Amused | [`diffusers@0.25.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PixArt-Alpha | [`diffusers@0.22.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
+| 3D/Other | Shap-E | [`diffusers@0.18.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Image | DiT | [`diffusers@0.12.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
 
-<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization (W8A8, W4A4); <b>OF</b>: Bucket-style Layerwise Offload (~0 overhead) </i>
+<i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; @: Minimum version </i>
 
 </div>
 
