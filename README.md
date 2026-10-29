@@ -105,74 +105,74 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| Image | FLUX.3 Klein 🔥 | [`diffusers@0.42.0`][diffusers-url], [`huggingface`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo 2.0 🔥 | [`diffusers@0.42.0`][diffusers-url], [`huggingface`](https://huggingface.co/briaai/Fibo-2.0-dev) | 2 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky 6.0 (T2VA) 🔥 | [`diffusers@0.42.0`][diffusers-url], [`huggingface`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | 1 | ✔️/✔️/✔️/✖️ |
-| Image | Qwen-Image-2.1 🔥| [`diffusers@0.41.0`][diffusers-url], [`huggingface`](https://huggingface.co/Qwen/Qwen-Image-2.1) | 3 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`diffusers@0.41.0`][diffusers-url], [`huggingface`](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | 6 | ✔️/✔️/✔️/✔️ |
-| Video | Echo (JoyAI-Echo) 🔥 | [`diffusers@0.41.0`][diffusers-url], [`huggingface`](https://huggingface.co/jdopensource/JoyAI-Echo) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MiniMax-H3 (T2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`huggingface`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MiniMax-H3 (FL2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`huggingface`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
-| Video | MiniMax-H3 (Ref2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`huggingface`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
-| Image | Joy-Image| [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Krea-2 | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Ideogram 4 🔥 | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Anima | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/circlestone-labs/Anima-Base-v1.0-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Any-Flow-FAR | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers) | 1 | ✖️/✖️/✔️/✔️ |
-| Video | Cosmos3 (Omni) 🔥| [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/nvidia/Cosmos3-Super) | 2 | ✔️/✖️/✔️/✔️ |
-| Video | Motif-Video (T2V/I2V) 🔥 | [`diffusers@0.39.0`][diffusers-url], [`huggingface`](https://huggingface.co/Motif-Technologies/Motif-Video-2B) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | ERNIE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url], [`huggingface`](https://huggingface.co/baidu/ERNIE-Image) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | NucleusMoE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url], [`huggingface`](https://huggingface.co/NucleusAI/Nucleus-Image) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 Klein 🔥 | [`diffusers@0.37.0`][diffusers-url], [`huggingface`](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9B) | 3 | ✔️/✔️/✔️/✔️ |
-| Image | GLM-Image 🔥 | [`diffusers@0.37.0`][diffusers-url], [`huggingface`](https://huggingface.co/zai-org/GLM-Image) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | LongCat-Image 🔥 | [`diffusers@0.37.0`][diffusers-url], [`huggingface`](https://huggingface.co/meituan-longcat/LongCat-Image) | 2 | ✔️/✔️/✔️/✔️ |
-| Video | LTX2 | [`diffusers@0.37.0`][diffusers-url], [`huggingface`](https://huggingface.co/Lightricks/LTX-2) | 6 | ✔️/✔️/✔️/✔️ |
-| Video | Helios 🔥 | [`diffusers@0.37.0`][diffusers-url], [`huggingface`](https://huggingface.co/BestWishYsh/Helios-Base) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX.2 🔥 | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/black-forest-labs/FLUX.2-dev) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Z-Image 🔥 | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) | 6 | ✔️/✔️/✔️/✔️ |
-| Image | Bria-Fibo | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/briaai/FIBO) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ovis-Image | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/ATH-MaaS/Ovis-Image-7B) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Hunyuan-Image 🔥 | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/hunyuanvideo-community/HunyuanImage-2.1-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Bria | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/briaai/BRIA-3.2) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | PRX / PRXPixel 🔥| [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/Photoroom/prx-512-t2i-sft) | 2 | ✔️/✔️/✔️/✔️ |
-| Video | HunyuanVideo 1.5 🔥| [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v) | 2 | ✔️/✖️/✔️/✔️ |
-| Video | ChronoEdit | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Kandinsky5 (T2V/I2V) | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 4 | ✔️/✔️/✔️/✔️ |
-| Other | LucyEdit | [`diffusers@0.36.0`][diffusers-url], [`huggingface`](https://huggingface.co/decart-ai/Lucy-Edit-Dev)  | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Qwen-Image 🔥 | [`diffusers@0.35.0`][diffusers-url], [`huggingface`](https://huggingface.co/Qwen/Qwen-Image) | 9+ | ✔️/✔️/✔️/✔️ |
-| Video | Wan 2.2 (T2V/I2V) 🔥| [`diffusers@0.35.0`][diffusers-url], [`huggingface`](https://huggingface.co/Wan-AI/Wan2.2-T2V-A14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
-| Video | SkyReelsV2 | [`diffusers@0.35.0`][diffusers-url], [`huggingface`](https://huggingface.co/Skywork/SkyReels-V2-T2V-14B-720P-Diffusers) | 5 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream | [`diffusers@0.34.0`][diffusers-url], [`huggingface`](https://huggingface.co/HiDream-ai/HiDream-I1-Full) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Chroma | [`diffusers@0.34.0`][diffusers-url], [`huggingface`](https://huggingface.co/lodestones/Chroma1-HD) | 3 | ✔️/✔️/✔️/✔️ |
-| Image | VisualCloze | [`diffusers@0.34.0`][diffusers-url], [`huggingface`](https://huggingface.co/VisualCloze/VisualClozePipeline-384)  | 2 | ✔️/✔️/✔️/✔️ |
-| Video | Cosmos | [`diffusers@0.34.0`][diffusers-url], [`huggingface`](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Text2World) | 7+ | ✔️/✖️/✔️/✔️ |
-| Video | Wan-VACE 🔥| [`diffusers@0.34.0`][diffusers-url], [`huggingface`](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | CogView4 | [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/zai-org/CogView4-6B) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | OmniGen | [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/Shitao/OmniGen-v1-diffusers) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina 2 | [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0) | 2 | ✔️/✖️/✔️/✔️ |
-| Video | Wan 2.1 (T2V/I2V) 🔥| [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/Wan-AI/Wan2.1-T2V-14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
-| Video | EasyAnimate | [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/alibaba-pai/EasyAnimateV5.1-12b-zh-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
-| Video | ConsisID | [`diffusers@0.33.0`][diffusers-url], [`huggingface`](https://huggingface.co/BestWishYsh/ConsisID-preview) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Sana (image) | [`diffusers@0.32.0`][diffusers-url], [`huggingface`](https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers) | 4 | ✔️/✖️/✔️/✔️ |
-| Video | HunyuanVideo | [`diffusers@0.32.0`][diffusers-url], [`huggingface`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) | 4 | ✔️/✔️/✔️/✔️ |
-| Video | Mochi | [`diffusers@0.32.0`][diffusers-url], [`huggingface`](https://huggingface.co/genmo/mochi-1-preview) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Allegro | [`diffusers@0.32.0`][diffusers-url], [`huggingface`](https://huggingface.co/rhymes-ai/Allegro) | 1 | ✔️/✖️/✔️/✔️ |
-| Video | LTX | [`diffusers@0.32.0`][diffusers-url], [`huggingface`](https://huggingface.co/Lightricks/LTX-Video) | 5 | ✔️/✔️/✔️/✔️ |
-| Image | CogView3Plus | [`diffusers@0.31.0`][diffusers-url], [`huggingface`](https://huggingface.co/zai-org/CogView3-Plus-3B) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | FLUX | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/black-forest-labs/FLUX.1-dev) | 10+ | ✔️/✔️/✔️/✔️ |
-| Image | HunyuanDiT-PAG | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | AuraFlow | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/fal/AuraFlow) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | Lumina | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/Alpha-VLLM/Lumina-Next-SFT-diffusers) | 2 | ✔️/✖️/✔️/✔️ |
-| Video | CogVideoX | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/zai-org/CogVideoX-5b) | 4 | ✔️/✔️/✔️/✔️ |
-| Audio | StableAudio | [`diffusers@0.30.0`][diffusers-url], [`huggingface`](https://huggingface.co/stabilityai/stable-audio-open-1.0) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | SD3 | [`diffusers@0.29.0`][diffusers-url], [`huggingface`](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
-| Image | HunyuanDiT | [`diffusers@0.28.1`][diffusers-url], [`huggingface`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | PixArt-Sigma | [`diffusers@0.28.0`][diffusers-url], [`huggingface`](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | Amused | [`diffusers@0.25.0`][diffusers-url], [`huggingface`](https://huggingface.co/amused/amused-512) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | PixArt-Alpha | [`diffusers@0.22.0`][diffusers-url], [`huggingface`](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
-| Other | Shap-E | [`diffusers@0.18.0`][diffusers-url], [`huggingface`](https://huggingface.co/openai/shap-e) | 1 | ✔️/✖️/✔️/✔️ |
-| Image | DiT | [`diffusers@0.12.0`][diffusers-url], [`huggingface`](https://huggingface.co/facebook/DiT-XL-2-256) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.3 Klein 🔥 | [`diffusers@0.42.0`][diffusers-url], [`HF`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo 2.0 🔥 | [`diffusers@0.42.0`][diffusers-url], [`HF`](https://huggingface.co/briaai/Fibo-2.0-dev) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky 6.0 (T2VA) 🔥 | [`diffusers@0.42.0`][diffusers-url], [`HF`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | 1 | ✔️/✔️/✔️/✖️ |
+| Image | Qwen-Image-2.1 🔥| [`diffusers@0.41.0`][diffusers-url], [`HF`](https://huggingface.co/Qwen/Qwen-Image-2.1) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2.5 (DFR/T2V/I2V) 🔥| [`diffusers@0.41.0`][diffusers-url], [`HF`](https://huggingface.co/Lightricks/LTX-2.5-Diffusers) | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Echo (JoyAI-Echo) 🔥 | [`diffusers@0.41.0`][diffusers-url], [`HF`](https://huggingface.co/jdopensource/JoyAI-Echo) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (T2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MiniMax-H3 (FL2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Video | MiniMax-H3 (Ref2VA) 🔥 | [`diffusers@0.40.0`][diffusers-url], [`HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Image | Joy-Image| [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Krea-2 | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Ideogram 4 🔥 | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Anima | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/circlestone-labs/Anima-Base-v1.0-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Any-Flow-FAR | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers) | 1 | ✖️/✖️/✔️/✔️ |
+| Video | Cosmos3 (Omni) 🔥| [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/nvidia/Cosmos3-Super) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Motif-Video (T2V/I2V) 🔥 | [`diffusers@0.39.0`][diffusers-url], [`HF`](https://huggingface.co/Motif-Technologies/Motif-Video-2B) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | ERNIE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url], [`HF`](https://huggingface.co/baidu/ERNIE-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | NucleusMoE-Image 🔥 | [`diffusers@0.38.0`][diffusers-url], [`HF`](https://huggingface.co/NucleusAI/Nucleus-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 Klein 🔥 | [`diffusers@0.37.0`][diffusers-url], [`HF`](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9B) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | GLM-Image 🔥 | [`diffusers@0.37.0`][diffusers-url], [`HF`](https://huggingface.co/zai-org/GLM-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | LongCat-Image 🔥 | [`diffusers@0.37.0`][diffusers-url], [`HF`](https://huggingface.co/meituan-longcat/LongCat-Image) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | LTX2 | [`diffusers@0.37.0`][diffusers-url], [`HF`](https://huggingface.co/Lightricks/LTX-2) | 6 | ✔️/✔️/✔️/✔️ |
+| Video | Helios 🔥 | [`diffusers@0.37.0`][diffusers-url], [`HF`](https://huggingface.co/BestWishYsh/Helios-Base) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX.2 🔥 | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/black-forest-labs/FLUX.2-dev) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Z-Image 🔥 | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) | 6 | ✔️/✔️/✔️/✔️ |
+| Image | Bria-Fibo | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/briaai/FIBO) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ovis-Image | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/ATH-MaaS/Ovis-Image-7B) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Hunyuan-Image 🔥 | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/hunyuanvideo-community/HunyuanImage-2.1-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Bria | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/briaai/BRIA-3.2) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PRX / PRXPixel 🔥| [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/Photoroom/prx-512-t2i-sft) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | HunyuanVideo 1.5 🔥| [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | ChronoEdit | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Kandinsky5 (T2V/I2V) | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 4 | ✔️/✔️/✔️/✔️ |
+| Other | LucyEdit | [`diffusers@0.36.0`][diffusers-url], [`HF`](https://huggingface.co/decart-ai/Lucy-Edit-Dev)  | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Qwen-Image 🔥 | [`diffusers@0.35.0`][diffusers-url], [`HF`](https://huggingface.co/Qwen/Qwen-Image) | 9+ | ✔️/✔️/✔️/✔️ |
+| Video | Wan 2.2 (T2V/I2V) 🔥| [`diffusers@0.35.0`][diffusers-url], [`HF`](https://huggingface.co/Wan-AI/Wan2.2-T2V-A14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | SkyReelsV2 | [`diffusers@0.35.0`][diffusers-url], [`HF`](https://huggingface.co/Skywork/SkyReels-V2-T2V-14B-720P-Diffusers) | 5 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream | [`diffusers@0.34.0`][diffusers-url], [`HF`](https://huggingface.co/HiDream-ai/HiDream-I1-Full) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Chroma | [`diffusers@0.34.0`][diffusers-url], [`HF`](https://huggingface.co/lodestones/Chroma1-HD) | 3 | ✔️/✔️/✔️/✔️ |
+| Image | VisualCloze | [`diffusers@0.34.0`][diffusers-url], [`HF`](https://huggingface.co/VisualCloze/VisualClozePipeline-384)  | 2 | ✔️/✔️/✔️/✔️ |
+| Video | Cosmos | [`diffusers@0.34.0`][diffusers-url], [`HF`](https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Text2World) | 7+ | ✔️/✖️/✔️/✔️ |
+| Video | Wan-VACE 🔥| [`diffusers@0.34.0`][diffusers-url], [`HF`](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | CogView4 | [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/zai-org/CogView4-6B) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | OmniGen | [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/Shitao/OmniGen-v1-diffusers) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina 2 | [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/Alpha-VLLM/Lumina-Image-2.0) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | Wan 2.1 (T2V/I2V) 🔥| [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/Wan-AI/Wan2.1-T2V-14B-Diffusers) | 3 | ✔️/✔️/✔️/✔️ |
+| Video | EasyAnimate | [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/alibaba-pai/EasyAnimateV5.1-12b-zh-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
+| Video | ConsisID | [`diffusers@0.33.0`][diffusers-url], [`HF`](https://huggingface.co/BestWishYsh/ConsisID-preview) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Sana (image) | [`diffusers@0.32.0`][diffusers-url], [`HF`](https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers) | 4 | ✔️/✖️/✔️/✔️ |
+| Video | HunyuanVideo | [`diffusers@0.32.0`][diffusers-url], [`HF`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) | 4 | ✔️/✔️/✔️/✔️ |
+| Video | Mochi | [`diffusers@0.32.0`][diffusers-url], [`HF`](https://huggingface.co/genmo/mochi-1-preview) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Allegro | [`diffusers@0.32.0`][diffusers-url], [`HF`](https://huggingface.co/rhymes-ai/Allegro) | 1 | ✔️/✖️/✔️/✔️ |
+| Video | LTX | [`diffusers@0.32.0`][diffusers-url], [`HF`](https://huggingface.co/Lightricks/LTX-Video) | 5 | ✔️/✔️/✔️/✔️ |
+| Image | CogView3Plus | [`diffusers@0.31.0`][diffusers-url], [`HF`](https://huggingface.co/zai-org/CogView3-Plus-3B) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | FLUX | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/black-forest-labs/FLUX.1-dev) | 10+ | ✔️/✔️/✔️/✔️ |
+| Image | HunyuanDiT-PAG | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-v1.2-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | AuraFlow | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/fal/AuraFlow) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | Lumina | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/Alpha-VLLM/Lumina-Next-SFT-diffusers) | 2 | ✔️/✖️/✔️/✔️ |
+| Video | CogVideoX | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/zai-org/CogVideoX-5b) | 4 | ✔️/✔️/✔️/✔️ |
+| Audio | StableAudio | [`diffusers@0.30.0`][diffusers-url], [`HF`](https://huggingface.co/stabilityai/stable-audio-open-1.0) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | SD3 | [`diffusers@0.29.0`][diffusers-url], [`HF`](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) | 3 | ✔️/✖️/✔️/✔️ |
+| Image | HunyuanDiT | [`diffusers@0.28.1`][diffusers-url], [`HF`](https://huggingface.co/Tencent-Hunyuan/HunyuanDiT-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | PixArt-Sigma | [`diffusers@0.28.0`][diffusers-url], [`HF`](https://huggingface.co/PixArt-alpha/PixArt-Sigma-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | Amused | [`diffusers@0.25.0`][diffusers-url], [`HF`](https://huggingface.co/amused/amused-512) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | PixArt-Alpha | [`diffusers@0.22.0`][diffusers-url], [`HF`](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | 1 | ✔️/✔️/✔️/✔️ |
+| Other | Shap-E | [`diffusers@0.18.0`][diffusers-url], [`HF`](https://huggingface.co/openai/shap-e) | 1 | ✔️/✖️/✔️/✔️ |
+| Image | DiT | [`diffusers@0.12.0`][diffusers-url], [`HF`](https://huggingface.co/facebook/DiT-XL-2-256) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; @: Minimum version </i>
 
@@ -188,9 +188,9 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`huggingface`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url], [`huggingface`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`huggingface`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url], [`HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>
