@@ -171,7 +171,7 @@ Cache-DiT supports **40+ DiT pipeline families (120+ Variants)** from 🤗Diffus
 | Image | PixArt-Sigma | [`diffusers@0.28.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Amused | [`diffusers@0.25.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
 | Image | PixArt-Alpha | [`diffusers@0.22.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
-| 3D/Other | Shap-E | [`diffusers@0.18.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
+| Other | Shap-E | [`diffusers@0.18.0`][diffusers-url] | 1 | ✔️/✖️/✔️/✔️ |
 | Image | DiT | [`diffusers@0.12.0`][diffusers-url] | 1 | ✔️/✔️/✔️/✔️ |
 
 <i> <b>C</b>: Hybrid Cache (DBCache + Calibrator: TaylorSeer/DMD/FoCa/SCM); <b>P</b>: Parallelism (Ulysses/Ring/USP/TP<br>TE-P/VAE-P/2D-P/3D-P); <b>Q</b>: Quantization; <b>OF</b>: Bucket-style Layerwise Offload; @: Minimum version </i>
