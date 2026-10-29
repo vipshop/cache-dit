@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,7 @@ from cache_dit.quantization import QuantizeConfig
 ray = pytest.importorskip("ray")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_PYTHON_BIN = Path("/workspace/dev/miniconda3/envs/cdit/bin/python")
+_PYTHON_BIN = Path(sys.executable)
 _DEFAULT_VISIBLE_DEVICES = os.getenv("CACHE_DIT_TEST_RAY_CUDA_VISIBLE_DEVICES", "6,7")
 _ENABLE_FLUX_TEST = os.getenv("CACHE_DIT_TEST_RAY_FLUX", "0").lower() == "1"
 _DEFAULT_MODEL_SOURCE = os.getenv(
@@ -350,7 +351,7 @@ def test_ray_wrapper_flux_example_psnr() -> None:
   if len(visible_devices) < 2:
     pytest.skip("FLUX Ray wrapper test requires at least two visible CUDA devices.")
   if not _PYTHON_BIN.is_file():
-    pytest.skip("The configured cdit python binary is unavailable.")
+    pytest.skip("The current interpreter's python binary is unavailable.")
 
   if _TEST_OUTPUT_DIR.exists():
     shutil.rmtree(_TEST_OUTPUT_DIR)
@@ -418,7 +419,7 @@ def test_ray_wrapper_flux_example_init_fn_psnr() -> None:
   if len(visible_devices) < 2:
     pytest.skip("FLUX Ray wrapper test requires at least two visible CUDA devices.")
   if not _PYTHON_BIN.is_file():
-    pytest.skip("The configured cdit python binary is unavailable.")
+    pytest.skip("The current interpreter's python binary is unavailable.")
 
   if _TEST_OUTPUT_DIR.exists():
     shutil.rmtree(_TEST_OUTPUT_DIR)

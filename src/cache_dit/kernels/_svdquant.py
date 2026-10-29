@@ -64,8 +64,8 @@ def _get_required_extension_module() -> ModuleType:
     error = svdq_get_load_error()
     raise RuntimeError(
       "The optional Cache-DiT SVDQuant CUDA extension is not available. Build it with "
-      "`CACHE_DIT_BUILD_SVDQUANT=1 /workspace/dev/miniconda3/envs/cdit/bin/python -m pip install -e . --no-build-isolation` after `conda activate cdit`."
-    ) from error
+      "`CACHE_DIT_BUILD_SVDQUANT=1 python -m pip install -e . --no-build-isolation` after "
+      "`conda activate cdit`.") from error
   return extension_module
 
 
