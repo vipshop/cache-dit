@@ -356,7 +356,10 @@ Phase 7 — Final Integration Tests
 - [ ] 7.4 Visual inspection: at least one output image per configuration
 - [ ] 7.5 Tier A acceptance matrix (1/2 GPUs): rows + gates per `./references/perf_matrix.md` §1 and
         `./references/testing.md` §7.6 (Tier B 4-GPU / Tier C 8-GPU rows only if the user asks)
-- [ ] 7.6 [DONE] Integration complete ── all checks passed
+- [ ] 7.6 Docs updated in the same change: `README.md` model table + `docs/README.md` (keep the two in
+        sync) + `docs/supported_matrix/NVIDIA_GPU.md` (+ `ASCEND_NPU.md` only if NPU-validated)
+        - see §8 Documentation & Examples (Model-support docs)
+- [ ] 7.7 [DONE] Integration complete ── all checks passed
 ```
 
 > **Key discipline**: after each test, record results in the plan before moving on. A failing test at Phase 4 should trigger a re-read of the relevant sections, not a blind "try TP with different flags" loop.
@@ -567,6 +570,11 @@ All paths are relative to the cache-dit repository root.
 
 | Resource                | File                                          | Purpose                                                                          |
 | ----------------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Model-support docs — update in the SAME commit that lands the model** | | |
+| Root README model list  | `README.md` (`## 🚪Supported DiT Models`)  | One row per new model family: Modality / Pipeline Series / Model Sources / Variants / `C/P/Q/OF` |
+| Docs landing page       | `docs/README.md`                            | Docs-site copy of the root README; only the banner block and a couple of wording tweaks differ, so **the model table must stay identical to `README.md`** — edit both in the same commit |
+| GPU support matrix      | `docs/supported_matrix/NVIDIA_GPU.md`       | Per-transformer ✅/✖️ matrix (Hybrid Cache / Context Parallel / Tensor Parallel) plus the Text-Encoder & VAE and ControlNet sections — add the new transformer's row(s) |
+| NPU support matrix      | `docs/supported_matrix/ASCEND_NPU.md`       | Same matrix for Ascend NPU — update only after the model is actually validated on NPU |
 | Developer guide         | `docs/developer_guide/SUPPORT_NEW_MODEL.md` | Official step-by-step integration guide                                          |
 | CLI examples            | `examples/README.md`                        | Comprehensive CLI usage examples (single-GPU, distributed, quantization, hybrid) |
 | Pipeline usage examples | `examples/generate.py`                      | Programmatic pipeline usage examples                                             |
