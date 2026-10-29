@@ -47,6 +47,12 @@ import os
 from typing import Any, Optional
 
 import torch
+from diffusers.configuration_utils import register_to_config
+from diffusers.models.transformers.transformer_minimax_h3 import (
+  MiniMaxH3Transformer3DModel,
+  _apply_rotary_emb,
+)
+from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3ModularPipeline
 from torch import nn
 
 from ...attention.backends.register import _dispatch_attention_fn
@@ -315,8 +321,6 @@ class FastH3AttnProcessor:
     rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     attention_mask: Optional[torch.Tensor] = None,
   ) -> torch.Tensor:
-    from diffusers.models.transformers.transformer_minimax_h3 import _apply_rotary_emb
-
     if getattr(attn, "fused_projections", False):
       query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
     else:
@@ -385,234 +389,215 @@ class FastH3AttnProcessor:
     return hidden_states
 
 
-def _build_transformer_class():
-  from diffusers.configuration_utils import register_to_config
-  from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3Transformer3DModel
+class FastH3Transformer3DModel(MiniMaxH3Transformer3DModel):
+  """MiniMax-H3 transformer with FastH3's compression gates and sparse attention."""
 
-  class _FastH3Transformer3DModel(MiniMaxH3Transformer3DModel):
-    """MiniMax-H3 transformer with FastH3's compression gates and sparse attention."""
+  # The parent's parameters are repeated instead of absorbed by `**kwargs`: diffusers builds a
+  # model with `extract_init_dict`, which keeps only the config keys that appear in
+  # `inspect.signature(cls.__init__)`. A catch-all signature would silently drop the checkpoint's
+  # architecture and build the default 56-head / 50-layer model instead.
+  @register_to_config
+  def __init__(
+    self,
+    num_attention_heads: int = 56,
+    attention_head_dim: int = 128,
+    hidden_size: int = 5376,
+    num_layers: int = 50,
+    num_refiner_layers: int = 2,
+    ffn_dim: int = 14336,
+    in_channels: int = 24,
+    audio_in_channels: int = 32,
+    patch_size: tuple[int, int, int] = (1, 2, 2),
+    text_dim: int = 5120,
+    freq_dim: int = 256,
+    time_embed_hidden_dim: int = 5376,
+    time_embed_dim: int = 2688,
+    rope_freq_dim: int = 16,
+    rope_theta: float = 10000.0,
+    norm_eps: float = 1e-5,
+    qk_norm_eps: float = 1e-5,
+    final_norm_eps: float = 1e-5,
+    enable_vsa: bool = True,
+    vsa_sparsity: float = 0.9,
+  ) -> None:
+    super().__init__(
+      num_attention_heads=num_attention_heads,
+      attention_head_dim=attention_head_dim,
+      hidden_size=hidden_size,
+      num_layers=num_layers,
+      num_refiner_layers=num_refiner_layers,
+      ffn_dim=ffn_dim,
+      in_channels=in_channels,
+      audio_in_channels=audio_in_channels,
+      patch_size=patch_size,
+      text_dim=text_dim,
+      freq_dim=freq_dim,
+      time_embed_hidden_dim=time_embed_hidden_dim,
+      time_embed_dim=time_embed_dim,
+      rope_freq_dim=rope_freq_dim,
+      rope_theta=rope_theta,
+      norm_eps=norm_eps,
+      qk_norm_eps=qk_norm_eps,
+      final_norm_eps=final_norm_eps,
+    )
+    self.enable_vsa = bool(enable_vsa)
+    self.vsa_sparsity = float(vsa_sparsity)
+    self._vsa_meta_cache: dict[tuple, VsaH3Meta] = {}
+    if self.enable_vsa:
+      self._install_vsa_attention()
+    self.register_forward_pre_hook(self._vsa_layout_hook, with_kwargs=True)
 
-    # The parent's parameters are repeated instead of absorbed by `**kwargs`: diffusers builds a
-    # model with `extract_init_dict`, which keeps only the config keys that appear in
-    # `inspect.signature(cls.__init__)`. A catch-all signature would silently drop the checkpoint's
-    # architecture and build the default 56-head / 50-layer model instead.
-    @register_to_config
-    def __init__(
-      self,
-      num_attention_heads: int = 56,
-      attention_head_dim: int = 128,
-      hidden_size: int = 5376,
-      num_layers: int = 50,
-      num_refiner_layers: int = 2,
-      ffn_dim: int = 14336,
-      in_channels: int = 24,
-      audio_in_channels: int = 32,
-      patch_size: tuple[int, int, int] = (1, 2, 2),
-      text_dim: int = 5120,
-      freq_dim: int = 256,
-      time_embed_hidden_dim: int = 5376,
-      time_embed_dim: int = 2688,
-      rope_freq_dim: int = 16,
-      rope_theta: float = 10000.0,
-      norm_eps: float = 1e-5,
-      qk_norm_eps: float = 1e-5,
-      final_norm_eps: float = 1e-5,
-      enable_vsa: bool = True,
-      vsa_sparsity: float = 0.9,
-    ) -> None:
-      super().__init__(
-        num_attention_heads=num_attention_heads,
-        attention_head_dim=attention_head_dim,
-        hidden_size=hidden_size,
-        num_layers=num_layers,
-        num_refiner_layers=num_refiner_layers,
-        ffn_dim=ffn_dim,
-        in_channels=in_channels,
-        audio_in_channels=audio_in_channels,
-        patch_size=patch_size,
-        text_dim=text_dim,
-        freq_dim=freq_dim,
-        time_embed_hidden_dim=time_embed_hidden_dim,
-        time_embed_dim=time_embed_dim,
-        rope_freq_dim=rope_freq_dim,
-        rope_theta=rope_theta,
-        norm_eps=norm_eps,
-        qk_norm_eps=qk_norm_eps,
-        final_norm_eps=final_norm_eps,
-      )
-      self.enable_vsa = bool(enable_vsa)
-      self.vsa_sparsity = float(vsa_sparsity)
-      self._vsa_meta_cache: dict[tuple, VsaH3Meta] = {}
-      if self.enable_vsa:
-        self._install_vsa_attention()
-      self.register_forward_pre_hook(self._vsa_layout_hook, with_kwargs=True)
+  def _install_vsa_attention(self) -> None:
+    heads = self.config.num_attention_heads
+    head_dim = self.config.attention_head_dim
+    for block in self.transformer_blocks:
+      attn = block.attn
+      attn.to_gate_compress = nn.Linear(self.config.hidden_size, heads * head_dim, bias=False)
+      # Zero init matches the reference: an unfilled gate contributes exactly nothing, so a
+      # checkpoint without gates (`-Dense-DataFree`, or the base MiniMax-H3) runs dense instead
+      # of silently mixing in a random projection.
+      nn.init.zeros_(attn.to_gate_compress.weight)
+      attn._vsa_gate_active = None
+      attn._vsa_sparsity = self.vsa_sparsity
+      attn._vsa_meta = None
+      attn.set_processor(FastH3AttnProcessor())
 
-    def _install_vsa_attention(self) -> None:
-      heads = self.config.num_attention_heads
-      head_dim = self.config.attention_head_dim
-      for block in self.transformer_blocks:
-        attn = block.attn
-        attn.to_gate_compress = nn.Linear(self.config.hidden_size, heads * head_dim, bias=False)
-        # Zero init matches the reference: an unfilled gate contributes exactly nothing, so a
-        # checkpoint without gates (`-Dense-DataFree`, or the base MiniMax-H3) runs dense instead
-        # of silently mixing in a random projection.
-        nn.init.zeros_(attn.to_gate_compress.weight)
-        attn._vsa_gate_active = None
-        attn._vsa_sparsity = self.vsa_sparsity
-        attn._vsa_meta = None
-        attn.set_processor(FastH3AttnProcessor())
+  def refresh_vsa_gate_state(self) -> None:
+    """Decide once whether the compression branch contributes, after the weights are loaded.
 
-    def refresh_vsa_gate_state(self) -> None:
-      """Decide once whether the compression branch contributes, after the weights are loaded.
+    The branch is a `Linear` the checkpoint may fill with zeros (base MiniMax-H3 has no gate at
+    all); a structurally zero gate makes the whole branch a guaranteed zero, so it is skipped
+    instead of running one extra GEMM plus a wider all-to-all per layer.
+    """
+    if not self.enable_vsa:
+      return
+    for block in self.transformer_blocks:
+      attn = block.attn
+      weight = getattr(attn, "to_gate_compress", None)
+      attn._vsa_gate_active = weight is not None and bool(torch.count_nonzero(weight.weight).item())
+    self._vsa_state_resolved = True
+    active = sum(1 for block in self.transformer_blocks if block.attn._vsa_gate_active)
+    logger.info(f"FastH3 VSA gates: {active}/{len(self.transformer_blocks)} blocks carry a "
+                "trained compression gate.")
 
-      The branch is a `Linear` the checkpoint may fill with zeros (base MiniMax-H3 has no gate at
-      all); a structurally zero gate makes the whole branch a guaranteed zero, so it is skipped
-      instead of running one extra GEMM plus a wider all-to-all per layer.
-      """
-      if not self.enable_vsa:
-        return
-      for block in self.transformer_blocks:
-        attn = block.attn
-        weight = getattr(attn, "to_gate_compress", None)
-        attn._vsa_gate_active = weight is not None and bool(
-          torch.count_nonzero(weight.weight).item())
-      self._vsa_state_resolved = True
-      active = sum(1 for block in self.transformer_blocks if block.attn._vsa_gate_active)
-      logger.info(f"FastH3 VSA gates: {active}/{len(self.transformer_blocks)} blocks carry a "
-                  "trained compression gate.")
-
-    def _vsa_layout_hook(self, module: nn.Module, args: tuple, kwargs: dict) -> None:
-      if not self.enable_vsa:
-        return None
-      if not getattr(self, "_vsa_state_resolved", False):
-        # One host sync, on the first step, whichever entry point built the model: loading through
-        # the pipeline resolves it right after `load_components`, a bare
-        # `FastH3Transformer3DModel.from_pretrained` resolves it here.
-        self.refresh_vsa_gate_state()
-      position_ids = kwargs.get("position_ids")
-      video_indices = kwargs.get("video_indices")
-      audio_indices = kwargs.get("audio_indices")
-      text_indices = kwargs.get("text_indices")
-      if position_ids is None and args:
-        # The modular denoise step passes the layout as keywords, but a caller may bind them
-        # positionally; resolve by name so the sparse path does not silently degrade to dense.
-        import inspect
-
-        bound = inspect.signature(self.forward).bind_partial(self, *args, **kwargs)
-        position_ids = bound.arguments.get("position_ids")
-        video_indices = bound.arguments.get("video_indices")
-        audio_indices = bound.arguments.get("audio_indices")
-        text_indices = bound.arguments.get("text_indices")
-      if position_ids is None or video_indices is None or audio_indices is None or text_indices is None:
-        return None
-      key = (
-        int(position_ids.shape[0]),
-        int(video_indices.numel()),
-        int(audio_indices.numel()),
-        int(text_indices.numel()),
-        str(position_ids.device),
-      )
-      meta = self._vsa_meta_cache.get(key)
-      if meta is None:
-        meta = vsa_h3_meta_from_layout(position_ids,
-                                       video_indices,
-                                       audio_indices,
-                                       text_indices,
-                                       sparsity=self.vsa_sparsity,
-                                       tile_shape=FASTH3_TILE_SHAPE)
-        self._vsa_meta_cache[key] = meta
-        logger.debug(f"FastH3 VSA geometry: {meta.num_tiles} tiles "
-                     f"({meta.num_prefix_tiles} dense prefix), {meta.num_video_tiles} video.")
-      for block in self.transformer_blocks:
-        block.attn._vsa_meta = meta
+  def _vsa_layout_hook(self, module: nn.Module, args: tuple, kwargs: dict) -> None:
+    if not self.enable_vsa:
       return None
+    if not getattr(self, "_vsa_state_resolved", False):
+      # One host sync, on the first step, whichever entry point built the model: loading through
+      # the pipeline resolves it right after `load_components`, a bare
+      # `FastH3Transformer3DModel.from_pretrained` resolves it here.
+      self.refresh_vsa_gate_state()
+    position_ids = kwargs.get("position_ids")
+    video_indices = kwargs.get("video_indices")
+    audio_indices = kwargs.get("audio_indices")
+    text_indices = kwargs.get("text_indices")
+    if position_ids is None and args:
+      # The modular denoise step passes the layout as keywords, but a caller may bind them
+      # positionally; resolve by name so the sparse path does not silently degrade to dense.
+      import inspect
 
-    def set_vsa_enabled(self, enabled: bool) -> None:
-      """Turn the sparse path on or off without rebuilding the model (acceptance sweeps)."""
-      self.enable_vsa = bool(enabled)
-      for block in self.transformer_blocks:
-        attn = block.attn
-        if enabled:
-          if not isinstance(attn.processor, FastH3AttnProcessor):
-            attn.set_processor(FastH3AttnProcessor())
-          attn._vsa_meta = attn._vsa_meta if hasattr(attn, "_vsa_meta") else None
-        else:
-          attn._vsa_meta = None
-          if isinstance(attn.processor, FastH3AttnProcessor):
-            attn.set_processor(attn._default_processor_cls())
+      bound = inspect.signature(self.forward).bind_partial(self, *args, **kwargs)
+      position_ids = bound.arguments.get("position_ids")
+      video_indices = bound.arguments.get("video_indices")
+      audio_indices = bound.arguments.get("audio_indices")
+      text_indices = bound.arguments.get("text_indices")
+    if position_ids is None or video_indices is None or audio_indices is None or text_indices is None:
+      return None
+    key = (
+      int(position_ids.shape[0]),
+      int(video_indices.numel()),
+      int(audio_indices.numel()),
+      int(text_indices.numel()),
+      str(position_ids.device),
+    )
+    meta = self._vsa_meta_cache.get(key)
+    if meta is None:
+      meta = vsa_h3_meta_from_layout(position_ids,
+                                     video_indices,
+                                     audio_indices,
+                                     text_indices,
+                                     sparsity=self.vsa_sparsity,
+                                     tile_shape=FASTH3_TILE_SHAPE)
+      self._vsa_meta_cache[key] = meta
+      logger.debug(f"FastH3 VSA geometry: {meta.num_tiles} tiles "
+                   f"({meta.num_prefix_tiles} dense prefix), {meta.num_video_tiles} video.")
+    for block in self.transformer_blocks:
+      block.attn._vsa_meta = meta
+    return None
 
-  # cache-dit resolves adapters and parallel planners by class-name prefix, and a checkpoint's
-  # component spec records this name, so the public name has to be the real class name.
-  _FastH3Transformer3DModel.__name__ = "FastH3Transformer3DModel"
-  _FastH3Transformer3DModel.__qualname__ = "FastH3Transformer3DModel"
-  return _FastH3Transformer3DModel
+  def set_vsa_enabled(self, enabled: bool) -> None:
+    """Turn the sparse path on or off without rebuilding the model (acceptance sweeps)."""
+    self.enable_vsa = bool(enabled)
+    for block in self.transformer_blocks:
+      attn = block.attn
+      if enabled:
+        if not isinstance(attn.processor, FastH3AttnProcessor):
+          attn.set_processor(FastH3AttnProcessor())
+        attn._vsa_meta = attn._vsa_meta if hasattr(attn, "_vsa_meta") else None
+      else:
+        attn._vsa_meta = None
+        if isinstance(attn.processor, FastH3AttnProcessor):
+          attn.set_processor(attn._default_processor_cls())
 
 
-FastH3Transformer3DModel = _build_transformer_class()
+class FastH3ModularPipeline(MiniMaxH3ModularPipeline):
+  """MiniMax-H3 modular pipeline that loads the FastH3 transformer and its DMD schedule."""
 
+  contract: Optional[FastH3Contract] = None
 
-def _load_fast_h3_pipeline_class():
-  from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3ModularPipeline
+  def load_components(self, names=None, workflow=None, **kwargs):
+    """Load the components, swapping in the FastH3 transformer and its sigma grid.
 
-  class FastH3ModularPipeline(MiniMaxH3ModularPipeline):
-    """MiniMax-H3 modular pipeline that loads the FastH3 transformer and its DMD schedule."""
+    :param names: component names to load, forwarded to the parent.
+    :param workflow: workflow whose components to load, forwarded to the parent.
+    :param kwargs: extra loading kwargs, forwarded to the parent.
+    """
+    root = self._pretrained_model_name_or_path
+    contract = FastH3Contract.from_checkpoint(root) if root is not None else None
+    if contract is not None:
+      if contract.task != "t2av":
+        raise ValueError(f"FastH3 only ships the {contract.task!r} task; this build supports "
+                         "'t2av'.")
+      has_gates = _transformer_mounts_vsa_gates(root)
+      if has_gates != contract.requires_vsa:
+        raise ValueError(f"FastH3 checkpoint at {root} is inconsistent: the contract asks for "
+                         f"VSA ({contract.requires_vsa}) but the transformer shards "
+                         f"{'carry' if has_gates else 'do not carry'} to_gate_compress weights.")
+      spec = self._component_specs.get("transformer")
+      if spec is not None:
+        spec.type_hint = FastH3Transformer3DModel
+      overrides = dict(kwargs)
+      enable_vsa = overrides.pop("enable_vsa", None)
+      enable_vsa = {} if enable_vsa is None else dict(enable_vsa)
+      enable_vsa["transformer"] = has_gates
+      overrides["enable_vsa"] = enable_vsa
+      overrides.setdefault("vsa_sparsity", {"transformer": contract.vsa_sparsity})
+      super().load_components(names=names, workflow=workflow, **overrides)
+      self.contract = contract
+      transformer = getattr(self, "transformer", None)
+      if transformer is not None:
+        transformer.refresh_vsa_gate_state()
+      self._install_dmd_schedule(contract)
+      return None
+    self.contract = None
+    return super().load_components(names=names, workflow=workflow, **kwargs)
 
-    contract: Optional[FastH3Contract] = None
+  def _install_dmd_schedule(self, contract: FastH3Contract) -> None:
+    """Force the two schedulers onto the student's sigma ladder.
 
-    def load_components(self, names=None, workflow=None, **kwargs):
-      """Load the components, swapping in the FastH3 transformer and its sigma grid.
-
-      :param names: component names to load, forwarded to the parent.
-      :param workflow: workflow whose components to load, forwarded to the parent.
-      :param kwargs: extra loading kwargs, forwarded to the parent.
-      """
-      root = self._pretrained_model_name_or_path
-      contract = FastH3Contract.from_checkpoint(root) if root is not None else None
-      if contract is not None:
-        if contract.task != "t2av":
-          raise ValueError(f"FastH3 only ships the {contract.task!r} task; this build supports "
-                           "'t2av'.")
-        has_gates = _transformer_mounts_vsa_gates(root)
-        if has_gates != contract.requires_vsa:
-          raise ValueError(f"FastH3 checkpoint at {root} is inconsistent: the contract asks for "
-                           f"VSA ({contract.requires_vsa}) but the transformer shards "
-                           f"{'carry' if has_gates else 'do not carry'} to_gate_compress weights.")
-        spec = self._component_specs.get("transformer")
-        if spec is not None:
-          spec.type_hint = FastH3Transformer3DModel
-        overrides = dict(kwargs)
-        enable_vsa = overrides.pop("enable_vsa", None)
-        enable_vsa = {} if enable_vsa is None else dict(enable_vsa)
-        enable_vsa["transformer"] = has_gates
-        overrides["enable_vsa"] = enable_vsa
-        overrides.setdefault("vsa_sparsity", {"transformer": contract.vsa_sparsity})
-        super().load_components(names=names, workflow=workflow, **overrides)
-        self.contract = contract
-        transformer = getattr(self, "transformer", None)
-        if transformer is not None:
-          transformer.refresh_vsa_gate_state()
-        self._install_dmd_schedule(contract)
-        return None
-      self.contract = None
-      return super().load_components(names=names, workflow=workflow, **kwargs)
-
-    def _install_dmd_schedule(self, contract: FastH3Contract) -> None:
-      """Force the two schedulers onto the student's sigma ladder.
-
-      Idempotency lives in `_wrap_scheduler_timesteps`: it marks every scheduler it wraps. A flag
-      on the pipeline would be wrong, because components can be loaded in any order and reloaded
-      (`load_components(names=["transformer"])` first, scheduler later, or after
-      `unload_components`), and a pipeline-level flag would then skip the ladder silently.
-      """
-      for name, shift in (("scheduler", contract.video_shift), ("audio_scheduler",
-                                                                contract.audio_shift)):
-        scheduler = getattr(self, name, None)
-        if scheduler is None:
-          continue
-        sigmas = contract.sigmas(shift)
-        _wrap_scheduler_timesteps(scheduler, sigmas, name)
-
-  return FastH3ModularPipeline
+    Idempotency lives in `_wrap_scheduler_timesteps`: it marks every scheduler it wraps. A flag
+    on the pipeline would be wrong, because components can be loaded in any order and reloaded
+    (`load_components(names=["transformer"])` first, scheduler later, or after
+    `unload_components`), and a pipeline-level flag would then skip the ladder silently.
+    """
+    for name, shift in (("scheduler", contract.video_shift), ("audio_scheduler",
+                                                              contract.audio_shift)):
+      scheduler = getattr(self, name, None)
+      if scheduler is None:
+        continue
+      sigmas = contract.sigmas(shift)
+      _wrap_scheduler_timesteps(scheduler, sigmas, name)
 
 
 def _wrap_scheduler_timesteps(scheduler, sigmas: torch.Tensor, name: str) -> None:
@@ -637,6 +622,3 @@ def _wrap_scheduler_timesteps(scheduler, sigmas: torch.Tensor, name: str) -> Non
 
   scheduler.set_timesteps = set_timesteps
   scheduler._cache_dit_dmd_sigmas = sigmas
-
-
-FastH3ModularPipeline = _load_fast_h3_pipeline_class()
