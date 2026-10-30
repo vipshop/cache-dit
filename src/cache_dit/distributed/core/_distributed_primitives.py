@@ -819,7 +819,10 @@ def _all_to_all_single_o_fp8_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# A collective cannot be traced with fake tensors: `allow_in_graph` made Dynamo try and
+# fail with "RuntimeError when making fake tensor call". A graph break keeps the exchange
+# opaque, exactly like the non-UAA primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_qkv_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -862,7 +865,10 @@ def _all_to_all_single_any_qkv_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# A collective cannot be traced with fake tensors: `allow_in_graph` made Dynamo try and
+# fail with "RuntimeError when making fake tensor call". A graph break keeps the exchange
+# opaque, exactly like the non-UAA primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_o_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -912,7 +918,10 @@ def _all_to_all_single_any_o_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# A collective cannot be traced with fake tensors: `allow_in_graph` made Dynamo try and
+# fail with "RuntimeError when making fake tensor call". A graph break keeps the exchange
+# opaque, exactly like the non-UAA primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_qkv_fp8_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -954,7 +963,10 @@ def _all_to_all_single_any_qkv_fp8_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# A collective cannot be traced with fake tensors: `allow_in_graph` made Dynamo try and
+# fail with "RuntimeError when making fake tensor call". A graph break keeps the exchange
+# opaque, exactly like the non-UAA primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_o_fp8_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
