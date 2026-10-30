@@ -336,7 +336,7 @@ a finished table must still carry:
 The figure that ships next to this table (PR body, report) is specified in §8 — latency | quality
 panels, same row order, reproducibility colour-coded.
 
-## 6. Measuring: mean, min, and the auto table
+## 6. Measuring: mean, min, auto table, and audio
 
 **Mean** (both metrics, always both):
 
@@ -362,6 +362,38 @@ cache-dit-metrics psnr ssim --summary --cal-speedup -table \
 - `-table` sorts rows by metric value, not by the matrix's logical order — re-order before pasting.
 - In video mode the logged label carries the `.mp4` basename while `perf.log` carries the tag, so
   the perf column does not bind: fill the video table by hand (or join `perf.log` with awk).
+
+**Audio / TTS** (`si_sdr`, `snr`, `mel_psnr`, `mel_ssim`) — same `--summary`, different input flags:
+
+```bash
+# single pair: `-a1` is always the reference
+cache-dit-metrics si_sdr mel_psnr mel_ssim --summary \
+  -a1 .tmp/$TASK/U1_C0_Q0_NONE.wav -a2 .tmp/$TASK/U1_C1_Q0_NONE.wav
+
+# directory pair: recursive *.wav / *.flac, paired by identical basename, mean over pairs
+cache-dit-metrics mel_ssim si_sdr --summary -a1 .tmp/$TASK/ref -a2 .tmp/$TASK/tags
+```
+
+- `si_sdr` / `snr` are waveform-domain, `mel_psnr` / `mel_ssim` are log-mel spectrogram. Quote
+  **`mel_ssim` + `si_sdr`** as the pair: a phase flip or a half-sample shift destroys a waveform
+  metric while the audio sounds identical, and SI-SDR alone reads "same content, different sample"
+  as a total loss.
+- `si_sdr` is **not symmetric** — `-a1` is the target, so the single-GPU run always sits there. A
+  swapped pair reports a different number without any error, which is the kind of mistake that only
+  shows up when two rows of the table disagree with each other.
+- `inf` means something different here: the two waveforms are **bit-identical** — `si_sdr`, `snr` and
+  `mel_psnr` all divide by a zero residual (an all-identical directory prints `inf`), while
+  `mel_ssim` saturates at `1.000`. So for audio `inf` **is** the determinism proof, not "the option
+  was skipped". `inf` pairs carry no information, so they are dropped from the mean but still counted
+  in `Num:`.
+- There is no `--cal-speedup -table` path for audio (the auto table only walks the image/video
+  directory layout): read the four `--summary` lines and paste the numbers into the §5 table, then
+  drive §8's renderer from the JSON rows.
+- Multichannel is mixed to mono, mismatched sample rates are rejected (`sf.read` per side, so 44.1 kHz
+  vs 48 kHz raises instead of quietly resampling), and lengths are aligned to the shorter waveform —
+  a truncated tail does not turn into a fake regression.
+- Gates and their rationale are in `./audio.md` §6 (distilled/TTS models: mel SSIM ≥ 0.70 plus the
+  same-configuration rerun; a chaotic sampler makes PSNR/QSNR-style gates meaningless).
 
 **Min** (worst frame / worst prompt — the column that exposes localized corruption):
 
@@ -435,6 +467,12 @@ The table (§5) stays authoritative; the figure is the one-glance artifact for t
 report. A screenshot of a bar chart says "I ran the matrix" much faster than 20 table rows, and it is
 what reviewers look at first.
 
+**This template is modality-agnostic — image, video and audio all use it.** The two panels, the row
+order, the reproducibility colour code and the caption rules are identical; only the knobs in the
+table at the end of the rules change. Do not invent a different chart shape per modality (a video
+3-panel with FPS, or an audio waveform strip): the value of the template is that two runs of any model
+are readable side by side.
+
 **The rules that make the style work** (deviating from them is what turns it into decoration):
 
 1. **Two panels, one shared y axis**, rows in the *table's* order with the single-GPU reference on
@@ -444,9 +482,10 @@ what reviewers look at first.
    `0.26s (1.00×)` per bar. Speedup lives in the label, not in a third panel: two panels of *different
    units* is what makes hand-drawn figures unreadable.
 3. **Right = exactly one quality metric**, acceptance gate as a dashed vertical line, value inline, and
-   the bar colour carrying pass/fail. For image/video the default panel is **PSNR (dB, gate 30)**; when
-   SSIM is the deciding metric (cache at a low threshold, aggressive quant), plot SSIM instead of
-   adding a third panel — the other metric belongs in the table with its `min`.
+   the bar colour carrying pass/fail. Image/video default to **PSNR (dB, gate 30)**; audio defaults to
+   **mel SSIM (gate 0.70, `./audio.md` §6)**. When the *other* metric is the one that decides
+   (SSIM for a low-threshold cache, SI-SDR for a chaotic sampler), plot that one instead of adding a
+   third panel — the rest belongs in the table.
 4. **Left bar colour = reproducibility of the row**, not speed: `bit-exact rerun` vs `compile-style`
    (a new process gives a different sample). This is the distinction reviewers get wrong — they read a
    compile row as if it were a deterministic quality loss.
@@ -455,11 +494,17 @@ what reviewers look at first.
    determinism floor, offload verdict, recommended entry).
 6. **One figure per card tier.** A 1/2-card figure and a Tier B/C figure are separate images; mixing
    card counts in one y axis makes the 4-card row look "slower than single GPU" for the wrong reason.
-7. Image/video specifics: latency in **ms** (`--unit ms`, 0 decimals reads better above ~100 ms),
-   quality from `cache-dit-metrics ... --summary` (mean of pairs), audio/TTS uses mel SSIM + SI-SDR
-   (`./audio.md` §6) with `--unit s`.
+7. **Only the per-modality knobs change** (table below); everything else is shared. Audio has no
+   frame/prompt `min` column — the pair mean *is* the row, and a chaotic sampler needs the
+   same-configuration rerun as a second row, said out loud in the caption.
 8. **The PNG does not get committed.** Push it to the repo's `pr-assets` branch (`assets/<model>/`,
    `git add -f` because `*.png` is gitignored) and embed the raw URL in the PR body.
+
+| Modality | Latency unit | Right panel | Gate | Numbers come from |
+|---|---|---|---|---|
+| Image | `ms` per image (`--lat-digits 0` above ~100 ms) | PSNR (dB) | 30 dB (§7) | §6 image dir, optionally `--cal-speedup -table` |
+| Video | `ms` per clip (or `s` for long clips) | PSNR (dB) over frames | 30 dB mean, quote `min` in the table | §6 `-vd` + the **Min** frame loop |
+| Audio / TTS | `s` per clip | mel SSIM (0–1) | 0.70 (`./audio.md` §6) | §6 `-a1/-a2 --summary`, no auto table |
 
 **Data shape** — one JSON list, `repro: false` marks the compile-style rows:
 
