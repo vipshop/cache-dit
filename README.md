@@ -66,10 +66,19 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
+>>> # ✅ PTQ: "...{dtype}_r{rank}", required `calibrate_fn`.
+>>> def calibrate_fn(**_: object) -> None:
+...  for prompt in calibration_prompts: _ = pipe(...)
+>>> pipe.transformer = cache_dit.quantize(
+...  pipe.transformer, quant_config=QuantizeConfig(
+...  quant_type="svdq_nvfp4_r32", calibrate_fn=calibrate_fn,
+...  serialize_to="path"))
+>>> pipe.transformer = cache_dit.load(pipe.transformer, "path")
+```
+```python
+>>> # ✅ DQ: "...{dtype}_r{rank}_dq", NO calibration need.
 >>> pipe.transformer = cache_dit.quantize(
 ...   pipe.transformer, quant_config=QuantizeConfig(
-...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
 ...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
 >>> output = pipe(...) # Then, just call the pipe as normal.
