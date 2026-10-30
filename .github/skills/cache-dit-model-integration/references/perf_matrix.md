@@ -506,7 +506,7 @@ report. A screenshot of a bar chart says "I ran the matrix" much faster than 20 
 what reviewers look at first.
 
 **This template is modality-agnostic — image, video and audio all use it.** The two panels, the row
-order, the reproducibility colour code and the caption rules are identical; only the knobs in the
+order, the reproducibility hatch code and the caption rules are identical; only the knobs in the
 table at the end of the rules change. Do not invent a different chart shape per modality (a video
 3-panel with FPS, or an audio waveform strip): the value of the template is that two runs of any model
 are readable side by side.
@@ -519,23 +519,41 @@ are readable side by side.
 2. **Left = latency**, one unit for all rows, dashed vertical line at the reference plus an inline
    `0.26s (1.00×)` per bar. Speedup lives in the label, not in a third panel: two panels of *different
    units* is what makes hand-drawn figures unreadable.
-3. **Right = exactly one quality metric**, acceptance gate as a dashed vertical line, value inline, and
-   the bar colour carrying pass/fail. Image/video default to **PSNR (dB, gate 30)**; audio defaults to
-   **mel SSIM (gate 0.70, `./audio.md` §6)**. When the *other* metric is the one that decides
-   (SSIM for a low-threshold cache, SI-SDR for a chaotic sampler), plot that one instead of adding a
-   third panel — the rest belongs in the table.
-4. **Left bar colour = reproducibility of the row**, not speed: `bit-exact rerun` vs `compile-style`
-   (a new process gives a different sample). This is the distinction reviewers get wrong — they read a
-   compile row as if it were a deterministic quality loss.
-5. Title = `model | workload | hardware` (`10 s / 8 steps / bf16 | PRO 5000`), footnote = colour
-   legend, and the markdown caption above/below the image still carries what §5 demands (flags,
+3. **Right = exactly one quality metric**, acceptance gate as a dashed vertical line, value inline,
+   pass/fail carried by a **hatch** (rule 5). Image/video default to **PSNR (dB, gate 30)**; audio
+   defaults to **mel SSIM (gate 0.70, `./audio.md` §6)**. When the *other* metric is the one that
+   decides (SSIM for a low-threshold cache, SI-SDR for a chaotic sampler), plot that one instead of
+   adding a third panel — the rest belongs in the table.
+4. **Bar colour = the configuration, one distinct hue per row, and the same hue in both panels.**
+   A monochrome figure (everything teal, or pass-verdict-dark vs fail-verdict-orange) makes 18 rows
+   unreadable: a reviewer cannot follow "which bar is CP4+compile" from the left panel to the right.
+   Use a categorical palette with real separation — deep blue, purple, teal, magenta, indigo, violet,
+   cyan, rust, slate, olive — assign by row index, and never reuse a hue on adjacent rows (they are
+   compared against each other). Warm accents are allowed, but not as the only family: an all-orange
+   or all-teal chart is exactly what this rule exists to prevent.
+5. **Semantics that used to ride on colour move to hatching**, so colour stays free for identity:
+   left `///` = not bit-reproducible (`compile-style`: a new process gives a different sample);
+   right `///` = below the acceptance gate. Hatch is chosen over an outline because a 1pt outline
+   disappears when the PNG is scaled into a review comment, while the stripes stay visible; the cost
+   is that the legend swatch must itself be hatched, otherwise the two entries look identical.
+   Outlines are the fallback if the palette ever gets busy enough for stripes to read as noise.
+6. Title = `model | workload | hardware` (`10 s / 8 steps / bf16 | PRO 5000`), footnote = palette +
+   outline + palette legend, and the markdown caption above/below the image still carries what §5 demands (flags,
    determinism floor, offload verdict, recommended entry).
-6. **One figure per card tier.** A 1/2-card figure and a Tier B/C figure are separate images; mixing
+7. **The legend must survive the PR thumbnail.** The figure is read at ~200-400px wide inside a
+   review comment, so a 7pt frameless legend is unreadable. Rules: legend text **≥ 9.5pt**, framed
+   (`frameon=True`, `framealpha≈0.94`, light grey edge) so it stays legible over a bar, larger swatches
+   (`handlelength=2.0`, `handleheight=1.3`), and `dpi=150` on save. Put it in the **bottom-right** of
+   each panel and move the dashed-line labels (`reference`, `gate 30`) to the **top** of the axes —
+   otherwise the legend covers them, which is the classic collision in this template. Inline value
+   labels also get a white backing box (`bbox=dict(facecolor="white", alpha=0.7)`), because the
+   dashed reference/gate line otherwise runs straight through `33.8s (1.21×)`.
+8. **One figure per card tier.** A 1/2-card figure and a Tier B/C figure are separate images; mixing
    card counts in one y axis makes the 4-card row look "slower than single GPU" for the wrong reason.
-7. **Only the per-modality knobs change** (table below); everything else is shared. Audio has no
+9. **Only the per-modality knobs change** (table below); everything else is shared. Audio has no
    frame/prompt `min` column — the pair mean *is* the row, and a chaotic sampler needs the
    same-configuration rerun as a second row, said out loud in the caption.
-8. **The PNG does not get committed.** Push it to the repo's `pr-assets` branch (`assets/<model>/`,
+10. **The PNG does not get committed.** Push it to the repo's `pr-assets` branch (`assets/<model>/`,
    `git add -f` because `*.png` is gitignored) and embed the raw URL in the PR body.
 
 | Modality | Latency unit | Right panel | Gate | Numbers come from |
@@ -568,10 +586,14 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-REPRO_COLOR = "#2a9d8f"      # rerun is bit-exact
-NON_REPRO_COLOR = "#e76f51"  # compile-style: differs per process
-PASS_COLOR = "#264653"
-FAIL_COLOR = "#f4a261"
+# One hue per configuration (deep blue / purple / teal / magenta ...), never reused on adjacent
+# rows; repro and pass/fail are hatches, not colours (see rule 4 and 5).
+PALETTE = [
+  "#1F4E79", "#5B2C8D", "#0F7B6C", "#C2185B", "#2E7D32", "#6A1B9A",
+  "#00838F", "#AD1457", "#283593", "#558B2F", "#4527A0", "#00695C",
+  "#BF360C", "#37474F", "#9E9D24", "#0277BD", "#7B1FA2", "#827717",
+]
+colors = [PALETTE[i % len(PALETTE)] for i in range(len(rows))]
 GATE_COLOR = "#d62828"
 
 _parser = argparse.ArgumentParser()
@@ -596,7 +618,12 @@ y = np.arange(len(rows))[::-1]  # first row on top, like the table
 
 fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 0.42 * len(rows) + 1.9), sharey=True)
 
-ax0.barh(y, latency, color=[REPRO_COLOR if ok else NON_REPRO_COLOR for ok in repro])
+ax0.barh(y,
+         latency,
+         color=colors,
+         hatch=["///" if not ok else "" for ok in repro],
+         edgecolor="white",
+         linewidth=0.6)
 ax0.axvline(ref, color="#333333", lw=1, ls="--")
 ax0.text(ref, y[-1] - 0.62, " reference", fontsize=8, color="#333333")
 for yi, value in zip(y, latency):
@@ -608,8 +635,13 @@ ax0.set_xlim(0, latency.max() * 1.45)
 ax0.set_xlabel(f"latency ({_args.unit}, mean of N after warmup)")
 ax0.set_title(_args.title or "acceptance matrix", fontsize=10)
 
-ax1.barh(y, quality, color=[PASS_COLOR if _args.gate is None or q >= _args.gate else FAIL_COLOR
-                            for q in quality])
+failing = quality < _args.gate if _args.gate is not None else np.zeros_like(repro)
+ax1.barh(y,
+         quality,
+         color=colors,
+         hatch=["///" if f else "" for f in failing],
+         edgecolor="white",
+         linewidth=0.6)
 if _args.gate is not None:
   ax1.axvline(_args.gate, color=GATE_COLOR, lw=1.2, ls="--")
   ax1.text(_args.gate, y[-1] - 0.62, f" gate {_args.gate:g}", fontsize=8, color=GATE_COLOR)
