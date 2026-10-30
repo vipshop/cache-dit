@@ -201,6 +201,34 @@ python3 -m cache_dit.generate lingbot_video --float8-per-row --compile --cache
 python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 256 --steps 20 --cache
 ```
 
+> **CausVid-Wan** (`tianweiy/CausVid`, a Wan2.1-T2V-1.3B causal few-step student) is vendored at
+> `cache_dit/models/pipelines/causvid/`. Point `WAN_DIR` at the `Wan-AI/Wan2.1-T2V-1.3B-Diffusers`
+> tree (text encoder / tokenizer / VAE) and `CAUSVID_DIR` at the `tianweiy/CausVid` clone (the
+> `autoregressive_checkpoint/model.pt` student is converted on load, `strict=True`). The model is
+> chunk-autoregressive: 81 frames = 7 chunks of 3 latent frames, each chunk runs the fixed DMD table
+> `1000/757/522` and then a clean-latent pass that writes the KV cache every later chunk attends to,
+> so `--steps` is ignored and there is no CFG. `--cache` only becomes effective above
+> `--rdt 0.95` because consecutive DMD steps are far apart (measured residual diffs 0.96-1.20), and
+> at that point the clip changes; TP, Ulysses CP (head-sharded KV, Ring refused), TE-P, VAE-P,
+> fp8/SVDQ, layerwise offload and compile all run — measured 1.04-1.27x, see the PR for the matrix.
+
+```bash
+export WAN_DIR=/path/to/Wan2.1-T2V-1.3B-Diffusers
+export CAUSVID_DIR=/path/to/CausVid
+
+# single GPU baseline (480x832, 81 frames, 3 DMD steps)
+python3 -m cache_dit.generate causvid_wan --compile
+
+# attention is ~58% of the FLOPs, so fp8 attention pays off before weight quantization does
+python3 -m cache_dit.generate causvid_wan --compile --attn ffpa_fp8
+
+# Ulysses context parallelism (2 GPUs): the KV cache is partitioned by head
+torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel ulysses --compile
+
+# tensor parallelism / TE-P / VAE-P
+torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel tp --parallel-text --parallel-vae
+```
+
 ## Low-bits Quantization 
 
 cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
