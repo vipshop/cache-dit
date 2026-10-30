@@ -399,3 +399,88 @@ file names.
 - [ ] VAE-P: decode share measured and the N/A decision documented
 - [ ] one wav + one spectrogram per configuration handed to the user, plus the speed/metrics table
       with the noise-floor row
+
+## 10. Second worked case: Stable Audio 3 (text-to-audio, distilled)
+
+Integrated 2026-10-29. SA3 is a *different* audio shape from LongCat, and the three deltas below are
+the ones that transfer to any waveform-latent DiT with learned memory tokens.
+
+**Shape.** Latents are `(batch, 256, T)` (channel-first, not `(B, T, dim)`), with
+`T = ceil(duration * 44100 / 4096)` — 108 frames for 10 s. Inside `forward` the sequence becomes
+`(batch, T, 1536)`, **64 learned `memory_tokens` are prepended**, and one full RoPE table is built for
+`64 + T` tokens before the block loop. The distilled `medium` checkpoint runs `guidance_scale=1.0`
+(CFG baked into the weights) with `FlowMatchEulerDiscreteScheduler(stochastic_sampling=True)` and
+**8 steps**, i.e. 87.6 % of the wall clock is the DiT and 8.4 % the audio VAE decode.
+
+**Weights.** The official repo is `stable-audio-tools` format (`model_config.json` + one
+`model.safetensors` + `t5gemma-b-b-ul2/`) and gated on HF, mirrored on ModelScope. Convert once with
+`diffusers/scripts/convert_stable_audio_3_to_diffusers.py` (it already reorders the differential QKV
+layout `[q|k|v|q2|k2] → [q1|q2|k1|k2|v]`); a native checkpoint has no `model_index.json`, so the CLI
+example fails fast with the conversion command instead of a `from_pretrained` traceback.
+
+**Adapter.** Register the prefix **ahead of `StableAudio`** (Stable Audio 1/2): adapter lookup is a
+first-hit `startswith`, so the older prefix captures `StableAudio3*` and dies in its own
+`_relaxed_assert`.
+
+**CP.** Split `[memory | audio]` **on block 0's input** and gather on the last block. Splitting any
+earlier (at `proj_in`, or at the transformer entry) makes every rank prepend its own copy of the 64
+memory tokens, so the Ulysses-concatenated sequence carries `cp_size × 64` memory tokens and the
+softmax normalization changes — the run stays plausible and wrong. Two more points:
+
+- the RoPE table is built **outside** the loop and passed to every block as a kwarg, so the plan cuts
+  it (`"transformer_blocks.*": {"rope": _ContextParallelInput(split_dim=0, expected_dims=2)}`) instead
+  of wrapping the processors. That also disarms diffusers' trailing `freqs[-seq_len:]` slice, which
+  would otherwise hand rank 0 the **last** positions (`rank > 0` accidentally looks right — the
+  nastiest possible failure shape);
+- the cross attention must run without the CP config (class-level patch, inert unless armed), and the
+  inpaint pipeline (`local_add_cond`, aligned to the audio axis only) is rejected under CP.
+
+Ring attention is rejected (only Ulysses is wired and measured), `transformer._cp_requires_min_bn_blocks
+= 1` is mandatory (the gather lives on the last block), and
+`64 + T` must be divisible by `cp_size`: 10 s = 172 (÷2, ÷4), but **30 s = 387 is odd** — either use
+`--ulysses-anything` or a duration whose token count is even. Note that `Fn_compute_blocks >= 1` is a
+global cache-dit constraint (not specific to this plan), and the plain (non-UAA) sharder asserts the
+divisibility, so an odd token count surfaces as a sharder assertion rather than a friendly message.
+
+**TP.** Every fused projection is a single `nn.Linear` whose output is `chunk(n)`-ed
+(`to_qkv` 5, `cross_attn.to_q` 2, `to_kv` 3, `ff.proj_in` 2), so a plain `ColwiseParallel` cuts through
+a section boundary. Reorder the weight rows to "shard-part major" first
+(`W.view(n, P, H//P, Dh, in).permute(1, 0, 2, 3, 4)`); each rank then holds
+`[section_0_part_r | ... | section_{n-1}_part_r]` and the existing `chunk(n)` yields its own slice of
+every section. Only `heads` is divided — the QK RMS norms normalize a single head (`dim_heads`) and
+stay local, and `StableAudio3SelfAttention` has no `inner_dim` attribute to divide. `to_out` /
+`ff.proj_out` need **no** column reorder: the permutation keeps each rank's heads contiguous inside the
+unsharded feature axis, which is exactly what `RowwiseParallel` expects.
+
+**TE-P.** The text encoder is `T5GemmaEncoderModel` (a `PreTrainedModel` wrapper with the stack at
+`.encoder.layers`); add it to the Gemma planner's supported classes and to the drill-down name list.
+Measured drift: text embeddings `rel = 1.07e-2`, `cos = 0.99995` — and the 8-step distilled sampler
+amplifies that to mel SSIM 0.46, i.e. below the gate (§6).
+
+**Offload.** `SoftNormBottleneck` (the audio VAE bottleneck) is a leaf with parameters whose class
+implements only `encode`/`decode`, so the streaming hooks never fire and it was parked on the offload
+device. `_default_module_filter` now refuses to select state holders without a `forward` and
+`_keep_unstreamable_state_resident` pins them on the execution device.
+
+**Measured (PRO 5000 72 GB, 10 s / 8 steps / bf16, mean of 3 after 1 warmup).**
+
+| Config | Latency | Speedup | mel PSNR | mel SSIM | SI-SDR | reproducible? |
+|---|---|---|---|---|---|---|
+| single GPU bf16 | 0.26 s | 1.00× | – | 1.000 | – | yes (bit-exact rerun) |
+| + compile | 0.09 s | 2.89× | 33.00 / 29.53 | 0.877 / 0.798 | 16.6 / 11.8 | **no** (per-process) |
+| + cache rdt 0.30 (`--max-warmup-steps 1`) | 0.21 s | 1.24× | 20.52 | 0.512 | −0.36 | yes |
+| + cache rdt 0.30 (`W2`) | 0.24 s | 1.08× | 26.14 | 0.691 | 8.67 | yes |
+| + cache + compile | 0.08 s | 3.25× | 20.56 | 0.488 | −2.56 | **no** |
+| float8_per_row (+compile) | 0.52 / 0.12 s | 0.50 / 2.17× | 22.63 / 30.75 | 0.530 / 0.828 | −0.8 / 11.6 | **no** |
+| CP2 Ulysses | 0.51 s | 0.51× | 30.15 | 0.798 | 12.16 | yes |
+| CP2 + cache (`--Bn 1`) | 0.40 s | 0.65× | 23.60 | 0.657 | 8.78 | yes |
+| CP2 + compile | 0.20 s | 1.30× | 32.48 | 0.867 | 17.83 | **no** |
+| TP2 / TP2+TE-P / TP2+compile | 0.67 / 0.70 / 0.15 s | 0.39 / 0.37 / 1.73× | 30.22 / 22.09 / 29.06 | 0.799 / 0.460 / 0.793 | 13.2 / −3.1 / 12.1 | TP2 yes, compile no |
+| layerwise offload (sync / async) | 0.82 / 1.15 s | 0.32 / 0.23× | inf | 1.000 | inf | yes (bit-exact) |
+
+Reading it: **compile is the only lever that pays** (2.9×) because the workload is 8 forwards of 172
+tokens; cache needs an aggressive threshold to hit at all (8 steps ⇒ `max_warmup_steps` must drop to
+1–2, the CLI default of 8 disables it) and every hitting configuration lands at mel SSIM 0.51–0.69;
+CP2/TP2 are numerically correct (bit-reproducible, ~30 dB / 0.80) but 2–2.6× *slower* than one GPU;
+quantization sits below the floor; offload is a memory tool (bit-exact, 3× slower). VAE-P is N/A
+(decode 8.4 %).

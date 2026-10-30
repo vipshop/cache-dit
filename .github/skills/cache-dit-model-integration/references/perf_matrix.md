@@ -116,7 +116,9 @@ Rules:
   - `--ws` / `--max-warmup-steps`: **cache** warmup steps.
   - `--warmup-steps`: inference steps used inside each warmup run.
 - **One reference for everything**: the single-GPU bf16 output of the same seed (`U1_C0_Q0_NONE_a`).
-  Every row's PSNR/SSIM is computed against it, never against another accelerated row.
+  Every row's PSNR/SSIM is computed against it, never against another accelerated row. If that row
+  does not fit on one card, read the offload block at the end of this section before shrinking
+  anything.
 - **Determinism baseline first**: run the single-GPU bf16 row twice under two different tags
   (`U1_C0_Q0_NONE_a`, `U1_C0_Q0_NONE_b` — same tag twice would overwrite the artifact) and compare.
   - `PSNR = inf` → the model is deterministic. Then **any non-quantized, non-cache row** (bf16
@@ -127,6 +129,36 @@ Rules:
     record `baseline run-to-run = X dB` in the caption and judge every other row relative to it.
 - `--track-memory` is on by default in the template below: it gives `- Memory Usage: X.XXGiB`, worth
   a caption note for TP/offload rows (their whole point is memory). Drop it if you do not need it.
+
+**When the single-GPU bf16 reference does not fit on one card** (MiniMax-H3-class models: 60 GiB+
+transformers, joint video+audio where the AdaLN tables alone can be a third of the weights):
+
+- **Never shrink the workload to make the baseline fit** (smaller resolution / fewer steps / shorter
+  clip). The reference defines the workload; changing it silently invalidates every gate and every
+  comparison against previously published tables. Keep the workload and change the *memory strategy
+  of the reference row only*.
+- `--module-layerwise-cpu-offload` (alias `--layerwise-offload`) is the general answer: it streams the
+  transformer block by block from pinned host memory. The reference row then reads "single-GPU bf16 +
+  layerwise offload" and every other row is compared against **that** row's artifact. Its per-block
+  host-to-device copy makes it slower than a resident run, so the speedup column is now relative to an
+  offloaded baseline — the caption has to say so, otherwise the table reads as if offload were free.
+- `--adaln-host-residency` is the better first attempt for this class of model: it keeps the
+  attention/FFN weights resident and streams **only** the `adaln_proj` modulation tables from a
+  pinned host mirror (text encoder on the full layerwise path). MiniMax-H3 is the reference case —
+  24 GiB of its 62 GiB are AdaLN tables, so streaming just those is far less traffic than moving the
+  whole transformer every step. Constraints: mutually exclusive with `--cpu-offload` /
+  `--sequential-cpu-offload` / `--module-layerwise-cpu-offload`, rejected with `--device-map-balance`,
+  and `--compile-full-graph` / `--cuda-graph` are rejected while the tables actually stream (each
+  per-block copy is a graph break, so `--compile` still works but pays a smaller speedup).
+- Under `--quantize` or `--parallel tp` the AdaLN tables are **not** streamed (quantized weights fit;
+  a sharded table is a DTensor the host mirror cannot rebind per tensor) — only the text encoder
+  streams, so the flag composes with those runs but then buys no transformer memory.
+- Keep `--track-memory` on for both the crashed resident run and the offloaded one: the caption should
+  carry the actual peak (`- Memory Usage: X.XXGiB`), which is what tells the next person whether TP2
+  is mandatory or merely nice to have.
+- Quantization for the same class of model: keep the modulation tables out of it
+  (`--quantize-exclude-layers adaln_proj norm_out`), since their error is shared by every token at
+  every step and accumulates coherently over the trajectory.
 
 ## 3. Distributed size mapping and preflight
 
@@ -322,6 +354,10 @@ Tier B/C tables are the same columns with the rows from §1 (B: TP4 / CP4 / TP2+
 TP2+CP4 / TP4+CP2, plus the optional USP+TP row). Keep them in a separate table — a 4-card row must
 not be mixed into a 1/2-card baseline table.
 
+If the model does not fit on one card, the first row becomes `single-GPU bf16 + layerwise offload`
+(or `+ --adaln-host-residency`) instead of the plain bf16 row — see §2 for which switch to pick and
+what it does to the speedup column.
+
 No filled example table here on purpose: a set of numbers belongs to one model, one schedule and one
 card count, and reusing them as "the expected level" is how wrong conclusions start. The caption of
 a finished table must still carry:
@@ -333,7 +369,10 @@ a finished table must still carry:
 - whether offload was a win or a loss **on this hardware**: on a card that already holds the weights
   it is a negative result that exists to prove correctness, and that has to be said out loud.
 
-## 6. Measuring: mean, min, and the auto table
+The figure that ships next to this table (PR body, report) is specified in §8 — latency | quality
+panels, same row order, reproducibility colour-coded.
+
+## 6. Measuring: mean, min, auto table, and audio
 
 **Mean** (both metrics, always both):
 
@@ -359,6 +398,38 @@ cache-dit-metrics psnr ssim --summary --cal-speedup -table \
 - `-table` sorts rows by metric value, not by the matrix's logical order — re-order before pasting.
 - In video mode the logged label carries the `.mp4` basename while `perf.log` carries the tag, so
   the perf column does not bind: fill the video table by hand (or join `perf.log` with awk).
+
+**Audio / TTS** (`si_sdr`, `snr`, `mel_psnr`, `mel_ssim`) — same `--summary`, different input flags:
+
+```bash
+# single pair: `-a1` is always the reference
+cache-dit-metrics si_sdr mel_psnr mel_ssim --summary \
+  -a1 .tmp/$TASK/U1_C0_Q0_NONE.wav -a2 .tmp/$TASK/U1_C1_Q0_NONE.wav
+
+# directory pair: recursive *.wav / *.flac, paired by identical basename, mean over pairs
+cache-dit-metrics mel_ssim si_sdr --summary -a1 .tmp/$TASK/ref -a2 .tmp/$TASK/tags
+```
+
+- `si_sdr` / `snr` are waveform-domain, `mel_psnr` / `mel_ssim` are log-mel spectrogram. Quote
+  **`mel_ssim` + `si_sdr`** as the pair: a phase flip or a half-sample shift destroys a waveform
+  metric while the audio sounds identical, and SI-SDR alone reads "same content, different sample"
+  as a total loss.
+- `si_sdr` is **not symmetric** — `-a1` is the target, so the single-GPU run always sits there. A
+  swapped pair reports a different number without any error, which is the kind of mistake that only
+  shows up when two rows of the table disagree with each other.
+- `inf` means something different here: the two waveforms are **bit-identical** — `si_sdr`, `snr` and
+  `mel_psnr` all divide by a zero residual (an all-identical directory prints `inf`), while
+  `mel_ssim` saturates at `1.000`. So for audio `inf` **is** the determinism proof, not "the option
+  was skipped". `inf` pairs carry no information, so they are dropped from the mean but still counted
+  in `Num:`.
+- There is no `--cal-speedup -table` path for audio (the auto table only walks the image/video
+  directory layout): read the four `--summary` lines and paste the numbers into the §5 table, then
+  drive §8's renderer from the JSON rows.
+- Multichannel is mixed to mono, mismatched sample rates are rejected (`sf.read` per side, so 44.1 kHz
+  vs 48 kHz raises instead of quietly resampling), and lengths are aligned to the shorter waveform —
+  a truncated tail does not turn into a fake regression.
+- Gates and their rationale are in `./audio.md` §6 (distilled/TTS models: mel SSIM ≥ 0.70 plus the
+  same-configuration rerun; a chaotic sampler makes PSNR/QSNR-style gates meaningless).
 
 **Min** (worst frame / worst prompt — the column that exposes localized corruption):
 
@@ -414,7 +485,9 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
   distilled model can hit 0 steps at the default, and "cache gives 1.00×" is then a wrong reading.
 - **Offload needs two rows** (sync + `--layerwise-async-transfer`); async must be on for the shipped
   recommendation. Offload without compile is bit-exact (`inf`) — that is its correctness proof;
-  offload + compile is *not* bit-exact, judge it against the compile tier.
+  offload + compile is *not* bit-exact, judge it against the compile tier. On a model whose reference
+  row already runs under offload (§2), these rows stop being extras: the baseline *is* an offload row,
+  so the caption must state that and the speedups are relative to it.
 - Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-smooth-strategy`,
   UAA requirement, hybrid head divisibility). A number that needs a hidden flag is a trap for the
   next person.
@@ -425,3 +498,150 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
   plus one line on whether hybrid beat the pure-TP layout it replaced.
 - Keep the artifacts and `perf.log` under `.tmp/$TASK` and name the directory in the caption —
   the numbers are only auditable if the run is findable.
+
+## 8. Chart template — latency | quality panels
+
+The table (§5) stays authoritative; the figure is the one-glance artifact for the PR body or the
+report. A screenshot of a bar chart says "I ran the matrix" much faster than 20 table rows, and it is
+what reviewers look at first.
+
+**This template is modality-agnostic — image, video and audio all use it.** The two panels, the row
+order, the reproducibility colour code and the caption rules are identical; only the knobs in the
+table at the end of the rules change. Do not invent a different chart shape per modality (a video
+3-panel with FPS, or an audio waveform strip): the value of the template is that two runs of any model
+are readable side by side.
+
+**The rules that make the style work** (deviating from them is what turns it into decoration):
+
+1. **Two panels, one shared y axis**, rows in the *table's* order with the single-GPU reference on
+   top. Never sort by metric value — the eye compares a row against its `+ compile` / `CP2` sibling,
+   and shuffled rows destroy that.
+2. **Left = latency**, one unit for all rows, dashed vertical line at the reference plus an inline
+   `0.26s (1.00×)` per bar. Speedup lives in the label, not in a third panel: two panels of *different
+   units* is what makes hand-drawn figures unreadable.
+3. **Right = exactly one quality metric**, acceptance gate as a dashed vertical line, value inline, and
+   the bar colour carrying pass/fail. Image/video default to **PSNR (dB, gate 30)**; audio defaults to
+   **mel SSIM (gate 0.70, `./audio.md` §6)**. When the *other* metric is the one that decides
+   (SSIM for a low-threshold cache, SI-SDR for a chaotic sampler), plot that one instead of adding a
+   third panel — the rest belongs in the table.
+4. **Left bar colour = reproducibility of the row**, not speed: `bit-exact rerun` vs `compile-style`
+   (a new process gives a different sample). This is the distinction reviewers get wrong — they read a
+   compile row as if it were a deterministic quality loss.
+5. Title = `model | workload | hardware` (`10 s / 8 steps / bf16 | PRO 5000`), footnote = colour
+   legend, and the markdown caption above/below the image still carries what §5 demands (flags,
+   determinism floor, offload verdict, recommended entry).
+6. **One figure per card tier.** A 1/2-card figure and a Tier B/C figure are separate images; mixing
+   card counts in one y axis makes the 4-card row look "slower than single GPU" for the wrong reason.
+7. **Only the per-modality knobs change** (table below); everything else is shared. Audio has no
+   frame/prompt `min` column — the pair mean *is* the row, and a chaotic sampler needs the
+   same-configuration rerun as a second row, said out loud in the caption.
+8. **The PNG does not get committed.** Push it to the repo's `pr-assets` branch (`assets/<model>/`,
+   `git add -f` because `*.png` is gitignored) and embed the raw URL in the PR body.
+
+| Modality | Latency unit | Right panel | Gate | Numbers come from |
+|---|---|---|---|---|
+| Image | `ms` per image (`--lat-digits 0` above ~100 ms) | PSNR (dB) | 30 dB (§7) | §6 image dir, optionally `--cal-speedup -table` |
+| Video | `ms` per clip (or `s` for long clips) | PSNR (dB) over frames | 30 dB mean, quote `min` in the table | §6 `-vd` + the **Min** frame loop |
+| Audio / TTS | `s` per clip | mel SSIM (0–1) | 0.70 (`./audio.md` §6) | §6 `-a1/-a2 --summary`, no auto table |
+
+**Data shape** — one JSON list, `repro: false` marks the compile-style rows:
+
+```json
+[
+  {"label": "single-GPU bf16 (reference)", "latency": 0.26, "quality": 1.000, "repro": true},
+  {"label": "single-GPU + compile",        "latency": 0.09, "quality": 0.877, "repro": false},
+  {"label": "TP2",                         "latency": 0.67, "quality": 0.799, "repro": true},
+  {"label": "single-GPU + layerwise offload", "latency": 0.82, "quality": 1.000, "repro": true}
+]
+```
+
+**Renderer** (matplotlib only, ~80 lines — keep it in `.tmp/$TASK`, not in the repo):
+
+```python
+"""Render the acceptance chart: latency panel | quality panel, one row per configuration."""
+import argparse
+import json
+
+import matplotlib
+import numpy as np
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+REPRO_COLOR = "#2a9d8f"      # rerun is bit-exact
+NON_REPRO_COLOR = "#e76f51"  # compile-style: differs per process
+PASS_COLOR = "#264653"
+FAIL_COLOR = "#f4a261"
+GATE_COLOR = "#d62828"
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument("rows", help="JSON list of {label, latency, quality, repro}")
+_parser.add_argument("--metric", default="PSNR", help="quality metric name (axis label)")
+_parser.add_argument("--gate", type=float, default=None, help="acceptance gate for the metric")
+_parser.add_argument("--unit", default="ms", help="latency unit shown on the axis")
+_parser.add_argument("--title", default="", help="figure title (model | workload | hardware)")
+_parser.add_argument("--digits", type=int, default=3, help="decimals for the quality label")
+_parser.add_argument("--lat-digits", type=int, default=2, help="decimals for the latency label")
+_parser.add_argument("--out", default="matrix.png")
+_args = _parser.parse_args()
+
+rows = json.load(open(_args.rows))
+labels = [row["label"] for row in rows]
+latency = np.array([row["latency"] for row in rows], dtype=float)
+quality = np.array([row["quality"] for row in rows], dtype=float)
+repro = np.array([row.get("repro", True) for row in rows], dtype=bool)
+
+ref = latency[0]
+y = np.arange(len(rows))[::-1]  # first row on top, like the table
+
+fig, (ax0, ax1) = plt.subplots(1, 2, figsize=(13, 0.42 * len(rows) + 1.9), sharey=True)
+
+ax0.barh(y, latency, color=[REPRO_COLOR if ok else NON_REPRO_COLOR for ok in repro])
+ax0.axvline(ref, color="#333333", lw=1, ls="--")
+ax0.text(ref, y[-1] - 0.62, " reference", fontsize=8, color="#333333")
+for yi, value in zip(y, latency):
+  ax0.text(value * 1.02, yi, f"{value:.{_args.lat_digits}f}{_args.unit} ({ref / value:.2f}x)",
+           va="center", fontsize=8)
+ax0.set_yticks(y)
+ax0.set_yticklabels(labels, fontsize=9)
+ax0.set_xlim(0, latency.max() * 1.45)
+ax0.set_xlabel(f"latency ({_args.unit}, mean of N after warmup)")
+ax0.set_title(_args.title or "acceptance matrix", fontsize=10)
+
+ax1.barh(y, quality, color=[PASS_COLOR if _args.gate is None or q >= _args.gate else FAIL_COLOR
+                            for q in quality])
+if _args.gate is not None:
+  ax1.axvline(_args.gate, color=GATE_COLOR, lw=1.2, ls="--")
+  ax1.text(_args.gate, y[-1] - 0.62, f" gate {_args.gate:g}", fontsize=8, color=GATE_COLOR)
+  ax1.set_xlim(0, max(_args.gate, quality.max()) * 1.15)
+else:
+  ax1.set_xlim(0, quality.max() * 1.15)
+for yi, value in zip(y, quality):
+  ax1.text(value + ax1.get_xlim()[1] * 0.01, yi, f"{value:.{_args.digits}f}",
+           va="center", fontsize=8)
+ax1.set_xlabel(f"{_args.metric} vs single-GPU reference")
+ax1.set_title("fidelity", fontsize=10)
+
+fig.text(0.5, 0.015,
+         f"left: {'green' if repro.any() else ''} = bit-reproducible rerun, "
+         f"orange = compile-style (differs per process); right: bar = "
+         f"{_args.metric} ({_args.digits} decimals)",
+         ha="center", fontsize=8)
+fig.tight_layout(rect=(0, 0.03, 1, 1))
+fig.savefig(_args.out, dpi=120)
+print(f"saved {_args.out}")
+```
+
+```bash
+# image / video (the common case): ms + PSNR, gate 30 dB
+python perf_chart.py .tmp/$TASK/rows.json --unit ms --metric "PSNR (dB)" --gate 30 \
+  --digits 2 --lat-digits 0 \
+  --title "Qwen-Image | 1024x1024 / 20 steps / bf16 | PRO 5000" --out .tmp/$TASK/matrix.png
+
+# audio / TTS: seconds + mel SSIM, gate 0.70 (./audio.md §6)
+python perf_chart.py .tmp/$TASK/rows.json --unit s --metric "mel SSIM" --gate 0.70 \
+  --title "Stable Audio 3 medium | 10 s / 8 steps / bf16 | PRO 5000" --out .tmp/$TASK/matrix.png
+```
+
+Combine it with §6's `--cal-speedup` output: paste the *table* into the PR body and upload the
+*figure* to `pr-assets`.

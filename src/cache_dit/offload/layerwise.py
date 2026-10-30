@@ -444,7 +444,85 @@ def _default_module_filter(name: str, module: nn.Module) -> bool:
     return False
   if any(True for _ in module.children()):
     return False
-  return _module_has_direct_state(module)
+  if not _module_has_direct_state(module):
+    return False
+  # Streaming relies on the pre/post `forward` hooks of `module.__call__`. A state holder whose class
+  # never implements `forward` — e.g. Stable Audio 3's `SoftNormBottleneck`, consumed through a plain
+  # `decode()` method — would be parked on the offload device and never brought back, so it has to stay
+  # resident instead of being selected.
+  return type(module).forward is not nn.Module.forward
+
+
+def _iter_unstreamable_state_holders(
+  root_module: nn.Module,
+  *,
+  resolved_targets: list[tuple[str, nn.Module]],
+) -> list[tuple[str, nn.Module]]:
+  """Collect leaf state holders that are not selected and can never be streamed.
+
+  A leaf module whose class does not implement `forward` (Stable Audio 3's `SoftNormBottleneck` is
+  consumed through a plain `decode()` method) has no call boundary for the streaming hooks, so if it
+  is left on the offload device its parameters never come back and the next use fails on a device
+  mismatch.
+
+  :param root_module: Module the offload hooks are installed on.
+  :param resolved_targets: Submodules selected for streaming.
+  :returns: `(name, module)` pairs, in `named_modules` order.
+  """
+
+  selected_ids = {id(module) for _, module in resolved_targets}
+  holders: list[tuple[str, nn.Module]] = []
+  for name, module in root_module.named_modules():
+    if id(module) in selected_ids:
+      continue
+    if any(True for _ in module.children()):
+      continue
+    if type(module).forward is not nn.Module.forward:
+      continue
+    if not _module_has_direct_state(module):
+      continue
+    holders.append((name, module))
+  return holders
+
+
+def _keep_unstreamable_state_resident(
+  root_module: nn.Module,
+  *,
+  resolved_targets: list[tuple[str, nn.Module]],
+  device: torch.device,
+) -> None:
+  """Pin forward-less state holders on the execution device (auto-discovery mode).
+
+  :param root_module: Module the offload hooks are installed on.
+  :param resolved_targets: Submodules selected for streaming.
+  :param device: Execution (onload) device.
+  """
+
+  for _, module in _iter_unstreamable_state_holders(root_module, resolved_targets=resolved_targets):
+    _move_module_state(module, device, non_blocking=False)
+
+
+def _warn_unselected_unstreamable_state(
+  root_module: nn.Module,
+  *,
+  resolved_targets: list[tuple[str, nn.Module]],
+) -> None:
+  """Warn about forward-less state holders left out of an explicit `module_names` selection.
+
+  :param root_module: Module the offload hooks are installed on.
+  :param resolved_targets: Submodules selected for streaming.
+  """
+
+  holders = _iter_unstreamable_state_holders(root_module, resolved_targets=resolved_targets)
+  if not holders:
+    return
+  logger.warning(
+    "Layerwise offload: %d state holder(s) have no `forward` (consumed through custom methods) and "
+    "were not part of the explicit selection, so they stay where they are: %s. Add them to "
+    "`module_names` if their forward runs on the onload device.",
+    len(holders),
+    [name for name, _ in holders],
+  )
 
 
 def _resolve_target_modules(
@@ -2109,6 +2187,20 @@ def _apply_layerwise_offload(
     module_names=module_names,
     module_filter=module_filter,
   )
+  # Auto-discovery must not leave a forward-less state holder behind on the offload device; with an
+  # explicit `module_names` selection the caller owns that choice (see `_move_unmanaged_direct_state`),
+  # so only warn there.
+  if module_names is None:
+    _keep_unstreamable_state_resident(
+      root_module,
+      resolved_targets=resolved_targets,
+      device=resolved_onload_device,
+    )
+  else:
+    _warn_unselected_unstreamable_state(
+      root_module,
+      resolved_targets=resolved_targets,
+    )
   if (not resolved_targets and module_names is None and module_filter is None
       and _module_has_direct_state(root_module)):
     resolved_targets = [("", root_module)]

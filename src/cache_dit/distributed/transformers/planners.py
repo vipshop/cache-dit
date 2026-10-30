@@ -114,6 +114,9 @@ def _activate_cp_planners():
   LongCatAudioDiTContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_audio_dit", "LongCatAudioDiTContextParallelismPlanner",
     ImportErrorContextParallelismPlanner)
+  StableAudio3ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".stable_audio_3", "StableAudio3ContextParallelismPlanner",
+    ImportErrorContextParallelismPlanner)
   LongCatImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_image", "LongCatImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   HeliosContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -211,6 +214,8 @@ def _activate_tp_planners():
   LongCatAudioDiTTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_audio_dit", "LongCatAudioDiTTensorParallelismPlanner",
     ImportErrorTensorParallelismPlanner)
+  StableAudio3TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".stable_audio_3", "StableAudio3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   LongCatImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_image", "LongCatImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   GlmImageTensorParallelismPlanner = _safe_import(  # noqa: F841
