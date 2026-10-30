@@ -511,6 +511,11 @@ table at the end of the rules change. Do not invent a different chart shape per 
 3-panel with FPS, or an audio waveform strip): the value of the template is that two runs of any model
 are readable side by side.
 
+**Style reference: [`perf_chart_example.png`](./perf_chart_example.png)** — a real 18-row run
+(FastH3 4-step, 1/2/4 cards) kept in this directory as the target look: per-configuration hues,
+hatch for reproducibility / below-gate, 9.5pt framed legends, dashed-line labels moved to the top.
+Read it before drawing; do not commit your own run's PNG here (that one goes to `pr-assets`, rule 9).
+
 **The rules that make the style work** (deviating from them is what turns it into decoration):
 
 1. **Two panels, one shared y axis**, rows in the *table's* order with the single-GPU reference on
@@ -553,8 +558,11 @@ are readable side by side.
 9. **Only the per-modality knobs change** (table below); everything else is shared. Audio has no
    frame/prompt `min` column — the pair mean *is* the row, and a chaotic sampler needs the
    same-configuration rerun as a second row, said out loud in the caption.
-10. **The PNG does not get committed.** Push it to the repo's `pr-assets` branch (`assets/<model>/`,
-   `git add -f` because `*.png` is gitignored) and embed the raw URL in the PR body.
+10. **Your run's PNG does not get committed** — push it to the repo's `pr-assets` branch
+   (`assets/<model>/`, `git add -f` because `*.png` is gitignored) and embed the raw URL in the PR
+   body. The single **style-reference** image in this directory (`perf_chart_example.png`) is the one
+   exception: it is documentation, not a data artifact, and it should only be replaced when the house
+   style itself changes.
 
 | Modality | Latency unit | Right panel | Gate | Numbers come from |
 |---|---|---|---|---|
