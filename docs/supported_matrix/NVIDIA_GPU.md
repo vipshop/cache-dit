@@ -71,6 +71,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Wan-Animate-2-Distilled|✅|✅|✅|
 |Wan-2.2-T2V|✅|✅|✅|
 |Wan-2.2-I2V|✅|✅|✅|
+|Wan-2.2-S2V|✅|✅|✅|
 |Wan-2.2-VACE-Fun|✅|✅|✅|
 |Wan-2.1-T2V|✅|✅|✅|
 |Wan-2.1-I2V|✅|✅|✅|

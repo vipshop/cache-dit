@@ -75,6 +75,7 @@ Available examples:
 - ✅ ltx25_t2v                      - Default: Lightricks/LTX-2.5-Diffusers
 - ✅ ltx25_i2v                      - Default: Lightricks/LTX-2.5-Diffusers
 - ✅ ltx25_dfr                      - Default: Lightricks/LTX-2.5-Diffusers (DFR, 8 steps)
+- ✅ wan2.2_s2v                    - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
 - ✅ wan2.2_t2v                     - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 - ✅ wan2.1_t2v                     - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 - ✅ wan2.2_i2v                     - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers
