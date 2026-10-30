@@ -759,10 +759,12 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
     freqs = self.freqs.split(split_sizes, dim=1)
 
-    # Loop over samples
+    # Loop over samples. One head is enough: the table is identical across heads, and allocating
+    # `num_attention_heads` of them costs 1.3 GB per forward at 480p (the assignment below already
+    # broadcasts over the head axis, and `apply_rotary_emb` slices it back to one).
     output = torch.view_as_complex(
       torch.zeros(
-        (batch_size, S, self.num_attention_heads, self.attention_head_dim // 2, 2),
+        (batch_size, S, 1, self.attention_head_dim // 2, 2),
         device=hidden_states.device,
         dtype=torch.float64,
       ))

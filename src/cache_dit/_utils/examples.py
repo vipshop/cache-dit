@@ -4371,10 +4371,26 @@ def _wan_s2v_read_audio(path: str) -> Tuple[np.ndarray, int]:
   :returns:`(waveform, sampling_rate)`.
   """
 
-  import soundfile as sf
+  try:
+    import soundfile as sf
 
-  audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
-  audio = audio.mean(axis=1)
+    audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+    audio = audio.mean(axis=1)
+  except ImportError:
+    # `soundfile` lives in the optional `[metrics]` extra; the builtin `wave` module reads the
+    # 16-bit PCM most export tools write, so passing `--audio-path` keeps working without it.
+    import wave
+
+    with wave.open(path, "rb") as handle:
+      sample_rate = handle.getframerate()
+      channels = handle.getnchannels()
+      width = handle.getsampwidth()
+      raw = handle.readframes(handle.getnframes())
+    if width != 2:
+      raise ValueError(f"{path}: only 16-bit PCM wav is readable without `soundfile` (got "
+                       f"{8 * width}-bit); `pip install soundfile` to read it.") from None
+    data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    audio = data.reshape(-1, channels).mean(axis=1)
   return _wan_s2v_resample(audio, sample_rate, _WAN_S2V_SAMPLE_RATE), _WAN_S2V_SAMPLE_RATE
 
 
@@ -4444,6 +4460,13 @@ def wan_s2v_example(args: argparse.Namespace, **kwargs) -> Example:
   num_frames_per_chunk = (args.num_frames
                           if args.num_frames is not None else _WAN_S2V_FRAMES_PER_CHUNK)
   reference_image = _wan_s2v_reference_image(args, model_name_or_path)
+  # The pipeline centre-crops the reference to the canvas, which pads the short side with black; a
+  # landscape or square portrait set against a 9:16 canvas wastes a large part of the frame.
+  aspect_gap = abs(reference_image.width * height - reference_image.height * width)
+  if aspect_gap > 0.15 * reference_image.width * height:
+    logger.warning(f"Reference image {reference_image.size} does not match the {width}x{height} "
+                   f"canvas: the pipeline will letterbox it. Pass `--height/--width` with the "
+                   f"reference aspect for a tighter crop.")
   audio, sampling_rate = _wan_s2v_audio(args, model_name_or_path, num_frames_per_chunk)
 
   return Example(

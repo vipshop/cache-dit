@@ -36,7 +36,7 @@ from PIL import Image
 from transformers import AutoTokenizer, UMT5EncoderModel, Wav2Vec2FeatureExtractor, Wav2Vec2Model
 
 from ....logger import init_logger
-from .audio_processor import PipelineAudioInput
+from .audio_processor import PipelineAudioInput, is_valid_audio
 from .transformer import WanS2VTransformer3DModel
 
 logger = init_logger(__name__)
@@ -167,7 +167,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
     self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial,
                                           resample="bilinear")
     self.motion_frames = 73
-    self.drop_first_motion = True
 
   @classmethod
   def from_pretrained(cls, pretrained_model_name_or_path: str, **kwargs):
@@ -480,6 +479,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
         image, Image.Image):
       raise ValueError(
         f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+    if image_embeds is not None:
+      # The reference branch needs the pixels: they are VAE-encoded into the condition latents and
+      # the first video frame. Accepting pre-encoded embeddings would silently produce a video that
+      # does not start from the reference image.
+      raise NotImplementedError("`image_embeds` is not supported; pass `image` (the pixels).")
     if height % 16 != 0 or width % 16 != 0:
       raise ValueError(
         f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -510,8 +514,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
       raise ValueError(
         "Provide either `audio` or `audio_embeds`. Cannot leave both `audio` and `audio_embeds` undefined."
       )
-    elif audio is not None and not isinstance(audio, np.ndarray):
-      raise ValueError(f"`audio` has to be of type `np.ndarray` but is {type(audio)}")
+    elif audio is not None and not is_valid_audio(audio):
+      raise ValueError(
+        f"`audio` has to be a mono waveform (np.ndarray / torch.Tensor / list) but is "
+        f"{type(audio)}")
 
   def prepare_latents(
     self,
@@ -573,7 +579,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
                                 device=device)
     videos_last_pixels = motion_pixels.detach()
     if init_first_frame:
-      self.drop_first_motion = False
       motion_pixels[:, :, -6:] = video_condition
     motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
     motion_latents = (motion_latents - latents_mean) * latents_std
@@ -715,7 +720,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
       num_chunks_audio = max(1, audio_embeds.shape[-1] // num_frames_per_chunk)
     if num_chunks is None or num_chunks > num_chunks_audio:
       num_chunks = num_chunks_audio
-    audio_embeds = audio_embeds.to(transformer_dtype)
 
     latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
@@ -734,6 +738,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
     for r in range(num_chunks):
       if r > 0:
         self._reset_cache_context()
+      # The first chunk of a call starts from the reference image, so it keeps all 73 motion
+      # frames; a call that continues from a previous clip drops the re-encoded 19 latents. This
+      # used to be written onto `self`, which leaked into the next call.
+      drop_motion_frames = r == 0 and not init_first_frame
       latents_outputs = self.prepare_latents(
         image if r == 0 else None,
         batch_size * num_videos_per_prompt,
@@ -798,7 +806,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
             pose_latents=pose_latents,
             audio_embeds=audio_embeds_input,
             motion_frames=[self.motion_frames, latent_motion_frames],
-            drop_motion_frames=self.drop_first_motion and r == 0,
+            drop_motion_frames=drop_motion_frames,
             attention_kwargs=attention_kwargs,
             return_dict=False,
           )[0]
@@ -813,7 +821,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
               pose_latents=pose_latents,
               audio_embeds=0.0 * audio_embeds_input,
               motion_frames=[self.motion_frames, latent_motion_frames],
-              drop_motion_frames=self.drop_first_motion and r == 0,
+              drop_motion_frames=drop_motion_frames,
               attention_kwargs=attention_kwargs,
               return_dict=False,
             )[0]
@@ -825,7 +833,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
                                          (i + 1) % self.scheduler.order == 0):
             progress_bar.update()
 
-      if not (self.drop_first_motion and r == 0):
+      if not drop_motion_frames:
         decode_latents = torch.cat([motion_latents, latents], dim=2)
       else:
         decode_latents = torch.cat([condition, latents], dim=2)
@@ -840,7 +848,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline):
       video = self.vae.decode(decode_latents, return_dict=False)[0]
       video = video[:, :, -(num_frames_per_chunk):]
 
-      if self.drop_first_motion and r == 0:
+      if drop_motion_frames:
         video = video[:, :, 3:]
 
       num_overlap_frames = min(self.motion_frames, video.shape[2])

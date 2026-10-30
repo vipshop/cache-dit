@@ -16,13 +16,13 @@ PipelineAudioInput = Union[
 def is_valid_audio(audio) -> bool:
   """Check whether `audio` is one valid waveform.
 
-  A valid waveform is a 2-D or 3-D `numpy.ndarray` / `torch.Tensor`: mono or multi-channel,
-  optionally batched.
+  A valid waveform is a 1-D to 3-D `numpy.ndarray` / `torch.Tensor`: the pipeline itself takes a
+  mono 1-D waveform, while batched and multi-channel inputs are accepted by the feature extractor.
 
   :param audio: candidate waveform.
-  :returns: `True` when `audio` is a 2-D or 3-D array or tensor.
+  :returns: `True` when `audio` is a 1-D to 3-D array or tensor.
   """
-  return isinstance(audio, (np.ndarray, torch.Tensor)) and audio.ndim in (2, 3)
+  return isinstance(audio, (np.ndarray, torch.Tensor)) and audio.ndim in (1, 2, 3)
 
 
 def is_valid_audio_audiolist(audios) -> bool:
