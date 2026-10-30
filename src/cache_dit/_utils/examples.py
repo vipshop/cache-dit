@@ -3178,7 +3178,7 @@ def _fasth3_cache_config(
 
 
 def _fasth3_example(args: argparse.Namespace, name: str, default: str, forwards: int) -> Example:
-  from ...models.pipelines.fast_h3 import FastH3ModularPipeline
+  from ..models.pipelines.fast_h3 import FastH3ModularPipeline
 
   _fasth3_quantize_exclusions(args)
   return Example(
