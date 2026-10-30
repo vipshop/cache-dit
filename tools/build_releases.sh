@@ -18,14 +18,14 @@
 #   mini (default) -- one conda env, one CUDA arch, and a version that always
 #         carries .dev.  It exercises the whole build -> wheel -> retag -> index
 #         -> install path in minutes; tools/publish_index.sh refuses its wheels.
-#   full  -- py310..py314 and the setup.py default arch set (80,86,89,120a,121a):
+#   full  -- py311..py314 and the setup.py default arch set (80,86,89,120a,121a):
 #         the published set.  Needs a release version, refuses .devN, and refuses
 #         sources that are not committed.
 #
 # Usage:
 #   bash tools/build_releases.sh
 #   CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=1.5.3 bash tools/build_releases.sh
-#   CACHE_DIT_RELEASE_ENVS="py310 py311 py312 py313 py314" bash tools/build_releases.sh
+#   CACHE_DIT_RELEASE_ENVS="py311 py312 py313 py314" bash tools/build_releases.sh
 #
 # Environment:
 #   CACHE_DIT_RELEASE_PROFILE    mini | full                    (default mini)
@@ -84,7 +84,7 @@ case "$PROFILE" in
     DEFAULT_ENVS="py312"
     ;;
   full)
-    DEFAULT_ENVS="py310 py311 py312 py313 py314"
+    DEFAULT_ENVS="py311 py312 py313 py314"
     ;;
   *)
     fail "CACHE_DIT_RELEASE_PROFILE must be mini or full, got '$PROFILE'"
@@ -112,18 +112,16 @@ ARCH="$(release_arch)"
 
 expected_python() {
   case "$1" in
-    py310) echo "3.10" ;;
     py311) echo "3.11" ;;
     py312) echo "3.12" ;;
     py313) echo "3.13" ;;
     py314) echo "3.14" ;;
-    *) fail "unsupported release env '$1' (expected one of py310 py311 py312 py313 py314)" ;;
+    *) fail "unsupported release env '$1' (expected one of py311 py312 py313 py314)" ;;
   esac
 }
 
 wheel_python_tag() {
   case "$1" in
-    py310) echo "cp310" ;;
     py311) echo "cp311" ;;
     py312) echo "cp312" ;;
     py313) echo "cp313" ;;
@@ -341,6 +339,12 @@ verify_artifacts() {
   done
   shopt -u nullglob
 }
+
+# Python 3.10 is not a release target any more (torch dropped it), so a stale
+# CACHE_DIT_RELEASE_ENVS still naming py310 fails here, before anything is built.
+for env_name in "${RELEASE_ENVS[@]}"; do
+  expected_python "$env_name" >/dev/null
+done
 
 echo "[build_releases] package=$PACKAGE_NAME profile=$PROFILE channel=$CHANNEL"
 echo "[build_releases] envs=${RELEASE_ENVS[*]// /,} arch=${ARCH:-<setup.py default>}"
