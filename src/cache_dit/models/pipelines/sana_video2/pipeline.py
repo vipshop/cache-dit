@@ -163,8 +163,11 @@ class SanaVideo2Pipeline(DiffusionPipeline):
                       **kwargs) -> "SanaVideo2Pipeline":
     """Load the checkpoint root, its LTX-2.3 VAE and the Gemma-2 text encoder.
 
-    :param pretrained_model_name_or_path: Root holding ``config.yaml`` and ``checkpoints/*.pth``.
+    :param pretrained_model_name_or_path: Root holding ``config.yaml`` and ``checkpoints/*.pth``, or
+      a Hub repo id, which is resolved with ``snapshot_download`` for those two entries only.
+    :param args: Rejected; every component is a keyword argument.
     :param torch_dtype: Transformer / text-encoder dtype. ``dtype`` is accepted as an alias.
+    :param dtype: Alias of ``torch_dtype``.
     :param quantization_config: Ignored; quantize through cache-dit's own flags.
     :param device_map: Unsupported; call ``.to(device)`` or use cache-dit offloading.
     :param trust_remote_code: Ignored, the code is local.
@@ -176,7 +179,8 @@ class SanaVideo2Pipeline(DiffusionPipeline):
     :param vae_path: LTX-2.3 VAE directory, overriding ``<root>/vae``.
     :param text_encoder_path: Gemma-2 directory, overriding ``<root>/text_encoder``.
     :param tokenizer_path: Tokenizer directory, defaults to the text encoder directory.
-    :param local_files_only: Kept for API compatibility.
+    :param local_files_only: Passed to ``snapshot_download`` when a repo id is used.
+    :param kwargs: Unknown arguments are logged and dropped.
     :returns: The assembled pipeline.
     """
     if args:
@@ -351,8 +355,11 @@ class SanaVideo2Pipeline(DiffusionPipeline):
         timestep=timestep,
         encoder_hidden_states=embeds,
         encoder_attention_mask=mask,
+        return_dict=False,
       )
-      prediction = output.sample if hasattr(output, "sample") else output[0]
+      # `return_dict=False` keeps `BaseOutput.__post_init__` (a dict subclass) out of a compiled
+      # region; the cached wrapper forwards the flag to the wrapped transformer unchanged.
+      prediction = output[0] if isinstance(output, tuple) else output
       if not is_ti2v:
         sigma = time.reshape((1, ) * x.ndim).to(inputs)
         prediction = (1 - sigma) * prediction + inputs

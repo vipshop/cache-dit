@@ -40,14 +40,11 @@ def _cp_group(cp_config: Any) -> Optional[Any]:
     return None
   ulysses = int(getattr(cp_config, "ulysses_degree", 1) or 1)
   ring = int(getattr(cp_config, "ring_degree", 1) or 1)
-  if ulysses > 1 and ring > 1:
-    mesh = getattr(cp_config, "_flattened_mesh", None)
-  elif ulysses > 1:
-    mesh = getattr(cp_config, "_ulysses_mesh", None)
-  elif ring > 1:
-    mesh = getattr(cp_config, "_ring_mesh", None)
-  else:
-    mesh = None
+  if ulysses <= 1 and ring <= 1:
+    return None
+  # `_flattened_mesh` is the ring x ulysses mesh and collapses to the single sub-mesh when one of
+  # the two degrees is 1, so all three cases share one communicator.
+  mesh = getattr(cp_config, "_flattened_mesh", None)
   return None if mesh is None else mesh.get_group()
 
 

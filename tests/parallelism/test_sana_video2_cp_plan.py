@@ -38,7 +38,13 @@ def _tiny_transformer(depth: int = 4) -> SanaVideo2Transformer3DModel:
 
 
 def _config(ulysses: int = 2, ring: int = 1, anything: bool = False) -> SimpleNamespace:
-  return SimpleNamespace(ulysses_size=ulysses, ring_size=ring, ulysses_anything=anything)
+  """Stand-in for `_ContextParallelConfig`, with the same field names the code reads."""
+  return SimpleNamespace(ulysses_size=ulysses,
+                         ring_size=ring,
+                         ulysses_degree=ulysses,
+                         ring_degree=ring,
+                         ulysses_anything=anything,
+                         _flattened_mesh=None)
 
 
 def test_cp_plan_markers_and_axes():

@@ -399,6 +399,7 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
   @dtype.setter
   def dtype(self, value: torch.dtype) -> None:
     self.to(dtype=value)
+    self._aggregation_weight_cache = None
 
   def post_load_weights(self) -> None:
     """Rebuild the non-persistent RoPE tables when the model was built on the meta device."""
@@ -406,7 +407,6 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
       if rope.freqs.is_meta:
         rope.rebuild_freqs()
 
-  @torch.compiler.disable
   def _check_cache_group_alignment(self) -> None:
     """Warn once when a cache region boundary cuts an Attention-Residual group in half."""
     if getattr(self, "_cache_alignment_checked", False):
@@ -440,7 +440,11 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
     """
     projections = (self.attn_res.attn_proj, self.attn_res.mlp_proj, self.attn_res.final_proj)
     cache = getattr(self, "_aggregation_weight_cache", None)
-    signature = (device, tuple(projection.weight._version for projection in projections))
+    signature = (
+      device,
+      tuple(projection.weight.dtype for projection in projections),
+      tuple(projection.weight._version for projection in projections),
+    )
     if cache is None or cache[0] != signature:
       weights = tuple(projection.weight.to(device=device) for projection in projections)
       cache = (signature, weights)
@@ -450,10 +454,14 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
   def _attn_res_buffers(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return the depth-slot buffers for this batch/geometry, reusing them across steps.
 
+    The highest slot that is ever written is ``groups`` (the last group flushes there) and the final
+    aggregation reads ``values[:groups + 1]``, so ``groups + 1`` slots are enough; one more slot per
+    buffer would cost ~117 MB per slot at 720p with a CFG batch.
+
     :param x: Embedded tokens `[B, S, C]`.
-    :returns: ``(values, keys)`` of shape `[groups + 2, B, S, C]`.
+    :returns: ``(values, keys)`` of shape `[groups + 1, B, S, C]`.
     """
-    slots = -(-self.depth // self.attn_res_block_size) + 2
+    slots = max(1 + index // self.attn_res_block_size for index in range(self.depth)) + 1
     cached = (self._attn_res_values is not None
               and self._attn_res_values.shape == (slots, x.shape[0], x.shape[1], x.shape[2])
               and self._attn_res_values.dtype == x.dtype
@@ -486,7 +494,7 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
     """
     cp_config = getattr(self, "_cp_config", None)
     batch, _, frames, height, width = hidden_states.shape
-    per_frame_timestep = timestep.ndim == 5
+    per_frame_timestep = timestep.ndim > 2
     if per_frame_timestep:
       if cp_config is not None:
         # The per-frame branch reshapes the *local* token shard by the *global* frame count, which
@@ -525,7 +533,10 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
     mask = encoder_attention_mask
     if mask is not None:
       mask = mask.reshape(batch, -1)
-    self._check_cache_group_alignment()
+    if not torch.compiler.is_compiling():
+      # Skipped inside a compiled region on purpose: the check introspects `_context_kwargs`, which
+      # would break a `fullgraph=True` compile, and it only ever fires once.
+      self._check_cache_group_alignment()
     # The aggregation weights are read as plain tensors, so `--layerwise-offload` hooks cannot
     # onload them: they belong to `attn_res`, not to a module that is called with token inputs.
     attn_proj_weight, mlp_proj_weight, final_proj_weight = self._aggregation_weights(x.device)
