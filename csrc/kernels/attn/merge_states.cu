@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <limits>
 
-#include "comm_ops.h"
+#include "attn.h"
 
-namespace cache_dit::comm {
+namespace cache_dit::attn {
 namespace {
 
 constexpr int kThreads = 256;
@@ -275,4 +275,4 @@ void fused_merge_attn_states(
   }
 }
 
-} // namespace cache_dit::comm
+} // namespace cache_dit::attn

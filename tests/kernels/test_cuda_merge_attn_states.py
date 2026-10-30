@@ -3,13 +3,13 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
-from cache_dit.kernels._merge_states import fused_merge_attn_states
-from cache_dit.kernels._comm import comm_extension_is_available
+from cache_dit.kernels._attn import attn_extension_is_available
+from cache_dit.kernels._attn import fused_merge_attn_states
 
 
 def _require_runtime() -> None:
-  if not torch.cuda.is_available() or not comm_extension_is_available():
-    pytest.skip("CUDA and the cache-dit communication extension are required.")
+  if not torch.cuda.is_available() or not attn_extension_is_available():
+    pytest.skip("CUDA and the cache-dit attention extension are required.")
 
 
 def _reference_merge(prev_out, prev_lse, suff_out, suff_lse):

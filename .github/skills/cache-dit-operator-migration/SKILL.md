@@ -102,6 +102,7 @@ The repository is CUDA-only after the operator refactor, so there is exactly one
 
 ```
 csrc/kernels/
+  attn/attn.{h,cpp}             # pybind TU for cache_dit._C_attn
   attn/merge_states.cu          # fused attention-state merge
   comm/comm_ops.{h,cpp}         # pybind TU for cache_dit._C_comm
   comm/fp8_comm.cu              # FP8 per-token / QKV-permute comm kernels
@@ -112,18 +113,19 @@ csrc/third_party/spdlog/        # git submodule, SVDQuant logging only
 
 Two naming facts that trip people up:
 
-- A native directory is **not** an extension module. `attn/merge_states.cu` is compiled into
-  `cache_dit._C_comm` and registered next to the FP8 comm ops in `csrc/kernels/comm/comm_ops.cpp`.
+- A native directory is **not** an extension module, but the operator family decides which extension
+  hosts its files: `attn/` is compiled into `cache_dit._C_attn`, `comm/` into `cache_dit._C_comm`.
+  A kernel never gets registered in another family's pybind TU.
 - C++ namespaces follow the extension, not the directory: attention-state merge lives in
-  `namespace cache_dit::comm`.
+  `namespace cache_dit::attn` and talks to Python through `csrc/kernels/attn/attn.cpp`.
 
 ### Python tree
 
 ```
 src/cache_dit/kernels/
   __init__.py        # flat public surface + __all__, re-exported from domain modules
-  _comm.py           # FP8 comm ops: loader + bridge + registration + public wrappers
-  _merge_states.py   # attention-state merge, reuses the comm extension loader
+  _attn.py           # attention-state merge: loader for cache_dit._C_attn + registration
+  _comm.py           # FP8 comm ops: loader for cache_dit._C_comm + registration
   _svdquant.py       # SVDQ W4A4 ops, loader for cache_dit._C_svdquant (+ utils submodule)
 ```
 
@@ -135,12 +137,15 @@ package. Each domain module owns its own registrations and its own extension loa
 | Extension | Built by | Contents |
 |---|---|---|
 | `cache_dit._C_svdquant` | `CACHE_DIT_BUILD_SVDQUANT=1` | SVDQ W4A4 GEMM + quantizers; exposes `ops` and `utils` submodules |
-| `cache_dit._C_comm` | `CACHE_DIT_BUILD_COMM=1`, or any `CACHE_DIT_BUILD_SVDQUANT=1` build | FP8 comm ops + attention-state merge; exposes an `ops` submodule |
+| `cache_dit._C_comm` | `CACHE_DIT_BUILD_COMM=1`, or any `CACHE_DIT_BUILD_SVDQUANT=1` build | FP8 comm ops; exposes an `ops` submodule |
+| `cache_dit._C_attn` | `CACHE_DIT_BUILD_ATTN=1`, `CACHE_DIT_BUILD_COMM=1`, or any `CACHE_DIT_BUILD_SVDQUANT=1` build | Attention-state merge; exposes an `ops` submodule |
 
-`CACHE_DIT_BUILD_SVDQUANT=1` also enables the comm extension, because the release wheel must ship
-both. The comm extension alone is gated to SM89+; the SVDQuant extension filters out sm90 targets
-its INT4 kernels cannot use. Default arch targets are `("89", "90a", "100", "120a")`, override with
-`CACHE_DIT_CUDA_ARCH_LIST` or `TORCH_CUDA_ARCH_LIST`.
+`CACHE_DIT_BUILD_SVDQUANT=1` enables all three extensions, because the release wheel must ship them.
+The optional operator extensions (`_C_comm`, `_C_attn`) are gated to SM89+; the SVDQuant extension
+filters out sm90 targets its INT4 kernels cannot use. Default arch targets are
+`("89", "90a", "100", "120a")`, override with `CACHE_DIT_CUDA_ARCH_LIST` or `TORCH_CUDA_ARCH_LIST`.
+An explicit `CACHE_DIT_BUILD_ATTN=1` raises when no SM target resolves, so a requested extension is
+never dropped silently.
 
 ## Phase 0: Gather Before Coding
 
@@ -197,7 +202,7 @@ Anchor files:
 Ask these questions while surveying:
 
 1. Which existing domain module is the right host, or is a new domain justified?
-2. Does the op belong in `cache_dit._C_comm` or a new/dedicated extension module?
+2. Does the op belong in `cache_dit._C_comm`, `cache_dit._C_attn`, or a new/dedicated extension module?
 3. How should extension loading fail when the op is unavailable?
 4. Is there already a naming convention in `cache_dit_cuda_ops` for this operator family?
 5. Does `test_ops_dispatch.py` already list the public names this migration will extend?
@@ -261,15 +266,16 @@ Apply changes from lowest level to highest level.
    - vendored in-tree
    - git submodule (`csrc/third_party/spdlog` is the only one today)
    - preinstalled system dependency
-5. Add or extend the binding TU. `csrc/kernels/comm/comm_ops.cpp` and
-   `csrc/kernels/svdq/pybind.cpp` are the only two `PYBIND11_MODULE` entry points; new ops in that
-   extension go through the existing entry point, not a new one.
+5. Add or extend the binding TU. `csrc/kernels/attn/attn.cpp`, `csrc/kernels/comm/comm_ops.cpp` and
+   `csrc/kernels/svdq/pybind.cpp` are the only `PYBIND11_MODULE` entry points; new ops in that
+   extension go through the existing entry point, not a new one. A new operator family gets its own
+   `<domain>/{<domain>.h,<domain>.cpp}` pair instead of borrowing another family's TU.
 
 ### B. Domain Python module
 
 Put everything for one domain in a single private module, `src/cache_dit/kernels/_<domain>.py`.
-The sections and their order are consistent across `_comm.py`, `_merge_states.py`, and
-`_svdquant.py`, and a migration should follow the same shape:
+The sections and their order are consistent across `_attn.py`, `_comm.py`, and `_svdquant.py`, and
+a migration should follow the same shape:
 
 ```python
 _EXTENSION_MODULE_NAME = "cache_dit._C_<ext>"
@@ -323,8 +329,9 @@ Rules that the existing modules enforce:
   and static lookup tables such as dtype-id maps
 
 Keeping the loader in the same module as its ops means a domain's failure mode, registration, and
-public API cannot drift apart. `_merge_states.py` imports `_get_required_ops_module` from `_comm.py`
-because both ops ship in the same extension; do that instead of adding a second loader.
+public API cannot drift apart. Each domain loads its own extension (`_attn.py` → `cache_dit._C_attn`,
+`_comm.py` → `cache_dit._C_comm`, `_svdquant.py` → `cache_dit._C_svdquant`); borrow a sibling loader
+only when the ops really ship in that sibling's extension.
 
 ### C. Public surface
 
@@ -403,14 +410,18 @@ Operator migration is incomplete if build and packaging are wrong. All of this h
 
 Checklist:
 
-1. Add new native files to `_required_comm_sources()` or `_required_svdquant_sources()`.
+1. Add new native files to `_required_svdquant_sources()`, `_required_comm_sources()`, or
+   `_required_attn_sources()`.
    `_missing_*_sources()` turns a forgotten entry into a clear build error instead of a link error,
    and a source that is on disk but not in the list is silently not compiled.
 2. If the op needs a new extension, add `_get_<ext>_extension()` and wire it into
    `_get_extensions()`; keep the flag-gated, SM-target-gated structure.
 3. Keep default install and import behavior safe without any extension: no eager extension import
    outside the lazy loader.
-4. Keep `CACHE_DIT_BUILD_SVDQUANT=1` shipping both extensions; a cu13 release build asserts this.
+4. Keep `CACHE_DIT_BUILD_SVDQUANT=1` shipping every extension; a cu13 release build asserts
+   this. `BuildExtension` only compares source mtimes, so after editing a shared header such as
+   `csrc/kernels/attn/attn.h`, wipe `build/` (`CACHE_DIT_CLEAN=1`) instead of trusting the cached
+   objects.
 5. Update `tools/inspect_release_wheel.py` when a wheel-content expectation changes, e.g. an
    additional `.so` that must be present in the SVDQuant wheel.
 6. Update `docs/user_guide/INSTALL.md` for any new flag or host requirement.
@@ -538,7 +549,8 @@ The comm and attention-state-merge operators were CUDA ports of existing Triton 
 kernels. That migration is the template for future work:
 
 - native sources landed in `csrc/kernels/comm/` and `csrc/kernels/attn/`
-- both register through the single `cache_dit._C_comm` pybind TU
+- each family registers through its own pybind TU: `cache_dit._C_comm` for the FP8 comm ops,
+  `cache_dit._C_attn` for the attention-state merge (they shared `_C_comm` until the split)
 - their Python modules colocate registration with the wrappers, replacing the old
   `cuda/_ops_registery.py` + `ops.py` pair
 - the Triton and CuTe DSL trees, the backend selector, and their tests were deleted, and
@@ -547,13 +559,15 @@ kernels. That migration is the template for future work:
 ### Useful cache-dit reference files
 
 - `src/cache_dit/kernels/__init__.py`
+- `src/cache_dit/kernels/_attn.py`
 - `src/cache_dit/kernels/_comm.py`
-- `src/cache_dit/kernels/_merge_states.py`
 - `src/cache_dit/kernels/_svdquant.py`
 - `src/cache_dit/quantization/svdquant/linear.py`
+- `csrc/kernels/attn/attn.cpp`
+- `csrc/kernels/attn/attn.h`
+- `csrc/kernels/attn/merge_states.cu`
 - `csrc/kernels/comm/comm_ops.cpp`
 - `csrc/kernels/comm/comm_ops.h`
-- `csrc/kernels/attn/merge_states.cu`
 - `csrc/kernels/svdq/pybind.cpp`
 - `tests/kernels/test_ops_dispatch.py`
 - `tests/kernels/test_cuda_fp8_comm_ops.py`

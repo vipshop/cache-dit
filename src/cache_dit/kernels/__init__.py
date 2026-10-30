@@ -1,10 +1,10 @@
 """Public CUDA operator APIs provided by Cache-DiT."""
 
+from ._attn import fused_merge_attn_states
 from ._comm import fp8_comm_per_token_dequant
 from ._comm import fp8_comm_per_token_quant
 from ._comm import fp8_comm_qkv_permute_dequant
 from ._comm import fp8_comm_qkv_permute_quant
-from ._merge_states import fused_merge_attn_states
 from ._svdquant import svdq_extension_is_available
 from ._svdquant import svdq_gemm_w4a4
 from ._svdquant import svdq_gemm_w4a4_ext

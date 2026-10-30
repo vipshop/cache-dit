@@ -42,10 +42,16 @@ git submodule update --init --recursive --force # init submodules
 CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
 ```
 
-The full CUDA build also includes the communication operators used by FP8 Ulysses and Ring Attention. To build only these communication operators without SVDQuant on SM89 or newer GPUs, use:
+The full CUDA build also ships the communication operators used by FP8 Ulysses (`cache_dit._C_comm`) and the attention-state merge operator used by Ring Attention (`cache_dit._C_attn`). To build the communication operators together with the attention operators, without SVDQuant, on SM89 or newer GPUs, use:
 
 ```bash
 CACHE_DIT_BUILD_COMM=1 uv pip install -e . --no-deps --no-build-isolation
+```
+
+To build only the attention-state merge operator, use:
+
+```bash
+CACHE_DIT_BUILD_ATTN=1 uv pip install -e . --no-deps --no-build-isolation
 ```
 
 > [!WARNING]
