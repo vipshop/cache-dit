@@ -193,6 +193,15 @@ def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("FastH3")
+def fast_h3_adapter(pipe, **kwargs) -> BlockAdapter:
+  # FastH3 is MiniMax-H3 with a distilled sigma ladder, a VSA compression gate per block and video
+  # sparse attention, so the block contract is unchanged: one packed sequence, one forward per
+  # step, no classifier-free guidance. The transformer subclass keeps the parent's module tree,
+  # which is why this reuses the MiniMax-H3 adapter instead of duplicating it.
+  return minimax_h3_adapter(pipe, **kwargs)
+
+
 # NOTE: The registry returns the first class-name prefix that matches, so "WanAnimate2" must be
 # registered before "Wan" ("WanAnimate2*" class names also start with "Wan").
 @BlockAdapterRegister.register("WanAnimate2")

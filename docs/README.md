@@ -72,10 +72,19 @@ CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]" # latest.
 ```python
 >>> from cache_dit import QuantizeConfig
 >>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> # DQ: "...{dtype}_r{rank}_dq", PTQ: "...{dtype}_r{rank}"
+>>> # ✅ PTQ: "...{dtype}_r{rank}", required `calibrate_fn`.
+>>> def calibrate_fn(**_: object) -> None:
+...  for prompt in calibration_prompts: _ = pipe(...)
+>>> pipe.transformer = cache_dit.quantize(
+...  pipe.transformer, quant_config=QuantizeConfig(
+...  quant_type="svdq_nvfp4_r32", calibrate_fn=calibrate_fn,
+...  serialize_to="path"))
+>>> pipe.transformer = cache_dit.load(pipe.transformer, "path")
+```
+```python
+>>> # ✅ DQ: "...{dtype}_r{rank}_dq", NO calibration need.
 >>> pipe.transformer = cache_dit.quantize(
 ...   pipe.transformer, quant_config=QuantizeConfig(
-...   # ✅ NO calibration needed for SVDQ DQ in Cache-DiT! 🎉
 ...   quant_type="svdq_{int4|nvfp4}_r{32|64|128|256|...}_dq",
 ...   svdq_kwargs={"smooth_strategy": "few_shot"})) 
 >>> output = pipe(...) # Then, just call the pipe as normal.
@@ -202,6 +211,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | **Image** | MOSS-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Ming-Image 0.1 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | HiDream-O1-Image 🔥 | [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Fast-H3 ([`fastvideo@main`](https://github.com/hao-ai-lab/fastvideo)) 🔥 |  [`cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✔️/✔️/✔️ | 
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
 </div>

@@ -63,6 +63,8 @@ def _activate_cp_planners():
     ".flux3", "Flux3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   MiniMaxH3ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".minimax_h3", "MiniMaxH3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  FastH3ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".fast_h3", "FastH3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   # "QwenImage21" is imported before "QwenImage": planner lookup matches the first registered
   # prefix, and `QwenImage21Transformer2DModel` also starts with "QwenImage".
   QwenImage21ContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -186,6 +188,8 @@ def _activate_tp_planners():
     ".flux3", "Flux3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   MiniMaxH3TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".minimax_h3", "MiniMaxH3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  FastH3TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".fast_h3", "FastH3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   HunyuanDiTTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".hunyuan_dit", "HunyuanDiTTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Kandinsky5TensorParallelismPlanner = _safe_import(  # noqa: F841

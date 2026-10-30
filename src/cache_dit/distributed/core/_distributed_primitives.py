@@ -819,7 +819,12 @@ def _all_to_all_single_o_fp8_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# `allow_in_graph` promised Dynamo it could trace this function, but it returns a closure and
+# runs a collective, so the promise cannot be kept: torch 2.15 enforces the contract and dies
+# with "RuntimeError when making fake tensor call" (torch 2.11 happened to tolerate it). A graph
+# break is version-independent and keeps the exchange opaque, exactly like the non-UAA
+# primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_qkv_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -862,7 +867,12 @@ def _all_to_all_single_any_qkv_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# `allow_in_graph` promised Dynamo it could trace this function, but it returns a closure and
+# runs a collective, so the promise cannot be kept: torch 2.15 enforces the contract and dies
+# with "RuntimeError when making fake tensor call" (torch 2.11 happened to tolerate it). A graph
+# break is version-independent and keeps the exchange opaque, exactly like the non-UAA
+# primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_o_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -912,7 +922,12 @@ def _all_to_all_single_any_o_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# `allow_in_graph` promised Dynamo it could trace this function, but it returns a closure and
+# runs a collective, so the promise cannot be kept: torch 2.15 enforces the contract and dies
+# with "RuntimeError when making fake tensor call" (torch 2.11 happened to tolerate it). A graph
+# break is version-independent and keeps the exchange opaque, exactly like the non-UAA
+# primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_qkv_fp8_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -954,7 +969,12 @@ def _all_to_all_single_any_qkv_fp8_async(
   return wait
 
 
-@torch.compiler.allow_in_graph
+# `allow_in_graph` promised Dynamo it could trace this function, but it returns a closure and
+# runs a collective, so the promise cannot be kept: torch 2.15 enforces the contract and dies
+# with "RuntimeError when making fake tensor call" (torch 2.11 happened to tolerate it). A graph
+# break is version-independent and keeps the exchange opaque, exactly like the non-UAA
+# primitives below, which never had this decorator.
+@torch.compiler.disable
 def _all_to_all_single_any_o_fp8_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,

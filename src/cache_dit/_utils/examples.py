@@ -74,6 +74,8 @@ __all__ = [
   "minimax_h3_example",
   "minimax_h3_fl2va_example",
   "minimax_h3_ref2va_example",
+  "fasth3_example",
+  "fasth3_v2_example",
   "prx_pixel_example",
   "anima_example",
   "bria_fibo2_example",
@@ -156,6 +158,8 @@ _env_path_mapping = {
   "ANY_FLOW_DIR": "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
+  "FASTH3_DIR": "FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree",
+  "FASTH3_V2_DIR": "FastVideo/FastVideo-FastH3-8-Step-V2",
   "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
   "ANIMA_DIR": "circlestone-labs/Anima-Base-v1.0-Diffusers",
   "FIBO_2_DIR": "briaai/Fibo-2.0-dev",
@@ -3120,6 +3124,122 @@ def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
     ),
     input_data=input_data,
   )
+
+
+# The FastH3 students run 4 / 8 transformer forwards, so the cache warmup and the residual
+# threshold are keyed on the forward count rather than on the sigma grid points.
+_FASTH3_FORWARDS = {"fasth3": 4, "fasth3_v2": 8}
+_FASTH3_CACHE_THRESHOLDS = {
+  # A 4-step student crosses a much wider noise interval per step than the 50-step base model, so
+  # its residuals start an order of magnitude higher; 0.10 is the sweep origin.
+  "fasth3": 0.10,
+  "fasth3_v2": 0.05,
+}
+
+
+def _fasth3_quantize_exclusions(args: argparse.Namespace) -> None:
+  """Add the VSA compression gate to the MiniMax-H3 quantization exclusions.
+
+  :param args: CLI arguments, updated in place.
+  """
+  _minimax_h3_quantize_exclusions(args)
+  layers = getattr(args, "quantize_exclude_layers", None)
+  if layers and "to_gate_compress" not in layers:
+    args.quantize_exclude_layers = [*layers, "to_gate_compress"]
+
+
+def _fasth3_cache_config(
+  args: argparse.Namespace,
+  name: str,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the few-step FastH3 students.
+
+  `num_inference_steps` here is the number of **transformer forwards** (4 or 8), not the sigma grid
+  points the CLI passes to the pipeline, so `max_warmup_steps` cannot reuse the MiniMax-H3 preset:
+  with 4 forwards a warmup of 2 would leave a single skippable step.
+
+  :param args: CLI arguments.
+  :param name: `fasth3` or `fasth3_v2`, selects the forward count and the threshold.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  forwards = _FASTH3_FORWARDS[name]
+  threshold = args.residual_diff_threshold
+  if threshold == _MINIMAX_H3_DEFAULT_THRESHOLD:
+    threshold = _FASTH3_CACHE_THRESHOLDS[name]
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, 1),
+    num_inference_steps=forwards,
+    # guidance is distilled into the weights: one forward pass per step, no uncond branch
+    enable_separate_cfg=False,
+    residual_diff_threshold=threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=1,
+  )
+
+
+def _fasth3_example(args: argparse.Namespace, name: str, default: str, forwards: int) -> Example:
+  from ..models.pipelines.fast_h3 import FastH3ModularPipeline
+
+  _fasth3_quantize_exclusions(args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path(default, args=args),
+      # The FastH3 pipeline owns the transformer (compression gates + VSA) and injects the DMD
+      # sigma ladder; every other component stays a diffusers class.
+      pipeline_class=FastH3ModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_workflow="t2va",
+      modular_component_dtypes={
+        "transformer": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      post_init_hook=_minimax_h3_drop_lm_head,
+      extra_optimize_kwargs={"cache_config": _fasth3_cache_config(args, name)},
+    ),
+    input_data=ExampleInputData(
+      prompt=("A glassblower shapes a molten vase in a workshop at dusk, sparks drifting, warm rim "
+              "light, shallow depth of field, cinematic."),
+      height=448,
+      width=768,
+      num_frames=124,
+      # Sigma grid points: one more than the number of transformer forwards.
+      num_inference_steps=forwards + 1,
+    ),
+  )
+
+
+@ExampleRegister.register("fasth3",
+                          default="FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree")
+def fasth3_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA with the 4-step FastH3 student (VSA 0.9, 4 transformer forwards).
+
+  The checkpoint ships a `fastvideo_inference.json` contract and 50 `to_gate_compress` tensors; the
+  pipeline reads the first and the transformer subclass loads the second. `--num-inference-steps`
+  keeps the diffusers semantics (sigma grid points), so the 4-step student is run with 5 and the
+  cache config is built from the real forward count.
+
+  :param args: CLI arguments.
+  :returns: The FastH3 4-step example.
+  """
+  return _fasth3_example(args, "fasth3",
+                         "FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree", 4)
+
+
+@ExampleRegister.register("fasth3_v2", default="FastVideo/FastVideo-FastH3-8-Step-V2")
+def fasth3_v2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA with the 8-step FastH3 V2 student (VSA 0.8, 8 transformer forwards).
+
+  :param args: CLI arguments.
+  :returns: The FastH3 V2 example.
+  """
+  return _fasth3_example(args, "fasth3_v2", "FastVideo/FastVideo-FastH3-8-Step-V2", 8)
 
 
 @ExampleRegister.register("anyflow_far", default="nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers")
