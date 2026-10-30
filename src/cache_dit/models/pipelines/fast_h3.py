@@ -282,6 +282,7 @@ def _ulysses_group(parallel_config: Any):
   return mesh.get_group()
 
 
+@torch._dynamo.disable
 def _ulysses_gather_sequence(
   query: torch.Tensor,
   key: torch.Tensor,
@@ -304,6 +305,11 @@ def _ulysses_gather_sequence(
   :param gate: optional per-head compression gate in the same layout as ``query``.
   :param heads: global attention head count.
   :param parallel_config: cache-dit context-parallel config.
+  This is a graph break on purpose: `all_to_all_single` is a collective and cannot run under
+  Dynamo's fake-tensor tracing (`RuntimeError when making fake tensor call`). Keeping the exchange
+  opaque is also what FastVideo/xDiT do with their collectives, and it leaves the sparse attention
+  itself fully compilable.
+
   :returns: Communicated Q/K/V/gate, the per-rank head split sizes and the local row count.
   """
   world = _ulysses_world(parallel_config)
@@ -321,6 +327,7 @@ def _ulysses_gather_sequence(
   return query, key, value, gate, split_sizes, local_rows
 
 
+@torch._dynamo.disable
 def _ulysses_split_sequence(
   out: torch.Tensor,
   split_sizes: list[int],
