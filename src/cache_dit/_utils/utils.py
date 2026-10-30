@@ -181,6 +181,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=None,
     help="Frame rate of the driving video, used to resample it to the model fps",
   )
+  parser.add_argument(
+    "--audio-path",
+    type=str,
+    default=None,
+    help=("Path of the driving waveform for a speech-to-video model (Wan2.2-S2V). Falls back to "
+          "`$WAN_2_2_S2V_DEMO_DIR/*.wav`, then to the example wav next to the model"),
+  )
   for _flag, _kind in (
     ("--reference-image-path", "image"),
     ("--reference-video-path", "video"),

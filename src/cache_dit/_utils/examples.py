@@ -96,6 +96,7 @@ __all__ = [
   "sana_wm_example",
   "wan_animate_2_example",
   "wan_animate_2_distilled_example",
+  "wan_s2v_example",
   "lingbot_video_example",
 ]
 
@@ -131,6 +132,7 @@ _env_path_mapping = {
   "WAN_2_2_DIR": "Wan-AI/Wan2.2-T2V-A14B-Diffusers",
   "WAN_I2V_DIR": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers",
   "WAN_2_2_I2V_DIR": "Wan-AI/Wan2.2-I2V-A14B-Diffusers",
+  "WAN_2_2_S2V_DIR": "Wan-AI/Wan2.2-S2V-14B-Diffusers",
   "WAN_VACE_DIR": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
   "WAN_2_2_VACE_DIR": "linoyts/Wan2.2-VACE-Fun-14B-diffusers",
   "ZIMAGE_DIR": "Tongyi-MAI/Z-Image",
@@ -4279,5 +4281,200 @@ def lingbot_video_example(args: argparse.Namespace, **kwargs) -> Example:
       guidance_scale=3.0,
       # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
       extra_input_kwargs={"output_type": "pil"},
+    ),
+  )
+
+
+_WAN_S2V_PROMPT = ("A person is talking to the camera in a natural indoor setting, medium shot, "
+                   "soft light, realistic, high quality.")
+_WAN_S2V_NEGATIVE_PROMPT = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，"
+                            "低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，"
+                            "毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走")
+# Must be a multiple of the VAE temporal factor. 84 - 3 warm-up frames = 81 visible frames
+# (5.06 s at 16 fps), which is the 4k+1 length the model was trained on.
+_WAN_S2V_FRAMES_PER_CHUNK = 84
+_WAN_S2V_SAMPLE_RATE = 16000
+
+
+def _wan_s2v_asset_dir() -> Optional[str]:
+  """Resolve the directory holding the demo image and waveform.
+
+  :returns: `$WAN_2_2_S2V_DEMO_DIR` when it exists, else `None`.
+  """
+
+  demo_dir = os.environ.get("WAN_2_2_S2V_DEMO_DIR", None)
+  if demo_dir is not None and os.path.isdir(demo_dir):
+    return demo_dir
+  return None
+
+
+def _wan_s2v_reference_image(args: argparse.Namespace, model_name_or_path: str) -> PIL.Image.Image:
+  """Resolve the reference (identity) image.
+
+  :param args: CLI arguments, honoring `--image-path`.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :returns: The reference image in RGB.
+  """
+
+  if args.image_path is not None:
+    return load_image(args.image_path).convert("RGB")
+  asset_dir = _wan_s2v_asset_dir()
+  if asset_dir is not None and os.path.isfile(os.path.join(asset_dir, "reference.png")):
+    return load_image(os.path.join(asset_dir, "reference.png")).convert("RGB")
+  local_asset = os.path.join(model_name_or_path, "assets", "reference.png")
+  if os.path.isfile(local_asset):
+    return load_image(local_asset).convert("RGB")
+  logger.warning("No Wan2.2-S2V reference image found: falling back to a bundled portrait. "
+                 "Pass `--image-path` or set `WAN_2_2_S2V_DEMO_DIR` for a meaningful sample.")
+  # A single-subject portrait, which is what a speech-driven model expects; the repo already ships
+  # one for the identity-preserving video models.
+  candidates = []
+  if CACHE_DIT_DIR is not None:
+    candidates.append(os.path.join(CACHE_DIT_DIR, "examples/data/consisid_input.png"))
+  # Editable install: this file lives at `<repo>/src/cache_dit/_utils/examples.py`.
+  repo_root = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+  candidates.append(os.path.join(repo_root, "examples/data/consisid_input.png"))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return load_image(candidate).convert("RGB")
+  raise ValueError("No Wan2.2-S2V reference image found. Pass `--image-path` or set "
+                   "`WAN_2_2_S2V_DEMO_DIR` (expects `reference.png` and `speech.wav`).")
+
+
+def _wan_s2v_resample(waveform: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
+  """Resample a mono waveform with linear interpolation.
+
+  The audio encoder expects 16 kHz, so a caller that passes 44.1/48 kHz audio would otherwise feed
+  the model a waveform at the wrong speed. This is a deliberate approximation: the shipped demo
+  asset is prepared at 16 kHz, and this path only exists so an arbitrary wav still runs.
+
+  :param waveform: mono waveform.
+  :param source_rate: sample rate of `waveform`.
+  :param target_rate: sample rate the encoder expects.
+  :returns: the resampled waveform.
+  """
+
+  if source_rate == target_rate:
+    return waveform
+  duration = waveform.shape[0] / float(source_rate)
+  target_length = int(round(duration * target_rate))
+  source_positions = np.linspace(0.0, duration, num=waveform.shape[0], endpoint=False)
+  target_positions = np.linspace(0.0, duration, num=target_length, endpoint=False)
+  return np.interp(target_positions, source_positions, waveform).astype(np.float32)
+
+
+def _wan_s2v_read_audio(path: str) -> Tuple[np.ndarray, int]:
+  """Read a wav file as a 16 kHz mono float32 waveform.
+
+  :param path: wav file path.
+  :returns:`(waveform, sampling_rate)`.
+  """
+
+  import soundfile as sf
+
+  audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
+  audio = audio.mean(axis=1)
+  return _wan_s2v_resample(audio, sample_rate, _WAN_S2V_SAMPLE_RATE), _WAN_S2V_SAMPLE_RATE
+
+
+def _wan_s2v_synthetic_audio(num_frames: int, fps: int) -> np.ndarray:
+  """Build a placeholder waveform so the example still runs without any asset.
+
+  The content carries no speech: it only satisfies the audio-conditioning shape. Accuracy gates and
+  lip-sync checks need a real recording, passed through `--audio-path`.
+
+  :param num_frames: frames the waveform has to cover.
+  :param fps: frame rate, which fixes the duration.
+  :returns: a mono waveform at 16 kHz.
+  """
+
+  duration = num_frames / float(fps)
+  time = np.arange(int(duration * _WAN_S2V_SAMPLE_RATE), dtype=np.float32) / _WAN_S2V_SAMPLE_RATE
+  envelope = 0.5 * (1.0 + np.sin(2.0 * np.pi * 3.0 * time))
+  return (0.1 * envelope * np.sin(2.0 * np.pi * 220.0 * time)).astype(np.float32)
+
+
+def _wan_s2v_audio(args: argparse.Namespace, model_name_or_path: str,
+                   num_frames: int) -> Tuple[np.ndarray, int]:
+  """Resolve the driving waveform.
+
+  Order of preference: `--audio-path`, `$WAN_2_2_S2V_DEMO_DIR/speech.wav`, the wav next to the
+  model, then a synthetic placeholder so the pipeline still runs.
+
+  :param args: CLI arguments.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :param num_frames: frames to cover, used by the synthetic fallback.
+  :returns: `(waveform, sampling_rate)`.
+  """
+
+  candidates = []
+  if args.audio_path is not None:
+    candidates.append(args.audio_path)
+  asset_dir = _wan_s2v_asset_dir()
+  if asset_dir is not None:
+    candidates.append(os.path.join(asset_dir, "speech.wav"))
+  candidates.append(os.path.join(model_name_or_path, "assets", "speech.wav"))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return _wan_s2v_read_audio(candidate)
+  logger.warning("No Wan2.2-S2V driving waveform found: using a synthetic placeholder. Pass "
+                 "`--audio-path` or set `WAN_2_2_S2V_DEMO_DIR` for a real sample.")
+  return _wan_s2v_synthetic_audio(num_frames, 16), _WAN_S2V_SAMPLE_RATE
+
+
+@ExampleRegister.register("wan2.2_s2v", default="Wan-AI/Wan2.2-S2V-14B-Diffusers")
+def wan_s2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Wan2.2-S2V speech-to-video example (reference image + waveform -> talking video).
+
+  One chunk renders `num_frames_per_chunk - 3` visible frames; a longer waveform makes the pipeline
+  loop over chunks and carry the motion latents forward. Pose conditioning is not implemented, so
+  the pipeline always runs the zero-pose path.
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+
+  from ..models.pipelines.wan_s2v import WanSpeechToVideoPipeline
+
+  model_name_or_path = _path("Wan-AI/Wan2.2-S2V-14B-Diffusers", args=args)
+  num_inference_steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames_per_chunk = (args.num_frames
+                          if args.num_frames is not None else _WAN_S2V_FRAMES_PER_CHUNK)
+  reference_image = _wan_s2v_reference_image(args, model_name_or_path)
+  audio, sampling_rate = _wan_s2v_audio(args, model_name_or_path, num_frames_per_chunk)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.S2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=WanSpeechToVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+    ),
+    input_data=ExampleInputData(
+      prompt=_WAN_S2V_PROMPT,
+      negative_prompt=_WAN_S2V_NEGATIVE_PROMPT,
+      height=height,
+      width=width,
+      guidance_scale=4.5,
+      num_inference_steps=num_inference_steps,
+      image=reference_image,
+      # The canvas is fixed by the flags, and the pipeline center-crops the reference image itself.
+      skip_image_resize=True,
+      # The frame count is `num_frames_per_chunk` here, so `--num-frames` must not be forwarded
+      # under its usual name.
+      use_num_frames=False,
+      extra_input_kwargs={
+        "num_frames_per_chunk": num_frames_per_chunk,
+        "sampling_rate": sampling_rate,
+        "sampling_fps": 16,
+        "audio": audio,
+        # The video writer feeds imageio, which needs ndarray frames (`PIL` output raises
+        # "append_data requires ndarray"); the pipeline then returns `(T, H, W, C)` in [0, 1].
+        "output_type": "np",
+      },
     ),
   )
