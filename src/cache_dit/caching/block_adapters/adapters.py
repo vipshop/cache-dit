@@ -1844,3 +1844,40 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=has_separate_cfg,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("LingBotVideo")
+def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for LingBot-Video Dense (`LingBotVideoPipeline`).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.lingbot_video`), so it
+  is not a diffusers module and no strict type check applies. Its denoising stack is
+  `transformer.blocks`, and each block takes `(hidden_states, temb6, rotary_emb, attention_mask,
+  cp_config)` and returns only `hidden_states` (Pattern_3).
+
+  Two model specifics matter here:
+
+  * `has_separate_cfg=True`: the pipeline runs one `transformer.forward()` per CFG branch, i.e. two
+    forwards per sampling step at batch size 1, so the branches need independent cache contexts and
+    one shared step counter.
+  * `check_forward_pattern=True`: the built-in block's first parameter is `hidden_states`, so the
+    contract is verifiable, but cache-dit defaults that check off for non-diffusers transformers.
+
+  The token-wise modulation (`temb6`) and the RoPE table are computed before the block loop from the
+  timestep and the position ids, so a cached step still gets a fresh signal and no PatchFunctor is
+  needed to keep loop-body state alive.
+
+  :param pipe: `LingBotVideoPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `blocks` denoising stack.
+  """
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
+    **kwargs,
+  )
