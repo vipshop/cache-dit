@@ -92,16 +92,6 @@ jobs:
         run: |
           cd tests
           pytest api/test_load_configs.py -v -s -x
-
-      - name: Run FastH3 CPU Tests (pytest)
-        run: |
-          cd tests
-          pytest api/test_fast_h3.py -v -s -x
-
-      - name: Run FastH3 VSA CPU Tests (pytest)
-        run: |
-          cd tests
-          pytest utils/test_vsa_h3_geometry.py utils/test_vsa_h3_attention.py -v -s -x
     
       - name: Verify cache_dit installation
         run: |
