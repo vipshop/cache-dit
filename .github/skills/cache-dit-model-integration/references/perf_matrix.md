@@ -116,7 +116,9 @@ Rules:
   - `--ws` / `--max-warmup-steps`: **cache** warmup steps.
   - `--warmup-steps`: inference steps used inside each warmup run.
 - **One reference for everything**: the single-GPU bf16 output of the same seed (`U1_C0_Q0_NONE_a`).
-  Every row's PSNR/SSIM is computed against it, never against another accelerated row.
+  Every row's PSNR/SSIM is computed against it, never against another accelerated row. If that row
+  does not fit on one card, read the offload block at the end of this section before shrinking
+  anything.
 - **Determinism baseline first**: run the single-GPU bf16 row twice under two different tags
   (`U1_C0_Q0_NONE_a`, `U1_C0_Q0_NONE_b` — same tag twice would overwrite the artifact) and compare.
   - `PSNR = inf` → the model is deterministic. Then **any non-quantized, non-cache row** (bf16
@@ -127,6 +129,36 @@ Rules:
     record `baseline run-to-run = X dB` in the caption and judge every other row relative to it.
 - `--track-memory` is on by default in the template below: it gives `- Memory Usage: X.XXGiB`, worth
   a caption note for TP/offload rows (their whole point is memory). Drop it if you do not need it.
+
+**When the single-GPU bf16 reference does not fit on one card** (MiniMax-H3-class models: 60 GiB+
+transformers, joint video+audio where the AdaLN tables alone can be a third of the weights):
+
+- **Never shrink the workload to make the baseline fit** (smaller resolution / fewer steps / shorter
+  clip). The reference defines the workload; changing it silently invalidates every gate and every
+  comparison against previously published tables. Keep the workload and change the *memory strategy
+  of the reference row only*.
+- `--module-layerwise-cpu-offload` (alias `--layerwise-offload`) is the general answer: it streams the
+  transformer block by block from pinned host memory. The reference row then reads "single-GPU bf16 +
+  layerwise offload" and every other row is compared against **that** row's artifact. Its per-block
+  host-to-device copy makes it slower than a resident run, so the speedup column is now relative to an
+  offloaded baseline — the caption has to say so, otherwise the table reads as if offload were free.
+- `--adaln-host-residency` is the better first attempt for this class of model: it keeps the
+  attention/FFN weights resident and streams **only** the `adaln_proj` modulation tables from a
+  pinned host mirror (text encoder on the full layerwise path). MiniMax-H3 is the reference case —
+  24 GiB of its 62 GiB are AdaLN tables, so streaming just those is far less traffic than moving the
+  whole transformer every step. Constraints: mutually exclusive with `--cpu-offload` /
+  `--sequential-cpu-offload` / `--module-layerwise-cpu-offload`, rejected with `--device-map-balance`,
+  and `--compile-full-graph` / `--cuda-graph` are rejected while the tables actually stream (each
+  per-block copy is a graph break, so `--compile` still works but pays a smaller speedup).
+- Under `--quantize` or `--parallel tp` the AdaLN tables are **not** streamed (quantized weights fit;
+  a sharded table is a DTensor the host mirror cannot rebind per tensor) — only the text encoder
+  streams, so the flag composes with those runs but then buys no transformer memory.
+- Keep `--track-memory` on for both the crashed resident run and the offloaded one: the caption should
+  carry the actual peak (`- Memory Usage: X.XXGiB`), which is what tells the next person whether TP2
+  is mandatory or merely nice to have.
+- Quantization for the same class of model: keep the modulation tables out of it
+  (`--quantize-exclude-layers adaln_proj norm_out`), since their error is shared by every token at
+  every step and accumulates coherently over the trajectory.
 
 ## 3. Distributed size mapping and preflight
 
@@ -322,6 +354,10 @@ Tier B/C tables are the same columns with the rows from §1 (B: TP4 / CP4 / TP2+
 TP2+CP4 / TP4+CP2, plus the optional USP+TP row). Keep them in a separate table — a 4-card row must
 not be mixed into a 1/2-card baseline table.
 
+If the model does not fit on one card, the first row becomes `single-GPU bf16 + layerwise offload`
+(or `+ --adaln-host-residency`) instead of the plain bf16 row — see §2 for which switch to pick and
+what it does to the speedup column.
+
 No filled example table here on purpose: a set of numbers belongs to one model, one schedule and one
 card count, and reusing them as "the expected level" is how wrong conclusions start. The caption of
 a finished table must still carry:
@@ -449,7 +485,9 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
   distilled model can hit 0 steps at the default, and "cache gives 1.00×" is then a wrong reading.
 - **Offload needs two rows** (sync + `--layerwise-async-transfer`); async must be on for the shipped
   recommendation. Offload without compile is bit-exact (`inf`) — that is its correctness proof;
-  offload + compile is *not* bit-exact, judge it against the compile tier.
+  offload + compile is *not* bit-exact, judge it against the compile tier. On a model whose reference
+  row already runs under offload (§2), these rows stop being extras: the baseline *is* an offload row,
+  so the caption must state that and the speedups are relative to it.
 - Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-smooth-strategy`,
   UAA requirement, hybrid head divisibility). A number that needs a hidden flag is a trap for the
   next person.
