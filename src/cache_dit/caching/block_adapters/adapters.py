@@ -1034,6 +1034,48 @@ def sana_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("StableAudio3")
+def stable_audio_3_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the Stable Audio 3 text-to-audio / audio-to-audio / inpaint pipelines.
+
+  `StableAudio3DiTBlock.forward(hidden_states, context, global_modulation, rope, context_mask,
+  local_seq, num_memory_tokens)` takes `hidden_states` first and returns a single tensor, and the
+  transformer calls it with `x` positional plus everything else by keyword, so the cached
+  `Pattern_3` wrapper binds `hidden_states` by name and replays the rest untouched: no PatchFunctor
+  is needed. Every extra argument is computed once per step outside the block loop (the text/duration
+  context projection, the 6-way AdaLN modulation, the full RoPE table and the 64 memory tokens), which
+  is what makes block-level caching valid on an audio sequence of only ~75 (1 s) to ~323 (30 s)
+  latent frames.
+
+  The registration name must stay ahead of `StableAudio` (Stable Audio 1/2): adapter lookup is a
+  first-hit `startswith` over the registry, so `"StableAudio"` would otherwise capture every
+  `StableAudio3*` pipeline and fail its own transformer assertion.
+
+  :param pipe: Stable Audio 3 pipeline.
+  :param kwargs: Extra `BlockAdapter` arguments.
+  :returns: The block adapter for Stable Audio 3.
+  """
+
+  from diffusers import StableAudio3DiTModel
+
+  _relaxed_assert(pipe.transformer, StableAudio3DiTModel)
+
+  # All three SA3 pipelines run **one** transformer forward per step even when guidance is on: they
+  # concatenate the latents along the batch axis (`torch.cat([latents, latents])`), call the
+  # transformer once and split the velocity into `(uncond, text)`. `has_separate_cfg=False` is
+  # therefore unconditional — deriving it from `guidance_scale` (the LongCat-AudioDiT rule) would halve
+  # the counted steps as soon as the non-distilled `-base` checkpoint is used with guidance > 1.
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("StableAudio")
 def stabledudio_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import StableAudioDiTModel
@@ -1809,5 +1851,42 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
     check_forward_pattern=False,
     check_num_outputs=False,
     has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
+@BlockAdapterRegister.register("LingBotVideo")
+def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for LingBot-Video Dense (`LingBotVideoPipeline`).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.lingbot_video`), so it
+  is not a diffusers module and no strict type check applies. Its denoising stack is
+  `transformer.blocks`, and each block takes `(hidden_states, temb6, rotary_emb, attention_mask,
+  cp_config)` and returns only `hidden_states` (Pattern_3).
+
+  Two model specifics matter here:
+
+  * `has_separate_cfg=True`: the pipeline runs one `transformer.forward()` per CFG branch, i.e. two
+    forwards per sampling step at batch size 1, so the branches need independent cache contexts and
+    one shared step counter.
+  * `check_forward_pattern=True`: the built-in block's first parameter is `hidden_states`, so the
+    contract is verifiable, but cache-dit defaults that check off for non-diffusers transformers.
+
+  The token-wise modulation (`temb6`) and the RoPE table are computed before the block loop from the
+  timestep and the position ids, so a cached step still gets a fresh signal and no PatchFunctor is
+  needed to keep loop-body state alive.
+
+  :param pipe: `LingBotVideoPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `blocks` denoising stack.
+  """
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=True,
     **kwargs,
   )

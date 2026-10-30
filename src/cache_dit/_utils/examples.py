@@ -91,10 +91,12 @@ __all__ = [
   "nucleus_image_example",
   "kandinsky6_ti2va_example",
   "longcat_audio_dit_example",
+  "stable_audio_3_example",
   "hidream_o1_image_example",
   "sana_wm_example",
   "wan_animate_2_example",
   "wan_animate_2_distilled_example",
+  "lingbot_video_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -140,6 +142,7 @@ _env_path_mapping = {
   "LONGCAT_IMAGE_EDIT_DIR": "meituan-longcat/LongCat-Image-Edit",
   "LONGCAT_AUDIO_DIT_1B_DIR": "ruixiangma/LongCat-AudioDiT-1B-Diffusers",
   "LONGCAT_AUDIO_DIT_35B_DIR": "saddam213/LongCat-AudioDiT-3.5B-diffusers",
+  "STABLE_AUDIO_3_DIR": "stabilityai/stable-audio-3-medium",
   "GLM_IMAGE_DIR": "zai-org/GLM-Image",
   "FIRERED_IMAGE_EDIT_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.0",
   "FIRERED_IMAGE_EDIT_1_1_DIR": "FireRedTeam/FireRed-Image-Edit-1.1",
@@ -176,6 +179,7 @@ _env_path_mapping = {
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
   "WAN_ANIMATE_2_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
   "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
+  "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -3825,6 +3829,80 @@ def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
   )
 
 
+_STABLE_AUDIO_3_CONVERT_HINT = (
+  "The official `stabilityai/stable-audio-3-*` repositories ship the stable-audio-tools format "
+  "(`model_config.json` + a single `model.safetensors`), not a diffusers layout. Convert it once "
+  "with the script shipped by diffusers and point the CLI at the output directory:\n"
+  "  python scripts/convert_stable_audio_3_to_diffusers.py \\\n"
+  "    --checkpoint_path <sa3-native>/model.safetensors \\\n"
+  "    --model_config_path <sa3-native>/model_config.json \\\n"
+  "    --output_dir <sa3-diffusers> \\\n"
+  "    --text_encoder_repo <sa3-native>/t5gemma-b-b-ul2 --dtype bfloat16")
+
+
+def _assert_stable_audio_3_layout(model_name_or_path: str) -> None:
+  """Fail early when the resolved model path is the native SA3 checkpoint instead of a conversion.
+
+  :param model_name_or_path: Resolved model id or local directory.
+  :raises ValueError: When the directory is a native SA3 checkpoint (no `model_index.json`).
+  """
+
+  if not os.path.isdir(model_name_or_path):
+    return  # a Hub id: `from_pretrained` reports its own error
+  if os.path.exists(os.path.join(model_name_or_path, "model_index.json")):
+    return
+  if os.path.exists(os.path.join(model_name_or_path, "model_config.json")):
+    raise ValueError(f"{model_name_or_path} is a native Stable Audio 3 checkpoint. "
+                     f"{_STABLE_AUDIO_3_CONVERT_HINT}")
+
+
+@ExampleRegister.register("stable_audio_3", default="stabilityai/stable-audio-3-medium")
+def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Stable Audio 3 text-to-audio example (distilled `medium` checkpoint).
+
+  The latent length follows the requested duration (`ceil(duration * 44100 / 4096)` frames), so
+  `duration` goes through `extra_input_kwargs`: there is no dedicated input field for it. 10 s is
+  the reference load used for the acceptance numbers (108 latent frames, i.e. `64 + 108 = 172`
+  transformer tokens after the 64 memory tokens, divisible by 2 and 4 — context parallelism needs that
+  divisibility, or `--ulysses-anything`). Unlike Stable Audio 1/2 the distilled checkpoint default is
+  `guidance_scale=1.0` — CFG is baked into the weights, so every step runs a single velocity forward
+  and 8 steps is the shipped schedule. The non-distilled `-base` checkpoint needs ~100 steps and
+  `guidance_scale > 1`; point `STABLE_AUDIO_3_DIR` at it and override `--steps` / `--guidance-scale`.
+
+  :param args: CLI arguments.
+  :returns: The Stable Audio 3 text-to-audio example.
+  """
+
+  from diffusers import StableAudio3Pipeline
+
+  if getattr(args, "parallel_vae", False):
+    raise NotImplementedError(
+      "Stable Audio 3 has an audio VAE (`AutoencoderSAME`, a 1-D convolutional decoder) and no "
+      "registered VAE parallel planner; its decode is only ~8% of the run, so `--parallel-vae` "
+      "is not applicable.")
+
+  model_name_or_path = _path("stabilityai/stable-audio-3-medium", args)
+  _assert_stable_audio_3_layout(model_name_or_path)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2A,  # Text to Audio
+      model_name_or_path=model_name_or_path,
+      pipeline_class=StableAudio3Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=("A gentle piano melody with soft strings in a concert hall, "
+              "warm and intimate, with a slow build."),
+      num_inference_steps=8,
+      guidance_scale=1.0,
+      extra_input_kwargs={
+        "duration": 10.0,
+      },
+    ),
+  )
+
+
 _SANA_WM_PROMPT = ("A young girl holding a white sign stands on a busy city street at dusk, "
                    "pedestrians walking behind her.")
 
@@ -4131,4 +4209,75 @@ def wan_animate_2_distilled_example(args: argparse.Namespace, **kwargs) -> Examp
     hf_model_id="Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
     pipeline_class=WanAnimate2DistilledModularPipeline,
     steps=10,
+  )
+
+
+# LingBot-Video is trained on the structured JSON caption form produced by its prompt rewriter, so
+# the bundled prompt keeps that shape: a plain sentence leaves most of the conditioning empty.
+_LINGBOT_VIDEO_PROMPT = (
+  '{"comprehensive_description": {"scene_content_description": "A red vintage motorcycle is '
+  'parked on a quiet cobblestone street at sunset. The camera slowly pushes in toward the fuel '
+  'tank while warm light glints off the chrome exhaust pipes and the background buildings blur '
+  'into a soft golden bokeh.", "camera_movement_description": "The camera moves forward slowly at '
+  'eye level, keeping the motorcycle centered."}, "camera_info": {"color": "Warm", "frame_size": '
+  '"Medium", "shot_type_angle": "Eye level", "lens_size": "Medium", "composition": "Center", '
+  '"lighting": "Soft light", "lighting_type": "Sunset"}, "world_knowledge": []}')
+
+
+class _LingBotVideoExample(Example):
+  """LingBot-Video example that exposes `frames` through a plain namespace.
+
+  `LingBotVideoPipelineOutput` subclasses diffusers' `BaseOutput`, i.e. it *is* an `OrderedDict`, so
+  `LingBotVideoPipeline`'s `frames` field would be dropped by the video-output parse (it reads the
+  `videos` key of a dict-shaped output). Wrapping the frame list in a `SimpleNamespace` keeps the
+  `frames[0]` layout that the other video examples use.
+  """
+
+  def call_pipe(self, pipe, kwargs: Dict[str, Any]):
+    from types import SimpleNamespace
+
+    output = super().call_pipe(pipe, kwargs)
+    return SimpleNamespace(frames=output.frames)
+
+
+@ExampleRegister.register(
+  "lingbot_video",
+  default="robbyant/lingbot-video-dense-1.3b",
+)
+def lingbot_video_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LingBot-Video Dense 1.3B text-to-video example.
+
+  The checkpoint ships its own pipeline (`LingBotVideoPipeline`), so cache-dit loads the built-in
+  copy from `cache_dit.models.pipelines.lingbot_video`. Defaults follow the official recipe:
+  480x832, 81 frames (24 fps), 40 steps, CFG 3.0 and flow-matching shift 3.0. `--num-frames 1`
+  renders a single image instead of a clip; `--num-frames/--height/--width/--steps` override the
+  rest.
+
+  :param args: CLI arguments.
+  :returns: The LingBot-Video Dense example.
+  """
+  from ..models.pipelines.lingbot_video import LingBotVideoPipeline
+
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames = 81 if args.num_frames is None else args.num_frames
+  num_inference_steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+
+  return _LingBotVideoExample(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path("robbyant/lingbot-video-dense-1.3b", args),
+      pipeline_class=LingBotVideoPipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_LINGBOT_VIDEO_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=num_inference_steps,
+      guidance_scale=3.0,
+      # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
+      extra_input_kwargs={"output_type": "pil"},
+    ),
   )

@@ -817,10 +817,15 @@ def _resolve_audio_sampling_rate(pipe: Any) -> Optional[int]:
   `config.output_sampling_rate` (24/48 kHz), so `pipe.audio_sampling_rate` — a *mel-domain* rate —
   is deliberately not consulted.
 
+  `vae` is consulted last: Stable Audio 3's `AutoencoderSAME` carries the rate on its own config
+  (`sampling_rate`, 44.1 kHz) and has neither a vocoder nor an `audio_vae`. Image / video VAEs do
+  not expose any of the three keys, so they still resolve to `None` and the writer keeps its
+  existing behaviour.
+
   :param pipe: Pipeline instance, may be `None`.
   :returns: The output sampling rate in Hz, or `None` when no component reports one.
   """
-  for name in ("vocoder", "audio_vae"):
+  for name in ("vocoder", "audio_vae", "vae"):
     component = getattr(pipe, name, None)
     config = getattr(component, "config", None)
     for key in ("output_sampling_rate", "sample_rate", "sampling_rate"):

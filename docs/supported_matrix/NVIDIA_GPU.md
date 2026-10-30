@@ -9,6 +9,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|LingBot-Video-Dense-1.3B|✅|✅|✅|
 |SANA-WM-I2V|✅|✖️|✅|
 |FLUX.2-Klein-9b-kv|✖️|✖️|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
@@ -38,6 +39,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Qwen-Image-Edit-2511|✅|✅|✅|
 |LongCat-Image|✅|✅|✅|
 |LongCat-Image-Edit|✅|✅|✅|
+|Stable-Audio-3-Medium|✅|✅|✅|
 |LongCat-AudioDiT-1B|✅|✅|✅|
 |Z-Image-Turbo|✅|✅|✅|
 |Z-Image-Turbo-Fun-ControlNet-2.0|✅|✅|✅|

@@ -174,6 +174,33 @@ torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --height 1536 -
 torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel ulysses_tp --ulysses-anything --cache
 ```
 
+> **LingBot-Video** (Dense 1.3B) also ships its own pipeline, vendored at
+> `cache_dit/models/pipelines/lingbot_video/`; load it with `--model-path <checkpoint root>`. The
+> DiT concatenates the video and text tokens into one joint sequence that all 24 blocks attend over,
+> so caching pairs two forwards per step (cond + uncond, i.e. keep `guidance_scale > 1`) and
+> `--ulysses-anything` is normally required because the joint length rarely divides by the CP size;
+> Ring is not supported. Only the dense checkpoint is supported (MoE raises), and the pipeline
+> conditions on its structured JSON caption form — `--num-frames 1` renders a single image. The
+> native frame rate is 24 fps, so pass `--saved-fps 24` to write the clip at its real speed
+> (`--saved-fps` defaults to 8). fp8-per-row runs, but the released setting (81 frames / 40 steps)
+> is quantization sensitive: measured SSIM drops to ~0.69 against 0.93 for caching alone.
+
+```bash
+# single GPU: baseline + DBCache (official recipe: 480x832, 81 frames, 40 steps, CFG 3.0)
+python3 -m cache_dit.generate lingbot_video --cache --rdt 0.3 --Fn 1 --Bn 0 --saved-fps 24
+
+# context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel ulysses --ulysses-anything --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --parallel-text --cache
+
+# VAE parallelism + quantization
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --parallel-vae
+python3 -m cache_dit.generate lingbot_video --float8-per-row --compile --cache
+
+# cheaper functional check (short clip, small canvas)
+python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 256 --steps 20 --cache
+```
+
 ## Low-bits Quantization 
 
 cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥torchao, 🔥nunchaku), For examples:
