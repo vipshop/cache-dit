@@ -70,8 +70,8 @@ nav:
       - Use CUDA Graphs: user_guide/CUDA_GRAPH.md
       - Use Ray Wrapper: user_guide/RAY.md
       - Layerwise Offload: user_guide/OFFLOAD.md
-      - Huawei Ascend NPU Support: user_guide/ASCEND_NPU.md
-      - AMD GPU Support: user_guide/AMD_GPU.md
+      - Huawei Ascend NPU: user_guide/ASCEND_NPU.md
+      - AMD GPUs: user_guide/AMD_GPU.md
       - Config with YAML: user_guide/LOAD_CONFIGS.md
       - Environment Variables: user_guide/ENV.md
       - Serving Deployment: user_guide/SERVING.md
