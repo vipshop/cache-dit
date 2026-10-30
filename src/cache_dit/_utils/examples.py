@@ -175,6 +175,7 @@ _env_path_mapping = {
   "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
+  "SANA_VIDEO2_DIR": "Efficient-Large-Model/SANA-Video_2.0_5B_720p",
   "SANA_WM_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
   "WAN_ANIMATE_2_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
@@ -3998,6 +3999,126 @@ def sana_wm_example(args: argparse.Namespace, **kwargs) -> Example:
         "action": f"w-{num_frames}",
         "intrinsics": _sana_wm_intrinsics(image),
         "output_type": "pil",
+      },
+    ),
+  )
+
+
+_SANA_VIDEO2_PROMPT = ("In a cozy, vintage room adorned with floral wallpaper, a cartoon rooster "
+                       "sits comfortably in a floral-patterned armchair, sipping from a bottle of "
+                       "beer. The rooster, with its vibrant red comb and wattle, displays a range "
+                       "of expressions, smiling, nodding, and opening its beak wide in a cheerful "
+                       "manner. The setting includes wooden furniture and another beer bottle on "
+                       "the table, adding to the relaxed atmosphere. The camera captures the "
+                       "rooster from a close-up angle, emphasizing its animated movements and "
+                       "lively demeanor.")
+
+
+@ExampleRegister.register(
+  "sana_video2",
+  default="Efficient-Large-Model/SANA-Video_2.0_5B_720p",
+)
+def sana_video2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2.0 5B text-to-video example.
+
+  The released recipe is 736×1280 at 193 frames / 50 steps, which is a multi-minute run per
+  sample, so the defaults keep the official 720p canvas and shorten the clip to 97 frames
+  (`8k + 1` is a hard LTX-2.3 VAE constraint) at 30 steps. `--height/--width/--num-frames` override
+  both.
+
+  `flow_shift` and `motion_score` are forwarded through `extra_input_kwargs` because the CLI has no
+  flags for them: the checkpoint is post-trained with shift 12 and appends the motion hint to the
+  prompt, and dropping either changes the sampled distribution rather than just the seed. The
+  motion hint defaults to 10 (SGLang Diffusion's default); the NVIDIA release page quotes 20 for
+  this checkpoint, which is a stronger sway rather than a different model.
+
+  The release only ships `config.yaml` + the merged `.pth`, so the LTX-2.3 VAE and the Gemma-2 text
+  encoder have to come from somewhere else: either drop `vae/` and `text_encoder/` (plus
+  `tokenizer/`) into the checkpoint root, or point `SANA_VIDEO2_VAE_DIR` /
+  `SANA_VIDEO2_TEXT_ENCODER_DIR` at them.
+
+  W4A4 note: `attn.beta_proj` is a `Linear(2560, 20)` gate, so a 64-rank SVDQ checkpoint cannot fit
+  it and its 4-bit error lands straight in `sigmoid`. Quantize with
+  `--quantize-exclude-layers beta_proj attn_res` (the acceptance matrix uses exactly that).
+
+  Caching note: the model aggregates depth representations every 8 layers, so a cached step reuses
+  the group residuals of the skipped groups. Keep `--Fn` on a multiple of 8: `--Fn 16 --rdt 0.20`
+  trades ~7% latency for SSIM 0.91, `--Fn 8 --rdt 0.10` trades 20% for SSIM 0.74.
+
+  :param args: CLI arguments.
+  :returns: The SANA-Video 2.0 text-to-video example.
+  """
+  from ..models.pipelines.sana_video2 import SanaVideo2Pipeline
+
+  height = 736 if args.height is None else args.height
+  width = 1280 if args.width is None else args.width
+  num_frames = 97 if args.num_frames is None else args.num_frames
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path("Efficient-Large-Model/SANA-Video_2.0_5B_720p", args),
+      pipeline_class=SanaVideo2Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO2_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=30,
+      guidance_scale=8.0,
+      extra_input_kwargs={
+        "flow_shift": 12.0,
+        "motion_score": 10,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register(
+  "sana_video2_ti2v",
+  default="Efficient-Large-Model/SANA-Video_2.0_5B_720p",
+)
+def sana_video2_ti2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2.0 5B text-image-to-video example (first frame conditioning).
+
+  Same checkpoint and canvas as :func:`sana_video2_example`; the only difference is the
+  conditioning image, which switches the pipeline to the flow-Euler solver with a clean first latent
+  frame. `--image-path` selects the frame, otherwise the built-in asset is fetched once.
+
+  :param args: CLI arguments.
+  :returns: The SANA-Video 2.0 text-image-to-video example.
+  """
+  from ..models.pipelines.sana_video2 import SanaVideo2Pipeline
+
+  height = 736 if args.height is None else args.height
+  width = 1280 if args.width is None else args.width
+  num_frames = 97 if args.num_frames is None else args.num_frames
+  if args.image_path is not None:
+    image = load_image(args.image_path).convert("RGB")
+  else:
+    image = load_image(
+      "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/"
+      "images/8.png").convert("RGB")
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,
+      model_name_or_path=_path("Efficient-Large-Model/SANA-Video_2.0_5B_720p", args),
+      pipeline_class=SanaVideo2Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO2_PROMPT,
+      image=image,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=30,
+      guidance_scale=8.0,
+      skip_image_resize=True,
+      extra_input_kwargs={
+        "flow_shift": 12.0,
+        "motion_score": 10,
       },
     ),
   )
