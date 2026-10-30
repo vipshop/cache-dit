@@ -509,7 +509,7 @@ options:
   --disable-fuse-lora DISABLE_FUSE_LORA
                         Disable fuse_lora even if lora weights are provided.
   --generator-device GENERATOR_DEVICE, --gen-device GENERATOR_DEVICE
-                        Device for torch.Generator, e.g., 'cuda' or 'cpu'. If not set, use 'cpu' for better reproducibility across different hardware.
+                        Device for torch.Generator, e.g., 'cuda' or 'cpu'. Defaults to the current rank's accelerator, falling back to CPU when there is none. CPU sampling is not reproducible across torch versions: torch 2.12 changed the bf16 `randn` kernel.
   --saved-fps SAVED_FPS, --fps SAVED_FPS
                         Export generated video with specified fps
   --example-summary, --esummary

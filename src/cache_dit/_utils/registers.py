@@ -21,6 +21,7 @@ from ..logger import init_logger
 
 from .utils import (
   strify,
+  get_rank_device,
   maybe_destroy_distributed,
   maybe_init_distributed,
   maybe_apply_optimization,
@@ -168,8 +169,11 @@ class ExampleInputData:
   use_en_prompt: Optional[bool] = None
   # Other inputs
   seed: int = 0
-  # Use 'cpu' by default for better reproducibility across different hardware
-  gen_device: str = "cpu"
+  # `None` means "the current rank's accelerator, CPU when there is none". Sampling on the
+  # accelerator is not a neutral choice: torch 2.12 rewrote the CPU path of `randn` for
+  # half/bf16 (pytorch/pytorch#175988), so a CPU generator samples a different latent -- and
+  # therefore draws a different image -- on 2.11 and on 2.12+ with the same seed.
+  gen_device: Optional[str] = None
   # Some extra args, e.g, editing model specific inputs
   extra_input_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
 
@@ -304,7 +308,7 @@ class ExampleInputData:
       self.gen_device = args.generator_device
     if args.seed is not None:
       self.seed = args.seed
-    input_data["generator"] = torch.Generator(self.gen_device).manual_seed(self.seed)
+    input_data["generator"] = torch.Generator(self.resolved_gen_device()).manual_seed(self.seed)
     # Remove redundant keys from input data
     input_data.pop("seed", None)
     input_data.pop("gen_device", None)
@@ -314,6 +318,22 @@ class ExampleInputData:
       input_data["references"] = references
     return input_data
 
+  def resolved_gen_device(self) -> str:
+    """Resolve the device used to build the `generator`.
+
+    :returns: The explicit `gen_device` when one is set, otherwise the current rank's
+      accelerator, falling back to CPU when it is not a CUDA device.
+    """
+    if self.gen_device is not None:
+      return self.gen_device
+    _, device = get_rank_device()
+    # Only CUDA generators are verified to sample the same latents across torch versions.
+    # Other backends keep the CPU behaviour they had before this default changed, instead
+    # of trading one reproducibility problem for an unverified one.
+    if device.type != "cuda":
+      return "cpu"
+    return str(device)
+
   def new_generator(
     self,
     args: argparse.Namespace = None,
@@ -321,18 +341,20 @@ class ExampleInputData:
     seed_override: Optional[int] = None,
   ) -> torch.Generator:
     # NOTE: We should always create a new generator before each inference to
-    # ensure reproducibility when using the same seed. Alawys use cpu generator
-    # for better cross-device consistency.
+    # ensure reproducibility when using the same seed. The generator lives on the
+    # accelerator by default, which keeps the sampled latents stable across torch
+    # versions (see the `gen_device` comment above).
     if args is not None and args.generator_device is not None:
       self.gen_device = args.generator_device
+    gen_device = self.resolved_gen_device()
     if seed_override is not None:
-      return torch.Generator(self.gen_device).manual_seed(seed_override)
+      return torch.Generator(gen_device).manual_seed(seed_override)
     if args is not None and args.seed is not None:
-      return torch.Generator(self.gen_device).manual_seed(args.seed)
+      return torch.Generator(gen_device).manual_seed(args.seed)
     elif self.seed is not None:
-      return torch.Generator(self.gen_device).manual_seed(self.seed)
+      return torch.Generator(gen_device).manual_seed(self.seed)
     else:
-      return torch.Generator(self.gen_device).manual_seed(0)
+      return torch.Generator(gen_device).manual_seed(0)
 
   def summary(self, args: argparse.Namespace) -> str:
     summary_str = "🤖 Example Input Summary:\n"

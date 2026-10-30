@@ -1320,9 +1320,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--gen-device",
     type=str,
     default=None,
-    help="Device for torch.Generator, e.g., 'cuda' or 'cpu'. "
-    "If not set, use 'cpu' for better reproducibility across "
-    "different hardware.",
+    help="Device for torch.Generator, e.g., 'cuda' or 'cpu'. Defaults to the current "
+    "rank's accelerator, falling back to CPU when there is none. CPU sampling is not "
+    "reproducible across torch versions: torch 2.12 changed the bf16 `randn` kernel.",
   )
   # Extra params
   parser.add_argument(

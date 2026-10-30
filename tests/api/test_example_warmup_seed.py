@@ -1,5 +1,7 @@
 from argparse import Namespace
+from types import SimpleNamespace
 
+import torch
 from PIL import Image
 
 from cache_dit._utils import registers as example_registers
@@ -29,6 +31,7 @@ def test_examples_cli_accepts_warmup_prompt() -> None:
 
 def test_example_new_generator_uses_warmup_seed_only_for_warmup(monkeypatch, ) -> None:
   monkeypatch.setattr(example_registers, "maybe_init_distributed", lambda _args: (0, "cpu"))
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda: (0, torch.device("cpu")))
   args = Namespace(generator_device=None, seed=11, warmup_seed=23)
   example = Example(args=args, input_data=ExampleInputData(seed=7))
 
@@ -41,6 +44,7 @@ def test_example_new_generator_uses_warmup_seed_only_for_warmup(monkeypatch, ) -
 
 def test_example_new_generator_warmup_falls_back_to_regular_seed_when_unset(monkeypatch, ) -> None:
   monkeypatch.setattr(example_registers, "maybe_init_distributed", lambda _args: (0, "cpu"))
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda: (0, torch.device("cpu")))
   args = Namespace(generator_device=None, seed=11, warmup_seed=None)
   example = Example(args=args, input_data=ExampleInputData(seed=7))
 
@@ -82,6 +86,7 @@ def test_example_run_uses_warmup_prompt_only_for_warmup(monkeypatch) -> None:
   pipe = _DummyPipe()
 
   monkeypatch.setattr(example_registers, "maybe_init_distributed", lambda _args: (1, "cpu"))
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda: (1, torch.device("cpu")))
   monkeypatch.setattr(example_registers, "maybe_apply_optimization",
                       lambda _args, _pipe, **_kwargs: _pipe)
   monkeypatch.setattr(example_registers, "maybe_destroy_distributed", lambda: None)
@@ -121,3 +126,29 @@ def test_example_init_config_summary_includes_warmup_overrides() -> None:
 
   assert "- Warmup Seed: 23" in summary
   assert "- Warmup Prompt: warmup prompt" in summary
+
+
+def test_example_input_data_defaults_generator_to_rank_accelerator(monkeypatch) -> None:
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda: (0, torch.device("cuda", 0)))
+
+  data = ExampleInputData(prompt="x")
+
+  assert data.resolved_gen_device() == "cuda:0"
+
+
+def test_example_input_data_keeps_explicit_generator_device(monkeypatch) -> None:
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda: (0, torch.device("cuda", 0)))
+
+  data = ExampleInputData(prompt="x", gen_device="cpu")
+
+  assert data.resolved_gen_device() == "cpu"
+
+
+def test_example_input_data_falls_back_to_cpu_on_non_cuda_accelerator(monkeypatch) -> None:
+  # A bare device stand-in: `torch.device("npu")` only parses when torch_npu is installed.
+  monkeypatch.setattr(example_registers, "get_rank_device", lambda:
+                      (0, SimpleNamespace(type="npu")))
+
+  data = ExampleInputData(prompt="x")
+
+  assert data.resolved_gen_device() == "cpu"
