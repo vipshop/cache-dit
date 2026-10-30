@@ -22,7 +22,7 @@
 |---|---|---|
 | `CACHE_DIT_RELEASE_PROFILE` | `mini` | `mini` / `full` |
 | `CACHE_DIT_RELEASE_VERSION` | 空（scm 推导） | full 必给；mini 禁止给（版本必须由 scm 推导并强制 `.dev`） |
-| `CACHE_DIT_RELEASE_ENVS` | mini `py312` / full `py310 py311 py312 py313 py314` | 空格分隔的 conda env |
+| `CACHE_DIT_RELEASE_ENVS` | mini `py312` / full `py311 py312 py313 py314` | 空格分隔的 conda env |
 | `CACHE_DIT_RELEASE_DIST` | `dist/` | 产物落点 |
 | `CACHE_DIT_RELEASE_WORK_ROOT` | `.tmp/release_build` | workspace 根（`base/` 与 `<channel>/` 两个子目录） |
 | `CACHE_DIT_RELEASE_CHANNEL` | `cu13` | local 版本后缀 + 索引目录 |
@@ -88,7 +88,7 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 | profile | envs | arch | 版本 | 产物 | 用途 |
 |---|---|---|---|---|---|
 | `mini` | `py312` | 单 arch（默认 `120a`） | scm 推导 `1.5.x.devN` | 纯 wheel + 1 个 cu13 wheel | 流水线验证；禁止发布 |
-| `full` | `py310`–`py314` | setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`；arch 留空） | 必给 V | 1 纯 wheel + 5 cu13 wheel（各 ~32 MB） | 发布 |
+| `full` | `py311`–`py314` | setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`；arch 留空） | 必给 V | 1 纯 wheel + 4 cu13 wheel（各 ~32 MB） | 发布 |
 
 ## 6. 版本推导
 

@@ -1,6 +1,6 @@
 ---
 name: cache-dit-build-release
-description: "cache-dit 发布全流程（给定一个版本号即可执行完）：full profile 一次构建 PyPI 纯 Python wheel 与带 SVDQuant CUDA 扩展的 +cu13 wheel（cp310–cp314，默认编译 setup.py 全架构集——CUDA 13 下 sm 89/90a/100/120a，禁止用 CACHE_DIT_RELEASE_ARCH 收窄，manylinux 平台标签与 $ORIGIN RPATH 归一）、gh-pages 上的 PEP 503 静态索引发布、GitHub Release 资产上传、PyPI 上传，以及发布后验收与安装语义。Use when cutting a cache-dit release, building or publishing the CUDA-extension wheels under whl/cu13, regenerating the wheel index on gh-pages, uploading the pure-Python wheel to PyPI, or verifying an install from the index."
+description: "cache-dit 发布全流程（给定一个版本号即可执行完）：full profile 一次构建 PyPI 纯 Python wheel 与带 SVDQuant CUDA 扩展的 +cu13 wheel（cp311–cp314，默认编译 setup.py 全架构集——CUDA 13 下 sm 89/90a/100/120a，禁止用 CACHE_DIT_RELEASE_ARCH 收窄，manylinux 平台标签与 $ORIGIN RPATH 归一）、gh-pages 上的 PEP 503 静态索引发布、GitHub Release 资产上传、PyPI 上传，以及发布后验收与安装语义。Use when cutting a cache-dit release, building or publishing the CUDA-extension wheels under whl/cu13, regenerating the wheel index on gh-pages, uploading the pure-Python wheel to PyPI, or verifying an install from the index."
 user-invocable: true
 ---
 
@@ -24,7 +24,7 @@ user-invocable: true
 
 | 产物 | 名称 | 去向 |
 |---|---|---|
-| CUDA wheel ×5 | `cache_dit-${V}+cu13-cp3{10..14}-cp3{10..14}-manylinux_2_38_x86_64.whl`（各 ~32 MB） | Release `v${V}+cu13` 资产 + gh-pages 索引 `whl/cu13/` |
+| CUDA wheel ×4 | `cache_dit-${V}+cu13-cp3{11..14}-cp3{11..14}-manylinux_2_38_x86_64.whl`（各 ~32 MB） | Release `v${V}+cu13` 资产 + gh-pages 索引 `whl/cu13/` |
 | 纯 Python wheel ×1 | `cache_dit-${V}-py3-none-any.whl`（~0.5 MB） | PyPI（Release `v${V}` 挂 notes；资产可附可不附，见第 4 步） |
 | 索引页 | `whl/cu13/cache-dit/index.html`（PEP 503，每个锚点带 sha256） | 项目 `gh-pages` 分支根 → `vipshop.github.io/cache-dit/` |
 
@@ -46,7 +46,7 @@ pip install cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/
 ```bash
 git status --porcelain -- src csrc tools setup.py pyproject.toml setup.cfg MANIFEST.in README.md LICENSE
 "${CUDA_HOME:-/usr/local/cuda}/bin/nvcc" --version | tail -2     # 需 CUDA 13.x（cu13 flavor 硬性要求）
-for e in py310 py311 py312 py313 py314; do \
+for e in py311 py312 py313 py314; do \
   conda run -n "$e" python -c \
   "import sys, packaging, setuptools_scm, torch, wheel; print(sys.version.split()[0], torch.__version__)"; done
 command -v ccache patchelf objdump gh twine
@@ -56,7 +56,7 @@ gh release view "v${V}+cu13" --repo vipshop/cache-dit            # 期望 not fo
 
 - 第一条输出必须为空：full 档只从已提交源构建。确有需要可 `CACHE_DIT_RELEASE_ALLOW_UNCOMMITTED=1` 绕过（会告警，产物不对应任何 commit）。
 - PyPI 版本不可覆盖：确认 `cache-dit` 上没有 V（`curl -s https://pypi.org/pypi/cache-dit/json`）。
-- py310–py314 提供发布用的 CPython 集合，缺哪个就少一个 wheel；发布集合以实际 env 为准。本机 5 个 env 均已存在（`conda env list`）。
+- py311–py314 提供发布用的 CPython 集合（Python 3.10 已不再支持，torch 后续版本也不再提供），缺哪个就少一个 wheel；发布集合以实际 env 为准。本机 4 个 env 均已存在（`conda env list`）。
 - gh-pages worktree：仓库常备 `.tmp/gh-pages`（`git worktree list` 可见），直接复用；不存在则 `git worktree add .tmp/gh-pages gh-pages`。
 
 ### 1. dry-run（可选，首次发布或改过发布脚本时）
@@ -70,7 +70,7 @@ CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=$V CACHE_DIT_RELEASE_DR
 
 ```bash
 CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=$V CACHE_DIT_RELEASE_CHANNEL=cu13 \
-  CACHE_DIT_RELEASE_ENVS="py310 py311 py312 py313 py314" \
+  CACHE_DIT_RELEASE_ENVS="py311 py312 py313 py314" \
   bash tools/build_releases.sh
 ```
 
