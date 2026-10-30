@@ -1,6 +1,75 @@
+import importlib
+from types import ModuleType
+
 import torch
 
-from ._comm import _get_required_ops_module
+_EXTENSION_MODULE_NAME = "cache_dit._C_attn"
+_cached_extension_module: ModuleType | None = None
+_cached_load_error: Exception | None = None
+
+
+def _load_extension_module() -> ModuleType | None:
+  """Import the optional attention CUDA extension at most once.
+
+  :returns: The loaded extension module, or `None` when the import failed and the
+    failure was cached.
+  """
+
+  global _cached_extension_module, _cached_load_error
+
+  if _cached_extension_module is not None:
+    return _cached_extension_module
+  if _cached_load_error is not None:
+    return None
+
+  try:
+    _cached_extension_module = importlib.import_module(_EXTENSION_MODULE_NAME)
+  except Exception as exc:  # pragma: no cover - exercised in environments without the extension
+    _cached_load_error = exc
+    return None
+
+  return _cached_extension_module
+
+
+def attn_extension_is_available() -> bool:
+  """Return whether the optional attention CUDA extension can be imported.
+
+  :returns: `True` when the compiled attention extension module is available.
+  """
+
+  return _load_extension_module() is not None
+
+
+def attn_get_load_error() -> Exception | None:
+  """Return the cached import error from the optional attention CUDA extension.
+
+  :returns: The import error raised while loading the extension, or `None` when the
+    extension loaded successfully.
+  """
+
+  _load_extension_module()
+  return _cached_load_error
+
+
+def _get_required_ops_module() -> ModuleType:
+  """Return the extension's `ops` submodule used by the Python wrappers.
+
+  :returns: The `ops` submodule exported by the loaded attention extension.
+  :raises RuntimeError: If the extension is unavailable or does not expose `ops`.
+  """
+
+  extension_module = _load_extension_module()
+  if extension_module is None:
+    raise RuntimeError(
+      "The optional Cache-DiT attention CUDA extension is not available. Build it with "
+      "`CACHE_DIT_BUILD_ATTN=1 python -m pip install -e . --no-deps --no-build-isolation` "
+      "after `conda activate cdit`.") from attn_get_load_error()
+
+  ops_module = getattr(extension_module, "ops", None)
+  if ops_module is None:
+    raise RuntimeError(
+      "The loaded Cache-DiT attention CUDA extension does not expose an `ops` submodule.")
+  return ops_module
 
 
 def _call_fused_merge_attn_states(
@@ -101,5 +170,8 @@ def fused_merge_attn_states(
 
 
 __all__ = [
+  "_get_required_ops_module",
+  "attn_extension_is_available",
+  "attn_get_load_error",
   "fused_merge_attn_states",
 ]
