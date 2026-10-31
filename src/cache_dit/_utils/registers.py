@@ -52,6 +52,9 @@ class ExampleType(Enum):
   T2A = "T2A - Text to Audio"
   # Character animation: a reference character image plus a driving video produce a video.
   ANIMATE = "ANIMATE - Reference Image + Driving Video to Video"
+  # Speech driven: a reference image plus a waveform produce a talking video. The waveform is a
+  # generation input (not a soundtrack), so this is a video-only task for the output parse.
+  S2V = "S2V - Reference Image + Speech to Video"
 
 
 # Pipelines of these tasks return a video stream plus an optional soundtrack. `call_pipe` (which
@@ -70,6 +73,7 @@ _VIDEO_TASKS = frozenset({
   ExampleType.FLF2V,
   ExampleType.VACE,
   ExampleType.ANIMATE,
+  ExampleType.S2V,
 })
 
 # `--reference-*-path` flags and the diffusers class that loads them. Order is semantic: a pipeline
@@ -155,6 +159,9 @@ class ExampleInputData:
   # an explicit sigma list (LTX-2.5 `LTX2DFRPipeline`) take no such argument, so they clear it.
   # Builder-only, like `skip_image_resize`: `data()` pops it before forwarding.
   use_num_inference_steps: bool = True
+  # Forward `--num-frames` to the pipeline. Pipelines whose frame count is named differently
+  # (Wan2.2-S2V takes `num_frames_per_chunk`) map the flag themselves and clear this.
+  use_num_frames: bool = True
   # Specific inputs for video generation, e.g, Wan VACE
   video: Optional[List[Image.Image]] = None
   mask: Optional[List[Image.Image]] = None
@@ -204,6 +211,7 @@ class ExampleInputData:
     skip_image_resize = data.pop("skip_image_resize", False)
     keep_alpha = data.pop("keep_alpha", False)
     use_num_inference_steps = data.pop("use_num_inference_steps", True)
+    use_num_frames = data.pop("use_num_frames", True)
     # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
     # forwarded separately, after the arg overrides.
     allow_references = getattr(self, "allow_references", True)
@@ -243,7 +251,7 @@ class ExampleInputData:
       input_data["width"] = args.width
     if args.num_inference_steps is not None and use_num_inference_steps:
       input_data["num_inference_steps"] = args.num_inference_steps
-    if args.num_frames is not None:
+    if args.num_frames is not None and use_num_frames:
       input_data["num_frames"] = args.num_frames
     # `--extra-input-kwargs` is merged above, so drop the key after every source was considered.
     if not use_num_inference_steps:
@@ -1077,7 +1085,12 @@ class Example:
       # pipeline hides it behind `output.frames`. Unwrap exactly one batch level, keyed on the rank
       # of the container rather than on its type, so a `list[frames]` result stays a frame list.
       if isinstance(output, dict):
-        videos = output.get("videos", output)
+        # `WanPipelineOutput` and the LTX-style outputs are dict subclasses that only carry
+        # `frames`; falling back to the object itself would hand the writer a mapping and iterate
+        # over its keys.
+        videos = output.get("videos")
+        if videos is None:
+          videos = output.get("frames", output)
       elif getattr(output, "videos", None) is not None:
         videos = output.videos
       else:

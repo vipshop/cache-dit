@@ -11,6 +11,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |:---|:---:|:---:|:---:|
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
 |CausVid-Wan|✖️|✅|✅|
+|SANA-Video-2.0-5B (T2V/TI2V)|✅|✅|✅|
 |SANA-WM-I2V|✅|✖️|✅|
 |FLUX.2-Klein-9b-kv|✖️|✖️|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
@@ -72,6 +73,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Wan-Animate-2-Distilled|✅|✅|✅|
 |Wan-2.2-T2V|✅|✅|✅|
 |Wan-2.2-I2V|✅|✅|✅|
+|Wan-2.2-S2V|✅|✅|✅|
 |Wan-2.2-VACE-Fun|✅|✅|✅|
 |Wan-2.1-T2V|✅|✅|✅|
 |Wan-2.1-I2V|✅|✅|✅|
