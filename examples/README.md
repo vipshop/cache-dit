@@ -75,6 +75,10 @@ Available examples:
 - ✅ ltx25_t2v                      - Default: Lightricks/LTX-2.5-Diffusers
 - ✅ ltx25_i2v                      - Default: Lightricks/LTX-2.5-Diffusers
 - ✅ ltx25_dfr                      - Default: Lightricks/LTX-2.5-Diffusers (DFR, 8 steps)
+- ✅ wan2.2_s2v                    - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
+  (speech-to-video: `--audio-path` + `--image-path`. The cache skips the audio injection on
+  cached steps, so keep `--rdt` tighter than the Wan-T2V presets and prefer a small
+  `--max-cached-steps`; `rdt=0.08` reaches 39.6 dB, `rdt=0.20` 38.7 dB at 480x832.)
 - ✅ wan2.2_t2v                     - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
 - ✅ wan2.1_t2v                     - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 - ✅ wan2.2_i2v                     - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers

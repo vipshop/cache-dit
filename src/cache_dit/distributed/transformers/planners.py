@@ -71,6 +71,10 @@ def _activate_cp_planners():
     ".qwen_image21", "QwenImage21ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   QwenImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".qwen_image", "QwenImageContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  # "WanS2V" is imported before "WanAnimate2" and "Wan": planner lookup matches the first
+  # registered prefix, and `WanS2VTransformer3DModel` also starts with "Wan".
+  WanS2VContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".wan_s2v", "WanS2VContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   # "WanAnimate2" is imported before "Wan": planner lookup matches the first registered prefix, and
   # `WanAnimate2Transformer3DModel` also starts with "Wan".
   WanAnimate2ContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -208,7 +212,9 @@ def _activate_tp_planners():
     ".qwen_image21", "QwenImage21TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   QwenImageTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".qwen_image", "QwenImageTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
-  # Before "Wan" for the same prefix reason as the CP planner above.
+  # Before "WanAnimate2" / "Wan" for the same prefix reason as the CP planner above.
+  WanS2VTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".wan_s2v", "WanS2VTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   WanAnimate2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".wan_animate_2", "WanAnimate2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   WanTensorParallelismPlanner = _safe_import(  # noqa: F841
