@@ -202,6 +202,41 @@ def fast_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   return minimax_h3_adapter(pipe, **kwargs)
 
 
+# NOTE: The registry returns the first class-name prefix that matches, so these must be registered
+# before "WanAnimate2" and "Wan". Two prefixes on purpose: the model is matched by *pipeline* class
+# name, whose upstream name is `WanSpeechToVideoPipeline` and which does not start with "WanS2V";
+# "WanS2V" additionally covers the transformer-only path used by the tests.
+@BlockAdapterRegister.register("WanSpeechToVideo")
+@BlockAdapterRegister.register("WanS2V")
+def wan_s2v_adapter(pipe, **kwargs) -> BlockAdapter:
+  from ...models.pipelines.wan_s2v.transformer import (
+    WanS2VTransformer3DModel,
+    WanS2VTransformerBlock,
+  )
+
+  # cache-dit owns this transformer, so `_relaxed_assert` would only log a warning for it; matching
+  # the generic "Wan" adapter would then silently run with the wrong block contract.
+  assert isinstance(pipe.transformer, WanS2VTransformer3DModel), (
+    f"WanS2V adapter expects WanS2VTransformer3DModel, got {type(pipe.transformer)}")
+  assert isinstance(pipe.transformer.blocks[0], WanS2VTransformerBlock), (
+    f"WanS2V adapter expects WanS2VTransformerBlock, got {type(pipe.transformer.blocks[0])}")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    # The block list is named `blocks`; blocks take `(hidden_states, encoder_hidden_states, ...)` and
+    # return a single tensor (Wan-family Pattern_2). The audio injection and the segment-aware
+    # modulation live inside the block, so the loop body has nothing left to do.
+    blocks=pipe.transformer.blocks,
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    # `guidance_scale > 1` runs the conditional and the unconditional pass as two sequential
+    # transformer calls, same as Wan 2.1/2.2.
+    has_separate_cfg=True,
+    **kwargs,
+  )
+
+
 # NOTE: The registry returns the first class-name prefix that matches, so "WanAnimate2" must be
 # registered before "Wan" ("WanAnimate2*" class names also start with "Wan").
 @BlockAdapterRegister.register("WanAnimate2")

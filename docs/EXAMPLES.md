@@ -49,6 +49,7 @@ Available examples:
 - ✅ skyreels_v2                    - Default: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
 - ✅ ltx2_t2v                       - Default: Lightricks/LTX-2
 - ✅ ltx2_i2v                       - Default: Lightricks/LTX-2
+- ✅ wan2.2_s2v                    - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
 - ✅ wan_animate_2                  - Default: Wan-AI/Wan2.2-Animate-2-14B-Diffusers
 - ✅ wan_animate_2_distilled        - Default: Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers
 - ✅ wan2.2_t2v                     - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
