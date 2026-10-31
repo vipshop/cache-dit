@@ -268,6 +268,29 @@ def wan_animate_2_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("CausVid")
+def causvid_wan_adapter(pipe, **kwargs) -> BlockAdapter:
+  # CausVid-Wan is a chunk-causal Wan 2.1 student: the block contract is still Wan's (one packed
+  # chunk, one returned tensor), but a block also reads and writes its layer's KV cache, so the
+  # clean-latent pass of every chunk must bypass the block-skip wrapper. The vendored transformer
+  # does that itself (`force_full_compute=True`), which is why this adapter carries no PatchFunctor.
+  from ...models.pipelines.causvid.transformer import CausVidTransformer3DModel
+
+  _relaxed_assert(pipe.transformer, CausVidTransformer3DModel)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    # The student is guidance-distilled: every denoising step is a single conditional forward.
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import (

@@ -98,6 +98,7 @@ __all__ = [
   "wan_animate_2_distilled_example",
   "wan_s2v_example",
   "lingbot_video_example",
+  "causvid_wan_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -183,6 +184,7 @@ _env_path_mapping = {
   "WAN_ANIMATE_2_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Diffusers",
   "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
   "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
+  "CAUSVID_DIR": "tianweiy/CausVid",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -4400,6 +4402,81 @@ def lingbot_video_example(args: argparse.Namespace, **kwargs) -> Example:
       num_frames=num_frames,
       num_inference_steps=num_inference_steps,
       guidance_scale=3.0,
+      # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
+      extra_input_kwargs={"output_type": "pil"},
+    ),
+  )
+
+
+_CAUSVID_WAN_PROMPT = (
+  "A corgi running along a beach at sunset, warm golden light, wet fur catching the sun, gentle "
+  "waves behind it, smooth tracking camera, cinematic, highly detailed.")
+
+_CAUSVID_WAN_BASE = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+
+
+def _causvid_wan_transformer_factory(ckpt_root: str, base_root: str):
+  """Build a factory that loads the CausVid student from a native checkpoint.
+
+  :param ckpt_root: Local `tianweiy/CausVid` directory holding `autoregressive_checkpoint/model.pt`.
+  :param base_root: Local Wan2.1 diffusers directory, read only for `transformer/config.json`.
+  :returns: A zero-argument factory accepted by `ExampleInitConfig.transformer`.
+  """
+
+  def build():
+    from ..models.pipelines.causvid.convert import build_causvid_transformer
+
+    checkpoint = os.path.join(ckpt_root, "autoregressive_checkpoint", "model.pt")
+    if not os.path.isfile(checkpoint):
+      raise FileNotFoundError(
+        f"CausVid student checkpoint not found at {checkpoint}. Download it with "
+        f"`hf download tianweiy/CausVid --include 'autoregressive_checkpoint/*'` and point "
+        f"`CAUSVID_DIR` at the local directory.")
+    config_path = os.path.join(base_root, "transformer", "config.json")
+    return build_causvid_transformer(
+      checkpoint,
+      config_path=config_path if os.path.isfile(config_path) else None,
+      dtype=torch.bfloat16,
+    )
+
+  return build
+
+
+@ExampleRegister.register("causvid_wan", default="tianweiy/CausVid")
+def causvid_wan_example(args: argparse.Namespace, **kwargs) -> Example:
+  """CausVid-Wan (Wan2.1-T2V-1.3B causal few-step student) text-to-video example.
+
+  Two checkpoints are involved: `model_name_or_path` points at the Wan2.1 diffusers base (text
+  encoder, tokenizer, VAE) and `CAUSVID_DIR` at the CausVid repo with the distilled student. The
+  student is chunk-causal and runs a fixed 3-step DMD table without CFG, so `--steps` is ignored;
+  81 frames is the released clip length (7 chunks of 3 latent frames).
+
+  :param args: CLI arguments.
+  :returns: The CausVid-Wan example.
+  """
+  from ..models.pipelines.causvid import CausVidPipeline
+
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames = 81 if args.num_frames is None else args.num_frames
+  base_root = _path(_CAUSVID_WAN_BASE, args)
+  ckpt_root = _path("tianweiy/CausVid", args)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=base_root,
+      pipeline_class=CausVidPipeline,
+      transformer=_causvid_wan_transformer_factory(ckpt_root, base_root),
+    ),
+    input_data=ExampleInputData(
+      prompt=_CAUSVID_WAN_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=3,
+      guidance_scale=1.0,
       # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
       extra_input_kwargs={"output_type": "pil"},
     ),

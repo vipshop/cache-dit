@@ -1564,6 +1564,17 @@ def _force_compile_dynamic(args, pipe) -> bool:
   ]
   if args.force_compile_dynamic:
     return True
+  if pipe.__class__.__name__.startswith("CausVid"):
+    # A causal autoregressive block is called with a chunk-varying `current_start` token offset, so
+    # a dynamic graph is what lets one compiled graph cover all 7 chunks (28 forwards) instead of
+    # specialising one per chunk.
+    if (getattr(args, "module_layerwise_cpu_offload", False)
+        or getattr(args, "sequential_cpu_offload", False)):
+      # Offload swaps parameter storages between forwards; a dynamic block graph keeps references
+      # that the swap invalidates (measured: `cudaErrorIllegalAddress`). Stay static and accept the
+      # per-chunk specialisation, which is still faster than eager here.
+      return False
+    return True
   if args.parallel_type is None or "tp" not in args.parallel_type.lower():
     return False
   # For some specific pipelines with PyTorch native TP.
