@@ -990,6 +990,52 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("SanaVideo2")
+def sana_video2_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for SANA-Video 2.0 (`SanaVideo2Pipeline` / `SanaVideo2Transformer3DModel`).
+
+  The transformer is cache-dit's vendored copy (`cache_dit.models.pipelines.sana_video2`), so no
+  diffusers type check applies. Its denoising stack is `transformer.blocks`; each block takes
+  `(hidden_states, encoder_hidden_states, temb, encoder_attention_mask, rotary_emb, value_buffer,
+  key_buffer, attn_proj_weight, mlp_proj_weight, cp_config)` and returns the updated group residual
+  (Pattern_3).
+
+  Three model specifics matter here:
+
+  * The block maps "running Attention-Residual group residual" to "running group residual". The two
+    depth aggregations, the running residual and the per-group flush live *inside* the block,
+    because upstream performs them in the transformer's loop body, which the cached-block wrapper
+    cannot replay. The shared depth buffers and the two aggregation weights are ordinary arguments,
+    which the wrapper forwards unchanged to every block.
+  * `has_separate_cfg=False`: CFG is folded into the batch axis (`cat([x, x])`), i.e. exactly one
+    `transformer.forward()` per denoising step. The pipeline raises if a cached run is asked for
+    `guidance_scale <= 1`, which would halve the step bookkeeping.
+  * `Fn_compute_blocks` must be a **multiple of `attn_res_block_size`** (8 for the released
+    checkpoint, which is also the DBCache default): a group is only consistent when it is cached or
+    recomputed as a whole, since a skipped block leaves that group's flushed slot at the previous
+    step's value. The transformer warns when the resolved cache config violates it.
+
+  :param pipe: `SanaVideo2Pipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `blocks` denoising stack.
+  """
+  transformer = getattr(pipe, "transformer", None)
+  if transformer is None:
+    raise ValueError("SANA-Video 2.0 adapter needs a pipeline with a `transformer`.")
+  if not getattr(transformer, "blocks", None):
+    raise ValueError("SANA-Video 2.0 transformer has no `blocks` stack.")
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 # NOTE: `SanaWMTransformer3DModel` and `SanaWMLTX2RefinerTransformer3DModel` share the `SanaWM`
 # prefix, and the registry returns the first matching prefix, so a single registration dispatches
 # on the block-stack attribute instead of depending on registration order.
