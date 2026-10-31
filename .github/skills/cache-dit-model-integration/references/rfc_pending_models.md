@@ -1,6 +1,6 @@
 # RFC: Pending Model Support — diffusers v0.38+ and Non-diffusers Community Models Not Yet Supported by cache-dit
 
-When to read this: when picking the next model to integrate into cache-dit, or when starting/finishing work on a model listed here (update its Status entry and add a line to R.5). Return to `../SKILL.md` for the integration workflow; see [`./model_download.md`](./model_download.md) for fetching the weights.
+When to read this: when picking the next model to integrate into cache-dit, or when starting/finishing work on a model listed here (update its Status entry and add a line to R.5). Use R.7 for the unified support-priority queue and R.2/R.6 for implementation difficulty. Return to `../SKILL.md` for the integration workflow; see [`./model_download.md`](./model_download.md) for fetching the weights.
 
 ## R.1 Background, Scope and Method
 
@@ -233,7 +233,57 @@ These sit behind backbones cache-dit already covers, so no new adapter should be
 | MOVA 360p / 720p | video DiT is a Wan-shaped `WanModel` (`blocks`), plus a separate audio DiT | `Wan` (Pattern_2) | the `"Wan"` prefix matches `WanModel` by accident; audio and video are separate stacks and only the video one is a cache target |
 | WanCausalDMD | causal Wan few-step | `Wan` | cross-chunk KV — same question as #17 LongLive 2.0 |
 
-## R.7 How to Refresh This List
+## R.7 Unified Support Priority — Community Task Value × Cache-DiT Fit
+
+This is the queue for choosing the next integration; R.2 and R.6 remain ordered by implementation difficulty. It covers every model or variant still marked pending, partially done, or unverified on 2026-10-31. Completed scopes are not listed again: for example, only LingBot-Video MoE appears here, not the completed dense variant, and only Kandinsky 6 VSR appears, not the completed TI2VA trunk.
+
+Scores are editorial 1–5 prioritization aids, not benchmark results:
+
+- **Community**: breadth and likely demand of the task. General video, interactive/world models, avatars, and broadly used image/editing families rank above narrower audio, restoration, 3D, and scientific tasks.
+- **Fit**: how much of Cache-DiT can plausibly help — continuous multi-step DiT blocks, legal block skipping, useful CP/TP/offload/quantization/compile, and practical acceptance metrics. Cross-step KV, few-step distillation, MoE routing, non-uniform stacks, and domain-specific validation lower the score.
+- Rows are ordered by both axes, then by currently reusable integrations and unblock value. A high rank is **not** a promised DBCache speedup: the first residual-diff/cache A/B is still mandatory. P0 = next, P1 = high, P2 = medium, P3 = low.
+
+| Rank | Model / pending scope | Community | Fit | Tier | Rationale and main caveat |
+|---:|---|:---:|:---:|:---:|---|
+| 1 | MAGI-2-preview | 5 | 5 | P0 | General T2VA + I2VA with a `Pattern_3` stack and no documented cross-step KV; best value/risk ratio. Keep pre/post adapters outside the cached stack. |
+| 2 | LongLive 2.0 (5B) | 5 | 4 | P0 | Interactive long video makes CP/offload valuable, and CausVid-Wan plus Wan-Animate-2 now provide concrete chunk-KV recipes. Cache must be chunk-aware; do not assume a DMD student benefits from DBCache. |
+| 3 | LongCat-Video-Avatar-1.5 | 5 | 4 | P0 | High-demand audio-driven avatar video with uniform blocks, an external audio projection, and a manually wired non-avatar sibling to reuse. |
+| 4 | SANA-Video-2B | 4 | 5 | P0 | Cheapest video coverage gap: the existing SANA `Pattern_3` path should only need registration plus the full A/B matrix. High fit, but less strategic novelty than the three rows above. |
+| 5 | HY-Nomas | 4 | 4 | P1 | Camera-controlled video is a strong Cache-DiT workload; `double_blocks` are cacheable, but the per-step camera attention likely needs a PatchFunctor. |
+| 6 | MOVA 360p / 720p | 4 | 4 | P1 | Reuse the Wan-shaped video stack while keeping the separate audio DiT out of scope. Verify that the accidental `"Wan"` prefix match is made explicit and safe. |
+| 7 | VDN-H3 | 4 | 4 | P1 | MiniMax-H3 integration is already available; verify VDN frame-alpha/gating, block I/O, and `has_separate_cfg=False` before claiming family coverage. |
+| 8 | MiniMax Music 3 | 4 | 4 | P1 | Broad music task with a clear target: cache only the 2.4B flow DiT and leave AR LM/RVQ depth decoding outside. Modular plumbing and audio metrics are the main costs. |
+| 9 | BAGEL-7B-MoT | 5 | 3 | P1 | Popular T2I/edit family and unlocks Lance, but `NaiveCache` plus cond/uncond accounting requires a custom `CachedAdapter`, not a plain block wrapper. |
+| 10 | LingBot-World v1 fast / v2 causal-fast | 5 | 3 | P1 | Interactive world generation is strategically valuable; causal chunk KV and streaming step accounting must be proven before any block skipping is enabled. |
+| 11 | HunyuanImage3.0 | 5 | 3 | P1 | High-value image generation with `Pattern_4` block I/O; `ImageKVCacheManager` desynchronization is the go/no-go risk. |
+| 12 | MammothModa2-Preview | 3 | 4 | P2 | Lumina-style `layers` / `Pattern_3` are a good technical fit for T2I/edit. Keep all three Q-Former refiners outside the cached loop. |
+| 13 | Cosmos3 sim / multiview / dreams variants | 3 | 4 | P2 | The existing Cosmos3 adapter should be reusable, but each variant's per-step lidar/rig/action conditioning needs A/B verification; tasks are narrower than general video. |
+| 14 | Lance | 4 | 3 | P2 | Schedule immediately after BAGEL: the `layers` stack and KV design are inherited, while the Qwen2.5-VL vision tower and RoPE still need separate validation. |
+| 15 | SenseNova-U1 / U1.5 (incl. A3B-MoE) | 4 | 3 | P2 | Cache only the denoise-side stack; the AR trunk and flash/paged KV must remain synchronized, with extra MoE risk for A3B. |
+| 16 | ABot-World-0.5B | 4 | 3 | P2 | Relevant causal world-model task and a regular `blocks` stack, but per-chunk KV makes chunk-boundary correctness more important than raw cache hits. |
+| 17 | WanCausalDMD | 4 | 3 | P2 | Wan/CausVid code and tests are reusable, but few-step sampling plus cross-chunk KV caps the likely DBCache upside; CP/offload may be the stronger motivation. |
+| 18 | ACE-Step 1.5 | 4 | 3 | P2 | Valuable music family, but mixed block types and diffusers' own `CacheMixin` make cache ownership and validation substantially harder than MiniMax Music 3. |
+| 19 | Hunyuan3D 2 | 4 | 3 | P2 | Flux-like single-stream blocks are familiar, and text/image-to-3D is useful; geometry-specific acceptance metrics, not the adapter, are the dominant cost. |
+| 20 | LingBot-Video MoE 30B-A3B | 4 | 2 | P3 | Valuable large video variant, but the dense integration deliberately dropped the MoE router/expert kernels. MoE execution and CP/TP strategy are research work, not a variant checkbox. |
+| 21 | Kandinsky 6 VSR | 3 | 2 | P3 | Needs a dedicated SR adapter and prefix despite TI2VA support; the released two-step checkpoint leaves very little block-skip budget. |
+| 22 | SeedVR2-3B | 3 | 2 | P3 | Useful restoration task, but one-pass few-step inference and multi-scale NaDiT limit cache payoff; schedule only for a concrete product need. |
+| 23 | RFD4-Proteina | 2 | 1 | P3 | Non-uniform trunk/pair structure does not fit a flat `BlockAdapter`, and protein-structure correctness needs domain-specific validation. Keep last among plausible custom integrations. |
+
+### 7.1 Unsupported but Currently Excluded
+
+These entries are also unsupported, ordered by their proximity to a possible future Cache-DiT scope. They are **not** an implementation queue and should not be re-added without resolving the stated structural mismatch.
+
+| Order | Model | Why it is excluded now |
+|---:|---|---|
+| E1 | NextStep-1.1 | AR LM + flow head sees one step per token block; there is no long, smooth denoise trajectory for DBCache to exploit. Reconsider only with a discrete/AR caching design. |
+| E2 | LLaDA-Image / -Turbo | Discrete SigVQ diffusion with masked remasking, not continuous flow matching; the block-cache premise does not hold. |
+| E3 | DiffusionGemma | Discrete-diffusion text LM with masked-token remasking, outside the continuous DiT cache design. |
+| E4 | LLaDA2 | Same discrete-remasking mismatch as DiffusionGemma, with no image/video DiT target to justify a separate path. |
+| E5 | Stable-Diffusion-XL | UNet backbone (`SDXLUNet2DConditionModel`), not a DiT. |
+| E6 | DreamLite | UNet backbone; the auxiliary transformer is not the compute bottleneck, so a DiT-only integration misses the target. |
+| E7 | DreamZero-DROID | Robot action-policy world model rather than an image/video generation target. |
+
+## R.8 How to Refresh This List
 
 Run on each new diffusers release (paths relative to `/workspace/dev/vipshop/diffusers` and `/workspace/dev/vipshop/cache-dit`):
 
@@ -259,7 +309,7 @@ grep -n "BlockAdapterRegister.register" src/cache_dit/caching/block_adapters/ada
 
 Also check for models that **reuse** an already-registered backbone class (like LTX-2.5 / PRXPixel / Anima / Echo above) — they only need verification, not an adapter. New rows must be inserted into R.2 at the position their difficulty dictates, and R.3 renumbered accordingly.
 
-### 7.1 Non-diffusers models (R.6)
+### 8.1 Non-diffusers models (R.6)
 
 There is no release tag to diff. Triage each community candidate with four questions, in this order:
 
