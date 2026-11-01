@@ -40,7 +40,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 - [🚀Use CUDA Graphs](./CUDA_GRAPH.md)
 - [🌐Use Ray Wrapper](./RAY.md)
 - [🛠️Layerwise Offload](./OFFLOAD.md)
-- [🛰️Huawei Ascend NPU Support](./ASCEND_NPU.md)
+- [🛰️Huawei Ascend NPU](./ASCEND_NPU.md)
 - [🖥️AMD GPU Support](./AMD_GPU.md)
 - [📄Config with YAML](./LOAD_CONFIGS.md)
 - [🌐Environment Variables](./ENV.md)
