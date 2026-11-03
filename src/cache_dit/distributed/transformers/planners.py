@@ -156,6 +156,8 @@ def _activate_cp_planners():
   HiDreamO1ImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".hidream_o1_image", "HiDreamO1ImageContextParallelismPlanner",
     ImportErrorContextParallelismPlanner)
+  SanaVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_video", "SanaVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   SanaVideo2ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_video2", "SanaVideo2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   SanaWMContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -271,6 +273,8 @@ def _activate_tp_planners():
     ImportErrorTensorParallelismPlanner)
   Kandinsky6TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".kandinsky6", "Kandinsky6TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  SanaVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_video", "SanaVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SanaVideo2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_video2", "SanaVideo2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SanaWMTensorParallelismPlanner = _safe_import(  # noqa: F841

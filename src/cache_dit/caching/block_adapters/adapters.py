@@ -1059,6 +1059,53 @@ def sana_video2_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("SanaVideo")
+@BlockAdapterRegister.register("SanaImageToVideo")
+def sana_video_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for SANA-Video (`SanaVideoPipeline` / `SanaImageToVideoPipeline`).
+
+  Two prefixes are registered because the I2V pipeline class is `SanaImageToVideoPipeline`: without
+  the second one it falls through to the 2D `Sana` adapter and trips its transformer assertion.
+
+  The transformer is diffusers' `SanaVideoTransformer3DModel`; its denoising stack is
+  `transformer.transformer_blocks`. Each block takes
+  `(hidden_states, attention_mask, encoder_hidden_states, encoder_attention_mask, timestep, frames,
+  height, width, rotary_emb)` positionally and returns a single tensor, so the cached `Pattern_3`
+  wrapper binds `hidden_states` by name and replays the remaining eight arguments untouched — no
+  `PatchFunctor` is needed. Everything the block consumes beyond `hidden_states` (the 6-way AdaLN
+  modulation from `timestep`, the cross-attention context, the full RoPE table) is computed once per
+  step outside the loop, which is what makes block-level caching valid here.
+
+  `has_separate_cfg=False`: both pipelines fold CFG into the batch axis (`torch.cat([latents] * 2)`)
+  and run exactly one `transformer.forward()` per denoising step, with or without guidance.
+
+  The registration name must stay **after** `SanaVideo2` (SANA-Video 2.0 shares the `SanaVideo`
+  prefix) and **before** `Sana`, because adapter lookup is a first-hit `startswith` over the
+  registry: `SanaVideo2*` would otherwise be captured here and `SanaVideo*` by `Sana`.
+
+  :param pipe: SANA-Video pipeline, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `transformer_blocks` denoising stack.
+  """
+
+  from diffusers import SanaVideoTransformer3DModel
+
+  _relaxed_assert(pipe.transformer, SanaVideoTransformer3DModel)
+  # diffusers declares `_repeated_blocks = []` for SANA-Video, so regional quantization and
+  # `compile_repeated_blocks()` would otherwise widen to the whole module.
+  declare_repeated_blocks(pipe.transformer)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    blocks_name="transformer_blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 # NOTE: `SanaWMTransformer3DModel` and `SanaWMLTX2RefinerTransformer3DModel` share the `SanaWM`
 # prefix, and the registry returns the first matching prefix, so a single registration dispatches
 # on the block-stack attribute instead of depending on registration order.
