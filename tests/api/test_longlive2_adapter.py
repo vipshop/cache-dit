@@ -23,6 +23,7 @@ Usage:
 import copy
 
 import diffusers
+import numpy as np
 import pytest
 import torch
 
@@ -431,3 +432,31 @@ def test_guidance_scale_is_rejected():
                            vae=None)
   with pytest.raises(ValueError, match="guidance-distilled"):
     pipe(prompt="x", guidance_scale=1.3)
+
+
+def test_video_output_keeps_exactly_one_batch_level():
+  """`parse_audio_video_output` unwraps exactly one batch level via `videos[0]`.
+
+  Returning a flat list of frames therefore silently turns the first frame into the whole clip: the
+  exporter iterates the frame's rows and writes a "video" that is one row per frame, with no error
+  and a playable but wrong file. Only a shape check (or `ffprobe`) catches it, so both output paths
+  are pinned here.
+  """
+  pipe = LongLive2Pipeline(tokenizer=None,
+                           text_encoder=None,
+                           transformer=_tiny_transformer(),
+                           vae=None)
+  video = torch.randn(1, 3, 5, 8, 8)  # (B, C, T, H, W)
+
+  frames = pipe._postprocess(video, "np")
+  assert isinstance(frames, list) and len(frames) == 1
+  container = frames[0]
+  assert isinstance(container, np.ndarray)
+  assert container.ndim == 4
+  assert container.shape == (5, 8, 8, 3)
+  assert container.dtype == np.uint8
+
+  # The CLI runs the PIL path (`output_type="pil"` in the example), which needs the same extra level.
+  pil_frames = pipe._postprocess(video, "pil")
+  assert isinstance(pil_frames, list) and len(pil_frames) == 1
+  assert isinstance(pil_frames[0], list) and len(pil_frames[0]) == 5
