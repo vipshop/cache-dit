@@ -38,6 +38,24 @@ logger = logging.getLogger(__name__)
 _REQUIRED_CHECKPOINT_PATHS = ("preview/model.safetensors.index.json", )
 
 
+def _load_audio_decoder(root: Path, dtype):
+  """Load the released Stable Audio decoder, or warn when the checkpoint does not ship it.
+
+  :param root: Checkpoint root holding ``stable-audio-open-1.0/``.
+  :param dtype: Decoder dtype.
+  :returns: The decoder, or ``None`` when the checkpoint has no audio component.
+  """
+
+  from .audio_decoder import Magi2AudioDecoder
+
+  audio_dir = Path(root) / "stable-audio-open-1.0"
+  if not (audio_dir / "model.safetensors").is_file():
+    logger.warning(
+      "MAGI-2 audio decoder is missing from the checkpoint; the run returns video only.")
+    return None
+  return Magi2AudioDecoder(audio_dir, dtype=torch.float32)
+
+
 def _load_text_encoder(root: Path, dtype):
   """Load the released Qwen3.5 conditioner with `transformers`, not with a vendored model.
 
@@ -218,9 +236,7 @@ class Magi2PreviewPipeline(DiffusionPipeline):
       if components["text_encoder"] is None:
         components["text_encoder"] = _load_text_encoder(root, resolved_dtype)
       if components["audio_decoder"] is None:
-        # The released audio VAE is not vendored yet: the video track is complete without it, so the
-        # pipeline reports the gap instead of refusing to run.
-        logger.warning("MAGI-2 audio decoder is not vendored; the run returns video frames only.")
+        components["audio_decoder"] = _load_audio_decoder(root, resolved_dtype)
 
     pipe = cls(transformer=transformer, **components)
     pipe.checkpoint_root = str(root)
@@ -382,7 +398,8 @@ class Magi2PreviewPipeline(DiffusionPipeline):
       output["frames"] = preview_output_to_numpy(video)
       if self.audio_decoder is not None:
         audio = self.audio_decoder.decode(audio_latent.transpose(1, 2))
-        output["audio"] = audio.squeeze(0).transpose(0, 1).float().cpu().numpy()
+        # `(batch, channels, samples)` as a tensor: the CLI unwraps one batch level and expects tensors.
+        output["audio"] = audio.float().cpu()
         output["sampling_rate"] = generation.audio_sample_rate
     return output
 

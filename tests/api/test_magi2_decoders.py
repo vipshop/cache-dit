@@ -55,3 +55,27 @@ def test_decoder_output_converts_to_frames():
   assert array.shape == (2, 4, 6, 3)
   assert array.dtype.name == "uint8"
   assert int(array.max()) == 127
+
+
+def test_stable_audio_keys_follow_the_released_modules():
+  """The audio decoder is loaded by renaming, so the mapping itself has to stay pinned."""
+
+  import pytest
+
+  from cache_dit.models.pipelines.magi2.audio_decoder import convert_stable_audio_decoder_key
+
+  prefix = "pretransform.model.decoder."
+  expected = {
+    "layers.0.weight": "conv1.weight",
+    "layers.1.layers.0.alpha": "block.0.snake1.alpha",
+    "layers.1.layers.1.weight_v": "block.0.conv_t1.weight_v",
+    "layers.2.layers.2.layers.1.weight_v": "block.1.res_unit1.conv1.weight_v",
+    "layers.6.bias": "snake1.bias",
+    "layers.7.weight": "conv2.weight",
+  }
+  for suffix, target in expected.items():
+    assert convert_stable_audio_decoder_key(prefix + suffix) == target
+  assert convert_stable_audio_decoder_key("pretransform.model.encoder.layers.0.weight") is None
+
+  with pytest.raises(ValueError, match="Unsupported Stable Audio decoder key"):
+    convert_stable_audio_decoder_key(prefix + "layers.9.weight")
