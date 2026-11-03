@@ -300,8 +300,9 @@ quantize_config = QuantizeConfig(
 
 `layer_name_patterns` is applied **before** the bf16 snapshot, so unselected
 layers cost no memory and add no GEMM: matching `feed_forward` on a
-Boogu-class DiT observes 144 of 336 linears and roughly halves the observer
-overhead. Invalid regexes raise `ValueError` at config construction time.
+double/single-stream DiT observes 144 of 336 linears and roughly halves the
+observer overhead. Invalid regexes raise `ValueError` at config construction
+time.
 
 With `observer=None` (the default) the quantization path skips the feature
 completely — no module walk, no bf16 weight snapshot, no forward hooks — so

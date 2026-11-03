@@ -39,8 +39,8 @@ and free of overhead.
 the observer keeps one bf16 copy of every observed linear weight (host RAM by
 default, ``keep_refs_on_gpu=True`` moves it to the device) and adds a bf16 GEMM
 per observed layer per forward, i.e. roughly 1.5-2x the transformer forward
-time on Boogu-class DiT models, plus a few seconds of host-to-device traffic
-when the references stay on the CPU.
+time on double/single-stream DiT models, plus a few seconds of host-to-device
+traffic when the references stay on the CPU.
 """
 
 import atexit
