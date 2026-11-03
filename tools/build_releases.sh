@@ -18,7 +18,7 @@
 #   mini (default) -- one conda env, one CUDA arch, and a version that always
 #         carries .dev.  It exercises the whole build -> wheel -> retag -> index
 #         -> install path in minutes; tools/publish_index.sh refuses its wheels.
-#   full  -- py311..py314 and the setup.py default arch set (80,86,89,120a,121a):
+#   full  -- py311..py314 and the setup.py default arch set (89,90a,100,120a):
 #         the published set.  Needs a release version, refuses .devN, and refuses
 #         sources that are not committed.
 #
@@ -60,7 +60,8 @@ REQUESTED_VERSION="${CACHE_DIT_RELEASE_VERSION:-}"
 # Both build functions rely on setuptools-scm owning the version: one of these left
 # in the environment would send the version file back into the checkout, or rename
 # the plain wheel with a local segment.
-unset CACHE_DIT_VERSION_WRITE_TO CACHE_DIT_BUILD_LOCAL_VERSION
+unset CACHE_DIT_VERSION_WRITE_TO CACHE_DIT_BUILD_LOCAL_VERSION \
+  CACHE_DIT_BUILD_CUDA CACHE_DIT_CUDA_BUILD_MODE
 DRY_RUN="${CACHE_DIT_RELEASE_DRY_RUN:-0}"
 ALLOW_UNCOMMITTED="${CACHE_DIT_RELEASE_ALLOW_UNCOMMITTED:-0}"
 
@@ -94,9 +95,9 @@ esac
 ENV_LIST_RAW="${CACHE_DIT_RELEASE_ENVS:-$DEFAULT_ENVS}"
 read -r -a RELEASE_ENVS <<< "$ENV_LIST_RAW"
 
-# An empty arch list means "whatever setup.py defaults to" (80,86,89,120a,121a on
-# a CUDA 13 toolkit), which is the published set the full profile is for.  The
-# mini profile narrows it to one arch: it is there to validate the pipeline.
+# An empty arch list means "whatever setup.py defaults to" (89,90a,100,120a on a
+# CUDA 13 toolkit), which is the published set the full profile is for.  The mini
+# profile narrows it to one arch: it is there to validate the pipeline.
 release_arch() {
   if [[ -n "${CACHE_DIT_RELEASE_ARCH:-}" ]]; then
     echo "$CACHE_DIT_RELEASE_ARCH"
@@ -272,9 +273,9 @@ build_cu13_wheel() {
       SETUPTOOLS_SCM_PRETEND_VERSION="$RELEASE_VERSION+$CHANNEL" \
       SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CACHE_DIT="$RELEASE_VERSION+$CHANNEL" \
       CACHE_DIT_RELEASE_FLAVOR=cu13 \
-      CACHE_DIT_BUILD_SVDQUANT=1 \
+      CACHE_DIT_BUILD_CUDA=1 \
       CACHE_DIT_BUILD_WHEELS=1 \
-      CACHE_DIT_SVDQUANT_BUILD_MODE=ALL \
+      CACHE_DIT_CUDA_BUILD_MODE=ALL \
       CACHE_DIT_WHEEL_PLATFORM_TAG=linux_x86_64 \
       CACHE_DIT_CUDA_ARCH_LIST="$ARCH" \
       TORCH_CUDA_ARCH_LIST= \

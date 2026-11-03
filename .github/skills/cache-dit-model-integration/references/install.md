@@ -27,7 +27,7 @@ SVDQuant C++ compilation is not required for Python-only model integration, Cach
 Only use the CUDA/SVDQuant build path when the integration changes C++/CUDA extension code or explicitly needs the optional quantization extension. Do not rebuild it for normal new-model support.
 
 ```bash
-CACHE_DIT_BUILD_SVDQUANT=1 pip install -e ".[quantization]" --no-build-isolation
+CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]" --no-build-isolation
 ```
 
 ## I.4 Pre-Test Checklist

@@ -156,8 +156,9 @@ CACHE_DIT_SITE_URL=https://deftruth.github.io CACHE_DIT_INDEX_PREFIX=cache-dit \
 | CUDA wheel 必须带 `+cu13` local 段，纯包必须不带 | PyPI 拒收 local 版本；local 段是 pip 区分两种构建的唯一依据 |
 | full 档只从已提交源构建 | 产物必须对得上某个 commit |
 | mini 档（`.devN`、单 env、单 arch）永不发布 | 只验证流水线；`publish_index.sh` 拒收 `.dev` 与缺 `+cu13` 的 wheel |
-| cu13 flavor 必须 `CACHE_DIT_BUILD_SVDQUANT=1` 且 `CACHE_DIT_SVDQUANT_BUILD_MODE=ALL`，nvcc ≥ 13.0 | setup.py `_validate_release_configuration()` 硬校验 |
-| 发布 arch 必须留空，走 setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`），不收窄 | `setup.py` 的 `DEFAULT_CUDA_ARCH_TARGETS` 即全架构集；收窄会发出只覆盖部分 GPU 的 wheel。SVDQuant 剔除 sm90a、comm 保留 sm90a 的差异由 setup.py 处理 |
+| cu13 flavor 必须 `CACHE_DIT_BUILD_CUDA=1` 且 `CACHE_DIT_CUDA_BUILD_MODE=ALL`，nvcc ≥ 13.0 | setup.py `_validate_release_configuration()` 校验开关与 mode，nvcc 门限由 `_require_min_cuda_for_cu13_release()` 校验 |
+| 发布 arch 必须留空，走 setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`），不收窄 | `setup.py` 的 `DEFAULT_CUDA_ARCH_TARGETS` 即全架构集；收窄会发出只覆盖部分 GPU 的 wheel。SVDQuant 剔除 sm90a、comm 保留 sm90a 的差异由 setup.py 的 `_resolve_sm_targets()` 按扩展谓词处理 |
+| cu13 下三个扩展缺一即 fail | base flavor 是「按架构跳过 + 警告」，cu13 是「空 SM 集直接 raise」；产物侧还有 `inspect_release_wheel.py --so svdquant` 断言三个 `.so` |
 | 索引只收 CPython + manylinux + 编译版 wheel | `publish_index.sh` 逐个断言；纯包/非 manylinux 直接拒收 |
 | 安装口径用 `--extra-index-url` 指向自建索引 | 索引只放 `cache-dit` 一个项目、不带依赖，PyPI 必须保持依赖来源 |
 

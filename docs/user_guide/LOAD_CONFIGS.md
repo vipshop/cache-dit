@@ -238,9 +238,9 @@ pipe.transformer = torch.compile(pipe.transformer)
 For <span style="color:#c77dff;">SVDQuant W4A4 DQ</span> workflow, you can define a yaml file `quantize_svdq.yaml` that contains:
 
 ```yaml
-# Please install Cache-DiT with SVDQuant support (Experimental) before using the 
+# Please install Cache-DiT with the CUDA extensions (Experimental) before using the 
 # SVDQuant quantization config. Installation instructions:
-# `uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/` or `CACHE_DIT_BUILD_SVDQUANT=1 uv pip install -e ".[quantization]"`
+# `uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/` or `CACHE_DIT_BUILD_CUDA=1 uv pip install -e ".[quantization]"`
 quantize_config: 
   quant_type: "svdq_int4_r128_dq" # or "svdq_nvfp4_r128_dq" for blackwell (sm120, sm121, etc.)
   svdq_kwargs:

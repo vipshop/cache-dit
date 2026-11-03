@@ -33,8 +33,8 @@
 | `CACHE_DIT_RELEASE_DRY_RUN` | `0` | `1` 只解析并打印，不构建 |
 | `CACHE_DIT_RELEASE_NAME` | `cache_dit` | 发行名（wheel stem） |
 
-cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACHE_DIT_BUILD_SVDQUANT=1`、
-`CACHE_DIT_BUILD_WHEELS=1`、`CACHE_DIT_SVDQUANT_BUILD_MODE=ALL`、`CACHE_DIT_WHEEL_PLATFORM_TAG=linux_x86_64`、
+cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACHE_DIT_BUILD_CUDA=1`、
+`CACHE_DIT_BUILD_WHEELS=1`、`CACHE_DIT_CUDA_BUILD_MODE=ALL`、`CACHE_DIT_WHEEL_PLATFORM_TAG=linux_x86_64`、
 `CACHE_DIT_CUDA_ARCH_LIST`、`TORCH_CUDA_ARCH_LIST=`（清空，防止 torch 的 arch 列表渗入）、
 `CACHE_DIT_REQUIRE_CCACHE=1`、`CACHE_DIT_CLEAN=1`。纯 wheel 只注入 `SETUPTOOLS_SCM_PRETEND_VERSION=$V`。
 脚本还会 unset `CACHE_DIT_VERSION_WRITE_TO` / `CACHE_DIT_BUILD_LOCAL_VERSION`，防止版本文件写回 checkout
@@ -70,9 +70,10 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 
 `setup.py`：
 
-- `_validate_release_configuration()`：cu13 flavor 必须 `CACHE_DIT_BUILD_SVDQUANT=1` + `CACHE_DIT_SVDQUANT_BUILD_MODE=ALL` + nvcc ≥ 13.0。
-- SM 目标：`DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")` 是默认全架构集，`_default_cuda_arch_targets()` 按 nvcc 版本门限裁剪（sm90a ≥ 12.0，sm100 / sm120a ≥ 12.8；CUDA 13 下四个全在）。显式 arch 列表（`CACHE_DIT_CUDA_ARCH_LIST` 优先于 `TORCH_CUDA_ARCH_LIST`）会覆盖默认集。
-- 三个扩展各自过滤：SVDQuant 走 `_is_supported_svdquant_sm_target`（≥ sm80 且剔除 sm90），comm 与 attn 走 `_get_ops_sm_targets(scope)` → `_is_supported_comm_sm_target`（≥ sm89、保留 sm90）——同一次构建里各扩展的 gencode 集合可以不同，这是预期行为。cu13 flavor 下任一扩展解析出空 SM 集会直接 raise，不会静默出一个缺 `.so` 的 wheel。
+- `_validate_release_configuration()`：cu13 flavor 必须 `CACHE_DIT_BUILD_CUDA=1` + `CACHE_DIT_CUDA_BUILD_MODE=ALL` + nvcc ≥ 13.0。
+- `CACHE_DIT_BUILD_CUDA=1` 是唯一编译开关，一次构建三个扩展（`_C_svdquant` / `_C_comm` / `_C_attn`），没有按扩展的子开关；旧的三扩展开关与 SVDQuant 专属的 arch mode 变量均已移除，现行命名只有 `CACHE_DIT_BUILD_CUDA` 与 `CACHE_DIT_CUDA_BUILD_MODE`。
+- SM 目标：`DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")` 是默认全架构集，`_default_cuda_arch_targets()` 消费该常量并按 nvcc 版本门限裁剪（sm90a ≥ 12.0，sm100 / sm120a ≥ 12.8；CUDA 13 下四个全在）。显式 arch 列表（`CACHE_DIT_CUDA_ARCH_LIST` 优先于 `TORCH_CUDA_ARCH_LIST`，空串视为未设）会覆盖默认集，且不会被默认集回落替换。
+- 三个扩展各自过滤：`_resolve_sm_targets(scope, is_supported)` 在三条分支（显式列表 / FAST 探测 / 默认集）统一套谓词——SVDQuant 走 `_is_supported_svdquant_sm_target`（≥ sm80 且剔除 sm90），comm 与 attn 走 `_is_supported_comm_sm_target`（≥ sm89、保留 sm90）；同一次构建里各扩展的 gencode 集合可以不同，这是预期行为。base flavor 下空 SM 集是「跳过该扩展 + 打印 `[cache-dit] CUDA build: skipping ...`」；cu13 flavor 下是 raise，不会静默出一个缺 `.so` 的 wheel；三个全跳过则 `_get_extensions()` 直接 `SystemExit`。
 
 `publish_index.sh`：
 
