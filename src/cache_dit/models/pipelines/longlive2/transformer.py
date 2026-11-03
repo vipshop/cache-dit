@@ -1,5 +1,10 @@
 """Causal Wan transformer used by LongLive 2.0 (`Efficient-Large-Model/LongLive-2.0-5B`).
 
+Derived from `cache_dit/models/pipelines/causvid/transformer.py` (the in-tree causal Wan port), which
+this file follows block for block - the chunk-causal attention wrapper, the CP `prepare_cp` hook, the
+`_apply_rotary_emb` helper and the block forward are the CausVid versions with the LongLive 2.0
+additions called out below. Keep the two in sync when either changes.
+
 LongLive 2.0 is an autoregressive long-video generator built on the `Wan-AI/Wan2.2-TI2V-5B`
 backbone: the latent clip is produced chunk by chunk (8 latent frames per chunk) and every chunk
 attends to the KV cache of the chunks already generated. Attention is therefore **block-causal**:
@@ -575,12 +580,25 @@ class LongLive2Transformer3DModel(WanTransformer3DModel):
     return blocks
 
   def _split_block_list(self):
-    # During a cached forward cache-dit swaps `self.blocks` for a one-element wrapper that owns the
-    # real stack; the clean-latent pass has to reach the real blocks, so both lists are returned.
+    """Return `(visible_blocks, raw_blocks)`, with `raw_blocks is None` when no wrapper is
+    installed.
+
+    A cache-dit block wrapper is recognised by type, not by list length: it owns a
+    `transformer_blocks` list. Both shapes are flattened - one wrapper for the whole stack, or one
+    wrapper per block - because the clean-latent pass must reach the real blocks: replaying a wrapper
+    would let its block skip fire and leave noisy K/V behind. A stack that mixes wrapped and raw
+    entries is rejected instead of guessed at, since that is the only path to a silent dirty cache.
+    """
     blocks = self.blocks
-    if len(blocks) == 1 and hasattr(blocks[0], "transformer_blocks"):
-      return blocks, blocks[0].transformer_blocks
-    return blocks, None
+    wrapped = [block for block in blocks if hasattr(block, "transformer_blocks")]
+    if not wrapped:
+      return blocks, None
+    if len(wrapped) != len(blocks):
+      raise RuntimeError(
+        f"Mixed block stack: {len(wrapped)} of {len(blocks)} entries look like cache-dit block "
+        f"wrappers, so the clean-latent pass cannot tell which blocks are real. Please report this "
+        f"with the cache-dit version.")
+    return blocks, [inner for block in wrapped for inner in block.transformer_blocks]
 
   def forward(
     self,

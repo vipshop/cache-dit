@@ -213,7 +213,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | **Video** | SANA-Video 2.0 (T2V/TI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
 | **Video** | LingBot-Video Dense 1.3B 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
 | **Video** | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
-| **Video** | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✖️/✔️/✔️/✔️ |
+| **Video** | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️*/✔️/✔️/✔️ |
 | **Image** | MOSS-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Ming-Image 0.1 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | HiDream-O1-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
@@ -221,6 +221,10 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
+<i>* Cache is implemented and bit-exact verifiable (the clean-latent pass commits every chunk), but
+LongLive 2.0's 4-step DMD schedule leaves only 3 skippable steps per chunk and a forced full compute
+at every chunk boundary, so it measured zero cache hits at the default threshold; enabling it is not
+recommended for speed.</i>
 </div>
 
 ## 🤖Agentic Workflows  

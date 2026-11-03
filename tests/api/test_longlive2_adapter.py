@@ -346,6 +346,42 @@ def test_commit_pass_writes_the_clean_kv_of_its_chunk():
                                msg="clean K/V of the last chunk was not committed")
 
 
+def test_pixel_to_latent_geometry_follows_the_vae_config():
+  """The VAE's spatial factor decides the latent grid, so a wrong factor silently doubles the
+  output.
+
+  The released 16x TI2V VAE has three downsample stages, so `2 ** len(temperal_downsample)` yields 8
+  and the pipeline would turn a 480x832 request into a 960x1664 clip. The other Wan VAE (8x) is the
+  reverse case: it has no `scale_factor_spatial` and must keep deriving 8 from its four stages.
+  """
+  from types import SimpleNamespace
+
+  class _FakeVAE:
+    """`register_modules` needs a real class instance, so a module-level namespace will not do."""
+
+    def __init__(self, **config):
+      self.config = SimpleNamespace(**config)
+
+  transformer = _tiny_transformer()
+
+  wide = LongLive2Pipeline(tokenizer=None,
+                           text_encoder=None,
+                           transformer=transformer,
+                           vae=_FakeVAE(scale_factor_spatial=16,
+                                        scale_factor_temporal=4,
+                                        temperal_downsample=[False, True, True]))
+  assert wide.vae_scale_factor_spatial == 16
+  # 480x832 with a 16x VAE -> 30x52 latent -> a 2x2 patch leaves 390 tokens per latent frame.
+  assert transformer.frame_seq_len((1, 48, 8, 480 // 16, 832 // 16)) == 390
+
+  legacy = LongLive2Pipeline(tokenizer=None,
+                             text_encoder=None,
+                             transformer=transformer,
+                             vae=_FakeVAE(scale_factor_temporal=4,
+                                          temperal_downsample=[False, True, True]))
+  assert legacy.vae_scale_factor_spatial == 8
+
+
 def test_frames_outside_the_window_are_not_read():
   """Rewriting the K/V of a frame the window has slid past must not change what the chunk sees.
 

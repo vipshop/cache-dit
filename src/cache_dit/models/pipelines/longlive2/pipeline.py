@@ -1,5 +1,10 @@
 """LongLive 2.0 inference pipeline (chunk-wise autoregressive 4-step T2V).
 
+Derived from `cache_dit/models/pipelines/causvid/pipeline.py`: the chunk loop, the boundary refresh
+hint and the post-processing are the CausVid versions, extended with the clean-latent commit pass,
+the per-frame timestep and the LongLive 2.0 component wiring. Keep the two in sync when either
+changes.
+
 The generator produces a clip chunk by chunk (8 latent frames per chunk by default): each chunk runs
 the 4-step DMD schedule, then one extra clean-latent pass at `timestep=0` writes the clean K/V that
 every later chunk attends to. Guidance is distilled away, so a step is exactly one transformer
@@ -129,10 +134,15 @@ class LongLive2Pipeline(DiffusionPipeline):
     )
     self.vae_scale_factor_temporal = int(
       getattr(getattr(vae, "config", None), "scale_factor_temporal", 4) or 4)
-    # Wan VAE decodes 8x spatially; the DiT then patches the latent 2x, so the *token* grid is
-    # `pixels / 16` while the latent grid is `pixels / 8`.
-    self.vae_scale_factor_spatial = 2 ** len(
-      getattr(getattr(vae, "config", None), "temperal_downsample", [False, True, True, True]))
+    # The Wan VAE family does not agree on how the spatial factor is expressed: the 8x VAE behind
+    # Wan2.1 happens to satisfy `2 ** len(temperal_downsample)`, while the 16x TI2V VAE used here
+    # states it as `scale_factor_spatial` and only has three downsample stages. Deriving it from the
+    # downsample list would halve the latent grid and silently generate 2x the requested resolution.
+    vae_config = getattr(vae, "config", None)
+    spatial_factor = getattr(vae_config, "scale_factor_spatial", None)
+    if spatial_factor is None:
+      spatial_factor = 2 ** len(getattr(vae_config, "temperal_downsample", [False, True, True]))
+    self.vae_scale_factor_spatial = int(spatial_factor)
     self.fps = DEFAULT_FPS
     # Set once per request, when the per-chunk warmup cap is first applied.
     self._warmup_capped = False

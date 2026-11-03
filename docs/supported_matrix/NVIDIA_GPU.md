@@ -10,7 +10,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
-|LongLive-2.0-5B|✖️|✅|✅|
+|LongLive-2.0-5B|✅*|✅|✅|
 |CausVid-Wan|✖️|✅|✅|
 |SANA-Video-2.0-5B (T2V/TI2V)|✅|✅|✅|
 |SANA-Video-2B-480p (T2V/I2V)|✅|✅|✅|
@@ -128,6 +128,11 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |stable-diffusion-3.5-large|✅|✖️|✅|
 |Amused-512|✅|✖️|✖️|
 |AuraFlow|✅|✖️|✖️|
+
+<i>* LongLive-2.0-5B: the cache contract is implemented and bit-exact verifiable (each chunk commits
+its clean K/V), but the 4-step DMD schedule leaves only 3 skippable steps per chunk with a forced
+full compute at every chunk boundary, so it measured zero hits at the default threshold - supported,
+not recommended for speed.</i>
 
 ## Text Encoder & VAE Optimization
 
