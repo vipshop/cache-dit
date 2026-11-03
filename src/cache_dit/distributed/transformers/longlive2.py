@@ -59,16 +59,24 @@ class LongLive2ContextParallelismPlanner(ContextParallelismPlanner):
   ) -> _ContextParallelModelPlan:
 
     if int(getattr(parallelism_config, "ring_size", 1) or 1) > 1:
+      # Measured, not inferred: forcing Wan's ring plan crashes inside the KV write with
+      # "The expanded size of the tensor (768) must match the existing size (384) ... Target sizes:
+      # [1, 768, 24, 128]" - the cache is laid out for the chunk's global coordinates while ring only
+      # ever holds a rotated slice of them.
       raise NotImplementedError(
-        "LongLive 2.0 supports Ulysses context parallelism only: its causal KV cache is addressed in "
-        "global token coordinates, and Ring's equal-chunk rotation would have to re-cut that cache on "
-        "every step. Re-run with `--parallel ulysses`.")
+        "LongLive 2.0 supports Ulysses context parallelism only: its causal KV cache is written at "
+        "exact global token coordinates, so Ring's equal-chunk rotation makes the cache slice "
+        "(chunk/ring_size tokens) and the rotated sequence disagree - measured to raise a shape "
+        "error inside the cache write. Re-run with `--parallel ulysses`.")
     if bool(getattr(parallelism_config, "ulysses_anything", False)):
+      # Measured: bypassing this check lets a 2-rank run finish, but the output is bit-identical to
+      # plain Ulysses (30.16 dB / 0.7222 SSIM against the single-GPU reference, same as CP2), so the
+      # flag is swallowed by the custom attention processor instead of buying extra CP sizes.
       raise NotImplementedError(
-        "LongLive 2.0 rejects `--ulysses-anything`: the padded attention of UAA changes the chunk "
-        "token count, and the causal KV cache writes its slice at the exact global coordinate "
-        "`[current_start, current_end)`. Pick an Ulysses size that divides both the head count and "
-        "the chunk token count instead.")
+        "LongLive 2.0 rejects `--ulysses-anything`: the custom causal attention processor has no "
+        "UAA padding branch, so the flag is silently ignored (measured: bit-identical to plain "
+        "Ulysses). Pick an Ulysses size that divides both the head count and the chunk's latent "
+        "frame count instead.")
 
     _cp_plan = {
       # The two RoPE tables: recomputed on the full chunk, then sliced to the local sequence.

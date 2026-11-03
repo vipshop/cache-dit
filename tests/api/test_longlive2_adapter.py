@@ -346,6 +346,47 @@ def test_commit_pass_writes_the_clean_kv_of_its_chunk():
                                msg="clean K/V of the last chunk was not committed")
 
 
+def test_frames_outside_the_window_are_not_read():
+  """Rewriting the K/V of a frame the window has slid past must not change what the chunk sees.
+
+  This is the guard for the `[0, sink) U [tail, end)` semantics: if `visible()` ever went back to
+  returning everything (`k[:, :end]`) the rewritten frame would leak in and this test would notice,
+  even though the clip sizes used elsewhere are too short to slide the window at all.
+  """
+  from cache_dit.models.pipelines.longlive2.transformer import LongLive2SelfAttentionKVCache
+
+  batch, total, heads, dim = 1, 6 * 4, 2, 3  # 6 latent frames of 4 tokens each
+  cache = LongLive2SelfAttentionKVCache(batch,
+                                        total,
+                                        heads,
+                                        dim,
+                                        torch.float32,
+                                        torch.device("cpu"),
+                                        window_tokens=3 * 4,
+                                        sink_tokens=1 * 4)
+  frames = torch.arange(6, dtype=torch.float32).reshape(1, 6, 1, 1, 1)
+  key = frames.repeat(1, 1, 4, heads, dim).reshape(batch, total, heads, dim)
+  cache.write(0, total, key.clone(), key.clone())
+
+  end = total
+  first_key, _ = cache.visible(end)
+  # A 3-frame window with the sink packed inside it = 1 sink frame + 2 recent frames.
+  assert first_key.shape[1] == 3 * 4, f"unexpected visible length {first_key.shape[1] // 4} frames"
+  visible_frames = set(first_key[:, :, 0, 0].flatten().tolist())
+  assert visible_frames == {0.0, 4.0, 5.0}, visible_frames
+
+  # Corrupt a frame that has slid out of the window; the visible set must be byte-identical.
+  cache.k[:, 2 * 4:3 * 4] = -1e4
+  cache.v[:, 2 * 4:3 * 4] = -1e4
+  second_key, _ = cache.visible(end)
+  torch.testing.assert_close(first_key, second_key, atol=0, rtol=0)
+
+  # The frame that is still inside the window must of course be read.
+  cache.k[:, 5 * 4:6 * 4] = -1e4
+  third_key, _ = cache.visible(end)
+  assert not torch.equal(second_key, third_key)
+
+
 def test_guidance_scale_is_rejected():
   # The guard lives in the production `__call__`, which the test subclass overrides.
   pipe = LongLive2Pipeline(tokenizer=None,

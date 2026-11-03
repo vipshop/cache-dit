@@ -47,6 +47,11 @@ DEFAULT_CHUNK_LATENT_FRAMES = 8
 DEFAULT_MAX_SEQUENCE_LENGTH = 512
 DEFAULT_FPS = 24
 
+_SEPARATE_CFG_ERROR = (
+  "LongLive 2.0 is guidance-distilled and runs one conditional forward per step; "
+  "`enable_separate_cfg=True` would double that and desynchronise the chunk-boundary cache refresh "
+  "(the refresh hint is armed as `current_step + 1`).")
+
 # The scheduler configuration shipped with the checkpoint: UniPC over a flow-matching sigma grid with
 # `flow_shift=5.0`, four steps, second-order solver and a terminal sigma of zero.
 RELEASED_SCHEDULER_CONFIG = {
@@ -260,6 +265,14 @@ class LongLive2Pipeline(DiffusionPipeline):
     ported.set_state(generator.get_state())
     return ported
 
+  def _live_cache_config(self):
+    """Return the live cache-dit config, or `None` before the first transformer forward."""
+    manager = getattr(self, "_context_manager", None)
+    if manager is None:
+      return None
+    context = manager.get_context()
+    return None if context is None else context.cache_config
+
   def _refresh_step_cache(self) -> None:
     # Arming the hint on the live context makes the *next* transformer forward recompute every block,
     # which is what a chunk boundary needs (fresh noise, and a reset residual baseline). cache-dit
@@ -271,6 +284,8 @@ class LongLive2Pipeline(DiffusionPipeline):
     if context is None:
       return
     cache_config = context.cache_config
+    if cache_config.enable_separate_cfg:
+      raise ValueError(_SEPARATE_CFG_ERROR)
     cache_config.force_refresh_step_hint = context.get_current_transformer_step() + 1
     cache_config.force_refresh_step_policy = "once"
     # Every chunk gets its own step counter, so the warmup window (`{0, .., ws-1}` on that counter)
@@ -436,8 +451,19 @@ class LongLive2Pipeline(DiffusionPipeline):
     :param return_dict: Whether to wrap the frames in :class:`LongLive2PipelineOutput`.
     :returns: The generated clip.
     """
+    if num_inference_steps is None or num_inference_steps < 1:
+      raise ValueError(f"`num_inference_steps` must be a positive integer, got "
+                       f"{num_inference_steps}.")
+    # The chunk loop assumes exactly one transformer call per (step, chunk): the boundary refresh
+    # hint is `current_step + 1`, which only lands on the next step if nothing else bumps the
+    # counter. The config only lives on the live context, which does not exist until the first
+    # forward, so the definitive check sits in `_refresh_step_cache`; this one catches the case where
+    # a previous request already created the context.
+    cache_config = self._live_cache_config()
+    if getattr(cache_config, "enable_separate_cfg", False):
+      raise ValueError(_SEPARATE_CFG_ERROR)
     if negative_prompt is not None:
-      logger.debug("`negative_prompt` is ignored: the LongLive 2.0 student runs without CFG.")
+      logger.warning("`negative_prompt` is ignored: the LongLive 2.0 student runs without CFG.")
     if guidance_scale not in (None, 1.0):
       raise ValueError(
         f"LongLive 2.0 is guidance-distilled and runs one conditional forward per step; "
@@ -463,7 +489,7 @@ class LongLive2Pipeline(DiffusionPipeline):
       raise ValueError(
         f"`num_frames={num_frames}` gives {latent_frames} latent frames, which is not divisible by "
         f"`chunk_latent_frames={chunk_latent_frames}`. Use 4 * k * chunk_latent_frames + 1 frames, "
-        f"e.g. 61 for k=2 or 129 for k=4.")
+        f"e.g. 61 for k=2 or 125 for k=4.")
     batch_size = prompt_embeds.shape[0]
     latent_shape = (
       batch_size,

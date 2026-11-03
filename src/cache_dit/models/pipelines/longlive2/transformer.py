@@ -108,15 +108,18 @@ class LongLive2SelfAttentionKVCache(nn.Module):
     """Return the keys/values visible to the chunk ending at `end`.
 
     The visible set is `[0, end)` while the clip fits the attention window, and
-    `[0, sink_tokens) U [end - window_tokens, end)` afterwards.
+    `[0, sink_tokens) U [tail, end)` afterwards, where the sink is packed *inside* the window
+    budget: `tail = max(sink_tokens, end - (window_tokens - sink_tokens))`, so a 32-frame window with
+    8 sink frames keeps 8 + 24 frames, not 8 + 32.
 
     :param end: One past the last visible global token index.
     :returns: A `(key, value)` pair of shape `(B, visible_len, heads, head_dim)`.
     """
     if self.window_tokens <= 0 or end <= self.window_tokens:
       return self.k[:, :end], self.v[:, :end]
-    start = end - self.window_tokens
-    if start <= self.sink_tokens:
+    sink = min(self.sink_tokens, end)
+    start = max(sink, end - max(0, self.window_tokens - sink))
+    if start <= sink:
       return self.k[:, :end], self.v[:, :end]
     index = torch.cat([
       torch.arange(0, self.sink_tokens, device=self.k.device),
@@ -535,7 +538,16 @@ class LongLive2Transformer3DModel(WanTransformer3DModel):
     dtype = param.dtype if dtype is None else dtype
     total_len = frame_seq_len * num_frames
     window_tokens = max(local_attn_frames, 0) * frame_seq_len
+    if 0 < window_tokens < latent_shape[2] * frame_seq_len:
+      raise ValueError(
+        f"The attention window ({local_attn_frames} latent frames) must be at least one chunk "
+        f"({latent_shape[2]} latent frames) long, otherwise a chunk cannot attend to all of itself."
+      )
     sink_tokens = max(sink_frames, 0) * frame_seq_len if window_tokens > 0 else 0
+    if sink_tokens >= window_tokens > 0:
+      raise ValueError(
+        f"The sink ({sink_frames} latent frames) must be shorter than the attention window "
+        f"({local_attn_frames} latent frames): the sink is part of the window budget.")
     self._kv_cache = [
       LongLive2SelfAttentionKVCache(batch_size,
                                     total_len,
