@@ -1,0 +1,207 @@
+"""CPU tests for the vendored MAGI-2 Preview pipeline.
+
+The released checkpoint is 228 GiB, so the pipeline contract is pinned with an injected tiny
+transformer: the `from_pretrained` argument handling, the sampler wiring (one transformer call per
+step, both CFG branches packed together) and the decode-free output path.
+"""
+import json
+
+import pytest
+import torch
+
+import cache_dit
+from cache_dit import DBCacheConfig
+from cache_dit.caching.block_adapters import magi2_preview_adapter
+from cache_dit.models.pipelines.magi2.configuration import (
+  Magi2MHCConfig,
+  Magi2MoEConfig,
+  Magi2PreviewConfig,
+)
+from cache_dit.models.pipelines.magi2.pipeline import Magi2Pipeline
+from cache_dit.models.pipelines.magi2.transformer import Magi2PreviewTransformer
+
+TEXT_TOKENS = 5
+TEXT_DIM = 8
+LATENT = (1, 4, 2, 4, 4)
+AUDIO_LATENT = (1, 6, 4)
+
+
+def tiny_transformer(seed: int = 0) -> Magi2PreviewTransformer:
+  """Tiny transformer with every parameter filled deterministically."""
+
+  config = Magi2PreviewConfig(
+    num_layers=2,
+    hidden_size=32,
+    head_dim=8,
+    num_query_groups=4,
+    video_in_channels=4,
+    audio_in_channels=4,
+    text_in_channels=TEXT_DIM,
+    multimodal_layers=(0, ),
+    params_dtype=torch.float32,
+    mhc=Magi2MHCConfig(num_streams=2, sinkhorn_iterations=2),
+    moe=Magi2MoEConfig(
+      num_heads=2,
+      num_experts=4,
+      top_k=2,
+      expert_intermediate_size=8,
+      shared_expert_intermediate_size=8,
+      modality_shared_expert_intermediate_size=8,
+      layers=(1, ),
+    ),
+  )
+  config.validate()
+  generator = torch.Generator().manual_seed(seed)
+  model = Magi2PreviewTransformer(config).eval()
+  with torch.no_grad():
+    for parameter in model.parameters():
+      parameter.copy_(torch.randn(parameter.shape, generator=generator) * 0.02)
+  return model
+
+
+def _checkpoint_root(tmp_path):
+  """Create the minimal checkpoint tree `from_pretrained` validates."""
+
+  preview = tmp_path / "preview"
+  preview.mkdir()
+  (preview / "model.safetensors.index.json").write_text(json.dumps({"weight_map": {}}))
+  return tmp_path
+
+
+def _pipeline(tmp_path, transformer=None) -> Magi2Pipeline:
+  return Magi2Pipeline.from_pretrained(
+    _checkpoint_root(tmp_path),
+    torch_dtype=torch.float32,
+    transformer=transformer or tiny_transformer(),
+    load_auxiliary=False,
+  )
+
+
+def test_from_pretrained_rejects_device_map(tmp_path):
+  """`device_map` must fail fast: the CLI would otherwise skip `pipe.to(device)`."""
+
+  with pytest.raises(NotImplementedError, match="device_map"):
+    _pipeline_with_kwargs(tmp_path, device_map="balanced")
+
+
+def _pipeline_with_kwargs(tmp_path, **kwargs) -> Magi2Pipeline:
+  return Magi2Pipeline.from_pretrained(
+    _checkpoint_root(tmp_path),
+    transformer=tiny_transformer(),
+    load_auxiliary=False,
+    **kwargs,
+  )
+
+
+def test_from_pretrained_rejects_unknown_components(tmp_path):
+  """Unknown kwargs must be rejected instead of silently ignored."""
+
+  with pytest.raises(TypeError, match="unexpected MAGI-2 pipeline"):
+    _pipeline_with_kwargs(tmp_path, controlnet=object())
+
+
+def test_from_pretrained_requires_a_local_checkpoint(tmp_path):
+  """A hub id is not accepted: the released repo has no diffusers layout."""
+
+  with pytest.raises(ValueError, match="local checkpoint directory"):
+    Magi2Pipeline.from_pretrained(
+      "sand-ai/MAGI-2-preview",
+      transformer=tiny_transformer(),
+      load_auxiliary=False,
+    )
+
+
+def test_missing_auxiliary_components_are_reported(tmp_path):
+  """The default path must name the components that are not vendored yet."""
+
+  with pytest.raises(NotImplementedError, match="auxiliary components"):
+    Magi2Pipeline.from_pretrained(
+      _checkpoint_root(tmp_path),
+      transformer=tiny_transformer(),
+    )
+
+
+def test_pipeline_runs_the_transformer_once_per_step(tmp_path):
+  """Both CFG branches share one transformer call per step, so the pack must stay inside it."""
+
+  calls = []
+  transformer = tiny_transformer()
+  handle = transformer.register_forward_pre_hook(lambda module, args: calls.append(1))
+  pipe = _pipeline(tmp_path, transformer)
+
+  latents, audio = _sample(pipe, num_inference_steps=3)
+  handle.remove()
+
+  assert len(calls) == 3, f"expected one transformer call per step, got {len(calls)}"
+  assert latents.shape == LATENT
+  assert audio.shape == AUDIO_LATENT
+  assert torch.isfinite(latents).all() and torch.isfinite(audio).all()
+
+
+def _sample(pipe, num_inference_steps: int = 3):
+  generator = torch.Generator().manual_seed(11)
+  latent = torch.zeros(LATENT, dtype=torch.float32)
+  audio_latent = torch.zeros(AUDIO_LATENT, dtype=torch.float32)
+  txt = torch.randn(1, TEXT_TOKENS, TEXT_DIM, generator=generator)
+  null = torch.randn(1, TEXT_TOKENS, TEXT_DIM, generator=generator)
+  output = pipe(
+    num_inference_steps=num_inference_steps,
+    latent=latent,
+    audio_latent=audio_latent,
+    txt_feat=txt,
+    null_txt_feat=null,
+    latent_frames=LATENT[2],
+    audio_frames=AUDIO_LATENT[1],
+    decode=False,
+  )
+  return output["latent"], output["audio_latent"]
+
+
+def test_seeded_run_is_reproducible(tmp_path):
+  """Same seed and same inputs must reproduce the same latents."""
+
+  pipe = _pipeline(tmp_path)
+  first_latent, first_audio = _sample(pipe)
+  second_latent, second_audio = _sample(pipe)
+  torch.testing.assert_close(first_latent, second_latent, atol=0, rtol=0)
+  torch.testing.assert_close(first_audio, second_audio, atol=0, rtol=0)
+
+
+def test_decode_without_decoders_is_refused(tmp_path):
+  """Asking for pixels without the vendored decoders must fail loudly, not return latents."""
+
+  pipe = _pipeline(tmp_path)
+  generator = torch.Generator().manual_seed(11)
+  txt = torch.randn(1, TEXT_TOKENS, TEXT_DIM, generator=generator)
+  with pytest.raises(NotImplementedError, match="decoders are not vendored"):
+    pipe(
+      num_inference_steps=2,
+      txt_feat=txt,
+      null_txt_feat=txt.clone(),
+      latent=torch.zeros(LATENT, dtype=torch.float32),
+      audio_latent=torch.zeros(AUDIO_LATENT, dtype=torch.float32),
+      latent_frames=LATENT[2],
+      audio_frames=AUDIO_LATENT[1],
+    )
+
+
+def test_cache_wraps_the_layer_stack_only(tmp_path):
+  """The adapter must leave the pre/post adapters outside the cached region."""
+
+  transformer = tiny_transformer()
+  pipe = _pipeline(tmp_path, transformer)
+  adapter = magi2_preview_adapter(pipe)
+  cache_dit.enable_cache(
+    adapter,
+    cache_config=DBCacheConfig(
+      num_inference_steps=2,
+      Fn_compute_blocks=1,
+      Bn_compute_blocks=0,
+      max_warmup_steps=0,
+      max_cached_steps=1,
+      residual_diff_threshold=100.0,
+    ),
+  )
+  assert getattr(transformer.block, "_is_cached", False) is True
+  assert not hasattr(transformer.pre_adapter, "_is_cached")
+  assert not hasattr(transformer.post_adapter, "_is_cached")

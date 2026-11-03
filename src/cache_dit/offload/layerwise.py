@@ -660,7 +660,12 @@ def _move_unmanaged_direct_state(
   :param targets: Resolved targets, whose own state is managed by the handle.
   :param device: Device the unmanaged state has to live on.
   """
-  target_ids = {id(target.module) for target in targets}
+  # A target may be a subtree (an explicit filter selecting whole transformer layers), in which case
+  # every module below it is already managed by the handle and must not be pinned here.
+  target_ids: set[int] = set()
+  for target in targets:
+    for managed_module in target.module.modules():
+      target_ids.add(id(managed_module))
   for module in root_module.modules():
     if id(module) in target_ids:
       continue
@@ -694,9 +699,15 @@ def _supports_tensor_state_mirror(module: nn.Module) -> bool:
   cpu``; DTensor fails the same way). Those targets fall back to a whole-module
   ``module.to(device)`` move instead.
 
+  A target that owns submodules is streamed as a whole subtree (`module.to(device)`); the mirror only
+  covers *direct* state, so a subtree target would leave its children's weights on the offload
+  device.
+
   :param module: Candidate offload target.
   :returns: Whether the pinned tensor-state mirror can be used for this target.
   """
+  if next(module.children(), None) is not None:
+    return False
   for kind, name, _tensor, _requires_grad in _iter_direct_state_entries(module):
     if type(_get_direct_state_tensor(module, kind=kind, name=name)) is not torch.Tensor:
       return False
