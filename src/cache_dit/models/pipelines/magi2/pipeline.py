@@ -28,6 +28,7 @@ from .configuration import MAGI2_GENERATION_CONFIG, Magi2PreviewConfig
 from .data_proxy import Magi2DataProxy
 from .sampler import CFGConfig, Magi2PreviewSampler, Magi2SamplerInput, build_magi2_preview_schedulers
 from .transformer import Magi2PreviewTransformer
+from .wan_vae import denormalize_wan22_latent
 
 __all__ = ["Magi2Pipeline", "load_transformer_weights"]
 
@@ -339,17 +340,40 @@ class Magi2Pipeline(DiffusionPipeline):
 
     output = {"latent": latent, "audio_latent": audio_latent}
     if decode:
-      if self.video_decoder is None or self.audio_decoder is None:
-        raise NotImplementedError(
-          "MAGI-2 decoders are not vendored yet; run with `decode=False` to get latents, or inject "
-          "`video_decoder` / `audio_decoder`.")
-      video = self.video_decoder.decode(latent.to(compute_dtype))
-      audio = self.audio_decoder.decode(audio_latent.transpose(1, 2))
-      output["frames"] = video[0].float().mul_(0.5).add_(0.5).clamp_(0, 1).permute(
-        1, 2, 3, 0).mul_(255).byte().cpu().numpy()
-      output["audio"] = audio.squeeze(0).transpose(0, 1).float().cpu().numpy()
-      output["sampling_rate"] = generation.audio_sample_rate
+      decoder = self.resolve_video_decoder()
+      video = decoder.decode(denormalize_wan22_latent(latent.float().to(decoder.device)))
+      video = video.sample if hasattr(video, "sample") else video
+      output["frames"] = preview_output_to_pil(video)
+      if self.audio_decoder is not None:
+        audio = self.audio_decoder.decode(audio_latent.transpose(1, 2))
+        output["audio"] = audio.squeeze(0).transpose(0, 1).float().cpu().numpy()
+        output["sampling_rate"] = generation.audio_sample_rate
     return output
+
+  def resolve_video_decoder(self):
+    """Return the video decoder, loading the released Wan2.2 VAE on first use.
+
+    :returns: Decoder module with a `decode` method.
+    :raises NotImplementedError: When no decoder was injected and the checkpoint has no image VAE.
+    """
+
+    if self.video_decoder is not None:
+      return self.video_decoder
+    if getattr(self, "_resolved_video_decoder", None) is not None:
+      return self._resolved_video_decoder
+    root = Path(self.checkpoint_root) if self.checkpoint_root else None
+    vae_path = root / "vae" / "Wan2.2_VAE.pth" if root else None
+    if vae_path is None or not vae_path.is_file():
+      raise NotImplementedError(
+        "MAGI-2 decoding needs the released Wan2.2 VAE (`vae/Wan2.2_VAE.pth`); run with "
+        "`decode=False` to get latents, or inject `video_decoder`.")
+    from .wan_vae import load_wan22_vae
+
+    decoder = load_wan22_vae(vae_path, dtype=torch.float32)
+    decoder = decoder.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    decoder.requires_grad_(False)
+    self._resolved_video_decoder = decoder
+    return decoder
 
   def set_progress_bar_config(self, **kwargs) -> None:
     """Accept the diffusers progress-bar API (the sampled loop reports through cache-dit)."""
@@ -369,9 +393,24 @@ def default_negative_prompt() -> str:
 def preview_output_to_numpy(video: torch.Tensor) -> np.ndarray:
   """Convert a ``[1, 3, T, H, W]`` decoder output to ``uint8`` frames.
 
-  :param video: Decoder output in ``[-0.5, 0.5]``-ish scale.
+  :param video: Decoder output in ``[-1, 1]``.
   :returns: ``[T, H, W, 3]`` uint8 array.
   """
 
-  frames = video[0].float().mul_(0.5).add_(0.5).clamp_(0, 1)
-  return frames.permute(1, 2, 3, 0).mul_(255).byte().cpu().numpy()
+  return np.stack([np.asarray(frame) for frame in preview_output_to_pil(video)])
+
+
+def preview_output_to_pil(video: torch.Tensor) -> list:
+  """Convert a ``[1, 3, T, H, W]`` decoder output to PIL frames.
+
+  :param video: Decoder output in ``[-1, 1]``.
+  :returns: List of ``PIL.Image`` frames, one per decoded frame.
+  """
+
+  from PIL import Image
+
+  # Out-of-place throughout: `Tensor.float()` is a no-op for float32, so in-place scaling here would
+  # rewrite the decoder output the caller still holds.
+  frames = (video[0].float() * 0.5 + 0.5).clamp(0, 1).permute(1, 2, 3, 0)
+  array = (frames * 255).byte().cpu().numpy()
+  return [Image.fromarray(frame) for frame in array]

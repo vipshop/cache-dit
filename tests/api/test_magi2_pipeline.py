@@ -168,12 +168,12 @@ def test_seeded_run_is_reproducible(tmp_path):
 
 
 def test_decode_without_decoders_is_refused(tmp_path):
-  """Asking for pixels without the vendored decoders must fail loudly, not return latents."""
+  """Asking for pixels without the released Wan2.2 VAE must fail loudly, not return latents."""
 
   pipe = _pipeline(tmp_path)
   generator = torch.Generator().manual_seed(11)
   txt = torch.randn(1, TEXT_TOKENS, TEXT_DIM, generator=generator)
-  with pytest.raises(NotImplementedError, match="decoders are not vendored"):
+  with pytest.raises(NotImplementedError, match="Wan2.2 VAE"):
     pipe(
       num_inference_steps=2,
       txt_feat=txt,
