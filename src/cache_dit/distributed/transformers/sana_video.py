@@ -27,7 +27,11 @@ Context parallelism is unusual for this model in two ways:
 The frame split requires the **latent frame count to be divisible by the CP size** (the Wan VAE
 compresses time by 4, so `frames = 4k + 1` becomes `k + 1` latent frames), unless
 `--ulysses-anything` switches the sharder to an uneven split. An indivisible count is rejected up
-front with the suggested counts instead of failing inside the sharder.
+front with the suggested counts and the flag that relaxes it instead of failing inside the sharder.
+
+`--ulysses-anything` is not free: the uneven gather is `torch.compiler.disable`d and adds one
+`_gather_size` collective per gather, so an uneven run gives up `--compile` and splits the frames
+unevenly (81 frames become 11/10). Prefer an even frame count when compile matters.
 """
 
 import functools
