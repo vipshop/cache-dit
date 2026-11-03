@@ -18,9 +18,9 @@ This means you do not need to write manual distributed inference code. In the co
 ```bash
 # Recommended: torch>=2.10, diffusers>=0.38.0, CUDA>=12.9
 # Option 1: Install the latest stable release from PyPI (>= 1.3.6)
-pip3 install -U "cache-dit[ray,parallelism]" -i https://pypi.org/simple
+pip install -U "cache-dit[ray,parallelism]" -i https://pypi.org/simple
 # Option 2: Install the latest develop version from GitHub
-pip3 install git+https://github.com/vipshop/cache-dit.git
+pip install git+https://github.com/vipshop/cache-dit.git
 ```
 Please refer to the [Installation](./INSTALL.md) docs for more details and installation options.
 

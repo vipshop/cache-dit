@@ -32,8 +32,8 @@ Cache-DiT is compatible with compilation, offload, and quantization, fully integ
 </div>
 
 ```bash
-pip3 install -U cache-dit # PyPI, stable release.
-pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
+pip install -U cache-dit # PyPI, stable release.
+pip install git+https://github.com/vipshop/cache-dit.git # latest.
 ```
 
 ```python
@@ -59,7 +59,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
 
 ```bash
 # Required: CUDA >=13.0, PyTorch >=2.11 (a CUDA 13 build), GLIBC 2.38.
-pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
+pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 # Latest, from source: one flag builds every CUDA extension (SVDQuant, comm, attn).
 git submodule update --init --recursive --force # the SVDQuant sources need spdlog
 CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"

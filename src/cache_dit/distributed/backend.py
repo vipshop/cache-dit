@@ -15,7 +15,7 @@ def _check_diffusers_cp_support():
   except ImportError as exc:
     raise ImportError(
       "context parallelism backend requires diffusers modeling and attention APIs used by "
-      "cache-dit. Please install a recent diffusers version from source: \npip3 install "
+      "cache-dit. Please install a recent diffusers version from source: \npip install "
       "git+https://github.com/huggingface/diffusers.git") from exc
 
   try:

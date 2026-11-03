@@ -11,7 +11,7 @@ cd your-fork-cache-dit && git checkout -b dev
 # update submodule
 git submodule update --init --recursive --force
 # install pre-commit
-pip3 install pre-commit
+pip install pre-commit
 pre-commit install
 pre-commit run --all-files
 ```
@@ -31,7 +31,7 @@ git push
 
 Please also check the <span style="color:#c77dff;">mkdocs</span> build status on your local branch.
 ```bash
-pip3 install -e ".[docs]"
+pip install -e ".[docs]"
 mkdocs build --strict
 mkdocs serve # Then check the docs
 ```

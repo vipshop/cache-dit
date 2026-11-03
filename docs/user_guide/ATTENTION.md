@@ -59,7 +59,7 @@ cache_dit.enable_cache(
 For FP8 Attention, users must install `sage-attention`. Then, pass the <span style="color:#c77dff;">sage</span> attention backend to the <span style="color:#c77dff;">parallelism_config</span> as an extra parameter. Please note that <span style="color:#c77dff;">attention mask</span> is not currently supported for FP8 sage attention.
 
 ```python
-# pip3 install git+https://github.com/thu-ml/SageAttention.git 
+# pip install git+https://github.com/thu-ml/SageAttention.git 
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(

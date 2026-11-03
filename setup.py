@@ -1,7 +1,7 @@
 import importlib.util
 
 if importlib.util.find_spec("setuptools_scm") is None:
-  raise ImportError("setuptools-scm is not installed. Install it by `pip3 install setuptools-scm`")
+  raise ImportError("setuptools-scm is not installed. Install it by `pip install setuptools-scm`")
 
 import os
 import re

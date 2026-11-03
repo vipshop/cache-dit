@@ -110,10 +110,10 @@ Surprisingly, cache-dit: DBCache still works in the extremely few-step distill m
 
 ```bash
 # install requirements
-pip3 install git+https://github.com/openai/CLIP.git
-pip3 install git+https://github.com/chengzegang/calculate-flops.pytorch.git
-pip3 install image-reward
-pip3 install git+https://github.com/vipshop/cache-dit.git
+pip install git+https://github.com/openai/CLIP.git
+pip install git+https://github.com/chengzegang/calculate-flops.pytorch.git
+pip install image-reward
+pip install git+https://github.com/vipshop/cache-dit.git
 ```
 
 ### 📖Download

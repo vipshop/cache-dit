@@ -86,9 +86,9 @@ If install failed by using pip command, you can get <span style="color:#c77dff;"
 
 ```bash
 # torch: aarch64
-pip3 install torch==2.8.0
+pip install torch==2.8.0
 # torch: x86
-pip3 install torch==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
+pip install torch==2.8.0+cpu --index-url https://download.pytorch.org/whl/cpu
 ```
 
 ### Install torch_npu
@@ -145,16 +145,16 @@ Once it is done, you can start to set up `cache-dit`.
 You can install the stable release of <span style="color:#c77dff;">cache-dit</span> from PyPI:
 
 ```bash
-pip3 install -U cache-dit
+pip install -U cache-dit
 ```
 Or you can install the latest develop version from GitHub:
 
 ```bash
-pip3 install git+https://github.com/vipshop/cache-dit.git
+pip install git+https://github.com/vipshop/cache-dit.git
 ```
 Please also install the latest main branch of diffusers for context parallelism:  
 ```bash
-pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
+pip install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 ```
 
 ## Exmaples and Benchmark
@@ -162,9 +162,9 @@ pip3 install git+https://github.com/huggingface/diffusers.git # or >= 0.36.0
 After the environment configuration is complete, users can refer to the **[Quick Examples](../EXAMPLES.md)**, **[Ascend NPU Benchmark](../benchmark/ASCEND_NPU.md)** and **[Ascend NPU Supported Matrix](../supported_matrix/ASCEND_NPU.md)** for more details.
 
 ```bash
-pip3 install opencv-python-headless einops imageio-ffmpeg ftfy 
-pip3 install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
-pip3 install git+https://github.com/vipshop/cache-dit.git # latest
+pip install opencv-python-headless einops imageio-ffmpeg ftfy 
+pip install git+https://github.com/huggingface/diffusers.git # latest or >= 0.36.0
+pip install git+https://github.com/vipshop/cache-dit.git # latest
 ```
 
 ### Single NPU Inference
