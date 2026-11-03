@@ -30,7 +30,7 @@ from .sampler import CFGConfig, Magi2PreviewSampler, Magi2SamplerInput, build_ma
 from .transformer import Magi2PreviewTransformer
 from .wan_vae import denormalize_wan22_latent
 
-__all__ = ["Magi2Pipeline", "load_transformer_weights"]
+__all__ = ["Magi2PreviewPipeline", "load_transformer_weights"]
 
 _REQUIRED_CHECKPOINT_PATHS = ("preview/model.safetensors.index.json", )
 
@@ -80,7 +80,7 @@ def load_transformer_weights(transformer: Magi2PreviewTransformer,
   return loaded
 
 
-class Magi2Pipeline(DiffusionPipeline):
+class Magi2PreviewPipeline(DiffusionPipeline):
   """MAGI-2 Preview text/image-to-video-and-audio pipeline.
 
   :param transformer: Preview denoising transformer.
@@ -127,7 +127,7 @@ class Magi2Pipeline(DiffusionPipeline):
     audio_decoder=None,
     load_auxiliary: bool = True,
     **kwargs,
-  ) -> "Magi2Pipeline":
+  ) -> "Magi2PreviewPipeline":
     """Build the pipeline from a local checkpoint root.
 
     :param pretrained_model_name_or_path: Checkpoint directory holding ``preview/``.
@@ -236,6 +236,7 @@ class Magi2Pipeline(DiffusionPipeline):
     audio_frames: int = None,
     decode: bool = True,
     generator: torch.Generator = None,
+    image=None,
   ):
     """Generate one 10-second audio-video clip (or its latents).
 
@@ -257,8 +258,17 @@ class Magi2Pipeline(DiffusionPipeline):
     :param audio_frames: Audio latent frame count; the official timeline when omitted.
     :param decode: Decode to pixels/audio when the decoders are present.
     :param generator: Optional torch generator for the initial noise.
+    :param image: Optional conditioning still for image-to-video; not supported yet.
     :returns: Dict with ``latent`` / ``audio_latent`` and, when decoded, ``frames`` / ``audio``.
+    :raises NotImplementedError: When ``image`` is given: the released image path needs the Wan2.2
+        VAE encoder, which is not vendored yet.
     """
+
+    if image is not None:
+      raise NotImplementedError(
+        "image-to-video needs the released Wan2.2 VAE encoder (`Magi2PreviewPipeline` currently "
+        "decodes with `AutoencoderKLWan` but does not encode a conditioning still). Drop `image` to "
+        "run text-to-video-and-audio.")
 
     generation = MAGI2_GENERATION_CONFIG
     # The pre-adapter is the always-resident compute device: under layerwise offload every layer

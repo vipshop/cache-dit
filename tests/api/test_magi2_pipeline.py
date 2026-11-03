@@ -17,7 +17,7 @@ from cache_dit.models.pipelines.magi2.configuration import (
   Magi2MoEConfig,
   Magi2PreviewConfig,
 )
-from cache_dit.models.pipelines.magi2.pipeline import Magi2Pipeline
+from cache_dit.models.pipelines.magi2.pipeline import Magi2PreviewPipeline
 from cache_dit.models.pipelines.magi2.transformer import Magi2PreviewTransformer
 
 TEXT_TOKENS = 5
@@ -68,8 +68,8 @@ def _checkpoint_root(tmp_path):
   return tmp_path
 
 
-def _pipeline(tmp_path, transformer=None) -> Magi2Pipeline:
-  return Magi2Pipeline.from_pretrained(
+def _pipeline(tmp_path, transformer=None) -> Magi2PreviewPipeline:
+  return Magi2PreviewPipeline.from_pretrained(
     _checkpoint_root(tmp_path),
     torch_dtype=torch.float32,
     transformer=transformer or tiny_transformer(),
@@ -84,8 +84,8 @@ def test_from_pretrained_rejects_device_map(tmp_path):
     _pipeline_with_kwargs(tmp_path, device_map="balanced")
 
 
-def _pipeline_with_kwargs(tmp_path, **kwargs) -> Magi2Pipeline:
-  return Magi2Pipeline.from_pretrained(
+def _pipeline_with_kwargs(tmp_path, **kwargs) -> Magi2PreviewPipeline:
+  return Magi2PreviewPipeline.from_pretrained(
     _checkpoint_root(tmp_path),
     transformer=tiny_transformer(),
     load_auxiliary=False,
@@ -104,7 +104,7 @@ def test_from_pretrained_requires_a_local_checkpoint(tmp_path):
   """A hub id is not accepted: the released repo has no diffusers layout."""
 
   with pytest.raises(ValueError, match="local checkpoint directory"):
-    Magi2Pipeline.from_pretrained(
+    Magi2PreviewPipeline.from_pretrained(
       "sand-ai/MAGI-2-preview",
       transformer=tiny_transformer(),
       load_auxiliary=False,
@@ -115,7 +115,7 @@ def test_missing_auxiliary_components_are_reported(tmp_path):
   """The default path must name the components that are not vendored yet."""
 
   with pytest.raises(NotImplementedError, match="auxiliary components"):
-    Magi2Pipeline.from_pretrained(
+    Magi2PreviewPipeline.from_pretrained(
       _checkpoint_root(tmp_path),
       transformer=tiny_transformer(),
     )
@@ -205,3 +205,96 @@ def test_cache_wraps_the_layer_stack_only(tmp_path):
   assert getattr(transformer.block, "_is_cached", False) is True
   assert not hasattr(transformer.pre_adapter, "_is_cached")
   assert not hasattr(transformer.post_adapter, "_is_cached")
+
+
+def test_registry_entries_match_the_real_pipeline_class(tmp_path):
+  """The adapter prefix, the planner key and the dispatch guard must all resolve for this model.
+
+  Every one of these was broken at least once while the tests only exercised a hand-built adapter,
+  so they are asserted through the real registries instead.
+  """
+
+  from diffusers.configuration_utils import ConfigMixin
+  from diffusers.models.modeling_utils import ModelMixin
+
+  from cache_dit.caching.block_adapters import BlockAdapterRegister
+  from cache_dit.distributed.transformers.dispatch import (
+    _ensure_cp_planners_activated,
+    _ensure_tp_planners_activated,
+    _parallelize_transformer_tensor,
+  )
+  from cache_dit.distributed.transformers.register import (
+    ContextParallelismPlannerRegister,
+    TensorParallelismPlannerRegister,
+  )
+
+  pipe = _pipeline(tmp_path)
+  assert BlockAdapterRegister.is_supported(pipe)
+  adapter = BlockAdapterRegister.get_adapter(pipe)
+  assert adapter.blocks is pipe.transformer.block.layers
+  assert BlockAdapterRegister.has_separate_cfg(pipe) is False
+
+  assert isinstance(pipe.transformer.block, (ModelMixin, ConfigMixin))
+  _ensure_cp_planners_activated()
+  _ensure_tp_planners_activated()
+  assert ContextParallelismPlannerRegister.get_planner(adapter.transformer) is not None
+  assert TensorParallelismPlannerRegister.get_planner(adapter.transformer) is not None
+  # The TP dispatch guards on `ModelMixin` before it asks the planner for a plan.
+  assert _parallelize_transformer_tensor(adapter.transformer, None) is adapter.transformer
+
+
+def test_image_conditioning_is_refused_explicitly(tmp_path):
+  """`image` must fail with a named limit instead of a `TypeError` on the call signature."""
+
+  pipe = _pipeline(tmp_path)
+  with pytest.raises(NotImplementedError, match="Wan2.2 VAE encoder"):
+    pipe(
+      num_inference_steps=1,
+      txt_feat=torch.zeros(1, TEXT_TOKENS, TEXT_DIM),
+      null_txt_feat=torch.zeros(1, TEXT_TOKENS, TEXT_DIM),
+      latent=torch.zeros(LATENT),
+      audio_latent=torch.zeros(AUDIO_LATENT),
+      latent_frames=LATENT[2],
+      audio_frames=AUDIO_LATENT[1],
+      decode=False,
+      image="conditioning.png",
+    )
+
+
+def test_cli_offload_kwargs_use_the_declared_subtree_filter():
+  """`--layerwise-offload` must stream whole layers, not fall back to leaf discovery.
+
+  Leaf discovery would leave the MoE parameter blocks on the compute device, which is exactly the
+  216 GiB OOM this model avoids by declaring its own filter.
+  """
+
+  from cache_dit._utils.utils import _declared_offload_owner, _layerwise_kwargs_for, get_args
+
+  transformer = tiny_transformer()
+  args = get_args(parse=False).parse_args([])
+  kwargs = _layerwise_kwargs_for(
+    args,
+    target_name="transformer",
+    module=transformer,
+    onload_device=torch.device("cpu"),
+    keep_vision_resident=False,
+  )
+
+  assert _declared_offload_owner(transformer) is transformer
+  assert kwargs["module_filter"] is type(transformer).layerwise_offload_filter
+  assert kwargs["module_filter"]("block.layers.0", transformer.block.layers[0])
+  assert not kwargs["module_filter"]("pre_adapter", transformer.pre_adapter)
+
+
+def test_cli_offload_keeps_the_non_streamed_parts_resident():
+  """The adapters run every step, so the CLI path has to move them onto the compute device."""
+
+  from cache_dit._utils.utils import _apply_declared_residency
+
+  transformer = tiny_transformer()
+  calls = []
+  transformer.resident_to = lambda device: calls.append(device)
+
+  _apply_declared_residency(transformer, torch.device("cpu"))
+
+  assert calls == [torch.device("cpu")]

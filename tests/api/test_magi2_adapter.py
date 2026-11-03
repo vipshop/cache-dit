@@ -127,7 +127,8 @@ def Magi2DataProxyConfigForTest():
 
 
 class Magi2PreviewTestPipelineBase(DiffusionPipeline):
-  """Minimal stand-in for `Magi2Pipeline`: registers `transformer` and drives the sampler loop."""
+  """Minimal stand-in for `Magi2PreviewPipeline`: registers `transformer` and drives the sampler
+  loop."""
 
   def __init__(self, transformer: Magi2PreviewTransformer) -> None:
     super().__init__()

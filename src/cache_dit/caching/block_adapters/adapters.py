@@ -2093,7 +2093,7 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("Magi2Preview")
 def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
-  """BlockAdapter for MAGI-2 Preview (`Magi2Pipeline`, text/image to video with audio).
+  """BlockAdapter for MAGI-2 Preview (`Magi2PreviewPipeline`, text/image to video with audio).
 
   The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.magi2`), so it is not a
   diffusers module and `_relaxed_assert` skips its type check. Nothing else validates the wiring
@@ -2114,7 +2114,7 @@ def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
   * No PatchFunctor: the per-step diffusion-time signal is written into `hidden_states` before the
     stack, and the RoPE table / varlen metadata / modality dispatcher are loop-invariant arguments.
 
-  :param pipe: `Magi2Pipeline` instance, or a wrapper exposing only `transformer`.
+  :param pipe: `Magi2PreviewPipeline` instance, or a wrapper exposing only `transformer`.
   :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
   :returns: The BlockAdapter covering the `block.layers` denoising stack.
   """

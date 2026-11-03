@@ -2506,6 +2506,13 @@ def _layerwise_kwargs_for(
     vision_prefix = _keep_vision_tower_resident(module, onload_device)
     if vision_prefix is not None:
       kwargs["module_filter"] = _stream_filter_excluding(vision_prefix)
+  declared_owner = _declared_offload_owner(module)
+  declared_filter = (getattr(type(declared_owner), "layerwise_offload_filter", None)
+                     if declared_owner is not None else None)
+  if declared_filter is not None and "module_filter" not in kwargs:
+    # A model that streams subtrees instead of leaves has to say so: the default leaf discovery would
+    # pin the nested parameter blocks on the compute device.
+    kwargs["module_filter"] = declared_filter
   return kwargs
 
 
@@ -2650,7 +2657,40 @@ def _apply_layerwise_cpu_offload(
           keep_vision_resident=_needs_vision_inputs(pipe_or_adapter),
         ),
       ))
+    _apply_declared_residency(module, device)
   return bool(handles) or skipped_due_to_existing_offload
+
+
+def _declared_offload_owner(module: torch.nn.Module) -> torch.nn.Module | None:
+  """Return the module that may declare MAGI-style offload hooks, if any.
+
+  A model whose streaming unit is a *subtree* (a whole transformer layer) rather than a leaf has to
+  declare that itself, and it also has to move the parts that are never streamed onto the compute
+  device. Both are optional model-declared hooks: `layerwise_offload_filter` and `resident_to`.
+
+  :param module: Component about to be streamed.
+  :returns: The module carrying the declarations, or ``None``.
+  """
+
+  for candidate in (module, getattr(module, "transformer", None)):
+    if candidate is not None and (hasattr(type(candidate), "layerwise_offload_filter")
+                                  or hasattr(candidate, "resident_to")):
+      return candidate
+  return None
+
+
+def _apply_declared_residency(module: torch.nn.Module, device: torch.device) -> None:
+  """Move a model's non-streamed parts onto the compute device after offload is installed.
+
+  :param module: Component that was just put under layerwise offload.
+  :param device: Device the streamed module runs on.
+  """
+
+  for candidate in (module, getattr(module, "transformer", None)):
+    resident_to = getattr(candidate, "resident_to", None)
+    if resident_to is not None:
+      resident_to(device)
+      return
 
 
 def _adaln_offload_target_names(transformer: torch.nn.Module) -> list[str]:

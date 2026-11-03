@@ -8,7 +8,7 @@ Adapted from ``vllm-omni @ 7f217a1`` ``vllm_omni/diffusion/models/magi2/modeling
 * the packed attention kernel is called directly (:mod:`.attention`) instead of going through
   ``vllm_omni``'s ``Attention`` layer and its metadata side channel;
 * ``load_weights`` is a strict loader over a safetensors shard index, driven by
-  :meth:`Magi2Pipeline.from_pretrained`, instead of vLLM's ``ComponentSource`` plumbing;
+  :meth:`Magi2PreviewPipeline.from_pretrained`, instead of vLLM's ``ComponentSource`` plumbing;
 * implemented for cache-dit: ``_repeated_blocks`` declares the block stack (regional quantization and
   ``compile_repeated_blocks`` discover it), ``_layerwise_offload_blocks_attrs`` names the streamable
   container, and ``forward`` accepts an already-sharded packed sequence;
@@ -19,6 +19,7 @@ import os
 
 import torch
 import torch.nn as nn
+from diffusers.configuration_utils import ConfigMixin
 from diffusers.models.modeling_utils import ModelMixin
 
 from .attention import Magi2Attention, VarlenHandler
@@ -537,15 +538,29 @@ class Magi2TransformerLayer(nn.Module):
     return self._moe_output(streams, mlp_logits, normalized, routed, modality_dispatcher)
 
 
-class Magi2TransformerBlock(nn.Module):
+class Magi2TransformerBlock(ModelMixin, ConfigMixin):
   """The repeated layer stack; this is the module cache-dit caches.
+
+  Deriving from `ModelMixin` is what lets cache-dit's tensor-parallel dispatch reach the model-owned
+  `shard_for_tp`: the dispatch guards on that base class before it asks the planner for a plan.
 
   :param config: Preview architecture config.
   """
 
+  config_name = "config.json"
+  _supports_gradient_checkpointing = False
+
   def __init__(self, config: Magi2PreviewConfig) -> None:
     super().__init__()
-    self.config = config
+    # `ConfigMixin` owns `config` and expects a flat JSON-safe mapping; the architecture dataclass
+    # carries nested dataclasses, so it stays readable as `block_config` for the layer stack.
+    self.register_to_config(
+      num_layers=config.num_layers,
+      hidden_size=config.hidden_size,
+      head_dim=config.head_dim,
+      num_query_groups=config.num_query_groups,
+    )
+    self.block_config = config
     self.layers = nn.ModuleList(
       Magi2TransformerLayer(config, index) for index in range(config.num_layers))
 

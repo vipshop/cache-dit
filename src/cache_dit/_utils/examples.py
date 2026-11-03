@@ -5076,7 +5076,7 @@ def _magi2_example(args: argparse.Namespace, *, with_image: bool) -> Example:
   :returns: The MAGI-2 Preview example.
   """
 
-  from ..models.pipelines.magi2.pipeline import Magi2Pipeline
+  from ..models.pipelines.magi2.pipeline import Magi2PreviewPipeline
 
   height = 256 if args.height is None else args.height
   width = 448 if args.width is None else args.width
@@ -5104,7 +5104,7 @@ def _magi2_example(args: argparse.Namespace, *, with_image: bool) -> Example:
     init_config=ExampleInitConfig(
       task_type=ExampleType.T2VA,
       model_name_or_path=_path("sand-ai/MAGI-2-preview", args),
-      pipeline_class=Magi2Pipeline,
+      pipeline_class=Magi2PreviewPipeline,
     ),
     input_data=input_data,
   )
