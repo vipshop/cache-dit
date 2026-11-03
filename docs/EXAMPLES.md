@@ -11,11 +11,10 @@
 ## Installation
 
 ```bash
-pip install -U uv # use uv for faster installation
-uv pip install torch==2.11.0 torchvision torchaudio triton \
+pip install torch==2.11.0 torchvision torchaudio triton \
   transformers diffusers accelerate torchao opencv-python-headless \
   einops imageio-ffmpeg ftfy numpy
-uv pip install -U cache-dit # stable release from PyPI.
+pip install -U cache-dit # stable release from PyPI.
 ```
 
 ## Available Examples

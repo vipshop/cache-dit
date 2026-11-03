@@ -68,7 +68,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git # latest.
 pip3 install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 # Latest, from source: one flag builds every CUDA extension (SVDQuant, comm, attn).
 git submodule update --init --recursive --force # the SVDQuant sources need spdlog
-CACHE_DIT_BUILD_CUDA=1 uv pip install -e ".[quantization]"
+CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"
 ```
 
 ```python

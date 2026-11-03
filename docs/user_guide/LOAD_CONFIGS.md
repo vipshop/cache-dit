@@ -240,7 +240,7 @@ For <span style="color:#c77dff;">SVDQuant W4A4 DQ</span> workflow, you can defin
 ```yaml
 # Please install Cache-DiT with the CUDA extensions (Experimental) before using the 
 # SVDQuant quantization config. Installation instructions:
-# `uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/` or `CACHE_DIT_BUILD_CUDA=1 uv pip install -e ".[quantization]"`
+# `pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/` or `CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"`
 quantize_config: 
   quant_type: "svdq_int4_r128_dq" # or "svdq_nvfp4_r128_dq" for blackwell (sm120, sm121, etc.)
   svdq_kwargs:
@@ -331,11 +331,10 @@ pipe.transformer = torch.compile(pipe.transformer)
 ## Quick Examples 
 
 ```bash
-pip install -U uv # use uv for faster installation
-uv pip install torch==2.11.0 torchvision torchaudio triton \
+pip install torch==2.11.0 torchvision torchaudio triton \
   transformers diffusers accelerate torchao opencv-python-headless \
   einops imageio-ffmpeg ftfy numpy
-uv pip install -U cache-dit # stable release from PyPI.
+pip install -U cache-dit # stable release from PyPI.
 git clone https://github.com/vipshop/cache-dit.git 
 cd cache-dit/examples/configs # Preset yaml configs for quick test.
 

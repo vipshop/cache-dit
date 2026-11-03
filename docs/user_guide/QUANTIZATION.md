@@ -30,9 +30,9 @@ Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantiz
 
 ```bash
 # stable: torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install torchao --index-url https://download.pytorch.org/whl/cu130 --upgrade
+pip install torchao --index-url https://download.pytorch.org/whl/cu130 --upgrade
 # nightly: torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
+pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
 ```
 
 For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. We also recommend enabling <span style="color:#c77dff;">torch.compile</span> for better performance with quantization. Supported quantization types including:  
@@ -340,11 +340,11 @@ For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
 # release (2.38; see the platform tags on the index page).
-uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
+pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
 # Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
 git submodule update --init --recursive --force # the SVDQuant sources need spdlog
-CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
+CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]"
 ```
 
 The only thing users need to do is to prepare the calibration function (<span style="color:green;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:
