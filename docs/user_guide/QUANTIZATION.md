@@ -315,6 +315,21 @@ predicts how badly a per-token fp8 scale rounds the bulk of a row) and
 substring to see, for example, that FFN layers are more sensitive than the
 adaLN modulation projections.
 
+Both quantization backends are covered: TorchAO float8 (the weight becomes a
+`Float8Tensor`) and cache-dit's SVDQuant W4A4 runtime layer (the module becomes
+`SVDQW4A4Linear` with packed 4-bit weights). For SVDQuant the weight is kept
+packed, so `w_rel_err` is `null` while `rel_err` and `cos` are still reported.
+The lifecycle is owned by one class, `QuantizeObserver`:
+
+```python
+from cache_dit.quantization.observers import QuantizeObserver
+
+observer = QuantizeObserver(config.observer)
+refs = observer.capture_references(model)   # before quantization
+observer.attach(model, refs)                 # after quantization
+observer.dump("./fp8_observers.json")        # write the statistics
+```
+
 <span style="color:red;">Cost:</span> the observers keep one bf16 copy of every
 observed linear weight (host RAM by default) and add one bf16 GEMM per observed
 layer per forward, i.e. roughly **1.5-2x transformer forward time**, plus a

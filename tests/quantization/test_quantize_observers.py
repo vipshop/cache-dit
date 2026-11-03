@@ -3,7 +3,7 @@ import torch
 
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization import QuantizationObserverConfig
-from cache_dit.quantization.observers import capture_references, is_enabled
+from cache_dit.quantization.observers import QuantizeObserver
 
 
 class _Block(torch.nn.Module):
@@ -30,19 +30,31 @@ class _TinyDiT(torch.nn.Module):
     return x
 
 
+class _FakeSVDQLinear(torch.nn.Module):
+  """Stand-in for the SVDQuant runtime layer (packed weights, no `weight`)."""
+
+  def __init__(self, dim: int = 16, out_features: int = 64):
+    super().__init__()
+    self.qweight = torch.nn.Parameter(torch.zeros(dim, dim, dtype=torch.int8), requires_grad=False)
+    self.dense = torch.nn.Parameter(torch.zeros(out_features, dim, dtype=torch.bfloat16),
+                                    requires_grad=False)
+    self.bias = torch.nn.Parameter(torch.zeros(out_features, dtype=torch.bfloat16),
+                                   requires_grad=False)
+
+  def forward(self, x):
+    return torch.nn.functional.linear(x, self.dense, self.bias)
+
+
 def test_observer_is_off_by_default() -> None:
   config = QuantizeConfig(quant_type="float8_per_row")
 
   assert config.observer is None
-  assert is_enabled(config.observer) is False
+  assert QuantizeObserver(config.observer).enabled is False
 
 
 def test_observer_requires_explicit_enable() -> None:
-  disabled = QuantizationObserverConfig()
-  enabled = QuantizationObserverConfig(enabled=True)
-
-  assert is_enabled(disabled) is False
-  assert is_enabled(enabled) is True
+  assert QuantizeObserver(QuantizationObserverConfig()).enabled is False
+  assert QuantizeObserver(QuantizationObserverConfig(enabled=True)).enabled is True
 
 
 def test_observer_accepts_dict_from_cli_callers() -> None:
@@ -98,16 +110,18 @@ def test_observer_rejects_invalid_regex() -> None:
 
 def test_capture_references_skips_everything_when_disabled() -> None:
   model = _TinyDiT().to(torch.bfloat16)
+  observer = QuantizeObserver(QuantizationObserverConfig())
 
-  assert capture_references(model, None) == {}
-  assert capture_references(model, QuantizationObserverConfig()) == {}
+  assert observer.capture_references(model) == {}
+  assert QuantizeObserver(None).capture_references(model) == {}
 
 
 def test_capture_references_honors_regex_filter() -> None:
   model = _TinyDiT().to(torch.bfloat16)
-  config = QuantizationObserverConfig(enabled=True, layer_name_patterns=[r"feed_forward"])
+  observer = QuantizeObserver(
+    QuantizationObserverConfig(enabled=True, layer_name_patterns=[r"feed_forward"]))
 
-  refs = capture_references(model, config)
+  refs = observer.capture_references(model)
 
   assert refs
   assert all("feed_forward" in name for name in refs)
@@ -119,7 +133,36 @@ def test_capture_references_honors_regex_filter() -> None:
 
 def test_capture_references_keeps_all_layers_without_filter() -> None:
   model = _TinyDiT().to(torch.bfloat16)
+  observer = QuantizeObserver(QuantizationObserverConfig(enabled=True))
 
-  refs = capture_references(model, QuantizationObserverConfig(enabled=True))
+  refs = observer.capture_references(model)
 
   assert len(refs) == 2 * 3
+
+
+def test_observer_attaches_to_svdq_runtime_layers() -> None:
+  observer = QuantizeObserver(
+    QuantizationObserverConfig(enabled=True,
+                               max_steps=0,
+                               json_path=".tmp/tests/observers_svdq.json"))
+  model = _TinyDiT().to(torch.bfloat16)
+  refs = observer.capture_references(model)
+
+  # SVDQuant replaces the nn.Linear with a packed runtime layer in place.
+  model.single_stream_layers[0].norm1 = _FakeSVDQLinear(16, 64)
+
+  installed = observer.attach(model, refs)
+
+  # Only the replaced (quantized) layer is observed; the remaining float
+  # linears are skipped.
+  assert installed == 1
+  model.single_stream_layers[0].norm1(torch.randn(4, 16, dtype=torch.bfloat16))
+
+
+def test_observer_skips_plain_float_linears() -> None:
+  observer = QuantizeObserver(QuantizationObserverConfig(enabled=True, max_steps=0))
+  model = _TinyDiT().to(torch.bfloat16)
+  refs = observer.capture_references(model)
+
+  # Nothing is quantized yet, so no hook must be installed.
+  assert observer.attach(model, refs) == 0

@@ -64,6 +64,7 @@ from .quantization import load
 from .quantization import quantize
 from .quantization import QuantizeConfig
 from .quantization import QuantizationObserverConfig
+from .quantization import QuantizeObserver
 from .quantization import QuantizeBackend
 from .offload import LayerwiseOffloadHandle
 from .offload import LayerwiseOffloadHandleGroup

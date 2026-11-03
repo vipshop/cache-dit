@@ -6,7 +6,7 @@ from functools import partial
 from typing import Optional, List
 from torchao.core.config import AOBaseConfig
 from ..config import QuantizeConfig
-from ..observers import attach_observers, capture_references, is_enabled
+from ..observers import QuantizeObserver
 from ...utils import maybe_empty_cache
 from ...platforms import current_platform
 from ...envs import ENV
@@ -87,9 +87,8 @@ def quantize_ao(
   # Per-layer accuracy observers (diagnostics). Completely skipped unless the
   # caller opted in via QuantizeConfig(observer=QuantizationObserverConfig(
   # enabled=True, ...)): no module walk, no bf16 snapshot, no hooks.
-  observer_config = getattr(quantize_config, "observer", None)
-  observer_refs = (capture_references(module, observer_config)
-                   if is_enabled(observer_config) else None)
+  observer = QuantizeObserver(getattr(quantize_config, "observer", None))
+  observer_refs = observer.capture_references(module)
 
   quant_ctx = QuantizeAOContext.from_config(quantize_config, module, **kwargs)
   # Regional quantization for transformer modules in Diffusers, users can
@@ -163,7 +162,7 @@ def quantize_ao(
   maybe_empty_cache()
   quant_ctx.summary()
   if observer_refs:
-    attach_observers(module, observer_refs, observer_config)
+    observer.attach(module, observer_refs)
 
   module._is_quantized = True
   module._quantize_config = quantize_config
