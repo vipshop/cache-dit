@@ -101,6 +101,7 @@ __all__ = [
   "causvid_wan_example",
   "sana_video_example",
   "sana_video_i2v_example",
+  "longlive2_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -188,6 +189,7 @@ _env_path_mapping = {
   "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
   "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
   "CAUSVID_DIR": "tianweiy/CausVid",
+  "LONGLIVE2_DIR": "Efficient-Large-Model/LongLive-2.0-5B",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -4479,6 +4481,52 @@ def causvid_wan_example(args: argparse.Namespace, **kwargs) -> Example:
       width=width,
       num_frames=num_frames,
       num_inference_steps=3,
+      guidance_scale=1.0,
+      # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
+      extra_input_kwargs={"output_type": "pil"},
+    ),
+  )
+
+
+_LONGLIVE2_PROMPT = (
+  "A compact silver robot with one blue optic walks through a clean robotics lab, "
+  "smooth tracking camera, soft studio light, highly detailed.")
+
+_LONGLIVE2_DEFAULT = "Efficient-Large-Model/LongLive-2.0-5B"
+
+
+@ExampleRegister.register("longlive2", default=_LONGLIVE2_DEFAULT)
+def longlive2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongLive 2.0 (chunk-causal Wan2.2-TI2V-5B generator) text-to-video example.
+
+  `LONGLIVE2_DIR` points at an assembled checkpoint directory: `transformer/` (converted from the
+  released native `model_bf16.pt`, see `cache_dit.models.pipelines.longlive2.convert`), plus the
+  `text_encoder/`, `tokenizer/`, `vae/` and `scheduler/` of `Wan-AI/Wan2.2-TI2V-5B-Diffusers`. The
+  generator is chunk-causal and distilled to 4 steps without CFG, and the latent frame count must be
+  a multiple of the 8-frame chunk, so 61 frames is the shortest two-chunk clip.
+
+  :param args: CLI arguments.
+  :returns: The LongLive 2.0 example.
+  """
+  from ..models.pipelines.longlive2 import LongLive2Pipeline
+
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames = 61 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path(_LONGLIVE2_DEFAULT, args),
+      pipeline_class=LongLive2Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_LONGLIVE2_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=4,
       guidance_scale=1.0,
       # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
       extra_input_kwargs={"output_type": "pil"},
