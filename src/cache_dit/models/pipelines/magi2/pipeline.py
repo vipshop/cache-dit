@@ -130,6 +130,10 @@ class Magi2PreviewPipeline(DiffusionPipeline):
   :param audio_decoder: Optional audio VAE decoder.
   """
 
+  # The released conditioner is CPU-resident: Qwen3.5 runs a hand-written causal conv on a raw weight,
+  # so streaming it through the offload hooks would leave that weight on the host.
+  layerwise_offload_skip_components = ("text_encoder", )
+
   def __init__(
     self,
     transformer: Magi2PreviewTransformer = None,

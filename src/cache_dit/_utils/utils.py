@@ -2376,13 +2376,27 @@ def _resolve_generic_offload_targets(
 
   components = getattr(pipe_or_adapter, "components", None)
   if isinstance(components, dict):
+    # A pipeline may name the components that must stay resident: a conditioner whose forward calls a
+    # hand-written kernel on a raw weight would otherwise be streamed and fail on a device mismatch.
+    resident = tuple(
+      getattr(pipe_or_adapter, "layerwise_offload_skip_components", None)
+      or getattr(getattr(pipe_or_adapter, "pipe", None), "layerwise_offload_skip_components",
+                 ()) or ())
     for name, module in components.items():
+      if str(name) in resident:
+        continue
       _append_generic_offload_target(targets, seen_module_ids, str(name), module)
     if targets:
       return targets
 
   if hasattr(pipe_or_adapter, "__dict__"):
+    resident = tuple(
+      getattr(pipe_or_adapter, "layerwise_offload_skip_components", None)
+      or getattr(getattr(pipe_or_adapter, "pipe", None), "layerwise_offload_skip_components",
+                 ()) or ())
     for name, module in vars(pipe_or_adapter).items():
+      if str(name) in resident:
+        continue
       _append_generic_offload_target(targets, seen_module_ids, str(name), module)
 
   return targets

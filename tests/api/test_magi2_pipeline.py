@@ -298,3 +298,24 @@ def test_cli_offload_keeps_the_non_streamed_parts_resident():
   _apply_declared_residency(transformer, torch.device("cpu"))
 
   assert calls == [torch.device("cpu")]
+
+
+def test_resident_components_are_not_streamed(tmp_path):
+  """The conditioner runs a hand-written kernel on a raw weight, so it must stay off the offload
+  path.
+
+  Unknown components also have to be skipped: an offloaded conditioner fails with a device mismatch
+  only in the *synchronous* offload mode, which is why the declaration is asserted here.
+  """
+
+  from cache_dit._utils.utils import _resolve_generic_offload_targets
+
+  pipe = _pipeline(tmp_path)
+  pipe.text_encoder = torch.nn.Linear(2, 2)
+  pipe.audio_decoder = torch.nn.Linear(2, 2)
+
+  names = [name for name, _ in _resolve_generic_offload_targets(pipe)]
+
+  assert "transformer" in names
+  assert "text_encoder" not in names
+  assert "audio_decoder" in names
