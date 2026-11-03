@@ -60,6 +60,13 @@ what mostly decides which extensions survive, because it is only consulted when
 `CACHE_DIT_CUDA_ARCH_LIST` is unset. `CACHE_DIT_CUDA_BUILD_MODE=FAST` compiles for the
 local GPU only, which is the quickest way to build on a single machine.
 
+Run this build alone. The wheel is assembled *after* the extensions finish compiling, and
+that step imports `setuptools-scm` / `vcs-versioning`; installing packages in the same
+environment while the build runs can replace them under the running process, which then
+fails at the very end with an `ImportError` raised from `vcs_versioning`. Compile time is
+also why `--no-build-isolation` matters here: the isolated build environment would compile
+everything from scratch.
+
 > [!WARNING]
 > `cache-dit-cu13` (the former distribution name on PyPI, last release `1.5.2`) is
 > retired: the CUDA build is now `cache-dit` itself, tagged with the local version
