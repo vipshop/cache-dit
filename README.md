@@ -117,6 +117,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
 | Video | SANA-Video 2B (T2V/I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_480p_diffusers) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | LongCat-Video-Avatar (A2V/AI2V) 🔥 | [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | SANA-WM (I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-WM_bidirectional-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.3 Klein 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Wan-Animate-2 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |

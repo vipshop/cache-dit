@@ -4878,3 +4878,161 @@ def sana_video_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
       },
     ),
   )
+
+
+_LONG_CAT_VIDEO_AVATAR_PROMPT = (
+  "A person looks at the camera and speaks naturally, realistic skin texture, natural lighting, "
+  "smooth and stable motion, detailed facial expression, high quality.")
+_LONG_CAT_VIDEO_AVATAR_NEGATIVE_PROMPT = (
+  "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, "
+  "images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, "
+  "incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, "
+  "misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the "
+  "background, walking backwards")
+# 93 pixel frames is the released clip length (4k+1 at the VAE temporal rate 4): 24 latent frames of
+# 480x832 latents. The audio window of a latent frame is stitched from its VAE group, so shorter
+# clips lose the middle group entirely.
+_LONG_CAT_VIDEO_AVATAR_FRAMES = 93
+_LONG_CAT_VIDEO_AVATAR_FPS = 25
+_LONG_CAT_VIDEO_AVATAR_SAMPLE_RATE = 16000
+
+
+def _longcat_video_avatar_audio(args: argparse.Namespace, model_name_or_path: str,
+                                num_frames: int) -> Tuple[np.ndarray, int]:
+  """Resolve the driving waveform of the avatar models.
+
+  Order of preference: `--audio-path`, a wav shipped next to the checkpoint, then a synthetic
+  placeholder so the pipeline still runs. The placeholder carries no speech: it only satisfies the
+  audio-conditioning shape, and lip-sync or PSNR comparisons need a real recording.
+
+  :param args: CLI arguments.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :param num_frames: frames the waveform has to cover.
+  :returns: `(waveform, sampling_rate)` at 16 kHz.
+  """
+
+  candidates = []
+  if args.audio_path is not None:
+    candidates.append(args.audio_path)
+  for name in ("speech.wav", "audio.wav", "drive.wav"):
+    candidates.append(os.path.join(model_name_or_path, "assets", name))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return _wan_s2v_read_audio(candidate)
+  logger.warning("No LongCat-Video-Avatar driving waveform found: using a synthetic placeholder. "
+                 "Pass `--audio-path` with a real recording for a faithful sample.")
+  return _wan_s2v_synthetic_audio(num_frames,
+                                  _LONG_CAT_VIDEO_AVATAR_FPS), _LONG_CAT_VIDEO_AVATAR_SAMPLE_RATE
+
+
+def _longcat_video_avatar_reference_image(args: argparse.Namespace, model_name_or_path: str):
+  """Resolve the reference (identity) image of the AI2V task.
+
+  :param args: CLI arguments, honoring `--image-path`.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :returns: the reference image in RGB.
+  """
+
+  if args.image_path is not None:
+    return load_image(args.image_path).convert("RGB")
+  image_path = os.path.join(model_name_or_path, "assets", "reference.png")
+  if os.path.isfile(image_path):
+    return load_image(image_path).convert("RGB")
+  candidates = []
+  if CACHE_DIT_DIR is not None:
+    candidates.append(os.path.join(CACHE_DIT_DIR, "examples/data/consisid_input.png"))
+  repo_root = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+  candidates.append(os.path.join(repo_root, "examples/data/consisid_input.png"))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return load_image(candidate).convert("RGB")
+  raise ValueError("No LongCat-Video-Avatar reference image found: pass `--image-path`.")
+
+
+def _longcat_video_avatar_example(
+  args: argparse.Namespace,
+  image=None,
+) -> Example:
+  """Build the shared LongCat-Video-Avatar example.
+
+  The distilled 8-step recipe is the default (the checkpoint ships a DMD LoRA and the release
+  recommends it); set `LONGCAT_VIDEO_AVATAR_NO_DISTILL=1` to run the undistilled 50-step schedule,
+  which is the one that needs the classifier-free guidance and therefore the one that exercises the
+  separate-CFG cache bookkeeping.
+
+  :param args: CLI arguments.
+  :param image: reference image of the AI2V task, or `None` for A2V.
+  :returns: the configured example.
+  """
+
+  from ..models.pipelines.longcat_video_avatar import LongCatVideoAvatarPipeline
+
+  model_name_or_path = _path("meituan-longcat/LongCat-Video-Avatar-1.5", args=args)
+  use_distill = os.environ.get("LONGCAT_VIDEO_AVATAR_NO_DISTILL", "0").lower() != "1"
+  num_inference_steps = args.num_inference_steps
+  if num_inference_steps is None:
+    num_inference_steps = 8 if use_distill else 50
+  num_frames = args.num_frames if args.num_frames is not None else _LONG_CAT_VIDEO_AVATAR_FRAMES
+  audio, sampling_rate = _longcat_video_avatar_audio(args, model_name_or_path, num_frames)
+  # `image` is resized by the pipeline itself (center crop), so the client-side resize must not
+  # resample it a second time.
+  guidance = 1.0 if use_distill else 4.0
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.S2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=LongCatVideoAvatarPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+    ),
+    input_data=ExampleInputData(
+      prompt=_LONG_CAT_VIDEO_AVATAR_PROMPT,
+      negative_prompt=_LONG_CAT_VIDEO_AVATAR_NEGATIVE_PROMPT,
+      height=480,
+      width=832,
+      num_inference_steps=num_inference_steps,
+      image=image,
+      skip_image_resize=image is not None,
+      # The clip length is `num_frames` of the released VAE grid, not a free-form frame count.
+      use_num_frames=False,
+      extra_input_kwargs={
+        "num_frames": num_frames,
+        "audio": audio,
+        "sampling_rate": sampling_rate,
+        "sampling_fps": _LONG_CAT_VIDEO_AVATAR_FPS,
+        "use_distill": use_distill,
+        "text_guidance_scale": guidance,
+        "audio_guidance_scale": guidance,
+        # The video writer feeds imageio, which needs ndarray frames.
+        "output_type": "np",
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("longcat_video_avatar_a2v",
+                          default="meituan-longcat/LongCat-Video-Avatar-1.5")
+def longcat_video_avatar_a2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongCat-Video-Avatar A2V example (audio + text -> talking video).
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+
+  return _longcat_video_avatar_example(args)
+
+
+@ExampleRegister.register("longcat_video_avatar_ai2v",
+                          default="meituan-longcat/LongCat-Video-Avatar-1.5")
+def longcat_video_avatar_ai2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongCat-Video-Avatar AI2V example (reference image + audio + text -> talking video).
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+
+  model_name_or_path = _path("meituan-longcat/LongCat-Video-Avatar-1.5", args=args)
+  image = _longcat_video_avatar_reference_image(args, model_name_or_path)
+  return _longcat_video_avatar_example(args, image=image)
