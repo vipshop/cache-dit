@@ -51,15 +51,24 @@ def test_cp_rejects_ring_and_uneven_ulysses():
 
 
 def test_frame_range_requires_whole_frames():
-  cp_config = types.SimpleNamespace(_rank=1, _world_size=2)
+  cp_config = types.SimpleNamespace(_cp_rank=1, _cp_world_size=2)
 
   assert frame_range(None, 12) == (0, 12)
-  assert frame_range(types.SimpleNamespace(_rank=0, _world_size=1), 12) == (0, 12)
+  assert frame_range(types.SimpleNamespace(_cp_rank=0, _cp_world_size=1), 12) == (0, 12)
   assert frame_range(cp_config, 12) == (6, 12)
-  assert frame_range(types.SimpleNamespace(_rank=0, _world_size=2), 12) == (0, 6)
+  assert frame_range(types.SimpleNamespace(_cp_rank=0, _cp_world_size=2), 12) == (0, 6)
 
   with pytest.raises(ValueError, match="divisible by the context-parallel size"):
     frame_range(cp_config, 9)
+
+
+def test_frame_range_splits_by_context_parallelism_only():
+  """`ulysses_tp` must split the frames by the CP mesh, not by the global world size."""
+  cp2_tp2 = types.SimpleNamespace(_rank=2, _world_size=4, _cp_rank=0, _cp_world_size=2)
+
+  assert frame_range(cp2_tp2, 12) == (0, 6)
+  assert frame_range(types.SimpleNamespace(_rank=3, _world_size=4, _cp_rank=1, _cp_world_size=2),
+                     12) == (6, 12)
 
 
 def test_cli_examples_are_registered():

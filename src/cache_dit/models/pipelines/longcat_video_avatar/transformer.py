@@ -58,7 +58,10 @@ def frame_range(cp_config, global_frames: int) -> tuple:
     cross-attention reshapes the token axis by frame, so a rank must own whole frames.
   """
 
-  world = getattr(cp_config, "_world_size", 1) if cp_config is not None else 1
+  # The frame axis is split by the context-parallel mesh only. Using the global world size here
+  # would divide by tp as well, so a `ulysses_tp` run would slice 1/(cp*tp) of the frames while
+  # `blocks.0` slices 1/cp, and the RoPE tables would no longer line up.
+  world = getattr(cp_config, "_cp_world_size", 1) if cp_config is not None else 1
   if not world or world == 1:
     return 0, global_frames
   if global_frames % world != 0:
@@ -68,7 +71,7 @@ def frame_range(cp_config, global_frames: int) -> tuple:
       f"so a split inside a frame is not representable. Pick a clip whose latent frames are a "
       f"multiple of {world}.")
   per_rank = global_frames // world
-  start = int(getattr(cp_config, "_rank", 0)) * per_rank
+  start = int(getattr(cp_config, "_cp_rank", 0)) * per_rank
   return start, start + per_rank
 
 
