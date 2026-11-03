@@ -18,7 +18,11 @@ if [[ -z "${MAX_JOBS:-}" ]]; then
   export MAX_JOBS=32
 fi
 
-if [[ -n "${CACHE_DIT_BUILD_SVDQUANT:-}" && "${CACHE_DIT_BUILD_SVDQUANT}" != "0" ]]; then
+CUDA_BUILD="${CACHE_DIT_BUILD_CUDA:-0}"
+CUDA_BUILD="${CUDA_BUILD//[[:space:]]/}"
+CUDA_BUILD="${CUDA_BUILD,,}"
+if [[ "$CUDA_BUILD" == "1" || "$CUDA_BUILD" == "true" || "$CUDA_BUILD" == "yes" || \
+      "$CUDA_BUILD" == "on" ]]; then
   if ! command -v ccache >/dev/null 2>&1; then
     if [[ "${CACHE_DIT_REQUIRE_CCACHE:-0}" == "1" ]]; then
       echo "[build_fast] ccache is required for this build but was not found." >&2

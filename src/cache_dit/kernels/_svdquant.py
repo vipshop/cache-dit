@@ -63,9 +63,12 @@ def _get_required_extension_module() -> ModuleType:
   if extension_module is None:
     error = svdq_get_load_error()
     raise RuntimeError(
-      "The optional Cache-DiT SVDQuant CUDA extension is not available. Build it with "
-      "`CACHE_DIT_BUILD_SVDQUANT=1 python -m pip install -e . --no-build-isolation` after "
-      "`conda activate cdit`.") from error
+      "The optional Cache-DiT SVDQuant CUDA extension is not available. Build the CUDA "
+      "extensions with "
+      "`CACHE_DIT_BUILD_CUDA=1 python -m pip install -e . --no-build-isolation` after "
+      "`conda activate cdit`. The SVDQuant kernels need sm80+ and exclude sm90, so a build "
+      "that printed a skipped-SM warning omits this extension: rerun it with "
+      "CACHE_DIT_CUDA_ARCH_LIST set to a supported target.") from error
   return extension_module
 
 

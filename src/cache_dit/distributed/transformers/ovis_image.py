@@ -12,7 +12,7 @@ try:
 except ImportError:
   raise ImportError("OvisImageTransformer2DModel requires the 'diffusers>=0.36.dev0'."
                     "Please install latest version of diffusers from source: \n"
-                    "pip3 install git+https://github.com/huggingface/diffusers.git")
+                    "pip install git+https://github.com/huggingface/diffusers.git")
 from einops import rearrange
 from torch import nn
 from torch.distributed import DeviceMesh

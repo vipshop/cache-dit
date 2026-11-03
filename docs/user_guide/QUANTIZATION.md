@@ -30,9 +30,9 @@ Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantiz
 
 ```bash
 # stable: torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install torchao --index-url https://download.pytorch.org/whl/cu130 --upgrade
+pip install torchao --index-url https://download.pytorch.org/whl/cu130 --upgrade
 # nightly: torchao (change cu130 to cu129 if using CUDA 12.9)
-uv pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
+pip install --pre torchao --index-url https://download.pytorch.org/whl/nightly/cu130 --upgrade
 ```
 
 For GPUs with low memory capacity, we recommend using <span style="color:#c77dff;">float8_per_row</span> or <span style="color:#c77dff;">float8_per_block</span>, as these methods cause almost no loss in precision. We also recommend enabling <span style="color:#c77dff;">torch.compile</span> for better performance with quantization. Supported quantization types including:  
@@ -333,18 +333,18 @@ Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with hi
 
 ![svdq](../assets/svdq-algo.png)
 
-With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with SVDQuant support**.
+With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with the CUDA extensions**.
 
 For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs, while the NVFP4 path is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and requires <span style="color:#c77dff;">svdq_kwargs={"runtime_kernel": "v1"}</span>. Setting <span style="color:#c77dff;">runtime_kernel="v2"</span> with NVFP4 is rejected intentionally at config-validation time.
 
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
 # release (2.38; see the platform tags on the index page).
-uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
-# Optional: just build Cache-DiT with SVDQuant support from source.
+pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
+# Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # init submodules 
-CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
+git submodule update --init --recursive --force # the SVDQuant sources need spdlog
+CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]"
 ```
 
 The only thing users need to do is to prepare the calibration function (<span style="color:green;">calibrate_fn</span>) for collecting quantization statistics, and Cache-DiT will take care of the rest, including computing the quantization parameters, applying quantization, and loading the quantized weights for inference or further fine-tuning. For example:

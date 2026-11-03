@@ -9,7 +9,7 @@ Use the metrics functions evaluate the accuracy losses:
 <div id="metrics"></div>
 
 ```python
-# pip3 install "cache-dit[metrics]"
+# pip install "cache-dit[metrics]"
 from cache_dit.metrics import compute_psnr
 from cache_dit.metrics import compute_ssim
 from cache_dit.metrics import compute_fid

@@ -24,7 +24,7 @@ except ImportError:
 
   def _fp8_comm_kernel_unavailable(*args, **kwargs):
     raise RuntimeError("FP8 comm kernels could not be imported. Build cache_dit._C_comm with "
-                       "CACHE_DIT_BUILD_COMM=1 on an SM89+ GPU, or disable FP8 mode.")
+                       "CACHE_DIT_BUILD_CUDA=1 on an SM89+ GPU, or disable FP8 mode.")
 
   fp8_comm_per_token_quant = _fp8_comm_kernel_unavailable
   fp8_comm_per_token_dequant = _fp8_comm_kernel_unavailable

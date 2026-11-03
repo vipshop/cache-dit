@@ -27,7 +27,7 @@ except ImportError as exc:
   raise ImportError(
     "HunyuanImage context parallelism requires diffusers with HunyuanImageTransformer2DModel "
     "support. Please install a recent diffusers version from source: \n"
-    "pip3 install git+https://github.com/huggingface/diffusers.git") from exc
+    "pip install git+https://github.com/huggingface/diffusers.git") from exc
 from ...attention import _dispatch_attention_fn
 from ...logger import init_logger
 from ..config import ParallelismConfig

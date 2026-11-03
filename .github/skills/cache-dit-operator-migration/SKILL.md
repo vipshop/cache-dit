@@ -136,16 +136,18 @@ package. Each domain module owns its own registrations and its own extension loa
 
 | Extension | Built by | Contents |
 |---|---|---|
-| `cache_dit._C_svdquant` | `CACHE_DIT_BUILD_SVDQUANT=1` | SVDQ W4A4 GEMM + quantizers; exposes `ops` and `utils` submodules |
-| `cache_dit._C_comm` | `CACHE_DIT_BUILD_COMM=1`, or any `CACHE_DIT_BUILD_SVDQUANT=1` build | FP8 comm ops; exposes an `ops` submodule |
-| `cache_dit._C_attn` | `CACHE_DIT_BUILD_ATTN=1`, `CACHE_DIT_BUILD_COMM=1`, or any `CACHE_DIT_BUILD_SVDQUANT=1` build | Attention-state merge; exposes an `ops` submodule |
+| `cache_dit._C_svdquant` | `CACHE_DIT_BUILD_CUDA=1`, when an SM target >= sm80 excluding sm90 resolves | SVDQ W4A4 GEMM + quantizers; exposes `ops` and `utils` submodules |
+| `cache_dit._C_comm` | `CACHE_DIT_BUILD_CUDA=1`, when an SM target >= sm89 resolves | FP8 comm ops; exposes an `ops` submodule |
+| `cache_dit._C_attn` | `CACHE_DIT_BUILD_CUDA=1`, when an SM target >= sm89 resolves | Attention-state merge; exposes an `ops` submodule |
 
-`CACHE_DIT_BUILD_SVDQUANT=1` enables all three extensions, because the release wheel must ship them.
-The optional operator extensions (`_C_comm`, `_C_attn`) are gated to SM89+; the SVDQuant extension
-filters out sm90 targets its INT4 kernels cannot use. Default arch targets are
-`("89", "90a", "100", "120a")`, override with `CACHE_DIT_CUDA_ARCH_LIST` or `TORCH_CUDA_ARCH_LIST`.
-An explicit `CACHE_DIT_BUILD_ATTN=1` raises when no SM target resolves, so a requested extension is
-never dropped silently.
+`CACHE_DIT_BUILD_CUDA=1` is the single switch: it asks for all three extensions at once, because
+the release wheel must ship them, and there is no per-extension flag. Each extension is then
+filtered by its own SM predicate in `_resolve_sm_targets(scope, is_supported)`, so the gencode sets
+may differ within one build; an extension with an empty set is skipped with a
+`[cache-dit] CUDA build: skipping ...` warning in a base build, and raises in a cu13 release build.
+Default arch targets are `("89", "90a", "100", "120a")`, override with `CACHE_DIT_CUDA_ARCH_LIST` or
+`TORCH_CUDA_ARCH_LIST`; `CACHE_DIT_CUDA_BUILD_MODE=FAST` detects the local GPU instead. A build
+where all three are skipped exits with an error rather than producing an extension-less wheel.
 
 ## Phase 0: Gather Before Coding
 
@@ -415,10 +417,11 @@ Checklist:
    `_missing_*_sources()` turns a forgotten entry into a clear build error instead of a link error,
    and a source that is on disk but not in the list is silently not compiled.
 2. If the op needs a new extension, add `_get_<ext>_extension()` and wire it into
-   `_get_extensions()`; keep the flag-gated, SM-target-gated structure.
+   `_get_extensions()`; keep the single `_should_build_cuda()` gate plus the per-extension
+   `_resolve_sm_targets()` gate.
 3. Keep default install and import behavior safe without any extension: no eager extension import
    outside the lazy loader.
-4. Keep `CACHE_DIT_BUILD_SVDQUANT=1` shipping every extension; a cu13 release build asserts
+4. Keep `CACHE_DIT_BUILD_CUDA=1` shipping every extension; a cu13 release build asserts
    this. `BuildExtension` only compares source mtimes, so after editing a shared header such as
    `csrc/kernels/attn/attn.h`, wipe `build/` (`CACHE_DIT_CLEAN=1`) instead of trusting the cached
    objects.

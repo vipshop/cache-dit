@@ -280,10 +280,9 @@ def _render_landing(prefix_dir: Path, index_base: str, channels: list[str]) -> s
     <p>
       The command adds this index as <code>--extra-index-url</code> rather than
       <code>--index-url</code>: it holds <code>{PROJECT}</code> alone, with no
-      dependencies, so PyPI has to stay the index those come from.  That is also the
-      form <code>uv</code> resolves: it searches the extra indexes before the default
-      one, so naming PyPI as the extra index instead would leave it considering the
-      PyPI release only.
+      dependencies, so PyPI has to stay the index those come from.  pip merges the two
+      indexes and takes the highest version, so this one command installs the CUDA
+      build.
     </p>
     <p>
       <code>{PROJECT}</code> is the same distribution PyPI lists, built here with

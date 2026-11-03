@@ -14,7 +14,7 @@ except ImportError as exc:
   raise ImportError(
     "Kandinsky5 context parallelism requires diffusers with Kandinsky5Transformer3DModel "
     "support. Please install a recent diffusers version from source: \n"
-    "pip3 install git+https://github.com/huggingface/diffusers.git") from exc
+    "pip install git+https://github.com/huggingface/diffusers.git") from exc
 
 from ...logger import init_logger
 from ..config import ParallelismConfig

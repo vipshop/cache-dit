@@ -61,9 +61,11 @@ def _get_required_ops_module() -> ModuleType:
   extension_module = _load_extension_module()
   if extension_module is None:
     raise RuntimeError(
-      "The optional Cache-DiT attention CUDA extension is not available. Build it with "
-      "`CACHE_DIT_BUILD_ATTN=1 python -m pip install -e . --no-deps --no-build-isolation` "
-      "after `conda activate cdit`.") from attn_get_load_error()
+      "The optional Cache-DiT attention CUDA extension is not available. Build the CUDA "
+      "extensions with "
+      "`CACHE_DIT_BUILD_CUDA=1 python -m pip install -e . --no-build-isolation` after "
+      "`conda activate cdit`. The attention kernels need sm89+, so a build that printed a "
+      "skipped-SM warning omits this extension.") from attn_get_load_error()
 
   ops_module = getattr(extension_module, "ops", None)
   if ops_module is None:

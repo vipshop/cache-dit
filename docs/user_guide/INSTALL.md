@@ -15,8 +15,7 @@
 Firstly, install the required dependencies, including PyTorch, Diffusers, and TorchAo. We recommend installing the <span style="color:#c77dff;">latest</span> versions for better compatibility and performance.
 
 ```bash
-pip install -U uv # use uv for faster installation
-uv pip install torch==2.11.0 torchvision torchaudio triton \
+pip install torch==2.11.0 torchvision torchaudio triton \
   transformers diffusers accelerate torchao opencv-python-headless \
   einops imageio-ffmpeg ftfy numpy
 ```
@@ -24,8 +23,8 @@ uv pip install torch==2.11.0 torchvision torchaudio triton \
 Then, you can install <span style="color:#c77dff;">Cache-DiT</span> from PyPI:
 
 ```bash
-uv pip install -U cache-dit # PyPI, stable release.
-uv pip install git+https://github.com/vipshop/cache-dit.git # latest
+pip install -U cache-dit # PyPI, stable release.
+pip install git+https://github.com/vipshop/cache-dit.git # latest
 ```
 
 Or, install Cache-DiT with <span style="color:#c77dff;">SVDQuant</span> support (Experimental) -- the
@@ -35,24 +34,37 @@ same distribution with the CUDA extension compiled in, served from our own wheel
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor the
 # current release was built against (2.38) -- the tag of every wheel is derived from
 # the symbols it needs, and the index page lists what it serves.
-uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
-# Optional: just build Cache-DiT with SVDQuant support from source.
+pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+# Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # init submodules 
-CACHE_DIT_BUILD_SVDQUANT=1 MAX_JOBS=32 uv pip install -e ".[quantization]"
+git submodule update --init --recursive --force # the SVDQuant sources need spdlog
+CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-isolation
 ```
 
-The full CUDA build also ships the communication operators used by FP8 Ulysses (`cache_dit._C_comm`) and the attention-state merge operator used by Ring Attention (`cache_dit._C_attn`). To build the communication operators together with the attention operators, without SVDQuant, on SM89 or newer GPUs, use:
+`CACHE_DIT_BUILD_CUDA=1` is the only CUDA build switch, and it builds every optional
+extension at once: SVDQuant (`cache_dit._C_svdquant`), the communication operators used by
+FP8 Ulysses (`cache_dit._C_comm`), and the attention-state merge operator used by Ring
+Attention (`cache_dit._C_attn`). There is no per-extension switch.
 
-```bash
-CACHE_DIT_BUILD_COMM=1 uv pip install -e . --no-deps --no-build-isolation
-```
+An extension whose kernels cannot run on any requested SM target is skipped with a
+`[cache-dit] CUDA build: skipping ...` warning instead of failing the build. SVDQuant needs
+sm80+ and excludes Hopper (sm90), so a Hopper build ships `_C_comm` and `_C_attn` only;
+`_C_comm` and `_C_attn` need sm89+. A build where none of the three can run fails instead of
+producing an extension-less wheel.
 
-To build only the attention-state merge operator, use:
+The architecture set defaults to `89`, `90a`, `100`, and `120a` (see
+`DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`), trimmed to what the local nvcc supports.
+`CACHE_DIT_CUDA_ARCH_LIST` overrides it -- note that an inherited `TORCH_CUDA_ARCH_LIST` is
+what mostly decides which extensions survive, because it is only consulted when
+`CACHE_DIT_CUDA_ARCH_LIST` is unset. `CACHE_DIT_CUDA_BUILD_MODE=FAST` compiles for the
+local GPU only, which is the quickest way to build on a single machine.
 
-```bash
-CACHE_DIT_BUILD_ATTN=1 uv pip install -e . --no-deps --no-build-isolation
-```
+Run this build alone. The wheel is assembled *after* the extensions finish compiling, and
+that step imports `setuptools-scm` / `vcs-versioning`; installing packages in the same
+environment while the build runs can replace them under the running process, which then
+fails at the very end with an `ImportError` raised from `vcs_versioning`. Compile time is
+also why `--no-build-isolation` matters here: the isolated build environment would compile
+everything from scratch.
 
 > [!WARNING]
 > `cache-dit-cu13` (the former distribution name on PyPI, last release `1.5.2`) is
@@ -61,8 +73,8 @@ CACHE_DIT_BUILD_ATTN=1 uv pip install -e . --no-deps --no-build-isolation
 > before switching:
 >
 > ```bash
-> uv pip uninstall cache-dit-cu13
-> uv pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+> pip uninstall cache-dit-cu13
+> pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
 > ```
 
 > [!NOTE]
@@ -75,15 +87,10 @@ CACHE_DIT_BUILD_ATTN=1 uv pip install -e . --no-deps --no-build-isolation
 > an unpinned `-U` resolves to the newer plain release, without an error.
 >
 > Our index carries `cache-dit` alone, with no dependencies, so it is added as an
-> **extra** index and PyPI stays the index the requirements come from. Install torch
-> first, from the PyTorch index you normally use, or the resolver may pick a torch that
-> is not the CUDA 13 build. Measured behaviour of the two installers (`uv 0.11.28`):
-> `pip` merges the indexes and takes the highest version, and `uv` searches the extra
-> indexes before the default one, so this one command resolves the CUDA build for both.
-> Naming PyPI as the extra index instead
-> (`--index-url .../whl/cu13/ --extra-index-url https://pypi.org/simple`) works with
-> `pip` but leaves `uv` considering the PyPI release alone, unless you add
-> `--index-strategy unsafe-best-match`.
+> **extra** index and PyPI stays the index the requirements come from: `pip` merges the
+> two and takes the highest version, so this one command resolves the CUDA build. Install
+> torch first, from the PyTorch index you normally use, or the resolver may pick a torch
+> that is not the CUDA 13 build.
 
 ## Installation with Ascend NPU
 
