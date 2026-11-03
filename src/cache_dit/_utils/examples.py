@@ -4978,6 +4978,11 @@ def _longcat_video_avatar_example(
   # `image` is resized by the pipeline itself (center crop), so the client-side resize must not
   # resample it a second time.
   guidance = 1.0 if use_distill else 4.0
+  # Speech-driven video is a video-only task for the writer, which then falls back to
+  # `--saved-fps` (8) instead of the model's native 25 fps and the clip plays at a third of the rate
+  # it was generated for. Adopt the native rate unless the caller asked for another one.
+  if getattr(args, "saved_fps", None) in (None, 8):
+    args.saved_fps = _LONG_CAT_VIDEO_AVATAR_FPS
 
   return Example(
     args=args,

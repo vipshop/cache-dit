@@ -186,6 +186,10 @@ class LongCatVideoAvatarPipeline(DiffusionPipeline):
     self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(
       self, "vae", None) else 8
     self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+    # Native container rate of the release, read by the generate CLI's video writer. Without it the
+    # writer falls back to 8 fps and the clip plays at a third of the rate it was generated for.
+    # `__call__` refreshes it when a caller samples the audio features at another rate.
+    self.fps = 25.0
 
     self.model_type = model_type
     self._num_timesteps = 1000
@@ -796,6 +800,7 @@ class LongCatVideoAvatarPipeline(DiffusionPipeline):
     else:
       batch_size = len(prompt)
 
+    self.fps = float(sampling_fps)
     audio_embs = self._prepare_audio_embs(audio, num_frames, sampling_fps, device)
     audio_cond_embs = torch.cat([audio_embs] * num_videos_per_prompt, dim=0)
     if do_classifier_free_guidance:
