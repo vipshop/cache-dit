@@ -213,8 +213,11 @@ class LongCatAvatarTextCrossAttention(nn.Module):
 
     b, n, c = hidden_states.shape
     lengths = [int(v) for v in kv_seqlen]
-    if len(set(lengths)) == 1:
-      # Uniform text length: a plain batched attention, no varlen bookkeeping needed.
+    if b == 1 and len(set(lengths)) == 1:
+      # Uniform text length and a single sample: a plain batched attention, no varlen bookkeeping
+      # needed. `cond` packs every sample's prompt back to back, so with `b > 1` this shortcut would
+      # hand each sample the whole packed KV and the CFG negative branch would read the positive
+      # prompt; the per-sample loop below is the only correct path there.
       q = self.q_norm(self.q_linear(hidden_states).view(b, n, self.num_heads, self.head_dim))
       kv = self.kv_linear(cond.squeeze(0)).view(1, -1, 2, self.num_heads, self.head_dim)
       k, v = kv.unbind(2)

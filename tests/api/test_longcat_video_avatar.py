@@ -277,3 +277,28 @@ def test_distill_schedule_length_is_fixed():
 
   assert pipe.get_timesteps_sigmas(8, use_distill=True).shape == (8, )
   assert pipe.get_timesteps_sigmas(12, use_distill=False).shape == (12, )
+
+
+def test_text_cross_attention_keeps_samples_apart():
+  """Equal-length prompts must not share keys.
+
+  `cond` packs every sample's prompt back to back, so a "uniform length" shortcut applied to a
+  batch of two would let each sample attend the other's prompt. That is exactly the CFG batch
+  (`prompt_embeds = cat([negative, positive])`), where it silently mixes the two branches.
+  """
+  from cache_dit.models.pipelines.longcat_video_avatar.attention import (
+    LongCatAvatarTextCrossAttention, )
+
+  torch.manual_seed(0)
+  attn = LongCatAvatarTextCrossAttention(dim=8, num_heads=2).eval()
+
+  query_a = torch.randn(1, 3, 8)
+  query_b = torch.randn(1, 3, 8)
+  text_a = torch.randn(1, 2, 8)
+  text_b = torch.randn(1, 2, 8)
+
+  alone = attn(query_a, text_a, [2])
+  batched = attn(torch.cat([query_a, query_b], dim=0), torch.cat([text_a, text_b], dim=1),
+                 [2, 2])[:1]
+
+  assert torch.allclose(alone, batched, atol=1e-5)
