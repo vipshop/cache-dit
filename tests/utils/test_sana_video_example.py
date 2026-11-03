@@ -129,6 +129,31 @@ def test_t2v_defaults_follow_the_release_recipe():
   assert data.extra_input_kwargs["frames"] == 81
 
 
+def test_video_output_keeps_one_frame_per_timestep():
+  """`parse_audio_video_output` strips one batch level; a flat frame list would collapse to 1.
+
+  The diffusers pipelines return `videos: List[List[PIL]]`, so the strip leaves the frame list the
+  writer iterates. A pipeline that returned a flat `list[frame]` would hand the writer a single
+  frame, which `export_to_video` then unrolls into a garbage strip instead of failing.
+  """
+
+  from PIL import Image
+
+  from cache_dit._utils.registers import parse_audio_video_output
+
+  frames = [Image.new("RGB", (832, 480)) for _ in range(5)]
+
+  class _Output:
+    videos = [frames]  # diffusers convention: one list per batch entry
+
+  parsed = parse_audio_video_output(_Output(), ExampleType.T2V)
+  video = parsed["video"]
+  assert isinstance(video, list)
+  assert len(video) == len(frames), f"frame list collapsed to {len(video)}"
+  assert all(isinstance(frame, Image.Image) for frame in video)
+  assert video[0].size == (832, 480)
+
+
 def test_i2v_defaults_match_the_t2v_canvas(monkeypatch):
   from diffusers import SanaImageToVideoPipeline
 
