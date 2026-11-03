@@ -48,6 +48,24 @@ from .blocks import (
 )
 
 
+def cp_group(cp_config) -> tuple:
+  """Resolve the context-parallel degree and this rank's offset inside it.
+
+  `_ContextParallelConfig._rank` / `._world_size` are the *global* values handed to `setup()`, so a
+  hybrid run (`--parallel ulysses_tp`, TP2 + CP2) reports 4 here and the frame axis would be cut
+  into quarters that no rank owns. `_flattened_mesh` is the only CP-scoped view, and it is what the
+  `blocks.0` split hook shards by.
+
+  :param cp_config: cache-dit context-parallel config, or `None` when the sequence is not split.
+  :returns: `(size, rank)`; `(1, 0)` when context parallelism is off.
+  """
+
+  mesh = getattr(cp_config, "_flattened_mesh", None) if cp_config is not None else None
+  if mesh is None or mesh.size() <= 1:
+    return 1, 0
+  return int(mesh.size()), int(mesh.get_local_rank())
+
+
 def frame_range(cp_config, global_frames: int) -> tuple:
   """Resolve the frame range owned by this rank.
 
@@ -58,20 +76,17 @@ def frame_range(cp_config, global_frames: int) -> tuple:
     cross-attention reshapes the token axis by frame, so a rank must own whole frames.
   """
 
-  # The frame axis is split by the context-parallel mesh only. Using the global world size here
-  # would divide by tp as well, so a `ulysses_tp` run would slice 1/(cp*tp) of the frames while
-  # `blocks.0` slices 1/cp, and the RoPE tables would no longer line up.
-  world = getattr(cp_config, "_cp_world_size", 1) if cp_config is not None else 1
-  if not world or world == 1:
+  world, rank = cp_group(cp_config)
+  if world == 1:
     return 0, global_frames
   if global_frames % world != 0:
     raise ValueError(
       f"LongCat-Video-Avatar needs the latent frame count ({global_frames}) to be divisible by the "
       f"context-parallel size ({world}): the audio cross-attention reshapes the token axis by frame, "
       f"so a split inside a frame is not representable. Pick a clip whose latent frames are a "
-      f"multiple of {world}.")
+      f"multiple of {world} (e.g. --num-frames 93 for cp=2, --num-frames 185 for cp=4) and rerun.")
   per_rank = global_frames // world
-  start = int(getattr(cp_config, "_cp_rank", 0)) * per_rank
+  start = rank * per_rank
   return start, start + per_rank
 
 
@@ -418,10 +433,15 @@ class LongCatVideoAvatarTransformer3DModel(ModelMixin, ConfigMixin):
     frame_start, frame_end = frame_range(cp_config, n_t)
     split = frame_end - frame_start != n_t
     if split and int(num_cond_latents or 0) > 0:
+      # The blocking reason is not the collective *count* (that can be equalized) but the shapes:
+      # `q` covers the noise frames of this rank while `k`/`v` of the conditioning frame exist only
+      # on the rank that owns it, so the local sequence lengths differ per rank and Ulysses requires
+      # them equal. Forcing one uniform attention over all local tokens keeps the shapes legal but
+      # changes the semantics (measured 21.9 dB / SSIM 0.76 vs 38.6 dB / 0.974 for A2V).
       raise NotImplementedError(
         "The conditioning frame of the image-conditioned task cannot be combined with context "
-        "parallelism: it exists on one rank only, so the conditioned self-attention and the "
-        "per-frame audio cross-attention would issue different numbers of collectives per rank. "
+        "parallelism: its K/V exist on the owning rank only, so the local `q` length (noise frames) "
+        "and `k`/`v` length differ across ranks while Ulysses requires equal local sequence lengths. "
         "Use tensor parallelism for that task, or the audio+text task under context parallelism.")
     if split:
       # Preprocessing above runs on the full grid on every rank; only the block loop consumes the

@@ -190,6 +190,8 @@ _env_path_mapping = {
   "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
   "CAUSVID_DIR": "tianweiy/CausVid",
   "LONGLIVE2_DIR": "Efficient-Large-Model/LongLive-2.0-5B",
+  "LONGCAT_VIDEO_AVATAR_DIR": "meituan-longcat/LongCat-Video-Avatar-1.5",
+  "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"

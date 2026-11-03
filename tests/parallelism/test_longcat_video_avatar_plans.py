@@ -50,25 +50,69 @@ def test_cp_rejects_ring_and_uneven_ulysses():
     )
 
 
-def test_frame_range_requires_whole_frames():
-  cp_config = types.SimpleNamespace(_cp_rank=1, _cp_world_size=2)
+class _FakeMesh:
+  """Minimal stand-in for the CP `DeviceMesh` (`size` / `get_local_rank` are all we read)."""
 
+  def __init__(self, size, rank):
+    self._size = size
+    self._rank = rank
+
+  def size(self):
+    return self._size
+
+  def get_local_rank(self):
+    return self._rank
+
+
+def _cp_config(mesh_size, mesh_rank, world=None, rank=0):
+  """Build a CP config the way cache-dit does: global rank/size plus a CP-scoped mesh."""
+  return types.SimpleNamespace(
+    _rank=rank,
+    _world_size=world if world is not None else mesh_size,
+    _flattened_mesh=_FakeMesh(mesh_size, mesh_rank) if mesh_size > 1 else None,
+  )
+
+
+def test_frame_range_requires_whole_frames():
   assert frame_range(None, 12) == (0, 12)
-  assert frame_range(types.SimpleNamespace(_cp_rank=0, _cp_world_size=1), 12) == (0, 12)
-  assert frame_range(cp_config, 12) == (6, 12)
-  assert frame_range(types.SimpleNamespace(_cp_rank=0, _cp_world_size=2), 12) == (0, 6)
+  assert frame_range(_cp_config(1, 0), 12) == (0, 12)
+  assert frame_range(_cp_config(2, 1), 12) == (6, 12)
+  assert frame_range(_cp_config(2, 0), 12) == (0, 6)
 
   with pytest.raises(ValueError, match="divisible by the context-parallel size"):
-    frame_range(cp_config, 9)
+    frame_range(_cp_config(2, 1), 9)
 
 
 def test_frame_range_splits_by_context_parallelism_only():
-  """`ulysses_tp` must split the frames by the CP mesh, not by the global world size."""
-  cp2_tp2 = types.SimpleNamespace(_rank=2, _world_size=4, _cp_rank=0, _cp_world_size=2)
+  """`ulysses_tp` must split the frames by the CP mesh, not by the global world size.
 
-  assert frame_range(cp2_tp2, 12) == (0, 6)
-  assert frame_range(types.SimpleNamespace(_rank=3, _world_size=4, _cp_rank=1, _cp_world_size=2),
-                     12) == (6, 12)
+  `_rank` / `_world_size` are the global values (world 4 for CP2xTP2), so reading them would cut
+  the frame axis into quarters no rank owns while `blocks.0` cuts it in half.
+  """
+  assert frame_range(_cp_config(2, 0, world=4, rank=0), 12) == (0, 6)
+  assert frame_range(_cp_config(2, 1, world=4, rank=3), 12) == (6, 12)
+
+
+def test_cp_plan_uses_the_cp_mesh_for_a_hybrid_run():
+  """The plan is built from the CP degree only, so CP2xTP2 still splits once in half.
+
+  A real hybrid `ParallelismConfig` builds a device mesh, which needs an initialized process group,
+  so the CP knobs are handed over as a plain namespace here.
+  """
+  planner = LongCatVideoAvatarContextParallelismPlanner()
+  hybrid = types.SimpleNamespace(
+    ulysses_size=2,
+    ring_size=None,
+    tp_size=2,
+    ulysses_anything=False,
+    ulysses_float8=False,
+    ulysses_async=False,
+  )
+  plan = planner._apply(transformer=_transformer(depth=3), parallelism_config=hybrid)
+
+  assert set(plan) == {"blocks.0", "final_layer"}
+  assert plan["blocks.0"]["hidden_states"].split_dim == 1
+  assert plan["final_layer"].gather_dim == 1
 
 
 def test_cli_examples_are_registered():

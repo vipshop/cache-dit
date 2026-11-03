@@ -290,15 +290,84 @@ def test_text_cross_attention_keeps_samples_apart():
     LongCatAvatarTextCrossAttention, )
 
   torch.manual_seed(0)
-  attn = LongCatAvatarTextCrossAttention(dim=8, num_heads=2).eval()
+  # Three heads of width four: with two heads the head axis and the token axis happen to be
+  # interchangeable, so a swap would stay invisible.
+  attn = LongCatAvatarTextCrossAttention(dim=12, num_heads=3).eval()
 
-  query_a = torch.randn(1, 3, 8)
-  query_b = torch.randn(1, 3, 8)
-  text_a = torch.randn(1, 2, 8)
-  text_b = torch.randn(1, 2, 8)
+  query_a = torch.randn(1, 3, 12)
+  query_b = torch.randn(1, 3, 12)
+  text_a = torch.randn(1, 2, 12)
+  text_b = torch.randn(1, 2, 12)
 
   alone = attn(query_a, text_a, [2])
   batched = attn(torch.cat([query_a, query_b], dim=0), torch.cat([text_a, text_b], dim=1),
                  [2, 2])[:1]
 
   assert torch.allclose(alone, batched, atol=1e-5)
+
+
+def test_audio_cross_attention_matches_reference():
+  """Numeric reference with `M != H`: on 32x32 heads a swapped axis is shape-compatible.
+
+  The real model has `context_tokens == num_heads == 32`, so the audio-token axis and the head axis
+  are interchangeable in shape and a layout mistake is silent. Four audio tokens against two heads
+  makes the reference below fail on any such swap.
+  """
+  from cache_dit.models.pipelines.longcat_video_avatar.attention import (
+    LongCatAvatarAudioCrossAttention, )
+
+  torch.manual_seed(0)
+  dim, heads, tokens_per_frame, frames, context_tokens = 8, 2, 2, 3, 4
+  attn = LongCatAvatarAudioCrossAttention(
+    dim=dim,
+    encoder_hidden_states_dim=6,
+    num_heads=heads,
+    qkv_bias=True,
+    qk_norm=False,
+  ).eval()
+
+  video = torch.randn(1, frames * tokens_per_frame, dim)
+  audio = torch.randn(1, frames, context_tokens, 6)
+
+  with torch.no_grad():
+    _, out = attn(video, audio, frames)
+
+    q = attn.q_linear(video).view(frames, tokens_per_frame, heads, attn.head_dim)
+    kv = attn.kv_linear(audio)[0].view(frames, context_tokens, 2, heads, attn.head_dim)
+    k, v = kv.unbind(2)
+    scores = torch.einsum("fshd,fmhd->fhsm", q, k) * attn.scale
+    reference = torch.einsum("fhsm,fmhd->fshd", torch.softmax(scores, dim=-1), v)
+    reference = attn.proj(reference.reshape(1, frames * tokens_per_frame, dim))
+
+  assert out.shape == video.shape
+  assert torch.allclose(out, reference, atol=1e-6)
+
+
+def test_fp32_heads_go_through_the_module_path():
+  """`linear_fp32` must call the module, otherwise offload pre-forward hooks never fire.
+
+  That is what broke layerwise offload: casting `module.weight` inside a raw `F.linear` leaves the
+  weight on the host and the matmul dies with a device mismatch. The probe below counts the hooks,
+  so it fails on the pre-fix implementation even without a GPU.
+  """
+  transformer = _transformer()
+  calls = {"t_embedder": 0, "modulation": 0}
+
+  def count(key):
+
+    def hook(module, inputs):
+      calls[key] += 1
+
+    return hook
+
+  transformer.t_embedder.mlp[0].register_forward_pre_hook(count("t_embedder"))
+  for block in transformer.blocks:
+    block.adaLN_modulation[1].register_forward_pre_hook(count("modulation"))
+
+  latents, text, mask, audio = _inputs()
+  with torch.no_grad():
+    transformer(latents, torch.rand(1), text, mask, audio_embs=audio)
+
+  assert calls["t_embedder"] >= 1, "the timestep MLP bypassed its module call"
+  assert calls["modulation"] == len(
+    transformer.blocks), "a modulation head bypassed its module call"

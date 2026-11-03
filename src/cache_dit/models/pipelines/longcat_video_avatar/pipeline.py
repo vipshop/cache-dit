@@ -40,7 +40,7 @@ from safetensors.torch import load_file
 from transformers import AutoTokenizer, UMT5EncoderModel, WhisperModel
 
 from ....logger import init_logger
-from .transformer import LongCatVideoAvatarTransformer3DModel
+from .transformer import LongCatVideoAvatarTransformer3DModel, cp_group
 
 logger = init_logger(__name__)
 
@@ -79,6 +79,8 @@ def _load_waveform(path: str, sample_rate: int = _AUDIO_SAMPLE_RATE) -> np.ndarr
   :param path: wav file path.
   :param sample_rate: target sample rate.
   :returns: mono waveform.
+  :raises ImportError: when `soundfile` is not installed; pass the waveform through `audio=`
+    instead of `audio_path=`, or install it (`pip install soundfile`).
   """
 
   import soundfile as sf
@@ -128,6 +130,14 @@ def merge_lora_state_dict(transformer: torch.nn.Module, state_dict, multiplier: 
         logger.warning(f"Skipping `{module_name}`: no LoRA up-projection in the checkpoint")
         continue
       n_blocks = len(parts)
+      # A silent truncation here would zero the tail rows of the merged delta, so require an exact
+      # split of both the rank axis and the output axis.
+      assert down.shape[0] % n_blocks == 0, (
+        f"LoRA rank {down.shape[0]} of `{module_name}` is not divisible by its {n_blocks} up-blocks"
+      )
+      assert target.weight.shape[0] % n_blocks == 0, (
+        f"Output width {target.weight.shape[0]} of `{module_name}` is not divisible by its "
+        f"{n_blocks} up-blocks")
       rank = down.shape[0] // n_blocks
       out_per_block = target.weight.shape[0] // n_blocks
       delta = torch.zeros(target.weight.shape, dtype=torch.float32)
@@ -484,7 +494,13 @@ class LongCatVideoAvatarPipeline(DiffusionPipeline):
       int(height) // self.vae_scale_factor_spatial,
       int(width) // self.vae_scale_factor_spatial,
     )
-    latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+    if generator is not None and generator.device.type != device.type:
+      # A caller may hand in a CPU generator while the run is on CUDA; sample where the generator
+      # lives and move the result, instead of failing with a device-type mismatch.
+      latents = torch.randn(shape, generator=generator, device=generator.device,
+                            dtype=dtype).to(device)
+    else:
+      latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
 
     if image is not None:
       num_cond_latents = 1 + (num_cond_frames - 1) // self.vae_scale_factor_temporal
@@ -823,15 +839,15 @@ class LongCatVideoAvatarPipeline(DiffusionPipeline):
       else:
         cond_image = image.to(device=device, dtype=dit_dtype)
       num_cond_latents = 1
-      cp_world = getattr(getattr(self.transformer, "_cp_config", None), "_world_size", 1) or 1
+      cp_world, _ = cp_group(getattr(self.transformer, "_cp_config", None))
       if cp_world > 1:
         raise NotImplementedError(
           "The image-conditioned task (AI2V) cannot run under context parallelism: the conditioning "
-          "frame is only owned by the rank its frame range covers, so the per-frame audio "
-          "cross-attention and the conditioned self-attention would need different numbers of "
-          "collectives per rank. Measured on 480x832 x 93 frames, forcing it through the uniform "
-          "attention path drops the clip to 21.9 dB / SSIM 0.76. Use `--parallel tp` for AI2V, or "
-          "the audio+text task (A2V) which parallelizes cleanly.")
+          "frame lives on one rank only, so every rank but that one is missing its K/V, and the "
+          "local sequence lengths (`q` of the noise frames vs `k`/`v` of the conditioning frame) "
+          "differ per rank while Ulysses requires them equal. Measured on 480x832 x 93 frames, "
+          "forcing it through a single uniform attention drops the clip to 21.9 dB / SSIM 0.76 "
+          "against 38.6 dB / 0.974 for the audio+text task. Use `--parallel tp` for AI2V.")
 
     sigmas = self.get_timesteps_sigmas(num_inference_steps, use_distill=use_distill)
     self.scheduler.set_timesteps(num_inference_steps, sigmas=sigmas, device=device)

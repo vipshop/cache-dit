@@ -27,11 +27,12 @@ def linear_fp32(linear: nn.Module, x: torch.Tensor) -> torch.Tensor:
   Upstream runs these calls under `torch.autocast(device_type="cuda", dtype=torch.float32)`, which
   casts the weights on the fly; the same region is used here instead of casting the parameters
   directly, because casting bypasses the module call and therefore the layerwise-offload hooks,
-  which leaves the weight on the host and turns the matmul into a device mismatch.
+  which leaves the weight on the host and turns the matmul into a device mismatch. On CPU there is
+  no autocast, so the layer simply runs in the dtype it was built with (the tests build float32).
 
   :param linear: a linear module whose parameters are still in the checkpoint dtype.
   :param x: float32 input.
-  :returns: float32 output.
+  :returns: float32 output on CUDA, the native dtype on CPU.
   """
 
   with torch.autocast(device_type=x.device.type, dtype=torch.float32, enabled=x.is_cuda):
