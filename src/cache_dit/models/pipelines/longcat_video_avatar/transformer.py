@@ -377,8 +377,9 @@ class LongCatVideoAvatarTransformer3DModel(ModelMixin, ConfigMixin):
         "incompatible with caching and context parallelism.")
     if ref_target_masks is not None:
       raise NotImplementedError(
-        "LongCat-Video-Avatar multi-speaker mode (`ref_target_masks`) is not supported by this port."
-      )
+        "LongCat-Video-Avatar multi-speaker mode (`ref_target_masks`) is out of scope for this port "
+        "(it needs caller-side speaker masks and a cross-rank gather of the reference attention map); "
+        "run the single-speaker task instead.")
     if int(num_cond_latents or 0) > 1:
       raise NotImplementedError(
         "LongCat-Video-Avatar only supports a single conditioning latent frame here (image-to-video); "
