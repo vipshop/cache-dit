@@ -1733,9 +1733,13 @@ class LayerwiseOffloadHandle:
 
     if offload:
       for target in self.targets:
-        if self.async_transfer or target.tensor_states:
+        # The pinned mirror only covers *direct* state, so a subtree target has no tensor states to
+        # sync back and must be released through the module move instead.
+        if target.tensor_states:
           self._materialize_offload_sync(target)
         else:
+          if self.async_transfer:
+            self._drain_target_transfers(target)
           self._release_target_to_offload_device(target)
         target.return_devices.clear()
     elif self.async_transfer:
