@@ -111,10 +111,10 @@ def test_from_pretrained_requires_a_local_checkpoint(tmp_path):
     )
 
 
-def test_missing_auxiliary_components_are_reported(tmp_path):
-  """The default path must name the components that are not vendored yet."""
+def test_missing_conditioner_is_reported(tmp_path):
+  """A checkpoint without the released `text_encoder/` must name it instead of running blind."""
 
-  with pytest.raises(NotImplementedError, match="auxiliary components"):
+  with pytest.raises(FileNotFoundError, match="conditioner"):
     Magi2PreviewPipeline.from_pretrained(
       _checkpoint_root(tmp_path),
       transformer=tiny_transformer(),

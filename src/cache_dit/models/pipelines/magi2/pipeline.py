@@ -16,6 +16,7 @@ Adapted from ``vllm-omni @ 7f217a1`` ``vllm_omni/diffusion/models/magi2/pipeline
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -32,7 +33,27 @@ from .wan_vae import denormalize_wan22_latent
 
 __all__ = ["Magi2PreviewPipeline", "load_transformer_weights"]
 
+logger = logging.getLogger(__name__)
+
 _REQUIRED_CHECKPOINT_PATHS = ("preview/model.safetensors.index.json", )
+
+
+def _load_text_encoder(root: Path, dtype):
+  """Load the released Qwen3.5 conditioner with `transformers`, not with a vendored model.
+
+  :param root: Checkpoint root holding ``text_encoder/``.
+  :param dtype: Text-model dtype.
+  :returns: The released feature extractor.
+  :raises FileNotFoundError: When the conditioner directory is absent.
+  """
+
+  from .conditioning import Magi2Qwen35TextEncoder
+
+  text_encoder_dir = Path(root) / "text_encoder"
+  if not (text_encoder_dir / "config.json").is_file():
+    raise FileNotFoundError(f"MAGI-2 conditioner does not exist: {text_encoder_dir}")
+  return Magi2Qwen35TextEncoder(str(text_encoder_dir), dtype=dtype, device="cpu")
+
 
 DEFAULT_NEGATIVE_PROMPT = (
   "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
@@ -194,12 +215,12 @@ class Magi2PreviewPipeline(DiffusionPipeline):
       audio_decoder=audio_decoder,
     )
     if load_auxiliary:
-      missing_components = [name for name, value in components.items() if value is None]
-      if missing_components:
-        raise NotImplementedError(
-          "MAGI-2 auxiliary components are not vendored yet; pass them explicitly or build the pipeline "
-          "with `load_auxiliary=False` (cache / CP / TP verification runs the transformer alone). Missing: "
-          + ", ".join(missing_components))
+      if components["text_encoder"] is None:
+        components["text_encoder"] = _load_text_encoder(root, resolved_dtype)
+      if components["audio_decoder"] is None:
+        # The released audio VAE is not vendored yet: the video track is complete without it, so the
+        # pipeline reports the gap instead of refusing to run.
+        logger.warning("MAGI-2 audio decoder is not vendored; the run returns video frames only.")
 
     pipe = cls(transformer=transformer, **components)
     pipe.checkpoint_root = str(root)
@@ -304,6 +325,8 @@ class Magi2PreviewPipeline(DiffusionPipeline):
         width // generation.video_vae_stride[2],
         generator=generator,
         dtype=torch.float32,
+        # The CLI hands a generator that lives on the pipeline device, so the draw has to happen there.
+        device=generator.device,
       ).to(device)
     if audio_latent is None:
       if generator is None:
@@ -314,6 +337,7 @@ class Magi2PreviewPipeline(DiffusionPipeline):
         generation.audio_latent_channels,
         generator=generator,
         dtype=torch.float32,
+        device=generator.device,
       ).to(device)
 
     # A caller-supplied noise tensor may live on the host (e.g. a CPU generator); the model runs on the
@@ -353,7 +377,9 @@ class Magi2PreviewPipeline(DiffusionPipeline):
       decoder = self.resolve_video_decoder()
       video = decoder.decode(denormalize_wan22_latent(latent.float().to(decoder.device)))
       video = video.sample if hasattr(video, "sample") else video
-      output["frames"] = preview_output_to_pil(video)
+      # A 4-D `[T, H, W, 3]` array: the CLI unwraps one *batch* level from a list, which would keep a
+      # single frame, while `export_to_video` iterates a 4-D array frame by frame.
+      output["frames"] = preview_output_to_numpy(video)
       if self.audio_decoder is not None:
         audio = self.audio_decoder.decode(audio_latent.transpose(1, 2))
         output["audio"] = audio.squeeze(0).transpose(0, 1).float().cpu().numpy()
