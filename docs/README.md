@@ -213,6 +213,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 |:----------|:----------------|:-------------|:----------|:-------|
 | **Video** | SANA-Video 2.0 (T2V/TI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
 | **Video** | LingBot-Video Dense 1.3B 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
+| **Video + Audio** | MAGI-2 Preview (T2VA/I2VA) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗ModelScope`](https://www.modelscope.cn/models/sand-ai/MAGI-2-preview) | 2 | ✖️*/✔️*/✖️*/✔️ |
 | **Video** | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
 | **Video** | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️/✔️/✔️/✔️ |
 | **Image** | MOSS-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
@@ -222,6 +223,8 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
+
+<i>* MAGI-2 Preview (114 B MoE, 213 GiB bf16, one card with `--layerwise-offload`, 9.4 GiB peak): the cache contract is wired and bit-exact when no step is skipped, but the release writes the diffusion time into the first channels of every token and uses hyper-connection blocks, so no DBCache threshold gives a usable point (0.5 → 1.47×/2.51 dB). CP/TP are model-owned: tiny parity is bit-exact (CP 0.0, TP 2.6e-7), while the real checkpoint reaches 26.2 dB (CP2) / 27.6 dB (TP2, fp32), below the 35 dB gate. Quantization is not expressible: only 5 `nn.Linear` (0.058% of the parameters) exist, everything else is grouped / MoE flat weight.</i>
 </div>
 
 ## 🤖Agentic Workflows  
