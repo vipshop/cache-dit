@@ -4,6 +4,7 @@ import re
 import warnings
 from typing import Optional, Dict, Any, List, Union, Callable
 from .backend import QuantizeBackend
+from .observers import QuantizationObserverConfig
 from ..logger import init_logger
 
 logger = init_logger(__name__)
@@ -453,8 +454,30 @@ class QuantizeConfig:
   # type of each layer, the reason for skipping quantization, etc. This is useful
   # for debugging and analysis.
   verbose: bool = False
+  # Per-layer accuracy observers for quantization analysis. **Disabled by
+  # default** (`None`): when unset the quantize path skips the observer logic
+  # entirely -- no module walk, no bf16 weight snapshot, no forward hooks -- so
+  # `quantize()` and inference run exactly as before with zero overhead.
+  # Opt in explicitly for a diagnostic run only, e.g.
+  #   QuantizeConfig(
+  #     quant_type="float8_per_row",
+  #     observer=QuantizationObserverConfig(enabled=True,
+  #                                         json_path="./fp8_observers.json"),
+  #   )
+  # Cost when enabled: one bf16 GEMM per observed layer per forward
+  # (~1.5-2x transformer forward time) plus a bf16 weight snapshot on host RAM
+  # (or on device with keep_refs_on_gpu=True). Never enable it while measuring
+  # latency or throughput.
+  observer: Optional[QuantizationObserverConfig] = None
 
   def __post_init__(self):
+    # Accept a plain dict from CLI/JSON callers; `None` keeps the feature off.
+    if isinstance(self.observer, dict):
+      self.observer = QuantizationObserverConfig(**self.observer)
+    if self.observer is not None:
+      logger.warning("[observer] per-layer quantization observers are ENABLED: the "
+                     "transformer forward gets ~1.5-2x slower. Use it for analysis only, "
+                     "never for benchmarks or production.")
     # A caller that always forwards the field (a CLI does) passes `None` for "use the defaults";
     # every consumer iterates this list, so normalize it here instead of at each call site.
     if self.exclude_layers is None:
@@ -695,6 +718,7 @@ class QuantizeConfig:
           serialize_to=cfg.get("serialize_to", config.serialize_to),
           svdq_kwargs=cfg.get("svdq_kwargs", config.svdq_kwargs),
           verbose=cfg.get("verbose", config.verbose),
+          observer=cfg.get("observer", config.observer),
         ) for component, cfg in config.components_to_quantize.items()
       ]
 

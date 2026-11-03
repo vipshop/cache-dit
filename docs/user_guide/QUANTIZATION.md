@@ -273,6 +273,69 @@ Linear           Layers: 144   (total)                                          
 -----------------------------------------------------------------------------------
 ```
 
+## Per-Layer Accuracy Observers (diagnostics, OFF by default)
+
+When a quantized model loses precision and you need to know *which* layers are
+responsible, `QuantizeConfig.observer` attaches a per-layer observer that
+recomputes every quantized linear in bf16 and reports the fp8 error. The switch
+is **`QuantizeConfig(observer=...)`, default `None` = disabled**:
+
+```python
+from cache_dit import QuantizeConfig, QuantizationObserverConfig
+
+quantize_config = QuantizeConfig(
+  quant_type="float8_per_row",
+  observer=QuantizationObserverConfig(
+    enabled=True,                 # the only switch; default False
+    json_path="./fp8_observers.json",
+    max_steps=1,                  # dump after N transformer forwards
+    keep_refs_on_gpu=False,       # True keeps the bf16 refs on device
+    # Only observe the layers you care about; Python regex, `re.search`
+    # semantics on the fully qualified name, so a fragment is enough.
+    # None (default) = every quantized linear.
+    layer_name_patterns=[r"feed_forward\.linear_[23]$", r"norm1\.linear$"],
+  ),
+)
+```
+
+`layer_name_patterns` is applied **before** the bf16 snapshot, so unselected
+layers cost no memory and add no GEMM: matching `feed_forward` on a
+double/single-stream DiT observes 144 of 336 linears and roughly halves the
+observer overhead. Invalid regexes raise `ValueError` at config construction
+time.
+
+With `observer=None` (the default) the quantization path skips the feature
+completely — no module walk, no bf16 weight snapshot, no forward hooks — so
+`quantize()` and inference behave exactly as before, with zero overhead.
+
+Each observed layer reports `rel_err` (`||y_fp8 - y_bf16|| / ||y_bf16||`),
+`cos` similarity, `out_amax`, `in_outlier` (`amax/mean(|x|)` per token, which
+predicts how badly a per-token fp8 scale rounds the bulk of a row) and
+`w_rel_err` (weight-only quantization error). Group the results by layer name
+substring to see, for example, that FFN layers are more sensitive than the
+adaLN modulation projections.
+
+Both quantization backends are covered: TorchAO float8 (the weight becomes a
+`Float8Tensor`) and cache-dit's SVDQuant W4A4 runtime layer (the module becomes
+`SVDQW4A4Linear` with packed 4-bit weights). For SVDQuant the weight is kept
+packed, so `w_rel_err` is `null` while `rel_err` and `cos` are still reported.
+The lifecycle is owned by one class, `QuantizeObserver`:
+
+```python
+from cache_dit.quantization.observers import QuantizeObserver
+
+observer = QuantizeObserver(config.observer)
+refs = observer.capture_references(model)   # before quantization
+observer.attach(model, refs)                 # after quantization
+observer.dump("./fp8_observers.json")        # write the statistics
+```
+
+<span style="color:red;">Cost:</span> the observers keep one bf16 copy of every
+observed linear weight (host RAM by default) and add one bf16 GEMM per observed
+layer per forward, i.e. roughly **1.5-2x transformer forward time**, plus a
+one-off snapshot of the weights during `quantize()`. Use it for accuracy
+analysis only — never when measuring latency, throughput or memory.
+
 ## INT8/INT4 Quantization
 
 In addition to FP8 quantization, Cache-DiT also supports INT8 and INT4 quantization for weights, which can further reduce the memory footprint of the model. Users can specify <span style="color:#c77dff;">int8_per_row</span>, <span style="color:#c77dff;">int8_per_tensor</span>, <span style="color:#c77dff;">int8_weight_only</span>, or <span style="color:#c77dff;">int4_weight_only</span> as the quantization type in the <span style="color:#c77dff;">QuantizeConfig</span> when calling the <span style="color:#c77dff;">enable_cache</span> API. For example:

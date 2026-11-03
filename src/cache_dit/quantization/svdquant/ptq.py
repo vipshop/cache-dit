@@ -21,6 +21,7 @@ from ..config import QuantizeConfig
 from ..config import _get_svdq_precision
 from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
+from ..observers import QuantizeObserver
 from .dtensor import SVDQW4A4ShardLinear
 from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
@@ -1444,6 +1445,11 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
   context = SVDQPTQContext.from_config(module, quantize_config)
   calibrator = SVDQPTQCalibrator(context)
   quantize_device = _resolve_svdq_quantize_device(module, context.svdq_kwargs)
+  # Per-layer accuracy observers (diagnostics). Completely skipped unless the
+  # caller opted in via QuantizeConfig(observer=QuantizationObserverConfig(
+  # enabled=True)): no module walk, no bf16 snapshot, no hooks.
+  observer = QuantizeObserver(getattr(quantize_config, "observer", None))
+  observer_refs = observer.capture_references(module)
   calibrator.register(observation_device=quantize_device)
 
   was_training = module.training
@@ -1468,6 +1474,8 @@ def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.
     quantize_device=quantize_device,
     activation_spans=calibrator.activation_spans,
   )
+  if observer_refs:
+    observer.attach(module, observer_refs)
   observed_layer_names = sorted(calibrator.activation_spans)
 
   if not quantized_layer_names:
@@ -1564,6 +1572,12 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
     )
     return controller.arm()
 
+  # Per-layer accuracy observers (diagnostics). Completely skipped unless the
+  # caller opted in via QuantizeConfig(observer=QuantizationObserverConfig(
+  # enabled=True)): no module walk, no bf16 snapshot, no hooks.
+  observer = QuantizeObserver(getattr(quantize_config, "observer", None))
+  observer_refs = observer.capture_references(module)
+
   was_training = module.training
   module.eval()
   try:
@@ -1575,6 +1589,8 @@ def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.M
     )
   finally:
     module.train(was_training)
+  if observer_refs:
+    observer.attach(module, observer_refs)
 
   if not quantized_layer_names:
     raise RuntimeError("SVDQ dynamic quantization found no layers to quantize. "
