@@ -25,16 +25,17 @@ def linear_fp32(linear: nn.Module, x: torch.Tensor) -> torch.Tensor:
   """Run a linear layer in float32 regardless of the parameter dtype.
 
   Upstream runs these calls under `torch.autocast(device_type="cuda", dtype=torch.float32)`, which
-  casts the weights to float32 on the fly. Doing it explicitly keeps the same numerics without
-  requiring a CUDA device, so the module stays testable on CPU.
+  casts the weights on the fly; the same region is used here instead of casting the parameters
+  directly, because casting bypasses the module call and therefore the layerwise-offload hooks,
+  which leaves the weight on the host and turns the matmul into a device mismatch.
 
   :param linear: a linear module whose parameters are still in the checkpoint dtype.
   :param x: float32 input.
   :returns: float32 output.
   """
 
-  bias = None if linear.bias is None else linear.bias.float()
-  return F.linear(x.float(), linear.weight.float(), bias)
+  with torch.autocast(device_type=x.device.type, dtype=torch.float32, enabled=x.is_cuda):
+    return linear(x.float())
 
 
 def silu_linear_fp32(module: nn.Sequential, x: torch.Tensor) -> torch.Tensor:
