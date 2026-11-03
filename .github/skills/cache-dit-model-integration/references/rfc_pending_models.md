@@ -1,10 +1,11 @@
 # RFC: Pending Model Support — diffusers v0.38+ and Non-diffusers Community Models Not Yet Supported by cache-dit
 
-When to read this: when picking the next model to integrate into cache-dit, or when starting/finishing work on a model listed here (update its Status entry and add a line to R.5). Use R.7 for the unified support-priority queue and R.2/R.6 for implementation difficulty. Return to `../SKILL.md` for the integration workflow; see [`./model_download.md`](./model_download.md) for fetching the weights.
+When to read this: when picking the next model to integrate into cache-dit, or when starting/finishing work on a model listed here (update its Status entry and add a line to R.5). Use R.7 for the unified support-priority queue, R.2/R.6 for implementation difficulty, and R.9 before scheduling any family whose class name shares a prefix with an existing adapter. Return to `../SKILL.md` for the integration workflow; see [`./model_download.md`](./model_download.md) for fetching the weights.
 
 ## R.1 Background, Scope and Method
 
-- Analysis dates: **2026-10-22** (three passes: diffusers v0.40+ scan, the v0.38/v0.39 window scan, then unification into one difficulty-ordered list).
+- Analysis dates: **2026-10-22** (three passes: diffusers v0.40+ scan, the v0.38/v0.39 window scan, then unification into one difficulty-ordered list), **2026-10-31** (unified priority queue, R.7), **2026-11-03** (ecosystem cross-check against sglang / vllm-omni / FastVideo / xDiT, see §8.2).
+- The 2026-11-03 diffusers window is **empty**: `v0.42.0` (2026-10-23) → `v0.42.1` (2026-10-27) → local main `40e551a43` (2026-10-28) adds no new pipeline and no new transformer (`--diff-filter=A` returns nothing), so R.2 does not change. Everything new below comes from the serving stacks that ship models before HF merges them, plus one adapter-reliability defect (R.9).
 - Scope: models **added to diffusers v0.38.0 and later** — tag chain `v0.37.1` (2026-03-25) → `v0.38.0` (2026-05-01) → `v0.39.0` (2026-07-03) → `v0.40.0` (2026-08-20) → `v0.41.0` (2026-10-06) → `0.42.0.dev0` (HEAD `5378870`, 2026-10-20) — that have **no BlockAdapter coverage** in cache-dit. **R.6 extends the scope past diffusers**: community-hot models that ship their own modeling code and therefore never appear in a tag scan (plus one diffusers-backed family that the existing adapter rejects).
 - Method: diffusers git log between upstream release tags (`--diff-filter=A` on `pipelines/`, `modular_pipelines/`, `models/transformers/`) cross-checked against `@BlockAdapterRegister.register(...)` in `cache-dit/src/cache_dit/caching/block_adapters/adapters.py`. A model counts as "supported" only when a registered adapter matches its transformer class — or a class it reuses.
 - **All models — verification-only quick wins and full-adapter work — are listed in ONE unified difficulty-ordered table (R.2), easiest first.** The Type column distinguishes Verification-only (backbone class already registered; work = A/B test + CLI example + matrix entry) from Full adapter (new `BlockAdapter` needed). Within the same difficulty tier, verification-only items come first because they are cheaper.
@@ -190,9 +191,11 @@ The R.2 difficulty scale applies unchanged. Two properties dominate the estimate
 
 - **SANA-Video-2B** (T2V + I2V), ★☆☆☆☆, `SanaVideoTransformer3DModel` (v0.41): the stack is `transformer_blocks` with the `Pattern_3` contract, i.e. exactly what `sana_adapter` already handles — only the `_relaxed_assert` allow-list rejects the class, so a diffusers pipeline trips `AssertionError` inside `enable_cache`. Work = add the class to the allow-list (or register a `SanaVideo` prefix) + cache A/B + CLI example + matrix row. Weights: [Efficient-Large-Model/SANA-Video_2B_480p_diffusers](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_480p_diffusers). Status: ⬜
   Do not confuse it with **SANA-WM** (R.2 #13), whose stack is named `blocks` and which needs its own adapter.
-- **Kandinsky 6 VSR**, ★★★☆☆, `Kandinsky6SRTransformer3DModel` (`transformer_kandinsky6_sr.py`): the TI2VA trunk is already covered by the `Kandinsky6` adapter, but the video-super-resolution stage is a **separate transformer** (`Kandinsky6SRTransformerBlock`, own stack) that the adapter cannot reach — and because the `"Kandinsky6"` prefix also matches the SR class, the SR transformer is routed into `kandinsky6_adapter`, which then looks for `visual_transformer_blocks`. Work = a dedicated `Kandinsky6SR` prefix + adapter + A/B. ⚠️ the shipped checkpoint is `distilled2steps`, so the skip budget is tiny: treat this as a correctness exercise, not a speedup one. Weights: [kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers](https://huggingface.co/kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers). Status: ⬜
+- **Kandinsky 6 VSR**, ★★★☆☆, `Kandinsky6SRTransformer3DModel` (`transformer_kandinsky6_sr.py`): the TI2VA trunk is already covered by the `Kandinsky6` adapter, but the video-super-resolution stage is a **separate transformer** (`Kandinsky6SRTransformerBlock`, own stack) that the adapter cannot reach. This case already fails loud rather than mis-caching: `kandinsky6_adapter` raises `NotImplementedError` when the transformer is not a `Kandinsky6Transformer3DModel` (`adapters.py:1933-1938`), and `tests/api/test_kandinsky6_adapter.py::test_vsr_pipeline_is_rejected` covers it. Work = a dedicated `Kandinsky6SR` adapter + prefix + A/B. ⚠️ the shipped checkpoint is `distilled2steps`, so the skip budget is tiny: treat this as a correctness exercise, not a speedup one. Weights: [kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers](https://huggingface.co/kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers). Status: ⬜
 
 ### 6.2 No diffusers implementation — ordered by difficulty
+
+Row numbers are kept stable across passes so older references stay valid; **#1 was completed and moved to R.5**, which is why the table starts at #2.
 
 | # | Model | Difficulty | Type | Task | Transformer class | Blocks / Pattern | HF | Status |
 |---|---|---|---|---|---|---|---|---|
@@ -215,6 +218,16 @@ The R.2 difficulty scale applies unchanged. Two properties dominate the estimate
 | 18 | HY-Nomas | ★★★★☆ | Full adapter + likely PatchFunctor | t2v (camera-controlled) | `NomasTransformer3DModel` | `double_blocks` plus a camera-conditioning attention (`NomasCameraAttention`) that is re-fed every step — extra step-varying block inputs put this in PatchFunctor territory | [tencent/Hy-Nomas](https://huggingface.co/tencent/Hy-Nomas) | ⬜ |
 | 19 | Hunyuan3D 2 | ★★★★☆ | Full adapter (domain-specific verification) | text/image-to-3D | `Hunyuan3D2DiT` | `layers` of Flux-style single-stream blocks (`_FluxSingleStreamBlock` + `_FluxLastLayer`) → the Flux adapter is a close reference; the real cost is acceptance: the output is a mesh/SLat, so PSNR/SSIM do not apply and a geometry metric must be picked first | [tencent/Hunyuan3D-2](https://huggingface.co/tencent/Hunyuan3D-2) | ⬜ |
 | 20 | NextStep-1.1 | ★★★★★ | Out of scope unless a discrete/AR caching strategy is designed | t2i | `NextStepModel` | AR LM + flow-matching head; the head sees one step per token block, so the premise behind block skipping (temporal smoothness along a long denoise trajectory) does not hold — same reasoning as the R.4 exclusions | [stepfun-ai/NextStep-1.1](https://huggingface.co/stepfun-ai/NextStep-1.1) | ⬜ |
+| 21 | Matrix-Game 2.0 / 3.0 | ★★★☆☆ | Full adapter | interactive game / world generation | `MatrixGame2WanModel` + `CausalMatrixGame2WanModel` (2.0), `MatrixGame3WanModel` (3.0) | `blocks`; 2.0's causal variant carries `kv_cache` + `local_attn_size`, 3.0 is bidirectional plus a `MatrixGame3ActionModule`; **both are 3-step distilled**. FastVideo-only so far (`fastvideo/models/dits/matrixgame2/model.py:376`, `matrixgame3/model.py:525`) | — (FastVideo preset; no HF id recorded) | ⬜ |
+| 22 | Prism | ★★★☆☆ | Full adapter (rides MOVA) | ref-image + text → video + audio | video tower `WanModel` + audio tower `WanAudioModel` + `MOVABridge` | one `blocks` stack per tower, `FusedMOVABlock` fusion, block-sparse attention `_BSA_CHUNK_THW=(4,4,4)`; no KV. **Same two-tower shape as MOVA**, so one multi-transformer effort covers both. xDiT only (`xDiT/xfuser/model_executor/models/customized/prism/wan_dit.py:219`); the 48 kHz figure comes from the runner docstring (`.../runner_models/prism.py:58`), not from `dac_vae`'s 44100 default | — | ⬜ |
+| 23 | GEN3C | ★★★☆☆ | Full adapter | video reconstruction / novel view (Cosmos-7B) | `Gen3CTransformer3DModel` | `transformer_blocks`, no KV, 35 steps and **not** distilled — the healthiest cache target in this batch, but the task is narrow. FastVideo (`fastvideo/models/dits/gen3c.py:722`) | — | ⬜ |
+| 24 | HY-WorldPlay | ★★★☆☆ | Full adapter (needs a branch fix) | camera-controlled I2V | `HYWorldTransformer3DModel` (subclasses `HunyuanVideo15Transformer3DModel`) | `transformer_blocks` inherited, no KV, 50 steps + CFG 6.0. The subclass is registered, but `hunyuanvideo_adapter` picks its branch by **class-name prefix** `startswith("HunyuanVideo15")` (`adapters.py:363`), so a `"HYWorld"` registration would land in the **1.0** branch, read `single_transformer_blocks` and fall back to `has_separate_cfg=False`. Needs isinstance-based branching (or a dedicated adapter) plus explicit `has_separate_cfg=True`. FastVideo (`fastvideo/models/dits/hyworld/hyworld.py:286`) | — | ⬜ |
+| 25 | Magi-Human | ★★★☆☆ | Full adapter + likely PatchFunctor | human video (audio / pose driven) | `MagiHumanDiT` | the block stack sits one level down (`self.block = _TransformerBlock` → `block.layers`), and `local_attn_layers` run frame-windowed attention; 32 / 8 steps. FastVideo (`fastvideo/models/dits/magi_human.py:746`) | — | ⬜ |
+| 26 | Cosmos-Predict2.5 | ★★★☆☆ | Full adapter (distilled) | t2v / i2v | `Cosmos25Transformer3DModel` (FastVideo-local class, **not** the diffusers `CosmosTransformer3DModel`) | `transformer_blocks`, plus its own distilled + DFD schedulers → expect few-step behaviour (~0 hits, see the CausVid / FastH3 entries in R.5). cache-dit currently reaches it only through the diffusers `Cosmos` `_relaxed_assert` path. FastVideo (`fastvideo/models/dits/cosmos2_5.py:942`) | — | ⬜ |
+
+| 27 | MOVA 360p / 720p | ★★★☆☆ | Full adapter (two-tower) | text/image → video + audio | video tower `WanModel` (`blocks`) + audio tower `WanAudioModel` (`blocks`) | ⚠️ `MOVAPipeline` matches **no** registered prefix, so `get_adapter` returns `None` and the pipeline is unsupported even though the video tower alone would fit the `Wan` `Pattern_2` plan. Ship it with Prism (R.6.2 #22), which shares the shape. sglang (`sglang/.../runtime/pipelines/mova_pipeline.py:29`, `.../dits/mova_video_dit.py:443`, `mova_audio_dit.py:90`) | — | ⬜ |
+
+Note: **MMAudio** (V2A, `MMAudioTransformer.joint_blocks`, FastVideo 2026-10-07) is also unsupported, but it is an audio-video joint model rather than a DiT trunk — record it, do not schedule it.
 
 ### 6.3 Excluded from R.6
 
@@ -230,18 +243,38 @@ These sit behind backbones cache-dit already covers, so no new adapter should be
 |---|---|---|---|
 | Cosmos3 sim / multiview / dreams (`Cosmos3NanoSimBimanual`, `Cosmos3NanoSimTransfer`, `Cosmos3NanoSimAuto`, `Cosmos3Multiview`, `CosmosDreams`) | all subclass `Cosmos3OmniTransformer` | `Cosmos3` branch (`layers` + `Cosmos3OmniPatchFunctor`) | extra conditioning (lidar rays / multi-view rig / sim actions) is injected per step; re-check the functor's cond/uncond stream accounting per variant |
 | VDN-H3 | MiniMax-H3 plus VDN gating | `MiniMaxH3` (`blocks` / Pattern_3) | VDN adds frame-alpha / gate modules around attention; confirm the block I/O contract and `has_separate_cfg=False` still hold |
-| MOVA 360p / 720p | video DiT is a Wan-shaped `WanModel` (`blocks`), plus a separate audio DiT | `Wan` (Pattern_2) | the `"Wan"` prefix matches `WanModel` by accident; audio and video are separate stacks and only the video one is a cache target |
-| WanCausalDMD | causal Wan few-step | `Wan` | cross-chunk KV — same question as #17 LongLive 2.0 |
+| WanCausalDMD | causal Wan few-step | `Wan` | cross-chunk KV — same question as R.6.2 #17 LongLive 2.0 |
+
+**MOVA was removed from this table on 2026-11-03** — it is not family reuse: `MOVAPipeline` matches no registered prefix, so `get_adapter` returns `None` for the pipeline as a whole. See R.6.2 #27.
 
 ## R.7 Unified Support Priority — Community Task Value × Cache-DiT Fit
 
-This is the queue for choosing the next integration; R.2 and R.6 remain ordered by implementation difficulty. It covers every model or variant still marked pending, partially done, or unverified on 2026-10-31. Completed scopes are not listed again: for example, only LingBot-Video MoE appears here, not the completed dense variant, and only Kandinsky 6 VSR appears, not the completed TI2VA trunk.
+This is the queue for choosing the next integration; R.2 and R.6 remain ordered by implementation difficulty. It covers every model or variant still marked pending, partially done, or unverified on **2026-11-03** (re-scored after the ecosystem cross-check in §8.2; the 2026-10-31 ordering of the top four is unchanged). Completed scopes are not listed again: for example, only LingBot-Video MoE appears here, not the completed dense variant, and only Kandinsky 6 VSR appears, not the completed TI2VA trunk.
+
+Rows **24–29 of this queue** are the addendum produced by the 2026-11-03 pass. They keep the numbering of the existing table, so **the Tier column, not the rank, decides when to schedule them** — #24 sits inside P1, #25–29 inside P2. Before scheduling any family whose class name shares a prefix with an existing adapter, read **R.9**: it separates the one unguarded crash (`HunyuanImage3`) and the silent reuses from the cases that already fail loud.
 
 Scores are editorial 1–5 prioritization aids, not benchmark results:
 
 - **Community**: breadth and likely demand of the task. General video, interactive/world models, avatars, and broadly used image/editing families rank above narrower audio, restoration, 3D, and scientific tasks.
 - **Fit**: how much of Cache-DiT can plausibly help — continuous multi-step DiT blocks, legal block skipping, useful CP/TP/offload/quantization/compile, and practical acceptance metrics. Cross-step KV, few-step distillation, MoE routing, non-uniform stacks, and domain-specific validation lower the score.
 - Rows are ordered by both axes, then by currently reusable integrations and unblock value. A high rank is **not** a promised DBCache speedup: the first residual-diff/cache A/B is still mandatory. P0 = next, P1 = high, P2 = medium, P3 = low.
+
+**Schedule these as bundles, not as individual rows** — each bundle shares one piece of plumbing:
+
+- **Causal chunk KV**: LongLive 2.0 + LingBot-World v1 fast / v2 causal-fast + Matrix-Game 2.0. CausVid-Wan (#1205) is now the in-repo recipe: the clean-latent pass of every chunk must bypass the block-skip wrapper (`force_full_compute=True`, otherwise skipped layers keep noisy K/V), and each chunk boundary must arm `force_refresh_step_hint` with `max_warmup_steps` capped at 1 (a per-chunk counter reset otherwise keeps every step inside warmup and caching never engages).
+- **Dual-tower video+audio**: MOVA 360p/720p + Prism. Both keep a Wan-shaped video tower, and neither pipeline class matches a registered prefix, so `get_adapter` returns `None` for the pipeline as a whole. Note there is **no runtime guard** against multi-transformer pipelines — `block_registers.py:85-92` is a comment-level constraint ("only for testing purpose"), so supporting either one means registering the pipeline and wiring the video tower explicitly.
+- **Cheap registration pair**: SANA-Video-2B (allow-list only) and Kandinsky 6 VSR (own adapter + prefix) are single-file changes that close visible support-matrix gaps.
+
+**Cost downgrades from the 2026-11-03 pass** — four table rows covering five models are cheaper than recorded, because vllm-omni already ships the exact `BlockAdapter` choice, so the adapter work is a port rather than a design:
+
+| Model | Upstream declaration | What it removes |
+|---|---|---|
+| MAGI-2 (R.7 #1) | `vllm_omni/diffusion/cache/cachedit/model_specific.py:896-923` — Pattern_3 over `pipeline.transformer.block.layers`, `has_separate_cfg=False`, pre/post adapters stay outside | the whole adapter design |
+| MammothModa2 (R.7 #12) | same file, `enable_cache_for_mammothmoda2` — caches `gen_transformer` only | the whole adapter design |
+| HunyuanImage3.0 (R.7 #11) | `vllm_omni/diffusion/models/hunyuan_image3/hunyuan_image3_transformer.py:2116-2121` — `{'layers': Pattern_4}`, `check_forward_pattern=False` | the whole adapter design + the R.9 collision |
+| BAGEL (R.7 #9) / SenseNova-U1 (R.7 #15) | same `model_specific.py` — custom `CachedBlocks` + `CachedAdapter` around `NaiveCache` / paged KV | the hardest part (`CachedAdapter`) |
+
+**Cost upgrade**: MOVA (R.7 #6) was listed as family reuse; it is not — see R.6.2 #27. Treat it as a full integration and ship it with Prism (R.7 #25).
 
 | Rank | Model / pending scope | Community | Fit | Tier | Rationale and main caveat |
 |---:|---|:---:|:---:|:---:|---|
@@ -250,7 +283,7 @@ Scores are editorial 1–5 prioritization aids, not benchmark results:
 | 3 | LongCat-Video-Avatar-1.5 | 5 | 4 | P0 | High-demand audio-driven avatar video with uniform blocks, an external audio projection, and a manually wired non-avatar sibling to reuse. |
 | 4 | SANA-Video-2B | 4 | 5 | P0 | Cheapest video coverage gap: the existing SANA `Pattern_3` path should only need registration plus the full A/B matrix. High fit, but less strategic novelty than the three rows above. |
 | 5 | HY-Nomas | 4 | 4 | P1 | Camera-controlled video is a strong Cache-DiT workload; `double_blocks` are cacheable, but the per-step camera attention likely needs a PatchFunctor. |
-| 6 | MOVA 360p / 720p | 4 | 4 | P1 | Reuse the Wan-shaped video stack while keeping the separate audio DiT out of scope. Verify that the accidental `"Wan"` prefix match is made explicit and safe. |
+| 6 | MOVA 360p / 720p | 4 | 4 | P1 | Two-tower pipeline whose class matches **no** registered prefix, so `get_adapter` returns `None` (R.6.2 #27); the video tower still reuses the Wan `Pattern_2` plan. Keep the audio DiT out of scope and ship it together with Prism (R.7 #25). |
 | 7 | VDN-H3 | 4 | 4 | P1 | MiniMax-H3 integration is already available; verify VDN frame-alpha/gating, block I/O, and `has_separate_cfg=False` before claiming family coverage. |
 | 8 | MiniMax Music 3 | 4 | 4 | P1 | Broad music task with a clear target: cache only the 2.4B flow DiT and leave AR LM/RVQ depth decoding outside. Modular plumbing and audio metrics are the main costs. |
 | 9 | BAGEL-7B-MoT | 5 | 3 | P1 | Popular T2I/edit family and unlocks Lance, but `NaiveCache` plus cond/uncond accounting requires a custom `CachedAdapter`, not a plain block wrapper. |
@@ -268,6 +301,12 @@ Scores are editorial 1–5 prioritization aids, not benchmark results:
 | 21 | Kandinsky 6 VSR | 3 | 2 | P3 | Needs a dedicated SR adapter and prefix despite TI2VA support; the released two-step checkpoint leaves very little block-skip budget. |
 | 22 | SeedVR2-3B | 3 | 2 | P3 | Useful restoration task, but one-pass few-step inference and multi-scale NaDiT limit cache payoff; schedule only for a concrete product need. |
 | 23 | RFD4-Proteina | 2 | 1 | P3 | Non-uniform trunk/pair structure does not fit a flat `BlockAdapter`, and protein-structure correctness needs domain-specific validation. Keep last among plausible custom integrations. |
+| 24 | Matrix-Game 2.0 / 3.0 | 4 | 3 | P1 | Hottest interactive-game family in FastVideo (2.0-causal `kv_cache` + `local_attn_size`, 3.0 bidirectional + `MatrixGame3ActionModule`) and it rides the causal-chunk bundle, but both checkpoints are 3-step distilled → expect CP/offload value, not DBCache. |
+| 25 | Prism | 3 | 4 | P2 | Rides the MOVA integration (same two-tower shape, `MOVABridge` + fused blocks); newest xDiT runner (2026-10-09). Block-sparse attention `_BSA_CHUNK_THW=(4,4,4)` complicates CP. |
+| 26 | HY-WorldPlay | 3 | 4 | P2 | Camera-controlled I2V whose backbone subclasses `HunyuanVideo15Transformer3DModel` — but `hunyuanvideo_adapter` picks its branch by **class name** (`adapters.py:363`), so an `HYWorld*` prefix lands in the 1.0 branch (wrong stack, `has_separate_cfg=False`). Needs an isinstance branch; also verify the camera conditioning is not re-injected inside the loop. |
+| 27 | GEN3C | 3 | 3 | P2 | 35-step, non-distilled video reconstruction — the healthiest cache target in the addendum — but the task is narrow (novel-view synthesis) and FastVideo-only. |
+| 28 | Cosmos-Predict2.5 | 3 | 3 | P2 | `transformer_blocks` like the diffusers `Cosmos` class, but it ships distilled + DFD schedulers, so expect few-step behaviour (~0 hits, CausVid/FastH3 precedent). Today reachable only through the diffusers `Cosmos` path. |
+| 29 | Magi-Human | 3 | 3 | P2 | Human video generation; the block stack sits one level down (`block.layers`) and `local_attn_layers` run frame-windowed attention — PatchFunctor territory. |
 
 ### 7.1 Unsupported but Currently Excluded
 
@@ -282,6 +321,16 @@ These entries are also unsupported, ordered by their proximity to a possible fut
 | E5 | Stable-Diffusion-XL | UNet backbone (`SDXLUNet2DConditionModel`), not a DiT. |
 | E6 | DreamLite | UNet backbone; the auxiliary transformer is not the compute bottleneck, so a DiT-only integration misses the target. |
 | E7 | DreamZero-DROID | Robot action-policy world model rather than an image/video generation target. |
+
+### 7.2 Registered but Not Productized
+
+Adapters that already resolve but stay invisible in the support matrix, so users cannot find them and the README understates coverage:
+
+| Model | What exists | What is missing |
+|---|---|---|
+| Boogu-Image-0.1-Edit | adapter `BooguImage` (`adapters.py:1659`); CLI example registered as `boogu_image_edit` (`_utils/examples.py:2308`, name listed at `:66`, env default `BOOGU_IMAGE_EDIT_DIR` at `:155`) | no entry under `src/cache_dit/models/pipelines/` (the example imports `boogu.*` from a third-party package) and **no README row** — supported but unlisted. Payoff caveat: its production checkpoints are 4-step DDMD students, and few-step students measured ~0 cache hits in the CausVid / FastH3 runs (R.5), so the value sits in CP/TP/quant/offload/compile rather than DBCache. |
+
+Do not use another stack's matrix as a proxy for this repo: a stack's per-model Cache-DiT column is backed by that stack's own enablers, so neither its ✅ nor its ❌ transfers. Anima is the clearest case — vllm-omni lists its own native `AnimaPipeline` under `_NO_CACHE_ACCELERATION`, while cache-dit's modular Anima path is supported and measured (R.5, 33.4 dB / 0.927). Families that already have a working adapter here include `GlmImage` (`adapters.py:1598`), `JoyImage` (`adapters.py:1703`) and `BooguImage` (`adapters.py:1659`).
 
 ## R.8 How to Refresh This List
 
@@ -319,3 +368,30 @@ There is no release tag to diff. Triage each community candidate with four quest
 4. **Is there a same-family adapter to reuse?** Family reuse (Z-Image for Ming-Image, Wan for S2V/CausVid, BAGEL for Lance, MiniMax-H3 for TaoMate) is the difference between ★★ and ★★★★.
 
 Subclassing an already-registered backbone is the cheapest case — verify the block stack is inherited unchanged, add the new class name to the registry (prefix or allow-list), then run the standard A/B.
+
+### 8.2 Ecosystem cross-check (2026-11-03)
+
+A diffusers tag scan only finds what HF has merged. The serving stacks ship models weeks earlier and publish their block contracts, so refresh R.6 from them as well (paths relative to the workspace root):
+
+| Stack | Catalog entry point | What to mine |
+|---|---|---|
+| sglang | `sglang/docs/src/snippets/diffusion/model-catalog.jsx` (image / video / world sections) | widest third-party inventory; whether a DiT already inherits `CachableDiT` (organized as a block loop) or a bare `BaseDiT` (needs restructuring) |
+| vllm-omni | `vllm-omni/docs/models/supported_models.md`, `vllm_omni/diffusion/cache/cachedit/model_specific.py`, `docs/user_guide/diffusion_features.md` | `_cache_dit_adapter_config` declarations (block attr + `ForwardPattern` chosen upstream) and self-built `CachedBlocks` / `CachedAdapter` for KV-carrying models |
+| FastVideo | `fastvideo/models/registry.py` (EntryClass auto-registration), `fastvideo/registry.py::_register_presets` (`all_preset_groups` is a local at `:1418`), `docs/inference/support_matrix.md` | newest causal / interactive / world-model families |
+| xDiT | `xfuser/model_executor/models/runner_models/base_model.py::MODEL_REGISTRY` | small but curated parallel-oriented wrappers |
+
+Two signals are worth mining first: `_cache_dit_adapter_config` (a free adapter design — MAGI-2 and MammothModa2 have self-built enablers in `model_specific.py` that predate any adapter here) and `vllm_omni/diffusion/registry.py::_NO_CACHE_ACCELERATION` (`registry.py:465`) — pipelines that stack simply has **not enabled** cache on. Read the adjacent comments to separate structural mismatches (single-pass models, no block list, built-in prefix KV) from not-yet-wired entries: its `AnimaPipeline` sits in that set while cache-dit's modular Anima is supported and measured. Read the code, not the docs — a ✅ in a stack's matrix can come from that stack's own enabler.
+
+## R.9 Adapter Prefix Mis-Dispatch — Check Before Adding Any New Family
+
+`get_adapter` resolves by **class-name prefix** (`block_registers.py:81-82`: `cls_name.startswith(name)`), and `_relaxed_assert` enforces the class check **only when the transformer's `__module__` is inside `diffusers`** (`adapters.py:15-40`: everything else gets a warning and the check is skipped). A third-party family whose class name starts with an already-registered prefix is therefore routed into the wrong adapter: the failure surfaces later as `AttributeError` on a block attribute, or the lookup succeeds on a structurally different stack and the run silently degrades. The defences that do exist are **per adapter**, not in the dispatcher.
+
+| Family sharing a prefix | Registered prefix it lands on | Actual behaviour (2026-11-03) |
+|---|---|---|
+| `HunyuanImage3ForCausalMM` | `HunyuanImage` (`adapters.py:1422`) | ❌ **unguarded mis-dispatch**: reads `transformer_blocks` / `single_transformer_blocks`, while the real stack is `layers` (Pattern_4) → `AttributeError`. The only case here with no defence at all. |
+| `LingBotVideoTransformer3DModel` (MoE 30B-A3B) | `LingBotVideo` dense (`adapters.py:1962`) | ⚠️ **partly guarded**: the vendored transformer raises `NotImplementedError` when `num_experts != 0` (`models/pipelines/lingbot_video/transformer.py:364`), so the built-in path fails loud. A third-party MoE transformer handed straight to `enable_cache` would still resolve to the dense adapter — unverified. |
+| `Kandinsky6SRTransformer3DModel` | `Kandinsky6` (`adapters.py:1903`) | ✅ **fails loud**: `adapters.py:1933-1938` raises `NotImplementedError` naming the VSR class, and `tests/api/test_kandinsky6_adapter.py::test_vsr_pipeline_is_rejected` covers it. |
+| `Cosmos25Transformer3DModel` (FastVideo-local) | `Cosmos` (`adapters.py:702`) → Predict2 branch | ⚠️ **resolves silently**: `transformer_blocks` + `Pattern_2` + `has_separate_cfg=True`. The attribute names happen to match, so this may be a legitimate reuse — but the distilled / DFD schedulers can make `has_separate_cfg` wrong and nothing verifies the block contract. |
+| MOVA / Prism video tower `WanModel` | `Wan` | ⚠️ reachable only when the tower is passed in alone; the two-tower pipeline class matches no prefix, so `get_adapter(pipe)` simply returns `None`. There is **no** runtime multi-transformer guard — `block_registers.py:85-92` is a comment-level constraint. |
+
+Fix direction: (a) exact-class lookup before prefix lookup; (b) a deny-list entry that raises a clear error for `HunyuanImage3ForCausalMM` — the only unguarded crash today; (c) a regression test asserting each pending family either resolves to its intended adapter or raises, never resolves to an unintended one; (d) settle `Cosmos25` and the MOVA video tower by A/B instead of assuming reuse. Keep the existing ordering constraint: every prefix pair already registered relies on registration order (`WanAnimate2` before `Wan`, `StableAudio3` before `StableAudio`, `HiDreamO1Image` before `HiDream`, `SanaWM` before `Sana`), so a new family must be inserted ahead of its prefix parent.
