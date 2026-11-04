@@ -211,14 +211,10 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Image | HiDream-O1-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Fast-H3 ([`fastvideo@main`](https://github.com/hao-ai-lab/fastvideo)) 🔥 |  [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
-| Video | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️*/✔️/✔️/✔️ |
+| Video | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
-<i>* Cache is implemented and bit-exact verifiable (the clean-latent pass commits every chunk), but
-LongLive 2.0's 4-step DMD schedule leaves only 3 skippable steps per chunk and a forced full compute
-at every chunk boundary, so it measured zero cache hits at the default threshold; enabling it is not
-recommended for speed.</i>
 </div>
 
 ## 🤖Agentic Workflows  
