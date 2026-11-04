@@ -291,6 +291,38 @@ def causvid_wan_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("LongLive2")
+def longlive2_adapter(pipe, **kwargs) -> BlockAdapter:
+  # LongLive 2.0 is a chunk-causal Wan2.2-TI2V-5B generator: the block contract is Wan's (one packed
+  # chunk, one returned tensor), but a block also reads and writes its layer's KV cache, so the
+  # clean-latent pass of every chunk must bypass the block-skip wrapper. The vendored transformer
+  # does that itself (`force_full_compute=True`), which is why this adapter carries no PatchFunctor.
+  from ...models.pipelines.longlive2.transformer import (
+    LongLive2Transformer3DModel,
+    LongLive2TransformerBlock,
+  )
+
+  _relaxed_assert(pipe.transformer, LongLive2Transformer3DModel)
+  assert isinstance(pipe.transformer, LongLive2Transformer3DModel), (
+    f"LongLive2 adapter expects LongLive2Transformer3DModel, got {type(pipe.transformer)}")
+  assert isinstance(
+    pipe.transformer.blocks[0],
+    LongLive2TransformerBlock), (f"LongLive2 adapter expects LongLive2TransformerBlock, got "
+                                 f"{type(pipe.transformer.blocks[0])}")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    # The generator is guidance-distilled: every denoising step is a single conditional forward.
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import (
@@ -1059,6 +1091,53 @@ def sana_video2_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("SanaVideo")
+@BlockAdapterRegister.register("SanaImageToVideo")
+def sana_video_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for SANA-Video (`SanaVideoPipeline` / `SanaImageToVideoPipeline`).
+
+  Two prefixes are registered because the I2V pipeline class is `SanaImageToVideoPipeline`: without
+  the second one it falls through to the 2D `Sana` adapter and trips its transformer assertion.
+
+  The transformer is diffusers' `SanaVideoTransformer3DModel`; its denoising stack is
+  `transformer.transformer_blocks`. Each block takes
+  `(hidden_states, attention_mask, encoder_hidden_states, encoder_attention_mask, timestep, frames,
+  height, width, rotary_emb)` positionally and returns a single tensor, so the cached `Pattern_3`
+  wrapper binds `hidden_states` by name and replays the remaining eight arguments untouched — no
+  `PatchFunctor` is needed. Everything the block consumes beyond `hidden_states` (the 6-way AdaLN
+  modulation from `timestep`, the cross-attention context, the full RoPE table) is computed once per
+  step outside the loop, which is what makes block-level caching valid here.
+
+  `has_separate_cfg=False`: both pipelines fold CFG into the batch axis (`torch.cat([latents] * 2)`)
+  and run exactly one `transformer.forward()` per denoising step, with or without guidance.
+
+  The registration name must stay **after** `SanaVideo2` (SANA-Video 2.0 shares the `SanaVideo`
+  prefix) and **before** `Sana`, because adapter lookup is a first-hit `startswith` over the
+  registry: `SanaVideo2*` would otherwise be captured here and `SanaVideo*` by `Sana`.
+
+  :param pipe: SANA-Video pipeline, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `transformer_blocks` denoising stack.
+  """
+
+  from diffusers import SanaVideoTransformer3DModel
+
+  _relaxed_assert(pipe.transformer, SanaVideoTransformer3DModel)
+  # diffusers declares `_repeated_blocks = []` for SANA-Video, so regional quantization and
+  # `compile_repeated_blocks()` would otherwise widen to the whole module.
+  declare_repeated_blocks(pipe.transformer)
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    blocks_name="transformer_blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 # NOTE: `SanaWMTransformer3DModel` and `SanaWMLTX2RefinerTransformer3DModel` share the `SanaWM`
 # prefix, and the registry returns the first matching prefix, so a single registration dispatches
 # on the block-stack attribute instead of depending on registration order.
@@ -1531,6 +1610,59 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("LongCatVideoAvatar")
+def longcat_video_avatar_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the audio-driven LongCat-Video-Avatar pipeline (A2V / AI2V).
+
+  The transformer is cache-dit's vendored copy (`cache_dit.models.pipelines.longcat_video_avatar`),
+  so `_relaxed_assert` only logs a warning for it and the wiring is asserted here instead: a wrong
+  stack would otherwise surface as a wrong video, not as an error.
+
+  Two model specifics matter:
+
+  * `LongCatAvatarSingleStreamBlock.forward` takes `hidden_states` first and returns a single tensor
+    (Pattern_3), and the block loop body holds nothing but the block call, so no PatchFunctor is
+    needed. The audio conditioning is a **block argument** computed once per step before the loop
+    (`transformer.audio_proj`), so it never varies per step and cannot be lost by a skipped block.
+  * `has_separate_cfg` is not a constant of the model: the undistilled 50-step recipe runs a
+    conditional and an unconditional call per step, while the distilled 8-step recipe samples at
+    guidance 1.0 and runs a single call. The pipeline records which recipe it loaded
+    (`cache_has_separate_cfg`) and rejects a cached run that does not match, because the mismatched
+    step bookkeeping silently halves (or doubles) the warmed-up step count.
+
+  :param pipe: `LongCatVideoAvatarPipeline` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `blocks` denoising stack.
+  """
+
+  from ...models.pipelines.longcat_video_avatar.transformer import (
+    LongCatAvatarSingleStreamBlock,
+    LongCatVideoAvatarTransformer3DModel,
+  )
+
+  assert isinstance(pipe.transformer, LongCatVideoAvatarTransformer3DModel), (
+    f"LongCatVideoAvatar adapter expects LongCatVideoAvatarTransformer3DModel, got {type(pipe.transformer)}"
+  )
+  assert isinstance(pipe.transformer.blocks[0], LongCatAvatarSingleStreamBlock), (
+    f"LongCatVideoAvatar adapter expects LongCatAvatarSingleStreamBlock, got {type(pipe.transformer.blocks[0])}"
+  )
+
+  separate_cfg = getattr(pipe, "cache_has_separate_cfg", None)
+  if separate_cfg is None:
+    separate_cfg = pipe.do_classifier_free_guidance
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=separate_cfg,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("LongCatAudioDiT")
 def longcat_audio_dit_adapter(pipe, **kwargs) -> BlockAdapter:
   """Adapter for the LongCat-AudioDiT text-to-speech pipeline.
@@ -1955,6 +2087,69 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
     check_forward_pattern=False,
     check_num_outputs=False,
     has_separate_cfg=has_separate_cfg,
+    **kwargs,
+  )
+
+
+@BlockAdapterRegister.register("Magi2Preview")
+def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for MAGI-2 Preview (`Magi2PreviewPipeline`, text/image to video with audio).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.magi2`), so it is not a
+  diffusers module and `_relaxed_assert` skips its type check. Nothing else validates the wiring
+  either, and MAGI-2 nests its stack one level deeper than most models
+  (`transformer.block.layers`, not `transformer.layers`), so this adapter asserts the exact
+  container, stack and layer class instead of trusting a name.
+
+  Model specifics:
+
+  * `transformer` is the inner `Magi2TransformerBlock`, not the whole `Magi2PreviewTransformer`: the
+    pre/post adapters run on every step and must stay outside the cached region.
+  * `has_separate_cfg=False`: one `transformer.forward()` per step already carries both CFG branches
+    - the sampler packs conditional and unconditional latents/text into one varlen sequence
+    (`cu_seqlens` separates them), so there is no cond/uncond forward parity to track.
+  * `check_forward_pattern=True`: the block's first parameter is `hidden_states` and it returns one
+    tensor, and the built-in block is ours, so the contract is verifiable. cache-dit defaults that
+    check off for non-diffusers transformers.
+  * No PatchFunctor: the per-step diffusion-time signal is written into `hidden_states` before the
+    stack, and the RoPE table / varlen metadata / modality dispatcher are loop-invariant arguments.
+
+  :param pipe: `Magi2PreviewPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `block.layers` denoising stack.
+  """
+  from ...models.pipelines.magi2.transformer import (
+    Magi2TransformerBlock,
+    Magi2TransformerLayer,
+  )
+
+  transformer = getattr(pipe, "transformer", None)
+  if transformer is None:
+    raise ValueError("MAGI-2 caching needs a pipeline (or wrapper) exposing `transformer`, "
+                     f"got {type(pipe).__name__}.")
+
+  stack = getattr(transformer, "block", None)
+  assert isinstance(stack, Magi2TransformerBlock), (
+    f"MAGI-2 caching expects `transformer.block` to be a Magi2TransformerBlock, got "
+    f"{type(stack).__name__} on {type(transformer).__name__}.")
+  assert isinstance(stack.layers, torch.nn.ModuleList), (
+    f"MAGI-2 caching expects `transformer.block.layers` to be an nn.ModuleList, got "
+    f"{type(stack.layers).__name__}.")
+  assert len(stack.layers) == stack.config.num_layers, (
+    f"MAGI-2 block stack holds {len(stack.layers)} layers but the config declares "
+    f"{stack.config.num_layers}.")
+  assert isinstance(stack.layers[0], Magi2TransformerLayer), (
+    f"MAGI-2 caching expects `transformer.block.layers[0]` to be a Magi2TransformerLayer, got "
+    f"{type(stack.layers[0]).__name__}.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=stack,
+    blocks=stack.layers,
+    blocks_name="layers",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
     **kwargs,
   )
 

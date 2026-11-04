@@ -156,6 +156,8 @@ def _activate_cp_planners():
   HiDreamO1ImageContextParallelismPlanner = _safe_import(  # noqa: F841
     ".hidream_o1_image", "HiDreamO1ImageContextParallelismPlanner",
     ImportErrorContextParallelismPlanner)
+  SanaVideoContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_video", "SanaVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   SanaVideo2ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_video2", "SanaVideo2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   SanaWMContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -164,6 +166,15 @@ def _activate_cp_planners():
     ".lingbot_video", "LingBotVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   CausVidContextParallelismPlanner = _safe_import(  # noqa: F841
     ".causvid", "CausVidContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  LongLive2ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  Magi2PreviewContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".magi2", "Magi2PreviewContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  LongCatVideoAvatarContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".longcat_video_avatar",
+    "LongCatVideoAvatarContextParallelismPlanner",
+    ImportErrorContextParallelismPlanner,
+  )
 
   try:
     import nunchaku  # noqa: F401
@@ -223,6 +234,8 @@ def _activate_tp_planners():
     ".wan", "WanTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   CausVidTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".causvid", "CausVidTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  LongLive2TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".longlive2", "LongLive2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SkyReelsV2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".skyreels", "SkyReelsV2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   ZImageTensorParallelismPlanner = _safe_import(  # noqa: F841
@@ -271,9 +284,18 @@ def _activate_tp_planners():
     ImportErrorTensorParallelismPlanner)
   Kandinsky6TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".kandinsky6", "Kandinsky6TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  SanaVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".sana_video", "SanaVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SanaVideo2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_video2", "SanaVideo2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SanaWMTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".sana_wm", "SanaWMTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   LingBotVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".lingbot_video", "LingBotVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  LongCatVideoAvatarTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".longcat_video_avatar",
+    "LongCatVideoAvatarTensorParallelismPlanner",
+    ImportErrorTensorParallelismPlanner,
+  )
+  Magi2PreviewTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".magi2", "Magi2PreviewTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

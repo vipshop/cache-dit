@@ -99,6 +99,11 @@ __all__ = [
   "wan_s2v_example",
   "lingbot_video_example",
   "causvid_wan_example",
+  "sana_video_example",
+  "sana_video_i2v_example",
+  "longlive2_example",
+  "magi2_t2va_example",
+  "magi2_i2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -178,6 +183,7 @@ _env_path_mapping = {
   "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
+  "SANA_VIDEO_DIR": "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
   "SANA_VIDEO2_DIR": "Efficient-Large-Model/SANA-Video_2.0_5B_720p",
   "SANA_WM_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
@@ -185,6 +191,10 @@ _env_path_mapping = {
   "WAN_ANIMATE_2_DISTILLED_DIR": "Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers",
   "LINGBOT_VIDEO_DIR": "robbyant/lingbot-video-dense-1.3b",
   "CAUSVID_DIR": "tianweiy/CausVid",
+  "LONGLIVE2_DIR": "Efficient-Large-Model/LongLive-2.0-5B",
+  "LONGCAT_VIDEO_AVATAR_DIR": "meituan-longcat/LongCat-Video-Avatar-1.5",
+  "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
+  "MAGI2_DIR": "sand-ai/MAGI-2-preview",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -4483,6 +4493,52 @@ def causvid_wan_example(args: argparse.Namespace, **kwargs) -> Example:
   )
 
 
+_LONGLIVE2_PROMPT = (
+  "A compact silver robot with one blue optic walks through a clean robotics lab, "
+  "smooth tracking camera, soft studio light, highly detailed.")
+
+_LONGLIVE2_DEFAULT = "Efficient-Large-Model/LongLive-2.0-5B"
+
+
+@ExampleRegister.register("longlive2", default=_LONGLIVE2_DEFAULT)
+def longlive2_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongLive 2.0 (chunk-causal Wan2.2-TI2V-5B generator) text-to-video example.
+
+  `LONGLIVE2_DIR` points at an assembled checkpoint directory: `transformer/` (converted from the
+  released native `model_bf16.pt`, see `cache_dit.models.pipelines.longlive2.convert`), plus the
+  `text_encoder/`, `tokenizer/`, `vae/` and `scheduler/` of `Wan-AI/Wan2.2-TI2V-5B-Diffusers`. The
+  generator is chunk-causal and distilled to 4 steps without CFG, and the latent frame count must be
+  a multiple of the 8-frame chunk, so 61 frames is the shortest two-chunk clip.
+
+  :param args: CLI arguments.
+  :returns: The LongLive 2.0 example.
+  """
+  from ..models.pipelines.longlive2 import LongLive2Pipeline
+
+  height = 480 if args.height is None else args.height
+  width = 832 if args.width is None else args.width
+  num_frames = 61 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path(_LONGLIVE2_DEFAULT, args),
+      pipeline_class=LongLive2Pipeline,
+    ),
+    input_data=ExampleInputData(
+      prompt=_LONGLIVE2_PROMPT,
+      height=height,
+      width=width,
+      num_frames=num_frames,
+      num_inference_steps=4,
+      guidance_scale=1.0,
+      # The writer takes PIL frames; the pipeline default returns one `(T, H, W, C)` array instead.
+      extra_input_kwargs={"output_type": "pil"},
+    ),
+  )
+
+
 _WAN_S2V_PROMPT = ("A person is talking to the camera in a natural indoor setting, medium shot, "
                    "soft light, realistic, high quality.")
 _WAN_S2V_NEGATIVE_PROMPT = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，"
@@ -4699,3 +4755,384 @@ def wan_s2v_example(args: argparse.Namespace, **kwargs) -> Example:
       },
     ),
   )
+
+
+_SANA_VIDEO_PROMPT = (
+  "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, "
+  "clean solo shot, warm color. A young Caucasian man stands in a forest, golden light glimmers on "
+  "his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his "
+  "hair and collar, light dances across his face with his movements. The background is blurred, with "
+  "dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear "
+  "and emotional. motion score: 30.")
+
+_SANA_VIDEO_NEGATIVE_PROMPT = (
+  "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, "
+  "jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character "
+  "shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual "
+  "experience.")
+
+
+def _sana_video_keep_vae_fp32(pipe) -> None:
+  """Decode in fp32, as the released SANA-Video inference script does.
+
+  The DiT stays in the requested dtype; the VAE decoder is the only place where bf16 visibly costs
+  fidelity (fine texture and thin structures), and it is cheap next to the transformer.
+
+  :param pipe: SANA-Video pipeline, text-to-video or image-to-video.
+  """
+
+  pipe.vae.to(torch.float32)
+
+
+@ExampleRegister.register("sana_video",
+                          default="Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
+def sana_video_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2B 480p text-to-video example.
+
+  The checkpoint ships its own `DPMSolverMultistepScheduler` (`flow_shift=8.0`), a Wan VAE and a
+  Gemma-2 text encoder, so nothing has to be overridden. The pipeline names its frame count `frames`
+  (not `num_frames`), which is why the frame count travels through `extra_input_kwargs`.
+
+  :param args: Parsed CLI arguments.
+  :param kwargs: Unused extra keyword arguments.
+  :returns: The registered SANA-Video text-to-video example.
+  """
+
+  from diffusers import SanaVideoPipeline
+
+  model_name_or_path = _path(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
+    args=args,
+  )
+  # The pipeline names its frame count `frames`, so `--num-frames` is mapped here and
+  # `use_num_frames` is cleared below (the generic forwarding would send `num_frames=`).
+  frames = 81 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,  # Text to Video
+      model_name_or_path=model_name_or_path,
+      pipeline_class=SanaVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      post_init_hook=_sana_video_keep_vae_fp32,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO_PROMPT,
+      negative_prompt=_SANA_VIDEO_NEGATIVE_PROMPT,
+      height=480,
+      width=832,
+      guidance_scale=6.0,
+      num_inference_steps=50,
+      use_num_frames=False,
+      extra_input_kwargs={
+        "frames": frames,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("sana_video_i2v",
+                          default="Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
+def sana_video_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2B 480p image-to-video example.
+
+  Same checkpoint as `sana_video`; the conditioning frame is the first frame of the generated clip.
+  `use_resolution_binning` snaps the canvas to the released 480p aspect bins, so the requested
+  height/width only pick the bin.
+
+  :param args: Parsed CLI arguments.
+  :param kwargs: Unused extra keyword arguments.
+  :returns: The registered SANA-Video image-to-video example.
+  """
+
+  from diffusers import SanaImageToVideoPipeline
+
+  model_name_or_path = _path(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
+    args=args,
+  )
+
+  if args.image_path is not None:
+    image = load_image(args.image_path)
+  else:
+    image = load_image(
+      "https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
+  frames = 81 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,  # Image to Video
+      model_name_or_path=model_name_or_path,
+      pipeline_class=SanaImageToVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      post_init_hook=_sana_video_keep_vae_fp32,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO_PROMPT,
+      negative_prompt=_SANA_VIDEO_NEGATIVE_PROMPT,
+      image=image,
+      height=480,
+      width=832,
+      guidance_scale=6.0,
+      num_inference_steps=50,
+      use_num_frames=False,
+      extra_input_kwargs={
+        "frames": frames,
+      },
+    ),
+  )
+
+
+_LONG_CAT_VIDEO_AVATAR_PROMPT = (
+  "A person looks at the camera and speaks naturally, realistic skin texture, natural lighting, "
+  "smooth and stable motion, detailed facial expression, high quality.")
+_LONG_CAT_VIDEO_AVATAR_NEGATIVE_PROMPT = (
+  "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, "
+  "images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, "
+  "incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, "
+  "misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the "
+  "background, walking backwards")
+# 93 pixel frames is the released clip length (4k+1 at the VAE temporal rate 4): 24 latent frames of
+# 480x832 latents. The audio window of a latent frame is stitched from its VAE group, so shorter
+# clips lose the middle group entirely.
+_LONG_CAT_VIDEO_AVATAR_FRAMES = 93
+_LONG_CAT_VIDEO_AVATAR_FPS = 25
+_LONG_CAT_VIDEO_AVATAR_SAMPLE_RATE = 16000
+
+
+def _longcat_video_avatar_audio(args: argparse.Namespace, model_name_or_path: str,
+                                num_frames: int) -> Tuple[np.ndarray, int]:
+  """Resolve the driving waveform of the avatar models.
+
+  Order of preference: `--audio-path`, a wav shipped next to the checkpoint, then a synthetic
+  placeholder so the pipeline still runs. The placeholder carries no speech: it only satisfies the
+  audio-conditioning shape, and lip-sync or PSNR comparisons need a real recording.
+
+  :param args: CLI arguments.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :param num_frames: frames the waveform has to cover.
+  :returns: `(waveform, sampling_rate)` at 16 kHz.
+  """
+
+  candidates = []
+  if args.audio_path is not None:
+    candidates.append(args.audio_path)
+  for name in ("speech.wav", "audio.wav", "drive.wav"):
+    candidates.append(os.path.join(model_name_or_path, "assets", name))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return _wan_s2v_read_audio(candidate)
+  logger.warning("No LongCat-Video-Avatar driving waveform found: using a synthetic placeholder. "
+                 "Pass `--audio-path` with a real recording for a faithful sample.")
+  return _wan_s2v_synthetic_audio(num_frames,
+                                  _LONG_CAT_VIDEO_AVATAR_FPS), _LONG_CAT_VIDEO_AVATAR_SAMPLE_RATE
+
+
+def _longcat_video_avatar_reference_image(args: argparse.Namespace, model_name_or_path: str):
+  """Resolve the reference (identity) image of the AI2V task.
+
+  :param args: CLI arguments, honoring `--image-path`.
+  :param model_name_or_path: Model directory, used as a fallback asset location.
+  :returns: the reference image in RGB.
+  """
+
+  if args.image_path is not None:
+    return load_image(args.image_path).convert("RGB")
+  image_path = os.path.join(model_name_or_path, "assets", "reference.png")
+  if os.path.isfile(image_path):
+    return load_image(image_path).convert("RGB")
+  candidates = []
+  if CACHE_DIT_DIR is not None:
+    candidates.append(os.path.join(CACHE_DIT_DIR, "examples/data/consisid_input.png"))
+  repo_root = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+  candidates.append(os.path.join(repo_root, "examples/data/consisid_input.png"))
+  for candidate in candidates:
+    if os.path.isfile(candidate):
+      return load_image(candidate).convert("RGB")
+  raise ValueError("No LongCat-Video-Avatar reference image found: pass `--image-path`.")
+
+
+def _longcat_video_avatar_example(
+  args: argparse.Namespace,
+  image=None,
+) -> Example:
+  """Build the shared LongCat-Video-Avatar example.
+
+  The distilled 8-step recipe is the default (the checkpoint ships a DMD LoRA and the release
+  recommends it); set `LONGCAT_VIDEO_AVATAR_NO_DISTILL=1` to run the undistilled 50-step schedule,
+  which is the one that needs the classifier-free guidance and therefore the one that exercises the
+  separate-CFG cache bookkeeping.
+
+  :param args: CLI arguments.
+  :param image: reference image of the AI2V task, or `None` for A2V.
+  :returns: the configured example.
+  """
+
+  from ..models.pipelines.longcat_video_avatar import LongCatVideoAvatarPipeline
+
+  model_name_or_path = _path("meituan-longcat/LongCat-Video-Avatar-1.5", args=args)
+  use_distill = os.environ.get("LONGCAT_VIDEO_AVATAR_NO_DISTILL", "0").lower() != "1"
+  num_inference_steps = args.num_inference_steps
+  if num_inference_steps is None:
+    num_inference_steps = 8 if use_distill else 50
+  num_frames = args.num_frames if args.num_frames is not None else _LONG_CAT_VIDEO_AVATAR_FRAMES
+  audio, sampling_rate = _longcat_video_avatar_audio(args, model_name_or_path, num_frames)
+  # `image` is resized by the pipeline itself (center crop), so the client-side resize must not
+  # resample it a second time.
+  guidance = 1.0 if use_distill else 4.0
+  # Speech-driven video is a video-only task for the writer, which then falls back to
+  # `--saved-fps` (8) instead of the model's native 25 fps and the clip plays at a third of the rate
+  # it was generated for. Adopt the native rate unless the caller asked for another one.
+  if getattr(args, "saved_fps", None) in (None, 8):
+    args.saved_fps = _LONG_CAT_VIDEO_AVATAR_FPS
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.S2V,
+      model_name_or_path=model_name_or_path,
+      pipeline_class=LongCatVideoAvatarPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+    ),
+    input_data=ExampleInputData(
+      prompt=_LONG_CAT_VIDEO_AVATAR_PROMPT,
+      negative_prompt=_LONG_CAT_VIDEO_AVATAR_NEGATIVE_PROMPT,
+      height=480,
+      width=832,
+      num_inference_steps=num_inference_steps,
+      image=image,
+      skip_image_resize=image is not None,
+      # The clip length is `num_frames` of the released VAE grid, not a free-form frame count.
+      use_num_frames=False,
+      extra_input_kwargs={
+        "num_frames": num_frames,
+        "audio": audio,
+        "sampling_rate": sampling_rate,
+        "sampling_fps": _LONG_CAT_VIDEO_AVATAR_FPS,
+        "use_distill": use_distill,
+        "text_guidance_scale": guidance,
+        "audio_guidance_scale": guidance,
+        # The video writer feeds imageio, which needs ndarray frames.
+        "output_type": "np",
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("longcat_video_avatar_a2v",
+                          default="meituan-longcat/LongCat-Video-Avatar-1.5")
+def longcat_video_avatar_a2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongCat-Video-Avatar A2V example (audio + text -> talking video).
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+
+  return _longcat_video_avatar_example(args)
+
+
+@ExampleRegister.register("longcat_video_avatar_ai2v",
+                          default="meituan-longcat/LongCat-Video-Avatar-1.5")
+def longcat_video_avatar_ai2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """LongCat-Video-Avatar AI2V example (reference image + audio + text -> talking video).
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+
+  model_name_or_path = _path("meituan-longcat/LongCat-Video-Avatar-1.5", args=args)
+  image = _longcat_video_avatar_reference_image(args, model_name_or_path)
+  return _longcat_video_avatar_example(args, image=image)
+
+
+_MAGI2_PROMPT = (
+  'context: A red fox trots through fresh snow at dusk\n'
+  'The animal moves with short, careful steps; powder lifts around its paws. The camera tracks '
+  'alongside at eye level while cold blue light fades to warm lamplight.\n'
+  'aesthetics: style=cinematic realism; mood=quiet, crisp; color=cold blue with warm highlights\n'
+  'audio: language=en; ambience=soft wind, muffled snow crunch, distant birds')
+
+_MAGI2_I2VA_PROMPT = (
+  'context: The first frame refers to <Figure 1>\n'
+  'The subject in the reference frame turns slightly toward the camera and breathes visibly, '
+  'while the background stays still. Natural daylight, shallow depth of field.\n'
+  'aesthetics: style=photographic; mood=calm; color=neutral\n'
+  'audio: language=en; ambience=quiet room tone')
+
+
+def _magi2_example(args: argparse.Namespace, *, with_image: bool) -> Example:
+  """Build the MAGI-2 Preview example shared by the t2va and i2va entry points.
+
+  The CLI defaults to a small latent geometry because the official clip is 32 latent video frames
+  (10 s at 25 fps) by 448x256, i.e. ~14k packed tokens per CFG branch: that is a multi-GPU, hundred
+  step run. `--extra-input-kwargs '{"latent_frames": 32, "audio_frames": 250}'` restores the
+  released timeline, and `--steps 100` the released step count.
+
+  :param args: CLI arguments.
+  :param with_image: Build the image-to-video-and-audio variant.
+  :returns: The MAGI-2 Preview example.
+  """
+
+  from ..models.pipelines.magi2.pipeline import Magi2PreviewPipeline
+
+  height = 256 if args.height is None else args.height
+  width = 448 if args.width is None else args.width
+  num_inference_steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+
+  extra_input_kwargs = {"latent_frames": 4, "audio_frames": 32}
+  input_data = ExampleInputData(
+    prompt=_MAGI2_I2VA_PROMPT if with_image else _MAGI2_PROMPT,
+    height=height,
+    width=width,
+    num_inference_steps=num_inference_steps,
+    # MAGI-2 names its geometry `latent_frames` / `audio_frames`, not `num_frames`.
+    use_num_frames=False,
+    extra_input_kwargs=extra_input_kwargs,
+  )
+  if with_image:
+    if args.image_path is None:
+      raise ValueError("magi2_i2va needs a reference still: pass `--image-path <file>`.")
+    from diffusers.utils import load_image
+
+    input_data.image = load_image(args.image_path).convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("sand-ai/MAGI-2-preview", args),
+      pipeline_class=Magi2PreviewPipeline,
+    ),
+    input_data=input_data,
+  )
+
+
+@ExampleRegister.register("magi2_t2va", default="sand-ai/MAGI-2-preview")
+def magi2_t2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """MAGI-2 Preview text-to-video-with-audio example.
+
+  `MAGI2_DIR` points at the checkpoint root (the directory holding `preview/`, `text_encoder/`,
+  `vae/`, `stable-audio-open-1.0/` and `turbo_vae/`).
+
+  :param args: CLI arguments.
+  :returns: The MAGI-2 Preview t2va example.
+  """
+
+  return _magi2_example(args, with_image=False)
+
+
+@ExampleRegister.register("magi2_i2va", default="sand-ai/MAGI-2-preview")
+def magi2_i2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """MAGI-2 Preview image-to-video-with-audio example.
+
+  `MAGI2_DIR` points at the checkpoint root. The reference still is encoded with the released Wan2.2
+  VAE, so this entry point needs the vendored image VAE (see the pipeline's `image_vae` argument).
+
+  :param args: CLI arguments.
+  :returns: The MAGI-2 Preview i2va example.
+  """
+
+  return _magi2_example(args, with_image=True)

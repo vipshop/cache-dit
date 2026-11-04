@@ -212,3 +212,56 @@ def _residency_args(utils_mod):
   args.parallel_type = ""
   args.device_map_balance = False
   return args
+
+
+class _SubtreeStack(torch.nn.Module):
+  """Two blocks that own children, so the selected targets are subtrees rather than leaves."""
+
+  def __init__(self):
+    super().__init__()
+    self.blocks = torch.nn.ModuleList([_SubtreeBlock() for _ in range(2)])
+
+  def forward(self, x):
+    for block in self.blocks:
+      x = block(x)
+    return x
+
+
+class _SubtreeBlock(torch.nn.Module):
+  """A block whose weights all hang on its children."""
+
+  def __init__(self):
+    super().__init__()
+    self.proj = torch.nn.Linear(4, 4)
+
+  def forward(self, x):
+    return self.proj(x)
+
+
+@CUDA
+def test_subtree_target_returns_to_host_when_the_handle_is_removed():
+  """`remove(offload=True)` must move a subtree target back, not just flip its residency flag.
+
+  Subtree targets hold no pinned tensor states, so the mirror-based release would be a no-op and the
+  weights would silently stay on the compute device after the hooks are gone.
+  """
+
+  model = _SubtreeStack()
+  layerwise_offload(
+    model,
+    module_filter=lambda _name, module: isinstance(module, _SubtreeBlock),
+    onload_device="cuda",
+    offload_device="cpu",
+    async_transfer=True,
+  )
+  model(torch.zeros(2, 4, device="cuda"))
+
+  # Simulate a target that is resident when the handle goes away (eager offload would normally have
+  # returned it already, and a prefetch in flight can leave it on the device).
+  model.blocks[0].to("cuda")
+  assert model.blocks[0].proj.weight.device.type == "cuda"
+
+  remove_layerwise_offload(model, offload=True)
+
+  assert model.blocks[0].proj.weight.device.type == "cpu"
+  assert model.blocks[1].proj.weight.device.type == "cpu"

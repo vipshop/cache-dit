@@ -122,6 +122,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
+| Video | SANA-Video 2B (T2V/I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_480p_diffusers) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | SANA-WM (I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-WM_bidirectional-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.3 Klein 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Wan-Animate-2 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-Animate-2-14B-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
@@ -210,15 +211,19 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
 | **Video** | SANA-Video 2.0 (T2V/TI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
-| **Video** | LingBot-Video Dense 1.3B 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
-| **Video** | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
+| **Video** | LingBot-Video Dense 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
+| **Video** | MAGI-2 Preview (T2VA/I2VA) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/sand-ai/MAGI-2-preview) | 2 | ✖️/✔️/✖️/✔️ |
 | **Image** | MOSS-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Ming-Image 0.1 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | HiDream-O1-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Fast-H3 ([`fastvideo@main`](https://github.com/hao-ai-lab/fastvideo)) 🔥 |  [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
+| Video | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | LongCat-Video (A2V/AI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
 
-<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
+<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers.</i>
+
 </div>
 
 ## 🤖Agentic Workflows  
@@ -240,9 +245,6 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 ```bash
 /cache-dit-model-integration "Run the perf matrix for MiniMax-H3 with 1/2/4/8 GPUs."
 ```
-
-> [!NOTE]
-> Please note that quantization and layerwise offload in Cache-DiT are generally supported for **nn.Module**, thus no extra integration is needed for new DiT pipelines or transformers. 
 
 ## 🌐Community Integration
 

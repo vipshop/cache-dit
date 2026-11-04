@@ -10,8 +10,11 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
+|LongLive-2.0-5B|✅|✅|✅|
+|Magi-2-Preview (T2VA/I2VA)|✖️|✅|✅|
 |CausVid-Wan|✖️|✅|✅|
 |SANA-Video-2.0-5B (T2V/TI2V)|✅|✅|✅|
+|SANA-Video-2B-480p (T2V/I2V)|✅|✅|✅|
 |SANA-WM-I2V|✅|✖️|✅|
 |FLUX.2-Klein-9b-kv|✖️|✖️|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
@@ -95,6 +98,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Motif-Video-T2V|✅|✅|✅|
 |Motif-Video-I2V|✅|✅|✅|
 |LongCat-Video|✅|✖️|✖️|
+|LongCat-Video-Avatar-1.5|✅|✅|✅|
 |ChronoEdit-14B|✅|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅️|✅️|
 |Kandinsky-6.0-T2VA|✅|✅|✅|
@@ -132,6 +136,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
 |FLUX.2-Klein-9b-kv|✅|✅|
+|LongLive-2.0-5B|✅|✅|
 |CausVid-Wan|✅|✅|
 |FLUX.2-Klein-4B|✅|✅|
 |FLUX.2-Klein-base-4B|✅|✅|
@@ -210,6 +215,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Kandinsky-5.0-T2V-Lite|✅|✅|
 |Kandinsky-6.0-T2VA|✅|✅|
 |SANA-WM-I2V|✅|✅|
+|SANA-Video-2B-480p|✅|✅|
 |NucleusMoE-Image|✅|✅|
 |PRX-512-t2i-sft|✅|✖️|
 |PRXPixel-t2i|✅|✖️|
