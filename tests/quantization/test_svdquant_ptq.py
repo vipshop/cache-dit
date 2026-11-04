@@ -43,7 +43,7 @@ _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _DEFAULT_SVDQ_KWARGS = {
   "streaming": True,
   "calibrate_precision": "low",
-  "runtime_kernel": "v1",
+  "runtime_kernel": None,
   "activation_buffer_flush_sample_count": 1,
   "activation_buffer_flush_cpu_bytes": None,
   "smooth_strategy": "activation",
@@ -1379,12 +1379,12 @@ def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> Non
   config = _make_ptq_config(
     tmp_path / "root_linear",
     _make_calibrate_fn(calibration_samples),
-    svdq_kwargs={"runtime_kernel": "v2"},
+    svdq_kwargs={"runtime_kernel": "native"},
   )
 
   quantized_linear = cache_dit.quantize(float_linear, config)
   assert isinstance(quantized_linear, SVDQW4A4Linear)
-  assert quantized_linear.runtime_kernel == "v2"
+  assert quantized_linear.runtime_kernel == "native"
   assert Path(config.serialize_to).is_file()
 
   eval_inputs = make_token_batch(
@@ -1402,7 +1402,7 @@ def test_svdq_ptq_quantize_root_linear_and_load_roundtrip(tmp_path: Path) -> Non
     str(_resolve_quant_checkpoint_dir(config.serialize_to)),
   )
   assert isinstance(loaded_linear, SVDQW4A4Linear)
-  assert loaded_linear.runtime_kernel == "v2"
+  assert loaded_linear.runtime_kernel == "native"
 
   with torch.inference_mode():
     quantized_output = quantized_linear(eval_inputs)
@@ -1765,7 +1765,7 @@ def test_svdq_ptq_load_rejects_invalid_or_incomplete_metadata(tmp_path: Path) ->
     str(precision_mismatch_path),
     metadata={
       _SVDQ_METADATA_KEY_NAME:
-      '{"format":"cache_dit_svdq_ptq","version":2,"quant_type":"svdq_nvfp4_r32","rank":32,"precision":"int4","quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"calibrate_precision":"medium","runtime_kernel":"v1"}}'
+      '{"format":"cache_dit_svdq_ptq","version":2,"quant_type":"svdq_nvfp4_r32","rank":32,"precision":"int4","quantized_layer_names":["block.to_q"],"svdq_kwargs":{"streaming":true,"calibrate_precision":"medium","runtime_kernel":"native"}}'
     },
   )
   with pytest.raises(ValueError, match="expected 'nvfp4'"):

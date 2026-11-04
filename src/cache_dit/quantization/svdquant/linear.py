@@ -3,18 +3,20 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...kernels import svdq_gemm_w4a4
-from ...kernels import svdq_gemm_w4a4_v2
+from ...kernels import svdq_gemm_w4a4_native
+from ...kernels import svdq_gemm_w4a4_cute
+from ...kernels import svdq_gemm_w4a4_native_v2
 from ...kernels import svdq_quantize_w4a4_act_fuse_lora
+from ...kernels import svdq_quantize_w4a4_cute
+from .packing import convert_svdq_nvfp4_pack_to_cute
 
 
 class SVDQW4A4Linear(nn.Module):
   """Runtime module for packed SVDQ W4A4 linear layers.
 
   `SVDQW4A4Linear` is the module shape produced by the offline SVDQ
-  quantizer. It stores the packed 4-bit weights consumed by
-  `svdq_gemm_w4a4` or `svdq_gemm_w4a4_v2`, the per-group scales and
-  activation smoothing factors needed to quantize activations at runtime,
+  quantizer. It stores the packed 4-bit weights consumed by the native or CuTe
+  GEMM family, the per-group scales and activation smoothing factors needed at runtime,
   and the optional low-rank residual factors fused around the packed GEMM
   path. `qweight` stores two 4-bit weights per `int8` lane, `wscales`
   stores the packed weight-scale hierarchy, and `proj_down` / `proj_up`
@@ -29,7 +31,7 @@ class SVDQW4A4Linear(nn.Module):
     bias: bool = True,
     precision: str = "int4",
     act_unsigned: bool = False,
-    runtime_kernel: str = "v1",
+    runtime_kernel: str | None = None,
     torch_dtype: torch.dtype = torch.bfloat16,
     device: str | torch.device | None = None,
   ) -> None:
@@ -48,9 +50,11 @@ class SVDQW4A4Linear(nn.Module):
       16-element groups and an additional coarse scale hierarchy.
     :param act_unsigned: Whether the runtime activation quantizer should emit
       unsigned 4-bit activations for the kernel path.
-    :param runtime_kernel: Runtime packed GEMM implementation. `v1` preserves
-      the original kernel path, while `v2` routes the same packed tensors
-      through the dedicated plain-path v2 entrypoint.
+    :param runtime_kernel: Packed GEMM family. `None` selects native v2 for
+      INT4 and the native NVFP4 kernel. `cute` is an NVFP4-only validation
+      opt-in; it is not enabled by default until its GEMM and end-to-end
+      performance meet the release gate. The old `v1`/`v2` selectors are
+      deprecated.
     :param torch_dtype: Floating-point dtype used for scales, smoothing
       factors, bias, and low-rank tensors.
     :param device: Device where the packed parameters are allocated. Defaults
@@ -62,8 +66,16 @@ class SVDQW4A4Linear(nn.Module):
       device = torch.device("cpu")
     if rank < 0:
       raise ValueError(f"rank must be non-negative, got {rank}.")
-    if runtime_kernel not in {"v1", "v2"}:
-      raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
+    if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
+      raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
+                       f"got {runtime_kernel!r}. The v1/v2 selectors are deprecated.")
+    resolved_runtime_kernel = runtime_kernel
+    if resolved_runtime_kernel is None:
+      resolved_runtime_kernel = "native"
+    if resolved_runtime_kernel == "cute" and precision != "nvfp4":
+      raise ValueError("runtime_kernel='cute' is only supported for precision='nvfp4'.")
+    if resolved_runtime_kernel == "cute" and torch_dtype != torch.bfloat16:
+      raise ValueError("runtime_kernel='cute' currently requires torch_dtype=torch.bfloat16.")
 
     if precision == "nvfp4":
       self.group_size = 16
@@ -77,7 +89,16 @@ class SVDQW4A4Linear(nn.Module):
     self.rank = rank
     self.precision = precision
     self.torch_dtype = torch_dtype
-    self.runtime_kernel = runtime_kernel
+    self.runtime_kernel = resolved_runtime_kernel
+    self._cute_pack_ready = False
+    self._cute_pack_version = 1
+    self._cute_qweight = None
+    self._cute_wscales = None
+    self._cute_proj_up = None
+    self._cute_proj_down = None
+    self._cute_smooth = None
+    self._cute_bias = None
+    self._cute_wcscales = None
 
     padded_in = ((in_features + 127) // 128) * 128
     padded_out = ((out_features + 127) // 128) * 128
@@ -225,6 +246,15 @@ class SVDQW4A4Linear(nn.Module):
       `forward_quant`.
     """
 
+    if self.runtime_kernel == "cute":
+      self._prepare_cute_pack()
+      return svdq_quantize_w4a4_cute(
+        input=x,
+        lora_down=self._cute_proj_down if self.rank > 0 else None,
+        smooth=self._cute_smooth,
+        pad_size=pad_size,
+      )
+
     return svdq_quantize_w4a4_act_fuse_lora(
       input=x,
       lora_down=self.proj_down,
@@ -233,6 +263,29 @@ class SVDQW4A4Linear(nn.Module):
       fp4=self.precision == "nvfp4",
       pad_size=pad_size,
     )
+
+  def _load_from_state_dict(self, *args, **kwargs) -> None:
+    super()._load_from_state_dict(*args, **kwargs)
+    self._cute_pack_ready = False
+
+  def _prepare_cute_pack(self) -> None:
+    """Cache CuTe runtime tensors without mutating the native checkpoint parameters.
+
+    The original native parameters remain the only state-dict entries, so saving and reloading
+    never serializes the converted layout. A later load invalidates this cache and triggers a
+    fresh conversion. The cache is private implementation data, not a `nn.Parameter` or registered
+    buffer.
+
+    :returns: None. The converted tensors are stored on `_cute_*` attributes with pack version 1.
+    """
+    if self._cute_pack_ready:
+      return
+    (self._cute_qweight, self._cute_wscales, self._cute_proj_up, self._cute_proj_down,
+     self._cute_bias, self._cute_wcscales,
+     self._cute_smooth) = convert_svdq_nvfp4_pack_to_cute(self.qweight, self.wscales, self.proj_up,
+                                                          self.proj_down, self.bias, self.wcscales,
+                                                          self.smooth_factor)
+    self._cute_pack_ready = True
 
   def forward_quant(
     self,
@@ -252,6 +305,24 @@ class SVDQW4A4Linear(nn.Module):
       GEMM runtime kernel.
     """
 
+    if self.runtime_kernel == "cute":
+      self._prepare_cute_pack()
+      result = svdq_gemm_w4a4_cute(
+        act=quantized_x,
+        wgt=self._cute_qweight,
+        ascales=ascales,
+        wscales=self._cute_wscales,
+        lora_act_in=lora_act if self.rank > 0 else None,
+        lora_up=self._cute_proj_up if self.rank > 0 else None,
+        bias=self._cute_bias,
+        wcscales=self._cute_wcscales,
+        alpha=self.wtscale,
+      )
+      if output is not None:
+        output.copy_(result)
+        return output
+      return result
+
     gemm_kwargs = dict(
       act=quantized_x,
       wgt=self.qweight,
@@ -264,14 +335,15 @@ class SVDQW4A4Linear(nn.Module):
       act_unsigned=self.act_unsigned,
       output_dtype=output.dtype if output is not None else self.proj_up.dtype,
     )
-    if self.rank > 0:
-      gemm_kwargs["lora_act_in"] = lora_act
-      gemm_kwargs["lora_up"] = self.proj_up
+    gemm_kwargs["lora_act_in"] = lora_act if self.rank > 0 else None
+    gemm_kwargs["lora_up"] = self.proj_up if self.rank > 0 else None
 
-    if self.runtime_kernel == "v2":
-      gemm_op = svdq_gemm_w4a4_v2
+    if self.precision == "int4":
+      # native means the native family, never a request for deprecated INT4 v1.
+      gemm_op = svdq_gemm_w4a4_native_v2
     else:
-      gemm_op = svdq_gemm_w4a4
+      # NVFP4 native retains the old kernel for explicit compatibility/fallback.
+      gemm_op = svdq_gemm_w4a4_native
     result = gemm_op(**gemm_kwargs)
     if output is not None:
       output.copy_(result)

@@ -83,9 +83,9 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
   parser.add_argument(
     "--svdq-runtime-kernel",
     type=str,
-    default="v1",
-    choices=("v1", "v2"),
-    help="Packed runtime GEMM kernel used by SVDQW4A4Linear.",
+    default=None,
+    choices=("native", "cute"),
+    help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
   )
   parser.add_argument(
     "--verbose",

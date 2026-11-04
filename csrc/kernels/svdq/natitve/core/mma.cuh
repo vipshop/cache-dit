@@ -7,7 +7,7 @@
 // cuda 12.4- does not support "C" constraint in inline assembly :(
 // use explicit specialization for now
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 namespace mma_helper {
 struct f32 {
@@ -224,4 +224,4 @@ __device__ __forceinline__ uint4 mma_m16n8kx_s32common<mma_helper::u4, mma_helpe
   return d;
 }
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

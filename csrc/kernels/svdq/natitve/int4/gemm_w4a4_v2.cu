@@ -1,11 +1,11 @@
-#include "zgemm.h"
+#include "../zgemm.h"
 
 #include <cstdlib>
 #include <stdexcept>
 
 #include "gemm_w4a4_v2_launch.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 namespace {
 // Some models may traced mix on Ada stays register-bound, so the useful tuning knob is CTA
@@ -57,7 +57,7 @@ static int get_v2_logical_block_m(int M, int N) {
 
 static int get_v2_num_stages(int stage) {
   if (stage < 1 || stage > 3) {
-    throw std::runtime_error("svdq_gemm_w4a4_v2 stage must be one of 1, 2, or 3.");
+    throw std::runtime_error("svdq_gemm_w4a4_native_v2 stage must be one of 1, 2, or 3.");
   }
   return stage;
 }
@@ -72,7 +72,7 @@ static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype,
       if (dtype == Tensor::BF16) {
         return &launch_gemm_w4a4_v2_bf16_int4_stage1;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
     case 2:
       if (dtype == Tensor::FP16) {
         return &launch_gemm_w4a4_v2_fp16_int4_stage2;
@@ -80,7 +80,7 @@ static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype,
       if (dtype == Tensor::BF16) {
         return &launch_gemm_w4a4_v2_bf16_int4_stage2;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
     case 3:
       if (dtype == Tensor::FP16) {
         return &launch_gemm_w4a4_v2_fp16_int4_stage3;
@@ -88,24 +88,24 @@ static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype,
       if (dtype == Tensor::BF16) {
         return &launch_gemm_w4a4_v2_bf16_int4_stage3;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
     default:
-      throw std::runtime_error("svdq_gemm_w4a4_v2 stage must be one of 1, 2, or 3.");
+      throw std::runtime_error("svdq_gemm_w4a4_native_v2 stage must be one of 1, 2, or 3.");
   }
 }
 
 }  // namespace
 
-void gemm_w4a4_v2(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales,
-                  Tensor lora_act_in, Tensor lora_up, Tensor bias, bool act_unsigned,
-                  float alpha, Tensor wcscales, int stage) {
+void gemm_w4a4_native_v2(
+  Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales, Tensor lora_act_in,
+  Tensor lora_up, Tensor bias, bool act_unsigned, float alpha, Tensor wcscales, int stage) {
   if (!act.valid() || !wgt.valid() || !out.valid() || !ascales.valid() || !wscales.valid()) {
     throw std::runtime_error(
-      "svdq_gemm_w4a4_v2 requires act, wgt, out, ascales, and wscales tensors.");
+      "svdq_gemm_w4a4_native_v2 requires act, wgt, out, ascales, and wscales tensors.");
   }
   if (alpha != 1.0f) {
     throw std::runtime_error(
-      "svdq_gemm_w4a4_v2 only supports alpha=1.0 for the INT4 runtime path.");
+      "svdq_gemm_w4a4_native_v2 only supports alpha=1.0 for the INT4 runtime path.");
   }
 
   const int M = act.numel() / act.shape[-1];
@@ -113,9 +113,9 @@ void gemm_w4a4_v2(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wsc
   Tensor::ScalarType dtype = ascales.dtype();
   const int logical_block_m = get_v2_logical_block_m(M, N);
   const int num_stages = get_v2_num_stages(stage);
-    const auto launch = get_v2_launch_fn(dtype, num_stages);
+  const auto launch = get_v2_launch_fn(dtype, num_stages);
   launch(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, act_unsigned, alpha,
-      wcscales, logical_block_m);
+         wcscales, logical_block_m);
 }
 
-}  // namespace svdq::kernels
+}  // namespace svdq::native_kernels

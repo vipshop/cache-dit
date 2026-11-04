@@ -420,10 +420,10 @@ def test_svdquant_quantizer_returns_nvfp4_module_state_dict() -> None:
   assert state_dict["bias"].shape == (256, )
 
 
-def test_svdquant_quantizer_rejects_nvfp4_v2_runtime_kernel() -> None:
+def test_svdquant_quantizer_rejects_deprecated_runtime_kernel() -> None:
   linear = _make_cpu_linear(128, 128)
 
-  with pytest.raises(ValueError, match="NVFP4 currently only supports"):
+  with pytest.raises(ValueError, match="deprecated"):
     svdq_quantizer._quantize_from_activation_span(
       linear,
       torch.ones(128, dtype=torch.float32),

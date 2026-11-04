@@ -8,8 +8,8 @@ from pathlib import Path
 
 import torch
 
-from cache_dit.kernels import svdq_gemm_w4a4
-from cache_dit.kernels import svdq_gemm_w4a4_v2
+from cache_dit.kernels import svdq_gemm_w4a4_native
+from cache_dit.kernels import svdq_gemm_w4a4_native_v2
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_wgt
 
@@ -158,7 +158,7 @@ def main() -> None:
   """Run the full runtime sweep and export JSON/CSV reports.
 
   The sweep includes both explicit `stage=1/2/3` calls and one additional
-  default-call group where `svdq_gemm_w4a4_v2` is invoked without a `stage`
+  default-call group where `svdq_gemm_w4a4_native_v2` is invoked without a `stage`
   keyword. This keeps the report aligned with the current Python default path.
   """
 
@@ -213,13 +213,16 @@ def main() -> None:
         }
 
         os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
-        v1 = benchmark(svdq_gemm_w4a4, common_kwargs, warmup=warmup, iters=iters)
+        v1 = benchmark(svdq_gemm_w4a4_native, common_kwargs, warmup=warmup, iters=iters)
 
         for block_m in BLOCK_MS:
           os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = str(block_m)
           v2_results: dict[str, dict[str, object]] = {}
 
-          default_v2 = benchmark(svdq_gemm_w4a4_v2, common_kwargs, warmup=warmup, iters=iters)
+          default_v2 = benchmark(svdq_gemm_w4a4_native_v2,
+                                 common_kwargs,
+                                 warmup=warmup,
+                                 iters=iters)
           default_diff = (default_v2["output"].float() - v1["output"].float()).abs()
           rows.append({
             "M": seq_len,
@@ -249,7 +252,7 @@ def main() -> None:
           for stage in EXPLICIT_STAGES:
             v2_kwargs = dict(common_kwargs)
             v2_kwargs["stage"] = stage
-            explicit_v2 = benchmark(svdq_gemm_w4a4_v2, v2_kwargs, warmup=warmup, iters=iters)
+            explicit_v2 = benchmark(svdq_gemm_w4a4_native_v2, v2_kwargs, warmup=warmup, iters=iters)
             explicit_diff = (explicit_v2["output"].float() - v1["output"].float()).abs()
             rows.append({
               "M": seq_len,

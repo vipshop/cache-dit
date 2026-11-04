@@ -25,8 +25,8 @@ def test_quantize_config_accepts_svdq_nvfp4_ptq() -> None:
   assert config.serialize_to.endswith("svdq_nvfp4_r64.safetensors")
 
 
-def test_quantize_config_rejects_svdq_nvfp4_v2_runtime_kernel() -> None:
-  with pytest.raises(ValueError, match="NVFP4 currently only supports"):
+def test_quantize_config_rejects_deprecated_runtime_kernel() -> None:
+  with pytest.raises(ValueError, match="deprecated"):
     QuantizeConfig(
       quant_type="svdq_nvfp4_r128_dq",
       svdq_kwargs={"runtime_kernel": "v2"},

@@ -11,6 +11,7 @@ __all__ = [
   "SVDQWeightPacker",
   "adapt_svdq_module_state_dict",
   "ceil_divide",
+  "convert_svdq_nvfp4_pack_to_cute",
   "export_raw_svdq_w4a4_state_dict",
   "fp_quantize",
   "pad",
@@ -75,6 +76,81 @@ def fp_quantize(x: torch.Tensor, codebook: torch.Tensor | None = None) -> torch.
       device=x.device,
     )
   return (x.unsqueeze(-1) - codebook.unsqueeze(0)).abs().argmin(dim=-1)
+
+
+def convert_svdq_nvfp4_pack_to_cute(
+  qweight: torch.Tensor,
+  wscales: torch.Tensor,
+  proj_up: torch.Tensor,
+  proj_down: torch.Tensor,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  smooth_factor: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor
+           | None, torch.Tensor]:
+  """Convert native NVFP4 checkpoint artifacts to the independent CuTe pack format.
+
+  This is a one-time load-time conversion only. The CuTe forward path never converts activation or
+  LoRA scratch, and never calls the native activation quantizer. `proj_down` and `smooth_factor`
+  are included so `quantize_w4a4_cute` can generate standard A/SFA and BF16 D directly.
+
+  :param qweight: Native fragment-packed E2M1 weight `[N, K / 2]`.
+  :param wscales: Native fragment-packed group scales `[K / 16, N]`.
+  :param proj_up: Native fragment-packed LoRA-up weight `[N, R]`.
+  :param proj_down: Native fragment-packed LoRA-down weight `[K, R]`.
+  :param bias: Optional native packed bias `[N]`.
+  :param wcscales: Optional native packed per-channel scales `[N]`.
+  :param smooth_factor: Native packed smooth vector `[K]`.
+  :returns: Standard qweight, flat 128x4 wscales, row-major proj_up, row-major proj_down,
+    plain bias, plain wcscales and plain smooth vector.
+  """
+  n, k2 = qweight.shape
+  k = k2 * 2
+  if n % 128 != 0 or k % 128 != 0:
+    raise ValueError(f"Expected N%128==0 and K%128==0, got N={n}, K={k}.")
+  q = qweight.contiguous().view(dtype=torch.int32)
+  q = q.reshape(n // 128, k // 64, 1, 8, 8, 4, 2, 2, 1)
+  shifts = torch.arange(0, 32, 4, dtype=torch.int32, device=q.device)
+  nibbles = ((q.unsqueeze(-1) >> shifts) & 0xF).to(torch.uint8)
+  nibbles = nibbles.permute(0, 3, 6, 4, 8, 1, 2, 7, 5, 9).contiguous().view(n, k)
+  row_major_qweight = (nibbles[..., 0::2] | (nibbles[..., 1::2] << 4)).contiguous()
+
+  kg = wscales.shape[0]
+  scales = wscales.view(n // 128, k // 64, 1, 8, 4, 4, 4)
+  scales = scales.permute(0, 2, 5, 4, 3, 1, 6).contiguous().view(n, kg)
+  scales = scales.view(torch.uint8)
+  rows, cols = n, kg
+  row = torch.arange(rows, device=scales.device).view(-1, 1).expand(rows, cols)
+  col = torch.arange(cols, device=scales.device).view(1, -1).expand(rows, cols)
+  offset = ((row // 128) * (cols * 128) + (col // 4) * 512 + 16 * (row % 32) + 4 *
+            ((row // 32) % 4) + col % 4)
+  flat_scales = torch.empty_like(scales).reshape(-1)
+  flat_scales[offset.reshape(-1)] = scales.reshape(-1)
+  flat_scales = flat_scales.view(torch.float8_e4m3fn)
+
+  rank = proj_up.shape[1]
+  packed_up = proj_up.view(n // 16, rank // 16, 8, 4, 2, 2, 1, 2)
+  packed_up = packed_up.permute(0, 1, 4, 2, 6, 5, 3, 7).contiguous()
+  packed_up = packed_up.view(n // 16, rank // 16, 16, 16)
+  row_major_proj_up = packed_up.permute(0, 2, 1, 3).contiguous().view(n, rank)
+
+  if rank == 0:
+    row_major_proj_down = proj_down.transpose(0, 1).contiguous()
+  else:
+    packed_down = proj_down.view(k // 16, rank // 16, 8, 4, 2, 2, 1, 2)
+    packed_down = packed_down.permute(0, 1, 4, 2, 6, 5, 3, 7).contiguous()
+    packed_down = packed_down.view(k // 16, rank // 16, 16, 16)
+    logical_down = packed_down.permute(1, 2, 0, 3).contiguous().view(rank, k)
+    row_major_proj_down = logical_down.transpose(0, 1).contiguous()
+
+  def unpack_vector(vector: torch.Tensor | None, length: int) -> torch.Tensor | None:
+    if vector is None:
+      return None
+    packed_vector = vector.view(length // 128, 1, 1, 8, 4, 2, 2)
+    return packed_vector.permute(0, 2, 3, 5, 4, 1, 6).contiguous().view(length)
+
+  return (row_major_qweight, flat_scales, row_major_proj_up, row_major_proj_down,
+          unpack_vector(bias, n), unpack_vector(wcscales, n), unpack_vector(smooth_factor, k))
 
 
 class MmaWeightPacker:

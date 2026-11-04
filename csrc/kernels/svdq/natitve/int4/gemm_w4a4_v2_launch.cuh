@@ -2,7 +2,7 @@
 
 #include "Tensor.h"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 using gemm_w4a4_v2_launch_fn = void (*)(Tensor act,
                                         Tensor wgt,
@@ -42,4 +42,4 @@ SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH(bf16, 3);
 
 #undef SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH
 
-}  // namespace svdq::kernels
+}  // namespace svdq::native_kernels

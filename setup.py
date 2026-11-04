@@ -114,6 +114,45 @@ def _env_flag(name: str) -> bool:
   return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _get_cutlass_include_dir() -> str:
+  """Resolve CUTLASS 4.6.1, defaulting to the repository submodule.
+
+  `csrc/third_party/cutlass` is the reproducible default. CACHE_DIT_CUTLASS_DIR is an explicit
+  override for development only; no sibling checkout or machine-specific path is assumed.
+
+  :returns: Absolute include directory containing `cute/tensor.hpp`.
+  :raises RuntimeError: If the submodule/override is missing or has the wrong version.
+  """
+  configured = os.getenv("CACHE_DIT_CUTLASS_DIR")
+  candidates = [
+    Path(configured) if configured else None, ROOT_DIR / "csrc" / "third_party" / "cutlass"
+  ]
+  for candidate in candidates:
+    if candidate is None:
+      continue
+    include_dir = candidate if candidate.name == "include" else candidate / "include"
+    if not (include_dir / "cute" / "tensor.hpp").is_file():
+      continue
+    version_file = include_dir / "cutlass" / "version.h"
+    if not version_file.is_file():
+      raise RuntimeError(f"Missing CUTLASS version header: {version_file}")
+    version_text = version_file.read_text()
+    versions = {}
+    for component in ("MAJOR", "MINOR", "PATCH"):
+      match = re.search(rf"#define CUTLASS_{component} (\d+)", version_text)
+      if match is None:
+        raise RuntimeError(f"Unable to parse CUTLASS_{component} from {version_file}")
+      versions[component] = int(match.group(1))
+    version = (versions["MAJOR"], versions["MINOR"], versions["PATCH"])
+    if version != (4, 6, 1):
+      raise RuntimeError(f"The SM120 CuTe SVDQ kernel requires CUTLASS 4.6.1, found {version}")
+    return str(include_dir)
+  raise RuntimeError(
+    "The SM120 CuTe SVDQ kernel requires CUTLASS 4.6.1. Initialize the bundled dependency with "
+    "`git submodule update --init --recursive`, or explicitly set CACHE_DIT_CUTLASS_DIR to a "
+    "compatible checkout.")
+
+
 def _get_release_flavor() -> str:
   flavor = os.getenv(RELEASE_FLAVOR_ENV, "base").strip().lower()
   if flavor not in {"base", "cu13"}:
@@ -265,25 +304,21 @@ def _parse_arch_list(raw_arch_list: str) -> list[str]:
 
 
 def _svdquant_v2_launch_sources() -> list[str]:
-  return [
-    f"csrc/kernels/svdq/int4/gemm_w4a4_v2_launch_{dtype}_int4_stage{stage}.cu"
-    for dtype in ("fp16", "bf16") for stage in (1, 2, 3)
-  ]
+  return [f"csrc/kernels/svdq/natitve/int4/gemm_w4a4_v2_i4_s{stage}.cu" for stage in (1, 2, 3)]
 
 
 def _required_svdquant_sources() -> list[str]:
   return [
     "csrc/kernels/svdq/pybind.cpp",
     "csrc/kernels/svdq/torch.cpp",
-    "csrc/kernels/svdq/int4/gemm_w4a4_v2.cu",
+    "csrc/kernels/svdq/natitve/int4/gemm_w4a4_v2.cu",
     *_svdquant_v2_launch_sources(),
     # Build both INT4 and NVFP4 kernels
-    "csrc/kernels/svdq/core/gemm_w4a4.cu",
-    "csrc/kernels/svdq/int4/gemm_w4a4_launch_fp16_int4.cu",
-    "csrc/kernels/svdq/int4/gemm_w4a4_launch_fp16_int4_fasteri2f.cu",
-    "csrc/kernels/svdq/fp4/gemm_w4a4_launch_fp16_fp4.cu",
-    "csrc/kernels/svdq/int4/gemm_w4a4_launch_bf16_int4.cu",
-    "csrc/kernels/svdq/fp4/gemm_w4a4_launch_bf16_fp4.cu",
+    "csrc/kernels/svdq/natitve/core/gemm_w4a4.cu",
+    "csrc/kernels/svdq/natitve/int4/gemm_w4a4_i4.cu",
+    "csrc/kernels/svdq/natitve/fp4/gemm_w4a4_f4.cu",
+    "csrc/kernels/svdq/cute/fp4/gemm_w4a4.cu",
+    "csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu",
   ]
 
 
@@ -558,6 +593,7 @@ def _get_svdquant_extension():
       str(ROOT_DIR / "csrc" / "kernels"),
       str(ROOT_DIR / "csrc" / "kernels" / "svdq"),
       str(ROOT_DIR / "csrc" / "third_party" / "spdlog" / "include"),
+      _get_cutlass_include_dir(),
     ],
     extra_compile_args={
       "gcc": gcc_flags,
@@ -814,7 +850,7 @@ if VERSION_WRITE_TO is not None:
 
 setup(
   description=
-  "Cache-DiT: Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism, Quantization and CPU Offload for DiTs.",
+  "Cache-DiT: A PyTorch-native Inference Engine with Cache, Parallelism, Quantization and CPU Offload for DiTs.",
   author="DefTruth, vipshop.com",
   use_scm_version=USE_SCM_VERSION,
   package_dir={"": "src"},

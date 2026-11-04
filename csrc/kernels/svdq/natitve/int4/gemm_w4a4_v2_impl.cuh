@@ -3,7 +3,7 @@
 #include "gemm_w4a4_v2.cuh"
 #include "gemm_w4a4_v2_launch.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <typename PackedConfig, int LogicalBlockM, int NumStages>
 inline void launch_gemm_w4a4_v2_specialized(Tensor act,
@@ -90,8 +90,8 @@ inline void launch_gemm_w4a4_v2_specialized(Tensor act,
           wcscales);                                                               \
         return;                                                                    \
       default:                                                                     \
-        throw std::runtime_error("Unsupported svdq_gemm_w4a4_v2 BLOCK_M.");        \
+        throw std::runtime_error("Unsupported svdq_gemm_w4a4_native_v2 BLOCK_M.");        \
     }                                                                              \
   }
 
-}  // namespace svdq::kernels
+}  // namespace svdq::native_kernels

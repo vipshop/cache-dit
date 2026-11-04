@@ -1,3 +1,6 @@
 [submodule "csrc/third_party/spdlog"]
 	path = csrc/third_party/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "csrc/third_party/cutlass"]
+	path = csrc/third_party/cutlass
+	url = https://github.com/NVIDIA/cutlass.git

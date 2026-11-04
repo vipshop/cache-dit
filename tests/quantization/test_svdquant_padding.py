@@ -37,7 +37,7 @@ def _quantize_linear(linear, rank=0, precision="nvfp4"):
     torch_dtype=TORCH_DTYPE,
     device=DEVICE,
     calibrate_precision="low",
-    runtime_kernel="v1",
+    runtime_kernel="native",
   )
   return result
 

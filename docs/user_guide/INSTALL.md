@@ -37,7 +37,7 @@ same distribution with the CUDA extension compiled in, served from our own wheel
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
 # Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # the SVDQuant sources need spdlog
+git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.6.1
 CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-isolation
 ```
 

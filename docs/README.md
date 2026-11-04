@@ -67,7 +67,7 @@ pip install git+https://github.com/vipshop/cache-dit.git # latest.
 # release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 # Latest, from source: one flag builds every CUDA extension (SVDQuant, comm, attn).
-git submodule update --init --recursive --force # the SVDQuant sources need spdlog
+git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.6.1
 CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"
 ```
 

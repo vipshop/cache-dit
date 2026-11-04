@@ -7,8 +7,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from cache_dit.kernels import svdq_gemm_w4a4
-from cache_dit.kernels import svdq_gemm_w4a4_v2
+from cache_dit.kernels import svdq_gemm_w4a4_native
+from cache_dit.kernels import svdq_gemm_w4a4_native_v2
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
@@ -294,6 +294,7 @@ def run_svdq_operator_from_state_dict(
     input=activations,
     lora_down=None if proj_down.shape[1] == 0 else proj_down,
     smooth=state_dict["smooth_factor"],
+    fuse_glu=False,
     fp4=False,
     pad_size=256,
   )
@@ -303,8 +304,11 @@ def run_svdq_operator_from_state_dict(
     "ascales": ascales,
     "wscales": state_dict["wscales"],
     "bias": state_dict.get("bias"),
+    "lora_act_in": None,
+    "lora_up": None,
     "fp4": False,
     "alpha": 1.0,
+    "wcscales": None,
     "act_unsigned": act_unsigned,
     "output_dtype": output_dtype,
   }
@@ -312,9 +316,9 @@ def run_svdq_operator_from_state_dict(
     gemm_kwargs["lora_act_in"] = lora_activations
     gemm_kwargs["lora_up"] = state_dict["proj_up"]
   if operator_version == "v2":
-    gemm_op = svdq_gemm_w4a4_v2
+    gemm_op = svdq_gemm_w4a4_native_v2
   else:
-    gemm_op = svdq_gemm_w4a4
+    gemm_op = svdq_gemm_w4a4_native
   output = gemm_op(**gemm_kwargs)
   return output[:activations.shape[0]]
 

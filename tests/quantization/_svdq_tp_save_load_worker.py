@@ -58,7 +58,7 @@ def main() -> None:
     rank=32,
     precision="int4",
     quantized_layer_names=["proj"],
-    svdq_kwargs={"runtime_kernel": "v1"},
+    svdq_kwargs={"runtime_kernel": "native"},
   )
   if local_rank == 0:
     assert writer_rank
