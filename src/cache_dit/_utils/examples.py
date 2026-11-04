@@ -102,6 +102,8 @@ __all__ = [
   "sana_video_example",
   "sana_video_i2v_example",
   "longlive2_example",
+  "magi2_t2va_example",
+  "magi2_i2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -192,6 +194,7 @@ _env_path_mapping = {
   "LONGLIVE2_DIR": "Efficient-Large-Model/LongLive-2.0-5B",
   "LONGCAT_VIDEO_AVATAR_DIR": "meituan-longcat/LongCat-Video-Avatar-1.5",
   "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
+  "MAGI2_DIR": "sand-ai/MAGI-2-preview",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -5043,3 +5046,93 @@ def longcat_video_avatar_ai2v_example(args: argparse.Namespace, **kwargs) -> Exa
   model_name_or_path = _path("meituan-longcat/LongCat-Video-Avatar-1.5", args=args)
   image = _longcat_video_avatar_reference_image(args, model_name_or_path)
   return _longcat_video_avatar_example(args, image=image)
+
+
+_MAGI2_PROMPT = (
+  'context: A red fox trots through fresh snow at dusk\n'
+  'The animal moves with short, careful steps; powder lifts around its paws. The camera tracks '
+  'alongside at eye level while cold blue light fades to warm lamplight.\n'
+  'aesthetics: style=cinematic realism; mood=quiet, crisp; color=cold blue with warm highlights\n'
+  'audio: language=en; ambience=soft wind, muffled snow crunch, distant birds')
+
+_MAGI2_I2VA_PROMPT = (
+  'context: The first frame refers to <Figure 1>\n'
+  'The subject in the reference frame turns slightly toward the camera and breathes visibly, '
+  'while the background stays still. Natural daylight, shallow depth of field.\n'
+  'aesthetics: style=photographic; mood=calm; color=neutral\n'
+  'audio: language=en; ambience=quiet room tone')
+
+
+def _magi2_example(args: argparse.Namespace, *, with_image: bool) -> Example:
+  """Build the MAGI-2 Preview example shared by the t2va and i2va entry points.
+
+  The CLI defaults to a small latent geometry because the official clip is 32 latent video frames
+  (10 s at 25 fps) by 448x256, i.e. ~14k packed tokens per CFG branch: that is a multi-GPU, hundred
+  step run. `--extra-input-kwargs '{"latent_frames": 32, "audio_frames": 250}'` restores the
+  released timeline, and `--steps 100` the released step count.
+
+  :param args: CLI arguments.
+  :param with_image: Build the image-to-video-and-audio variant.
+  :returns: The MAGI-2 Preview example.
+  """
+
+  from ..models.pipelines.magi2.pipeline import Magi2PreviewPipeline
+
+  height = 256 if args.height is None else args.height
+  width = 448 if args.width is None else args.width
+  num_inference_steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+
+  extra_input_kwargs = {"latent_frames": 4, "audio_frames": 32}
+  input_data = ExampleInputData(
+    prompt=_MAGI2_I2VA_PROMPT if with_image else _MAGI2_PROMPT,
+    height=height,
+    width=width,
+    num_inference_steps=num_inference_steps,
+    # MAGI-2 names its geometry `latent_frames` / `audio_frames`, not `num_frames`.
+    use_num_frames=False,
+    extra_input_kwargs=extra_input_kwargs,
+  )
+  if with_image:
+    if args.image_path is None:
+      raise ValueError("magi2_i2va needs a reference still: pass `--image-path <file>`.")
+    from diffusers.utils import load_image
+
+    input_data.image = load_image(args.image_path).convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("sand-ai/MAGI-2-preview", args),
+      pipeline_class=Magi2PreviewPipeline,
+    ),
+    input_data=input_data,
+  )
+
+
+@ExampleRegister.register("magi2_t2va", default="sand-ai/MAGI-2-preview")
+def magi2_t2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """MAGI-2 Preview text-to-video-with-audio example.
+
+  `MAGI2_DIR` points at the checkpoint root (the directory holding `preview/`, `text_encoder/`,
+  `vae/`, `stable-audio-open-1.0/` and `turbo_vae/`).
+
+  :param args: CLI arguments.
+  :returns: The MAGI-2 Preview t2va example.
+  """
+
+  return _magi2_example(args, with_image=False)
+
+
+@ExampleRegister.register("magi2_i2va", default="sand-ai/MAGI-2-preview")
+def magi2_i2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """MAGI-2 Preview image-to-video-with-audio example.
+
+  `MAGI2_DIR` points at the checkpoint root. The reference still is encoded with the released Wan2.2
+  VAE, so this entry point needs the vendored image VAE (see the pipeline's `image_vae` argument).
+
+  :param args: CLI arguments.
+  :returns: The MAGI-2 Preview i2va example.
+  """
+
+  return _magi2_example(args, with_image=True)

@@ -2091,6 +2091,69 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("Magi2Preview")
+def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for MAGI-2 Preview (`Magi2PreviewPipeline`, text/image to video with audio).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.magi2`), so it is not a
+  diffusers module and `_relaxed_assert` skips its type check. Nothing else validates the wiring
+  either, and MAGI-2 nests its stack one level deeper than most models
+  (`transformer.block.layers`, not `transformer.layers`), so this adapter asserts the exact
+  container, stack and layer class instead of trusting a name.
+
+  Model specifics:
+
+  * `transformer` is the inner `Magi2TransformerBlock`, not the whole `Magi2PreviewTransformer`: the
+    pre/post adapters run on every step and must stay outside the cached region.
+  * `has_separate_cfg=False`: one `transformer.forward()` per step already carries both CFG branches
+    - the sampler packs conditional and unconditional latents/text into one varlen sequence
+    (`cu_seqlens` separates them), so there is no cond/uncond forward parity to track.
+  * `check_forward_pattern=True`: the block's first parameter is `hidden_states` and it returns one
+    tensor, and the built-in block is ours, so the contract is verifiable. cache-dit defaults that
+    check off for non-diffusers transformers.
+  * No PatchFunctor: the per-step diffusion-time signal is written into `hidden_states` before the
+    stack, and the RoPE table / varlen metadata / modality dispatcher are loop-invariant arguments.
+
+  :param pipe: `Magi2PreviewPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `block.layers` denoising stack.
+  """
+  from ...models.pipelines.magi2.transformer import (
+    Magi2TransformerBlock,
+    Magi2TransformerLayer,
+  )
+
+  transformer = getattr(pipe, "transformer", None)
+  if transformer is None:
+    raise ValueError("MAGI-2 caching needs a pipeline (or wrapper) exposing `transformer`, "
+                     f"got {type(pipe).__name__}.")
+
+  stack = getattr(transformer, "block", None)
+  assert isinstance(stack, Magi2TransformerBlock), (
+    f"MAGI-2 caching expects `transformer.block` to be a Magi2TransformerBlock, got "
+    f"{type(stack).__name__} on {type(transformer).__name__}.")
+  assert isinstance(stack.layers, torch.nn.ModuleList), (
+    f"MAGI-2 caching expects `transformer.block.layers` to be an nn.ModuleList, got "
+    f"{type(stack.layers).__name__}.")
+  assert len(stack.layers) == stack.config.num_layers, (
+    f"MAGI-2 block stack holds {len(stack.layers)} layers but the config declares "
+    f"{stack.config.num_layers}.")
+  assert isinstance(stack.layers[0], Magi2TransformerLayer), (
+    f"MAGI-2 caching expects `transformer.block.layers[0]` to be a Magi2TransformerLayer, got "
+    f"{type(stack.layers[0]).__name__}.")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=stack,
+    blocks=stack.layers,
+    blocks_name="layers",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("LingBotVideo")
 def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for LingBot-Video Dense (`LingBotVideoPipeline`).

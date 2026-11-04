@@ -168,6 +168,8 @@ def _activate_cp_planners():
     ".causvid", "CausVidContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   LongLive2ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  Magi2PreviewContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".magi2", "Magi2PreviewContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   LongCatVideoAvatarContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_video_avatar",
     "LongCatVideoAvatarContextParallelismPlanner",
@@ -295,3 +297,5 @@ def _activate_tp_planners():
     "LongCatVideoAvatarTensorParallelismPlanner",
     ImportErrorTensorParallelismPlanner,
   )
+  Magi2PreviewTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".magi2", "Magi2PreviewTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
