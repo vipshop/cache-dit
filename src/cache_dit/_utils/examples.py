@@ -99,6 +99,8 @@ __all__ = [
   "wan_s2v_example",
   "lingbot_video_example",
   "causvid_wan_example",
+  "sana_video_example",
+  "sana_video_i2v_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -178,6 +180,7 @@ _env_path_mapping = {
   "MING_IMAGE_DESIGN_LAYER_DIR": "inclusionAI/Ming-Image-0.1-Design-Layer",
   "NUCLEUS_IMAGE_DIR": "NucleusAI/Nucleus-Image",
   "KANDINSKY_6_TI2VA_DIR": "kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers",
+  "SANA_VIDEO_DIR": "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
   "SANA_VIDEO2_DIR": "Efficient-Large-Model/SANA-Video_2.0_5B_720p",
   "SANA_WM_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers",
   "SANA_WM_REFINER_DIR": "Efficient-Large-Model/SANA-WM_bidirectional-diffusers-refiner",
@@ -4696,6 +4699,134 @@ def wan_s2v_example(args: argparse.Namespace, **kwargs) -> Example:
         # The video writer feeds imageio, which needs ndarray frames (`PIL` output raises
         # "append_data requires ndarray"); the pipeline then returns `(T, H, W, C)` in [0, 1].
         "output_type": "np",
+      },
+    ),
+  )
+
+
+_SANA_VIDEO_PROMPT = (
+  "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, "
+  "clean solo shot, warm color. A young Caucasian man stands in a forest, golden light glimmers on "
+  "his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his "
+  "hair and collar, light dances across his face with his movements. The background is blurred, with "
+  "dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear "
+  "and emotional. motion score: 30.")
+
+_SANA_VIDEO_NEGATIVE_PROMPT = (
+  "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, "
+  "jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character "
+  "shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual "
+  "experience.")
+
+
+def _sana_video_keep_vae_fp32(pipe) -> None:
+  """Decode in fp32, as the released SANA-Video inference script does.
+
+  The DiT stays in the requested dtype; the VAE decoder is the only place where bf16 visibly costs
+  fidelity (fine texture and thin structures), and it is cheap next to the transformer.
+
+  :param pipe: SANA-Video pipeline, text-to-video or image-to-video.
+  """
+
+  pipe.vae.to(torch.float32)
+
+
+@ExampleRegister.register("sana_video",
+                          default="Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
+def sana_video_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2B 480p text-to-video example.
+
+  The checkpoint ships its own `DPMSolverMultistepScheduler` (`flow_shift=8.0`), a Wan VAE and a
+  Gemma-2 text encoder, so nothing has to be overridden. The pipeline names its frame count `frames`
+  (not `num_frames`), which is why the frame count travels through `extra_input_kwargs`.
+
+  :param args: Parsed CLI arguments.
+  :param kwargs: Unused extra keyword arguments.
+  :returns: The registered SANA-Video text-to-video example.
+  """
+
+  from diffusers import SanaVideoPipeline
+
+  model_name_or_path = _path(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
+    args=args,
+  )
+  # The pipeline names its frame count `frames`, so `--num-frames` is mapped here and
+  # `use_num_frames` is cleared below (the generic forwarding would send `num_frames=`).
+  frames = 81 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,  # Text to Video
+      model_name_or_path=model_name_or_path,
+      pipeline_class=SanaVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      post_init_hook=_sana_video_keep_vae_fp32,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO_PROMPT,
+      negative_prompt=_SANA_VIDEO_NEGATIVE_PROMPT,
+      height=480,
+      width=832,
+      guidance_scale=6.0,
+      num_inference_steps=50,
+      use_num_frames=False,
+      extra_input_kwargs={
+        "frames": frames,
+      },
+    ),
+  )
+
+
+@ExampleRegister.register("sana_video_i2v",
+                          default="Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
+def sana_video_i2v_example(args: argparse.Namespace, **kwargs) -> Example:
+  """SANA-Video 2B 480p image-to-video example.
+
+  Same checkpoint as `sana_video`; the conditioning frame is the first frame of the generated clip.
+  `use_resolution_binning` snaps the canvas to the released 480p aspect bins, so the requested
+  height/width only pick the bin.
+
+  :param args: Parsed CLI arguments.
+  :param kwargs: Unused extra keyword arguments.
+  :returns: The registered SANA-Video image-to-video example.
+  """
+
+  from diffusers import SanaImageToVideoPipeline
+
+  model_name_or_path = _path(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
+    args=args,
+  )
+
+  if args.image_path is not None:
+    image = load_image(args.image_path)
+  else:
+    image = load_image(
+      "https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
+  frames = 81 if args.num_frames is None else args.num_frames
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.I2V,  # Image to Video
+      model_name_or_path=model_name_or_path,
+      pipeline_class=SanaImageToVideoPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      post_init_hook=_sana_video_keep_vae_fp32,
+    ),
+    input_data=ExampleInputData(
+      prompt=_SANA_VIDEO_PROMPT,
+      negative_prompt=_SANA_VIDEO_NEGATIVE_PROMPT,
+      image=image,
+      height=480,
+      width=832,
+      guidance_scale=6.0,
+      num_inference_steps=50,
+      use_num_frames=False,
+      extra_input_kwargs={
+        "frames": frames,
       },
     ),
   )

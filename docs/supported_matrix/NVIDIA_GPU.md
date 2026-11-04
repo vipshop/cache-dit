@@ -12,6 +12,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
 |CausVid-Wan|✖️|✅|✅|
 |SANA-Video-2.0-5B (T2V/TI2V)|✅|✅|✅|
+|SANA-Video-2B-480p (T2V/I2V)|✅|✅|✅|
 |SANA-WM-I2V|✅|✖️|✅|
 |FLUX.2-Klein-9b-kv|✖️|✖️|✅|
 |FLUX.2-Klein-4B|✅|✅|✅|
@@ -210,6 +211,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Kandinsky-5.0-T2V-Lite|✅|✅|
 |Kandinsky-6.0-T2VA|✅|✅|
 |SANA-WM-I2V|✅|✅|
+|SANA-Video-2B-480p|✅|✅|
 |NucleusMoE-Image|✅|✅|
 |PRX-512-t2i-sft|✅|✖️|
 |PRXPixel-t2i|✅|✖️|

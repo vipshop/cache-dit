@@ -104,6 +104,10 @@ _MISSING_REPEATED_BLOCKS = {
   # Cosmos Predict2 (incl. the Anima t2i modular pipeline) ships the same uniform
   # `transformer_blocks` stack without declaring it.
   "CosmosTransformer3DModel": ["CosmosTransformerBlock"],
+  # SANA-Video declares `_repeated_blocks = []` even though it runs a uniform
+  # `transformer_blocks` stack; without this the 20-block model compiles as one full graph and
+  # quantization widens to the modulation and output projections.
+  "SanaVideoTransformer3DModel": ["SanaVideoTransformerBlock"],
 }
 
 
