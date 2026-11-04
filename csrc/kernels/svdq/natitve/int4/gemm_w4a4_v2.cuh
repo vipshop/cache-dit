@@ -2,7 +2,7 @@
 
 #include "../core/gemm_w4a4.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 // v2 keeps the original packed tensor contract and the same per-warp MMA decomposition as v1.
 // The dedicated launch wrapper is retained so the v2 path can evolve independently. The packed
@@ -60,7 +60,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   using Base = GEMMBase<Config>;
   using LoraKernel = Lora<Config>;
   static_assert(NumPipelineStages >= 1 && NumPipelineStages <= 3,
-                "svdq_gemm_w4a4_v2 supports pipeline stages in [1, 3].");
+                "svdq_gemm_w4a4_native_v2 supports pipeline stages in [1, 3].");
   // More stages can hide additional load latency, but each extra stage keeps more packed tiles
   // live per thread and therefore raises register pressure. Keep the kernel body stage-agnostic so
   // the runtime wrapper can dispatch among multiple compiled stage variants.
@@ -598,7 +598,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
           const bool pred = nextk < num_rank_tiles;
 
           if (alwaysfalse) {
-            act += kernels::bit_cast<int>(lora_act[k2][0].data[0]);
+            act += native_kernels::bit_cast<int>(lora_act[k2][0].data[0]);
             dummy = clock();
           }
 
@@ -615,14 +615,14 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
         for (auto &&data : lora_act[stage]) {
 #pragma unroll
           for (int i = 0; i < 8; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
 #pragma unroll
         for (auto &&data : lora_wgt[stage]) {
 #pragma unroll
           for (int i = 0; i < 4; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
       }
@@ -727,7 +727,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
           const bool pred = nextk < num_rank_tiles;
 
           if (alwaysfalse) {
-            act += kernels::bit_cast<int>(lora_act[k2][0].data[0]);
+            act += native_kernels::bit_cast<int>(lora_act[k2][0].data[0]);
             dummy = clock();
           }
 
@@ -744,14 +744,14 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
         for (auto &&data : lora_act[stage]) {
 #pragma unroll
           for (int i = 0; i < 8; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
 #pragma unroll
         for (auto &&data : lora_wgt[stage]) {
 #pragma unroll
           for (int i = 0; i < 4; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
       }
@@ -927,4 +927,4 @@ class GEMM_W4A4_V2_Launch {
   }
 };
 
-}  // namespace svdq::kernels
+}  // namespace svdq::native_kernels

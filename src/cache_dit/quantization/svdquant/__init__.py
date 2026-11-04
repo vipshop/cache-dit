@@ -27,7 +27,9 @@ Runtime path after the packed tensors have been loaded:
         -> quantize(...)
             -> svdq_quantize_w4a4_act_fuse_lora(...)
         -> forward_quant(...)
-            -> svdq_gemm_w4a4(...) or svdq_gemm_w4a4_v2(...)
+            -> svdq_gemm_w4a4_native_v2(...) for INT4 native
+            -> svdq_gemm_w4a4_native(...) for NVFP4 native
+            -> svdq_gemm_w4a4_cute(...) for NVFP4 CuTe
 
 Notes:
 - The main flow quantizes weights offline in Python and stores packed

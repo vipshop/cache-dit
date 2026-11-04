@@ -6,8 +6,8 @@ import pytest
 import torch
 
 from cache_dit.kernels import svdq_extension_is_available
-from cache_dit.kernels import svdq_gemm_w4a4
-from cache_dit.kernels import svdq_gemm_w4a4_v2
+from cache_dit.kernels import svdq_gemm_w4a4_native
+from cache_dit.kernels import svdq_gemm_w4a4_native_v2
 from cache_dit.kernels import svdq_gemm_w4a4_ext
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_wgt
@@ -56,6 +56,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
+      fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
@@ -63,7 +64,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-    output = svdq_gemm_w4a4(
+    output = svdq_gemm_w4a4_native(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -71,6 +72,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
       lora_act_in=lora_activations,
       lora_up=lora_up,
       bias=bias,
+      wcscales=None,
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
@@ -109,6 +111,7 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
+      fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
@@ -116,7 +119,7 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-    output = svdq_gemm_w4a4_v2(
+    output = svdq_gemm_w4a4_native_v2(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -124,6 +127,7 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
       lora_act_in=lora_activations,
       lora_up=lora_up,
       bias=bias,
+      wcscales=None,
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
@@ -158,6 +162,7 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
+      fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
@@ -165,7 +170,7 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-    base_output = svdq_gemm_w4a4(
+    base_output = svdq_gemm_w4a4_native(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -173,6 +178,7 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
       lora_act_in=lora_activations,
       lora_up=lora_up,
       bias=bias,
+      wcscales=None,
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
@@ -223,6 +229,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
+      fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
@@ -230,7 +237,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-    output_v1 = svdq_gemm_w4a4(
+    output_v1 = svdq_gemm_w4a4_native(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -238,11 +245,12 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
       lora_act_in=lora_activations,
       lora_up=lora_up,
       bias=bias,
+      wcscales=None,
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
     )
-    output_v2 = svdq_gemm_w4a4_v2(
+    output_v2 = svdq_gemm_w4a4_native_v2(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -250,6 +258,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
       lora_act_in=lora_activations,
       lora_up=lora_up,
       bias=bias,
+      wcscales=None,
       act_unsigned=False,
       fp4=False,
       alpha=1.0,
@@ -284,6 +293,7 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
         input=activations,
         lora_down=None,
         smooth=smooth,
+        fuse_glu=False,
         fp4=False,
         pad_size=256,
       )
@@ -291,22 +301,28 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
       qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-      output_v1 = svdq_gemm_w4a4(
+      output_v1 = svdq_gemm_w4a4_native(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
         wscales=wscales,
+        lora_act_in=None,
+        lora_up=None,
         bias=bias,
+        wcscales=None,
         act_unsigned=False,
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4_v2(
+      output_v2 = svdq_gemm_w4a4_native_v2(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
         wscales=wscales,
+        lora_act_in=None,
+        lora_up=None,
         bias=bias,
+        wcscales=None,
         act_unsigned=False,
         fp4=False,
         alpha=1.0,
@@ -349,6 +365,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
         input=activations,
         lora_down=lora_down,
         smooth=smooth,
+        fuse_glu=False,
         fp4=False,
         pad_size=256,
       )
@@ -356,7 +373,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
       qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
-      output_v1 = svdq_gemm_w4a4(
+      output_v1 = svdq_gemm_w4a4_native(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -364,11 +381,12 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
         lora_act_in=lora_activations,
         lora_up=lora_up,
         bias=bias,
+        wcscales=None,
         act_unsigned=False,
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4_v2(
+      output_v2 = svdq_gemm_w4a4_native_v2(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -376,6 +394,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
         lora_act_in=lora_activations,
         lora_up=lora_up,
         bias=bias,
+        wcscales=None,
         act_unsigned=False,
         fp4=False,
         alpha=1.0,
@@ -405,6 +424,7 @@ def test_svdquant_int4_v2_rejects_invalid_stage(stage: int) -> None:
       input=activations,
       lora_down=None,
       smooth=smooth,
+      fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
@@ -412,11 +432,15 @@ def test_svdquant_int4_v2_rejects_invalid_stage(stage: int) -> None:
     qweight, wscales = svdq_quantize_w4a4_wgt(weights)
 
     with pytest.raises(ValueError, match="stage"):
-      svdq_gemm_w4a4_v2(
+      svdq_gemm_w4a4_native_v2(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
         wscales=wscales,
+        lora_act_in=None,
+        lora_up=None,
+        bias=None,
+        wcscales=None,
         act_unsigned=False,
         fp4=False,
         alpha=1.0,

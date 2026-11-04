@@ -3,7 +3,7 @@
 
 #include "gemm_base.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <typename Config>
 class Epilogues;
@@ -308,7 +308,7 @@ class Epilogues<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       const int col = n * INSN_N + laneId / 16 * 8;  // lane 0-15: n*16+0, lane 16-31: n*16+8
       uint4 tmp;
       ldmatrix(shmem + col, tmp);
-      return kernels::bit_cast<packed_fpsum_t>(tmp);
+      return native_kernels::bit_cast<packed_fpsum_t>(tmp);
     }
 
     __device__ __forceinline__ static void apply(fpsum_warp &fpsum,
@@ -444,28 +444,28 @@ class Epilogues<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
 
     __device__ __forceinline__ static packed_qkv_t pack_q(packed_fpsum_t input) {
       packed_qkv_t output;
-      output.x = kernels::bit_cast<int>(convert_half2(input.data[0]));
-      output.y = kernels::bit_cast<int>(convert_half2(input.data[1]));
-      output.z = kernels::bit_cast<int>(convert_half2(input.data[2]));
-      output.w = kernels::bit_cast<int>(convert_half2(input.data[3]));
+      output.x = native_kernels::bit_cast<int>(convert_half2(input.data[0]));
+      output.y = native_kernels::bit_cast<int>(convert_half2(input.data[1]));
+      output.z = native_kernels::bit_cast<int>(convert_half2(input.data[2]));
+      output.w = native_kernels::bit_cast<int>(convert_half2(input.data[3]));
       return output;
     }
 
     __device__ __forceinline__ static packed_qkv_t pack_k(packed_fpsum_t input) {
       packed_qkv_t output;
-      output.x = kernels::bit_cast<int>(convert_half2(input.data[0]));
-      output.y = kernels::bit_cast<int>(convert_half2(input.data[2]));
-      output.z = kernels::bit_cast<int>(convert_half2(input.data[1]));
-      output.w = kernels::bit_cast<int>(convert_half2(input.data[3]));
+      output.x = native_kernels::bit_cast<int>(convert_half2(input.data[0]));
+      output.y = native_kernels::bit_cast<int>(convert_half2(input.data[2]));
+      output.z = native_kernels::bit_cast<int>(convert_half2(input.data[1]));
+      output.w = native_kernels::bit_cast<int>(convert_half2(input.data[3]));
       return output;
     }
 
     __device__ __forceinline__ static packed_qkv_t pack_v(packed_fpsum_t input) {
       packed_qkv_t output;
-      output.x = kernels::bit_cast<int>(convert_half2(movmatrix(input.data[0])));
-      output.y = kernels::bit_cast<int>(convert_half2(movmatrix(input.data[1])));
-      output.z = kernels::bit_cast<int>(convert_half2(movmatrix(input.data[2])));
-      output.w = kernels::bit_cast<int>(convert_half2(movmatrix(input.data[3])));
+      output.x = native_kernels::bit_cast<int>(convert_half2(movmatrix(input.data[0])));
+      output.y = native_kernels::bit_cast<int>(convert_half2(movmatrix(input.data[1])));
+      output.z = native_kernels::bit_cast<int>(convert_half2(movmatrix(input.data[2])));
+      output.w = native_kernels::bit_cast<int>(convert_half2(movmatrix(input.data[3])));
       return output;
     }
 
@@ -497,7 +497,7 @@ class Epilogues<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       unrolled_loop<WARP_M_TILES>([&]<int m>() ALWAYSINLINE {
         unrolled_loop<WARP_N_TILES>([&]<int n>() ALWAYSINLINE {
           packed_qkv_t pack = funcPack(fpsum[m * WARP_N_TILES + n]);
-          mask(pack, kernels::bit_cast<uint32_t>(maskVal), m, maxRows - warpId * WARP_M);
+          mask(pack, native_kernels::bit_cast<uint32_t>(maskVal), m, maxRows - warpId * WARP_M);
           store(&ptrlane[(m * WARP_N_TILES + n) * WARP_SIZE], pack);
         });
       });
@@ -809,4 +809,4 @@ class Epilogues<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   };
 };
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

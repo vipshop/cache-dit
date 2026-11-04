@@ -10,9 +10,9 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
   module.def_submodule("ops")
-    .def("gemm_w4a4", &svdq::ops::gemm_w4a4)
-    .def("gemm_w4a4_v2",
-         &svdq::ops::gemm_w4a4_v2,
+    .def("gemm_w4a4_native", &svdq::ops::gemm_w4a4_native)
+    .def("gemm_w4a4_native_v2",
+         &svdq::ops::gemm_w4a4_native_v2,
          py::arg("act"),
          py::arg("wgt"),
          py::arg("out"),
@@ -26,6 +26,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
          py::arg("wcscales"),
          py::arg("act_unsigned"),
          py::arg("stage") = 1)
+    .def("gemm_w4a4", &svdq::ops::gemm_w4a4)
+    .def("quantize_w4a4", &svdq::ops::quantize_w4a4)
     .def("quantize_w4a4_act_fuse_lora", &svdq::ops::quantize_w4a4_act_fuse_lora)
     .def("quantize_w4a4_wgt", &svdq::ops::quantize_w4a4_wgt);
 

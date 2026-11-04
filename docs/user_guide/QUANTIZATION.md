@@ -19,9 +19,9 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">nvfp4</span>|TorchAO dynamic activation and NVFP4 weight quantization. The current integration uses Triton activation quantization and dynamic per-tensor scaling.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
-|<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. <span style="color:green;">Only</span> <span style="color:#c77dff;">svdq_kwargs["runtime_kernel"]="v1"</span> is currently supported.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
-|<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. <span style="color:green;">Only</span> <span style="color:#c77dff;">svdq_kwargs["runtime_kernel"]="v1"</span> is currently supported.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native v2 GEMM.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## FP8 Quantization
@@ -398,7 +398,7 @@ Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with hi
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with the CUDA extensions**.
 
-For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs, while the NVFP4 path is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and requires <span style="color:#c77dff;">svdq_kwargs={"runtime_kernel": "v1"}</span>. Setting <span style="color:#c77dff;">runtime_kernel="v2"</span> with NVFP4 is rejected intentionally at config-validation time.
+For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs and defaults to the native v2 GEMM. NVFP4 is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and defaults to the native GEMM. The public <span style="color:#c77dff;">runtime_kernel</span> choices are only <span style="color:#c77dff;">native</span> and <span style="color:#c77dff;">cute</span>; <span style="color:#c77dff;">None</span> selects the defaults above, while <span style="color:#c77dff;">cute</span> is an opt-in validation path that remains slower than native end to end. For INT4, explicit <span style="color:#c77dff;">native</span> also selects native v2. The deprecated v1/v2 configuration strings are rejected; native v1 remains an implementation name for historical benchmarks.
 
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
@@ -406,7 +406,7 @@ For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
 # Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # the SVDQuant sources need spdlog
+git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.6.1
 CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]"
 ```
 
@@ -459,7 +459,7 @@ quant_config = QuantizeConfig(
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
 ```
 
-The NVFP4 PTQ flow uses the same public API, but should select an NVFP4 quant type and explicitly keep the runtime kernel on <span style="color:#c77dff;">v1</span>:
+The NVFP4 PTQ flow uses the same public API and selects the native GEMM when `runtime_kernel` is omitted. Set `runtime_kernel="cute"` only to opt in to the CuTe validation path:
 
 ```python
 quant_config = QuantizeConfig(
@@ -468,7 +468,6 @@ quant_config = QuantizeConfig(
   serialize_to="./FLUX.2-klein-4B-svdq-nvfp4/",
   svdq_kwargs={
     "calibrate_precision": "low",
-    "runtime_kernel": "v1",
   },
 )
 pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
@@ -506,7 +505,6 @@ quant_config = QuantizeConfig(
   calibrate_fn=calibrate_fn,
   serialize_to="./FLUX.2-klein-4B-svdq-nvfp4/",
   svdq_kwargs={
-    "runtime_kernel": "v1",
     "svd_refine_iters": 5,
   },
 )
@@ -544,7 +542,7 @@ SVDQuant in Cache-DiT is compatible with <span style="color:#c77dff;">torch.comp
 | quantized + eager | 1024x1024 | 1.2689 | 0.0000 | 1.0000x |
 | quantized + compile | 1024x1024 | 1.0161 | -0.2528 | <span style="color:green;">1.2488x</span> |
 
-Cache-DiT also has an NVFP4 PTQ path for Blackwell. On a <span style="color:#c77dff;">RTX 5090 (sm120)</span> validation run with <span style="color:#c77dff;">FLUX.2-klein-4B</span>, <span style="color:#c77dff;">svdq_nvfp4_r32</span>, <span style="color:#c77dff;">runtime_kernel="v1"</span>, <span style="color:#c77dff;">512x512</span>, <span style="color:#c77dff;">4</span> denoising steps, <span style="color:#c77dff;">benchmark_runs=3</span>, and <span style="color:#c77dff;">warmup_runs=1</span>, the full e2e example completed end-to-end for in-memory inference, checkpoint reload, and compiled quantized execution:
+Cache-DiT also has an NVFP4 PTQ path for Blackwell. On a <span style="color:#c77dff;">RTX 5090 (sm120)</span> validation run with <span style="color:#c77dff;">FLUX.2-klein-4B</span>, <span style="color:#c77dff;">svdq_nvfp4_r32</span>, <span style="color:#c77dff;">runtime_kernel="native"</span>, <span style="color:#c77dff;">512x512</span>, <span style="color:#c77dff;">4</span> denoising steps, <span style="color:#c77dff;">benchmark_runs=3</span>, and <span style="color:#c77dff;">warmup_runs=1</span>, the full e2e example completed end-to-end for in-memory inference, checkpoint reload, and compiled quantized execution:
 
 | stage | resolution | latency_s | speedup | peak_memory_gb | psnr |
 | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -557,7 +555,7 @@ In that validation, the loaded transformer reported <span style="color:#c77dff;"
 
 ![flux2_klein_4b_svdq_nvfp4_512](../assets/flux2_klein_4b_svdq_nvfp4_512.png)
 
-Under the same <span style="color:#c77dff;">svdq_nvfp4_r32</span> + <span style="color:#c77dff;">runtime_kernel="v1"</span> setup, rerunning the full e2e example at <span style="color:#c77dff;">1024x1024</span> on the same <span style="color:#c77dff;">RTX 5090 (sm120)</span> kept the same stage ordering while shifting the absolute runtime and memory envelope upward:
+Under the same <span style="color:#c77dff;">svdq_nvfp4_r32</span> + <span style="color:#c77dff;">runtime_kernel="native"</span> setup, rerunning the full e2e example at <span style="color:#c77dff;">1024x1024</span> on the same <span style="color:#c77dff;">RTX 5090 (sm120)</span> kept the same stage ordering while shifting the absolute runtime and memory envelope upward:
 
 | stage | resolution | latency_s | speedup | peak_memory_gb | psnr |
 | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -598,7 +596,7 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 
 Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span>, <span style="color:#c77dff;">svdq_int4_r128_dq</span>, <span style="color:#c77dff;">svdq_nvfp4_r32_dq</span>, and <span style="color:#c77dff;">svdq_nvfp4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
 
-For NVFP4 DQ, the current runtime restriction is the same as PTQ: keep <span style="color:#c77dff;">svdq_kwargs["runtime_kernel"]="v1"</span>. INT4 DQ can still use the broader INT4 runtime options where supported, but NVFP4 <span style="color:#c77dff;">runtime_kernel="v2"</span> is intentionally unsupported for now.
+The DQ runtime routing is identical to PTQ: INT4 defaults to native v2 and NVFP4 defaults to native. Explicit <span style="color:#c77dff;">runtime_kernel="native"</span> selects native v2 for INT4 and the native kernel for NVFP4; <span style="color:#c77dff;">cute</span> is an NVFP4-only opt-in validation path. The deprecated v1/v2 configuration strings are not accepted; use <span style="color:#c77dff;">None</span>, <span style="color:#c77dff;">native</span>, or <span style="color:#c77dff;">cute</span>.
 
 Under the hood, cache-dit now treats this as an explicit backend-local smooth-strategy choice: DQ uses the identity smooth vector by default, while PTQ continues to use activation-derived smoothing. The public DQ behavior does not change, but this separation makes it easier to add future opt-in smooth strategies without redefining the meaning of existing `_dq` quant types.
 
@@ -625,14 +623,13 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The NVFP4 DQ path uses the same flow, but should choose an NVFP4 `_dq` type and keep the runtime kernel on <span style="color:#c77dff;">v1</span>:
+The NVFP4 DQ path uses the same flow and selects the native GEMM by default. Set `runtime_kernel="cute"` only to opt in to the CuTe validation path:
 
 ```python
 pipe.transformer = cache_dit.quantize(
   pipe.transformer,
   QuantizeConfig(
     quant_type="svdq_nvfp4_r32_dq",
-    svdq_kwargs={"runtime_kernel": "v1"},
   ),
 )
 ```
@@ -917,7 +914,7 @@ python3 -m cache_dit.quantization.converter \
 | `--device` | no | `cuda` | Device to run quantization on. |
 | `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
 | `--svdq-calibrate-precision` | no | `low` | Precision plan for SVDQ decomposition math. One of: `low`, `medium`, `high`. |
-| `--svdq-runtime-kernel` | no | `v1` | Packed runtime GEMM kernel used by `SVDQW4A4Linear`. One of: `v1`, `v2`. |
+| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native` or `cute`. Default is automatic: INT4 native v2, NVFP4 native. |
 | `--verbose` | no | `false` | Print detailed quantization information including per-layer skip reasons. |
 
 ### Usage examples
@@ -965,15 +962,15 @@ cache-dit-convert \
   --svdq-calibrate-precision medium 
 ```
 
-**With v2 runtime kernel and verbose logging:**
+**With explicit native runtime and verbose logging:**
 
 ```bash
-# SVDQ INT4 only, SVDQ NVFP4 DQ is not supported with v2 runtime kernel for now.
+# INT4 native automatically selects the native v2 implementation.
 cache-dit-convert \
   --model-path /path/to/FLUX.1-dev \
   --save-dir ./FLUX.1-dev-svdq \
   --quant-type svdq-int4-r64-dq \
-  --svdq-runtime-kernel v2 \
+  --svdq-runtime-kernel native \
   --verbose
 ```
 
@@ -1003,23 +1000,25 @@ pipe.transformer = cache_dit.load(
 
 ## SVDQ Runtime Kernel
 
-Cache-DiT's SVDQuant support also includes a high-performance W4A4 GEMM kernel for efficient runtime execution of SVDQ-quantized models. This kernel is optimized for Ada and Ampere architectures and can provide slightly better performance compared to existing INT4 GEMM kernels.
-
-Users can enable the SVDQuant runtime by setting the <span style="color:green;">runtime_kernel</span> argument in <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:green;">v2</span>. For example:
+Cache-DiT exposes two runtime families. `runtime_kernel=None` selects native v2 for INT4 and native for NVFP4. Explicit `native` keeps INT4 on native v2 and selects the native kernel for NVFP4. `cute` is NVFP4-only and remains an opt-in validation path until its GEMM and end-to-end performance meet the release gate. The old v1/v2 configuration values are deprecated and rejected; v2 is now an internal native implementation name, not a separate runtime family.
 
 ```python
 quant_config = QuantizeConfig(
   quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-  svdq_kwargs={"runtime_kernel": "v2"},  # enable SVDQ W4A4 v2 GEMM kernel for better performance.
+  svdq_kwargs={"runtime_kernel": "native"},  # optional: INT4 native v2 is already the default.
 )
 ```
-Quick examples for enabling SVDQ runtime kernel from the generate CLI:
+
+Quick example from the generate CLI (omitting `--svdq-runtime` has the same INT4 native v2 behavior):
 
 ```bash
-# v1 baseline: 11.81s -> v2 runtime: 11.58s 
-python3 -m cache_dit.generate flux --svdq-int4-r64-dq --compile # v1, baseline
-python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime v2 --compile # v2
+python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --compile
 ```
+
+Historical INT4 measurements may still label the two implementation variants as v1/v2. Those labels describe kernel implementations used for comparison, not accepted `runtime_kernel` configuration values.
+
+The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes standard row-major E2M1 codes, CUTLASS 128x4 activation scales and row-major BF16 LoRA activations directly. The GEMM loads A/B/SFA/SFB through TMA and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer, read v1 FP32 LoRA scratch, or run a separate BF16 finalize kernel. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
+
 
 ## SVDQ with Fused MLP
 

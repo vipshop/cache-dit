@@ -3,7 +3,7 @@
 
 #include "gemm_base.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <typename Config>
 class Lora;
@@ -185,7 +185,7 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
           bool pred = nextk < rank / WARP_R;
 
           if (alwaysfalse) {
-            act += kernels::bit_cast<int>(lora_act[k2][0].data[0]);
+            act += native_kernels::bit_cast<int>(lora_act[k2][0].data[0]);
           }
 
           if (alwaysfalse) {
@@ -209,14 +209,14 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
         for (auto &&data : lora_act[k]) {
 #pragma unroll
           for (int i = 0; i < 8; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
 #pragma unroll
         for (auto &&data : lora_wgt[k]) {
 #pragma unroll
           for (int i = 0; i < 4; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
       }
@@ -309,7 +309,7 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
           bool pred = nextk < rank / WARP_R;
 
           if (alwaysfalse) {
-            wgt += kernels::bit_cast<int>(lora_wgt[k2][0].data[0]);
+            wgt += native_kernels::bit_cast<int>(lora_wgt[k2][0].data[0]);
           }
 
           if (alwaysfalse) {
@@ -334,7 +334,7 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
         for (auto &&data : lora_wgt[k]) {
 #pragma unroll
           for (int i = 0; i < 4; i++) {
-            dummy ^= kernels::bit_cast<int>(data.data[i]);
+            dummy ^= native_kernels::bit_cast<int>(data.data[i]);
           }
         }
       }
@@ -356,4 +356,4 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   };
 };
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

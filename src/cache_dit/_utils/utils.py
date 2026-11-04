@@ -721,10 +721,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--svdq-runtime",
+    "--svdq-runtime-kernel",
     type=str,
-    default="v1",
-    choices=["v1", "v2"],
-    help="Runtime SVDQ W4A4 GEMM kernel. Use v2 for the CUDA v2 plain path.",
+    default=None,
+    choices=["native", "cute"],
+    help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
   )
   parser.add_argument(
     "--svdq-few-shot-steps",

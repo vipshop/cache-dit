@@ -11,7 +11,7 @@ logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
-_SVDQ_RUNTIME_KERNELS = ("v1", "v2")
+_SVDQ_RUNTIME_KERNELS = ("native", "cute")
 _SVDQ_QUANTIZE_DEVICES = ("auto", "cpu", "cuda")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
 _SVDQ_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "stable_auto", "power", "log", "rank")
@@ -29,10 +29,12 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - medium: use float32 calibration math and full torch.linalg.svd.
   # - high: use float32 calibration math and float64 SVD.
   "calibrate_precision": "low",
-  # Packed runtime GEMM implementation used by SVDQW4A4Linear.
-  # - v1: original kernel path.
-  # - v2: w4q4 v2 GEMM plain path.
-  "runtime_kernel": "v1",
+  # Packed runtime GEMM family used by SVDQW4A4Linear.
+  # - None: automatic selection; INT4 -> native v2, NVFP4 -> CuTe.
+  # - native: INT4 -> native v2; NVFP4 -> deprecated native v1 implementation.
+  # - cute: SM120 CuTe NVFP4 path with fused BF16 LoRA-up; invalid for INT4.
+  # The old v1/v2 selectors are deprecated and intentionally not accepted here.
+  "runtime_kernel": None,
   # Device used for the SVDQ decomposition and packing math.
   # - auto: preserve the module's current execution device.
   # - cpu: force CPU-side decomposition and packing.
@@ -173,12 +175,15 @@ def _resolve_svdq_calibrate_precision(key: str, value: Any) -> str:
   return normalized
 
 
-def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str:
+def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str | None:
+  if value is None:
+    return None
   if not isinstance(value, str):
-    raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
+    raise TypeError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', or None, got {type(value)}.")
   normalized = value.lower()
   if normalized not in _SVDQ_RUNTIME_KERNELS:
-    raise ValueError(f"svdq_kwargs[{key!r}] must be one of {_SVDQ_RUNTIME_KERNELS}, got {value!r}.")
+    raise ValueError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', or None; got {value!r}. "
+                     "The v1/v2 selectors are deprecated.")
   return normalized
 
 
@@ -507,9 +512,9 @@ class QuantizeConfig:
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
-      if (_get_svdq_precision(self.quant_type) == "nvfp4"
-          and self.svdq_kwargs["runtime_kernel"] == "v2"):
-        raise ValueError("SVDQ NVFP4 currently only supports svdq_kwargs['runtime_kernel'] = 'v1'.")
+      if (_get_svdq_precision(self.quant_type) == "int4"
+          and self.svdq_kwargs["runtime_kernel"] == "cute"):
+        raise ValueError("svdq_kwargs['runtime_kernel'] = 'cute' is only supported for NVFP4.")
       if self.is_svdq_dq():
         if self.calibrate_fn is not None:
           raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")

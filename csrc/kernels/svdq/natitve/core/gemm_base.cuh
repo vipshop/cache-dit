@@ -4,7 +4,7 @@
 #include "common.h"
 
 #include "utils.cuh"
-#include "dispatch_utils.h"
+#include "../dispatch.h"
 #include "gemm_utils.cuh"
 #include "mma.cuh"
 
@@ -25,7 +25,7 @@
 #define CHECK_NAN(data, name)
 #endif
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <bool bf16, bool faster_i2f = false>
 class GEMMConfig_W4A4 {
@@ -212,21 +212,21 @@ class GEMMBase : public Config {
     static constexpr bool is_bf16 = std::is_same_v<half_t, __nv_bfloat16>;
 
     uint4 out1 = mma_m16n8k16_f32f16f16f32<is_bf16>(
-      kernels::bit_cast<uint4>(a),
-      kernels::bit_cast<uint2>(std::array<half2_t, 2>(b.data[0], b.data[1])),
-      kernels::bit_cast<uint4>(float4(psum.data[0], psum.data[1], psum.data[2], psum.data[3])));
+      native_kernels::bit_cast<uint4>(a),
+      native_kernels::bit_cast<uint2>(std::array<half2_t, 2>(b.data[0], b.data[1])),
+      native_kernels::bit_cast<uint4>(float4(psum.data[0], psum.data[1], psum.data[2], psum.data[3])));
     uint4 out2 = mma_m16n8k16_f32f16f16f32<is_bf16>(
-      kernels::bit_cast<uint4>(a),
-      kernels::bit_cast<uint2>(std::array<half2_t, 2>(b.data[2], b.data[3])),
-      kernels::bit_cast<uint4>(float4(psum.data[4], psum.data[5], psum.data[6], psum.data[7])));
-    psum.data[0] = kernels::bit_cast<float>(out1.x);
-    psum.data[1] = kernels::bit_cast<float>(out1.y);
-    psum.data[2] = kernels::bit_cast<float>(out1.z);
-    psum.data[3] = kernels::bit_cast<float>(out1.w);
-    psum.data[4] = kernels::bit_cast<float>(out2.x);
-    psum.data[5] = kernels::bit_cast<float>(out2.y);
-    psum.data[6] = kernels::bit_cast<float>(out2.z);
-    psum.data[7] = kernels::bit_cast<float>(out2.w);
+      native_kernels::bit_cast<uint4>(a),
+      native_kernels::bit_cast<uint2>(std::array<half2_t, 2>(b.data[2], b.data[3])),
+      native_kernels::bit_cast<uint4>(float4(psum.data[4], psum.data[5], psum.data[6], psum.data[7])));
+    psum.data[0] = native_kernels::bit_cast<float>(out1.x);
+    psum.data[1] = native_kernels::bit_cast<float>(out1.y);
+    psum.data[2] = native_kernels::bit_cast<float>(out1.z);
+    psum.data[3] = native_kernels::bit_cast<float>(out1.w);
+    psum.data[4] = native_kernels::bit_cast<float>(out2.x);
+    psum.data[5] = native_kernels::bit_cast<float>(out2.y);
+    psum.data[6] = native_kernels::bit_cast<float>(out2.z);
+    psum.data[7] = native_kernels::bit_cast<float>(out2.w);
 
     return psum;
   }
@@ -942,4 +942,4 @@ static void test_sizeof() {
   checkCUDA(cudaDeviceSynchronize());
 }
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

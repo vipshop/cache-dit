@@ -7,8 +7,8 @@ from pathlib import Path
 
 import torch
 
-from cache_dit.kernels import svdq_gemm_w4a4
-from cache_dit.kernels import svdq_gemm_w4a4_v2
+from cache_dit.kernels import svdq_gemm_w4a4_native
+from cache_dit.kernels import svdq_gemm_w4a4_native_v2
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_wgt
 
@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
   """
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--runtime-kernel", choices=("v1", "v2"), default="v2")
+  parser.add_argument("--native-impl", choices=("v1", "v2"), default="v2")
   parser.add_argument("--seq-len", type=int, default=4096)
   parser.add_argument("--embed-dim", type=int, default=4096)
   parser.add_argument("--rank", type=int, default=32)
@@ -80,27 +80,27 @@ def benchmark(op, kwargs: dict[str, object], *, warmup: int, iters: int) -> dict
   }
 
 
-def select_kernel(runtime_kernel: str):
+def select_kernel(native_impl: str):
   """Return the requested runtime kernel wrapper.
 
-  :param runtime_kernel: Public runtime kernel name.
+  :param native_impl: Public runtime kernel name.
   :returns: Callable kernel wrapper.
   """
 
-  if runtime_kernel == "v1":
-    return svdq_gemm_w4a4
-  return svdq_gemm_w4a4_v2
+  if native_impl == "v1":
+    return svdq_gemm_w4a4_native
+  return svdq_gemm_w4a4_native_v2
 
 
-def maybe_set_block_env(runtime_kernel: str, block_m: int) -> tuple[str, str | None]:
+def maybe_set_block_env(native_impl: str, block_m: int) -> tuple[str, str | None]:
   """Set the runtime BLOCK_M override for v2 while preserving the previous value.
 
-  :param runtime_kernel: Public runtime kernel name.
+  :param native_impl: Public runtime kernel name.
   :param block_m: Logical block-M override.
   :returns: Tuple of `(env_name, previous_value)`.
   """
 
-  if runtime_kernel != "v2":
+  if native_impl != "v2":
     return "", None
   env_name = "CACHE_DIT_SVDQ_V2_BLOCK_M"
 
@@ -155,7 +155,7 @@ def main() -> None:
   qweight, wscales = svdq_quantize_w4a4_wgt(
     torch.randn(args.embed_dim, args.embed_dim, device=device, dtype=dtype))
 
-  kernel = select_kernel(args.runtime_kernel)
+  kernel = select_kernel(args.native_impl)
   kwargs: dict[str, object] = {
     "act": qact,
     "wgt": qweight,
@@ -169,25 +169,25 @@ def main() -> None:
     "alpha": 1.0,
     "output_dtype": dtype,
   }
-  if args.runtime_kernel == "v2":
+  if args.native_impl == "v2":
     kwargs["stage"] = args.stage
 
-  env_name, previous = maybe_set_block_env(args.runtime_kernel, args.block_m)
+  env_name, previous = maybe_set_block_env(args.native_impl, args.block_m)
   try:
     result = benchmark(kernel, kwargs, warmup=args.warmup, iters=args.iters)
   finally:
     restore_block_env(env_name, previous)
 
   summary = {
-    "runtime_kernel": args.runtime_kernel,
+    "native_impl": args.native_impl,
     "shape": {
       "M": args.seq_len,
       "N": args.embed_dim,
       "K": args.embed_dim,
       "rank": args.rank,
     },
-    "stage": args.stage if args.runtime_kernel == "v2" else None,
-    "block_m": args.block_m if args.runtime_kernel == "v2" else None,
+    "stage": args.stage if args.native_impl == "v2" else None,
+    "block_m": args.block_m if args.native_impl == "v2" else None,
     "warmup": args.warmup,
     "iters": args.iters,
     "dtype": str(dtype),

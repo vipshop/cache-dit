@@ -53,12 +53,13 @@ def _resolve_svdq_group_size(precision: str) -> int:
   return 64
 
 
-def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str) -> None:
+def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str | None) -> None:
   precision = _normalize_svdq_precision(precision)
-  if runtime_kernel not in {"v1", "v2"}:
-    raise ValueError(f"runtime_kernel must be 'v1' or 'v2', got {runtime_kernel!r}.")
-  if precision == "nvfp4" and runtime_kernel == "v2":
-    raise ValueError("SVDQ NVFP4 currently only supports runtime_kernel='v1'.")
+  if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
+    raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
+                     f"got {runtime_kernel!r}. The v1/v2 selectors are deprecated.")
+  if precision == "int4" and runtime_kernel == "cute":
+    raise ValueError("runtime_kernel='cute' is only supported for SVDQ NVFP4.")
 
 
 def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
@@ -1060,7 +1061,7 @@ def _quantize_from_smooth_scale(
   device: torch.device | str | None = None,
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
-  runtime_kernel: str = "v1",
+  runtime_kernel: str | None = None,
   svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from an explicitly resolved runtime smooth vector."""
@@ -1234,7 +1235,7 @@ def _quantize_from_activation_span(
   device: torch.device | str | None = None,
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
-  runtime_kernel: str = "v1",
+  runtime_kernel: str | None = None,
   svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from either PTQ activation spans or DQ mode.

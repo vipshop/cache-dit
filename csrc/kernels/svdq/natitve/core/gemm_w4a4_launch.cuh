@@ -2,7 +2,7 @@
 #include "gemm_w4a4.cuh"
 #include "epilogues.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <typename Config, bool USE_FP4>
 class GEMM_W4A4_Launch {
@@ -56,4 +56,4 @@ class GEMM_W4A4_Launch {
   static void linearattn_vk_mul_q(Tensor q, Tensor vk);
 };
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

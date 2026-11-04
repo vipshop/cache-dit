@@ -5,7 +5,7 @@
 #include "lora.cuh"
 // #include "gemm_w4a4_block.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 template <typename Config>
 class GEMM_W4A4;
@@ -1105,4 +1105,4 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   };
 };
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

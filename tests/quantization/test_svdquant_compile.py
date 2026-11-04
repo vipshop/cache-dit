@@ -78,7 +78,7 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_v2_smoke() -> None:
     calibrate_precision="low",
     streaming=True,
   ).eval()
-  quantized.runtime_kernel = "v2"
+  quantized.runtime_kernel = "native"
 
   x = torch.randn(2, 16, 128, device=device, dtype=dtype)
 

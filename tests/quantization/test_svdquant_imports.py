@@ -29,24 +29,46 @@ def test_svdq_w4a4_linear_int4_parameter_shapes() -> None:
   )
 
   assert layer.group_size == 64
-  assert layer.qweight.shape == (64, 64)
-  assert layer.wscales.shape == (2, 64)
+  assert layer._padded_out_features == 128
+  assert layer.qweight.shape == (128, 64)
+  assert layer.wscales.shape == (2, 128)
   assert layer.smooth_factor.shape == (128, )
   assert layer.smooth_factor_orig.shape == (128, )
   assert layer.proj_down.shape == (128, 32)
-  assert layer.proj_up.shape == (64, 32)
+  assert layer.proj_up.shape == (128, 32)
   assert layer.wtscale is None
   assert layer.wcscales is None
-  assert layer.runtime_kernel == "v1"
+  assert layer.runtime_kernel == "native"
+
+
+def test_svdq_w4a4_linear_nvfp4_runtime_kernel_default() -> None:
+  default_layer = SVDQW4A4Linear(
+    in_features=128,
+    out_features=128,
+    rank=32,
+    precision="nvfp4",
+    torch_dtype=torch.bfloat16,
+  )
+  cute_layer = SVDQW4A4Linear(
+    in_features=128,
+    out_features=128,
+    rank=32,
+    precision="nvfp4",
+    runtime_kernel="cute",
+    torch_dtype=torch.bfloat16,
+  )
+
+  assert default_layer.runtime_kernel == "native"
+  assert cute_layer.runtime_kernel == "cute"
 
 
 def test_svdq_w4a4_linear_rejects_unsupported_geometry() -> None:
   try:
-    SVDQW4A4Linear(in_features=96, out_features=64, rank=32, precision="int4")
+    SVDQW4A4Linear(in_features=95, out_features=64, rank=32, precision="int4")
   except ValueError as exc:
-    assert "group_size" in str(exc)
+    assert "divisible by 2" in str(exc)
   else:
-    raise AssertionError("Expected unsupported INT4 geometry to raise ValueError.")
+    raise AssertionError("Expected an odd in_features value to raise ValueError.")
 
 
 def test_svdq_w4a4_linear_rejects_unknown_runtime_kernel() -> None:

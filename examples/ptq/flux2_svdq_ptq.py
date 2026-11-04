@@ -41,7 +41,7 @@ DEFAULT_SVDQ_KWARGS = {
 }
 _CALIBRATE_PRECISION_CHOICES = ("low", "medium", "high")
 _SVDQ_PRECISION_CHOICES = ("int4", "nvfp4")
-_SVDQ_RUNTIME_KERNEL_CHOICES = ("v1", "v2")
+_SVDQ_RUNTIME_KERNEL_CHOICES = ("native", "cute")
 
 
 @dataclass(frozen=True)
@@ -146,8 +146,8 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
     "--runtime-kernel",
     choices=_SVDQ_RUNTIME_KERNEL_CHOICES,
-    default="v1",
-    help="Runtime kernel passed through svdq_kwargs. NVFP4 currently supports only v1.",
+    default=None,
+    help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
   )
   parser.add_argument(
     "--calibrate-precision",
@@ -176,8 +176,8 @@ def parse_args() -> argparse.Namespace:
   args = parser.parse_args()
   if args.warmup_runs < 0:
     parser.error("--warmup-runs must be non-negative.")
-  if args.precision == "nvfp4" and args.runtime_kernel != "v1":
-    parser.error("--precision nvfp4 currently only supports --runtime-kernel v1.")
+  if args.precision == "int4" and args.runtime_kernel == "cute":
+    parser.error("--runtime-kernel cute requires --precision nvfp4.")
   if args.output_dir == str(DEFAULT_OUTPUT_DIR) and args.precision == "nvfp4":
     args.output_dir = str(DEFAULT_OUTPUT_DIR.with_name(f"{DEFAULT_OUTPUT_DIR.name}-nvfp4"))
   return args

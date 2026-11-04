@@ -1,7 +1,7 @@
 // Copied from nunchaku/src/kernels/zgemm/gemm_w4a4_launch_impl.cuh
 #include "gemm_w4a4_launch.cuh"
 
-namespace svdq::kernels {
+namespace svdq::native_kernels {
 
 #ifndef __INTELLISENSE__
 template <typename Config, bool USE_FP4>
@@ -545,4 +545,4 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_wgt(Tensor input, Tensor o
   checkCUDA(cudaGetLastError());
 }
 
-};  // namespace svdq::kernels
+};  // namespace svdq::native_kernels

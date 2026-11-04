@@ -173,7 +173,7 @@ def _normalize_svdq_runtime_stage(stage: int | None, op_name: str) -> int:
 
 
 def _normalize_svdq_v2_stage(stage: int | None) -> int:
-  """Normalize and validate the runtime stage for `svdq_gemm_w4a4_v2`.
+  """Normalize and validate the runtime stage for `svdq_gemm_w4a4_native_v2`.
 
   Ada-class GPUs keep the plain v2 kernel register-bound, so the public API defaults to `stage=1` to
   preserve better occupancy. Higher stage counts are still accepted for explicit profiling or future
@@ -184,7 +184,7 @@ def _normalize_svdq_v2_stage(stage: int | None) -> int:
   :raises ValueError: If the requested stage is outside the compiled range.
   """
 
-  return _normalize_svdq_runtime_stage(stage, "svdq_gemm_w4a4_v2")
+  return _normalize_svdq_runtime_stage(stage, "svdq_gemm_w4a4_native_v2")
 
 
 def _normalize_svdq_lora_scales(
@@ -287,7 +287,7 @@ def _call_svdq_quantize_w4a4_wgt(
   _get_required_ops_module().quantize_w4a4_wgt(input, output, oscales)
 
 
-def _call_svdq_gemm_w4a4(
+def _call_svdq_gemm_w4a4_native(
   act: torch.Tensor,
   wgt: torch.Tensor,
   out: torch.Tensor,
@@ -354,7 +354,7 @@ def _call_svdq_gemm_w4a4(
   """
   ops_module = _get_required_ops_module()
   normalized_lora_scales = _normalize_svdq_lora_scales(lora_scales, lora_up)
-  ops_module.gemm_w4a4(
+  ops_module.gemm_w4a4_native(
     act,
     wgt,
     out,
@@ -387,7 +387,50 @@ def _call_svdq_gemm_w4a4(
   )
 
 
-def _call_svdq_gemm_w4a4_v2(
+def _call_svdq_gemm_w4a4_cute(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  out: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  alpha: float,
+) -> None:
+  """Bridge the standard-layout NVFP4 CuTe GEMM ABI.
+
+  :param act: Row-major packed activation `[M, K / 2]`, low nibble is even K.
+  :param wgt: Row-major packed weight `[N, K / 2]`.
+  :param out: BF16 output `[M, N]`.
+  :param ascales: Activation scales in the CUTLASS 128x4 atom layout.
+  :param wscales: Weight scales in CUTLASS 128x4 layout.
+  :param lora_act_in: Optional pre-scaled BF16 LoRA activation `[M, R]`.
+  :param lora_up: Optional BF16 LoRA-up weight `[N, R]`.
+  :param bias: Optional BF16 bias `[N]`.
+  :param wcscales: Optional BF16 per-channel scales `[N]`.
+  :param alpha: Scale applied only to the NVFP4 residual product.
+  """
+  ops = _get_required_ops_module()
+  ops.gemm_w4a4(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales, float(alpha))
+
+
+def _call_svdq_quantize_w4a4_cute(
+  input: torch.Tensor,
+  output: torch.Tensor,
+  ascales: torch.Tensor,
+  lora_down: torch.Tensor | None,
+  lora_act: torch.Tensor,
+  smooth: torch.Tensor,
+  lora_scales: list[float],
+) -> None:
+  """Bridge the independent CuTe activation/LoRA-down producer ABI."""
+  ops = _get_required_ops_module()
+  ops.quantize_w4a4(input, output, ascales, lora_down, lora_act, smooth, lora_scales)
+
+
+def _call_svdq_gemm_w4a4_native_v2(
   act: torch.Tensor,
   wgt: torch.Tensor,
   out: torch.Tensor,
@@ -424,10 +467,10 @@ def _call_svdq_gemm_w4a4_v2(
   """
 
   if fp4:
-    raise NotImplementedError("svdq_gemm_w4a4_v2 currently supports INT4 only.")
+    raise NotImplementedError("svdq_gemm_w4a4_native_v2 currently supports INT4 only.")
 
   normalized_stage = _normalize_svdq_v2_stage(stage)
-  _get_required_ops_module().gemm_w4a4_v2(
+  _get_required_ops_module().gemm_w4a4_native_v2(
     act,
     wgt,
     out,
@@ -513,13 +556,62 @@ def _fake_svdq_quantize_w4a4_act_fuse_lora(
 
 
 torch.library.define(
-  "cache_dit_cuda_ops::svdq_gemm_w4a4",
+  "cache_dit_cuda_ops::svdq_quantize_w4a4_cute",
+  "(Tensor input, Tensor? lora_down, Tensor smooth, float[] lora_scales, int pad_size) -> "
+  "(Tensor output, Tensor ascales, Tensor lora_act)",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::svdq_quantize_w4a4_cute", "CUDA")
+def _svdq_quantize_w4a4_cute(
+  input: torch.Tensor,
+  lora_down: torch.Tensor | None,
+  smooth: torch.Tensor,
+  lora_scales: list[float],
+  pad_size: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  batch_size, channels = input.shape
+  batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
+  rank = 0 if lora_down is None else lora_down.shape[1]
+  padded_input = input.contiguous()
+  if batch_size_pad != batch_size:
+    padded_input = torch.nn.functional.pad(padded_input, (0, 0, 0, batch_size_pad - batch_size))
+  output = torch.empty((batch_size_pad, channels // 2), dtype=torch.uint8, device=input.device)
+  ascales = torch.empty(batch_size_pad * channels // 16,
+                        dtype=torch.float8_e4m3fn,
+                        device=input.device)
+  lora_act = torch.empty((batch_size_pad, rank), dtype=torch.bfloat16, device=input.device)
+  _call_svdq_quantize_w4a4_cute(padded_input, output, ascales, lora_down, lora_act, smooth,
+                                lora_scales)
+  return output, ascales, lora_act
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_quantize_w4a4_cute")
+def _fake_svdq_quantize_w4a4_cute(
+  input: torch.Tensor,
+  lora_down: torch.Tensor | None,
+  smooth: torch.Tensor,
+  lora_scales: list[float],
+  pad_size: int,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  del smooth, lora_scales
+  batch_size, channels = input.shape
+  batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
+  rank = 0 if lora_down is None else lora_down.shape[1]
+  output = input.new_empty((batch_size_pad, channels // 2), dtype=torch.uint8)
+  ascales = input.new_empty((batch_size_pad * channels // 16, ), dtype=torch.float8_e4m3fn)
+  lora_act = input.new_empty((batch_size_pad, rank), dtype=torch.bfloat16)
+  return output, ascales, lora_act
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::svdq_gemm_w4a4_native",
   "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? lora_act_in, Tensor? lora_up, Tensor? bias, bool fp4, float alpha, Tensor? wcscales, bool act_unsigned, int out_dtype_id) -> Tensor",
 )
 
 
-@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4", "CUDA")
-def _svdq_gemm_w4a4(
+@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_native", "CUDA")
+def _svdq_gemm_w4a4_native(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -539,7 +631,7 @@ def _svdq_gemm_w4a4(
 
   # Keep positional placeholders aligned with csrc/kernels/svdq/ops.h::gemm_w4a4.
   # This compile-friendly wrapper only uses the plain linear path.
-  _call_svdq_gemm_w4a4(
+  _call_svdq_gemm_w4a4_native(
     act,
     wgt,
     output,
@@ -574,13 +666,52 @@ def _svdq_gemm_w4a4(
 
 
 torch.library.define(
-  "cache_dit_cuda_ops::svdq_gemm_w4a4_v2",
+  "cache_dit_cuda_ops::svdq_gemm_w4a4_cute",
+  "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? lora_act_in, Tensor? lora_up, Tensor? bias, Tensor? wcscales, float alpha) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_cute", "CUDA")
+def _svdq_gemm_w4a4_cute(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  alpha: float,
+) -> torch.Tensor:
+  output = torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
+  _call_svdq_gemm_w4a4_cute(act, wgt, output, ascales, wscales, lora_act_in, lora_up, bias,
+                            wcscales, alpha)
+  return output
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_cute")
+def _fake_svdq_gemm_w4a4_cute(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  alpha: float,
+) -> torch.Tensor:
+  return torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::svdq_gemm_w4a4_native_v2",
   "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? lora_act_in, Tensor? lora_up, Tensor? bias, bool fp4, float alpha, Tensor? wcscales, bool act_unsigned, int out_dtype_id, int stage) -> Tensor",
 )
 
 
-@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_v2", "CUDA")
-def _svdq_gemm_w4a4_v2(
+@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_native_v2", "CUDA")
+def _svdq_gemm_w4a4_native_v2(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -599,7 +730,7 @@ def _svdq_gemm_w4a4_v2(
   normalized_stage = _normalize_svdq_v2_stage(stage)
   output = torch.empty((act.shape[0], wgt.shape[0]), dtype=output_dtype, device=act.device)
 
-  _call_svdq_gemm_w4a4_v2(
+  _call_svdq_gemm_w4a4_native_v2(
     act,
     wgt,
     output,
@@ -655,7 +786,7 @@ def _svdq_gemm_w4a4_ext(
   out_v: torch.Tensor | None,
   attn_tokens: int,
 ) -> torch.Tensor:
-  _call_svdq_gemm_w4a4(
+  _call_svdq_gemm_w4a4_native(
     act,
     wgt,
     out,
@@ -760,8 +891,8 @@ def _fake_svdq_gemm_w4a4_ext(
   return out
 
 
-@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4")
-def _fake_svdq_gemm_w4a4(
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_native")
+def _fake_svdq_gemm_w4a4_native(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -780,8 +911,8 @@ def _fake_svdq_gemm_w4a4(
   return act.new_empty((act.shape[0], wgt.shape[0]), dtype=output_dtype)
 
 
-@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_v2")
-def _fake_svdq_gemm_w4a4_v2(
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_native_v2")
+def _fake_svdq_gemm_w4a4_native_v2(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -820,7 +951,22 @@ def svdq_quantize_w4a4_act_fuse_lora(
   )
 
 
-def svdq_gemm_w4a4(
+def svdq_quantize_w4a4_cute(
+  input: torch.Tensor,
+  lora_down: torch.Tensor | None,
+  smooth: torch.Tensor,
+  lora_scales: list[float] | None = None,
+  pad_size: int = 256,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Run the independent CuTe activation/LoRA-down producer."""
+  rank = 0 if lora_down is None else lora_down.shape[1]
+  if lora_scales is None:
+    lora_scales = [1.0] * max(1, rank // 16)
+  return torch.ops.cache_dit_cuda_ops.svdq_quantize_w4a4_cute(input, lora_down, smooth, lora_scales,
+                                                              pad_size)
+
+
+def svdq_gemm_w4a4_native(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -834,13 +980,18 @@ def svdq_gemm_w4a4(
   act_unsigned: bool,
   output_dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
+  """Run the legacy native W4A4 GEMM.
+
+  This is the required NVFP4 native fallback. INT4 native v1 is deprecated and is not called by
+  `SVDQW4A4Linear`; direct INT4 calls remain only for low-level compatibility testing.
+  """
   if alpha is None:
     alpha = 1.0
   if output_dtype is None:
     output_dtype = _infer_svdq_output_dtype(None, lora_up, bias, wscales)
     if output_dtype is None:
-      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4.")
-  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(
+      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4_native.")
+  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_native(
     act,
     wgt,
     ascales,
@@ -856,7 +1007,35 @@ def svdq_gemm_w4a4(
   )
 
 
-def svdq_gemm_w4a4_v2(
+def svdq_gemm_w4a4_cute(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None = None,
+  lora_up: torch.Tensor | None = None,
+  bias: torch.Tensor | None = None,
+  wcscales: torch.Tensor | None = None,
+  alpha: float = 1.0,
+) -> torch.Tensor:
+  """Run the SM120 CuTe NVFP4 GEMM with an optional BF16 LoRA-up correction.
+
+  :param act: Row-major packed E2M1 activation `[M, K / 2]`.
+  :param wgt: Row-major packed E2M1 weight `[N, K / 2]`.
+  :param ascales: Activation scales in the CUTLASS 128x4 512-byte atom layout.
+  :param wscales: Weight scales in the CUTLASS 128x4 512-byte atom layout.
+  :param lora_act_in: Optional pre-scaled BF16 LoRA-down output `[M, R]`.
+  :param lora_up: Optional BF16 LoRA-up weight `[N, R]`.
+  :param bias: Optional BF16 bias `[N]`.
+  :param wcscales: Optional BF16 per-channel scales `[N]`, applied only to the NVFP4 product.
+  :param alpha: FP32 scale applied only to the NVFP4 product.
+  :returns: BF16 output `[M, N]`.
+  """
+  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_cute(act, wgt, ascales, wscales, lora_act_in,
+                                                          lora_up, bias, wcscales, float(alpha))
+
+
+def svdq_gemm_w4a4_native_v2(
   act: torch.Tensor,
   wgt: torch.Tensor,
   ascales: torch.Tensor,
@@ -871,14 +1050,15 @@ def svdq_gemm_w4a4_v2(
   output_dtype: torch.dtype | None = None,
   stage: int = 1,
 ) -> torch.Tensor:
+  """Run the INT4 native v2 GEMM used by default and explicit native Linear routes."""
   if alpha is None:
     alpha = 1.0
   if output_dtype is None:
     output_dtype = _infer_svdq_output_dtype(None, lora_up, bias, wscales)
     if output_dtype is None:
-      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4_v2.")
+      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4_native_v2.")
   normalized_stage = _normalize_svdq_v2_stage(stage)
-  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_v2(
+  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_native_v2(
     act,
     wgt,
     ascales,
@@ -990,8 +1170,8 @@ def svdq_set_faster_i2f_mode(mode: str) -> None:
 
 
 __all__ = [
-  "_call_svdq_gemm_w4a4",
-  "_call_svdq_gemm_w4a4_v2",
+  "_call_svdq_gemm_w4a4_native",
+  "_call_svdq_gemm_w4a4_native_v2",
   "_call_svdq_quantize_w4a4_act_fuse_lora",
   "_call_svdq_quantize_w4a4_wgt",
   "_decode_svdq_output_dtype",
@@ -1003,8 +1183,8 @@ __all__ = [
   "_normalize_svdq_lora_scales",
   "svdq_get_load_error",
   "svdq_extension_is_available",
-  "svdq_gemm_w4a4",
-  "svdq_gemm_w4a4_v2",
+  "svdq_gemm_w4a4_native",
+  "svdq_gemm_w4a4_native_v2",
   "svdq_gemm_w4a4_ext",
   "svdq_quantize_w4a4_act_fuse_lora",
   "svdq_quantize_w4a4_wgt",
