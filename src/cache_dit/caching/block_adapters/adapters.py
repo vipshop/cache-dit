@@ -291,6 +291,38 @@ def causvid_wan_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("LongLive2")
+def longlive2_adapter(pipe, **kwargs) -> BlockAdapter:
+  # LongLive 2.0 is a chunk-causal Wan2.2-TI2V-5B generator: the block contract is Wan's (one packed
+  # chunk, one returned tensor), but a block also reads and writes its layer's KV cache, so the
+  # clean-latent pass of every chunk must bypass the block-skip wrapper. The vendored transformer
+  # does that itself (`force_full_compute=True`), which is why this adapter carries no PatchFunctor.
+  from ...models.pipelines.longlive2.transformer import (
+    LongLive2Transformer3DModel,
+    LongLive2TransformerBlock,
+  )
+
+  _relaxed_assert(pipe.transformer, LongLive2Transformer3DModel)
+  assert isinstance(pipe.transformer, LongLive2Transformer3DModel), (
+    f"LongLive2 adapter expects LongLive2Transformer3DModel, got {type(pipe.transformer)}")
+  assert isinstance(
+    pipe.transformer.blocks[0],
+    LongLive2TransformerBlock), (f"LongLive2 adapter expects LongLive2TransformerBlock, got "
+                                 f"{type(pipe.transformer.blocks[0])}")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_2,
+    check_forward_pattern=True,
+    # The generator is guidance-distilled: every denoising step is a single conditional forward.
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Wan")
 def wan_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import (

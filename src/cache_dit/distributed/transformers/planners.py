@@ -166,6 +166,8 @@ def _activate_cp_planners():
     ".lingbot_video", "LingBotVideoContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   CausVidContextParallelismPlanner = _safe_import(  # noqa: F841
     ".causvid", "CausVidContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  LongLive2ContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -225,6 +227,8 @@ def _activate_tp_planners():
     ".wan", "WanTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   CausVidTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".causvid", "CausVidTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  LongLive2TensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".longlive2", "LongLive2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   SkyReelsV2TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".skyreels", "SkyReelsV2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   ZImageTensorParallelismPlanner = _safe_import(  # noqa: F841
