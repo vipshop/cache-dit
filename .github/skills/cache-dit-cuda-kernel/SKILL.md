@@ -11,6 +11,7 @@ description: This skill should be used when developing, building, reviewing, pro
 
 - `references/svdq-nvfp4-cute.md`：当前实现、有效/无效尝试和实测性能。
 - `references/rfc-cuda-optimizations.md`：优化门槛、待办、状态更新规则。
+- `references/svdq-nvfp4-cute-tma-sync-analysis.md`：TMA/mbarrier、warp/block 同步、K-block 软件流水及 CUTLASS/FlashInfer SM120 对照；做 SVDQ CuTe GEMM 调度与性能优化前先读。
 
 ### 原理理解路由
 
