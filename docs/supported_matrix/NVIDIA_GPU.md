@@ -97,6 +97,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Motif-Video-T2V|✅|✅|✅|
 |Motif-Video-I2V|✅|✅|✅|
 |LongCat-Video|✅|✖️|✖️|
+|LongCat-Video-Avatar-1.5|✅|✅|✅|
 |ChronoEdit-14B|✅|✅|✅|
 |Kandinsky-5.0-T2V-Lite|✅|✅️|✅️|
 |Kandinsky-6.0-T2VA|✅|✅|✅|

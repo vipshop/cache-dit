@@ -1610,6 +1610,59 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("LongCatVideoAvatar")
+def longcat_video_avatar_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Adapter for the audio-driven LongCat-Video-Avatar pipeline (A2V / AI2V).
+
+  The transformer is cache-dit's vendored copy (`cache_dit.models.pipelines.longcat_video_avatar`),
+  so `_relaxed_assert` only logs a warning for it and the wiring is asserted here instead: a wrong
+  stack would otherwise surface as a wrong video, not as an error.
+
+  Two model specifics matter:
+
+  * `LongCatAvatarSingleStreamBlock.forward` takes `hidden_states` first and returns a single tensor
+    (Pattern_3), and the block loop body holds nothing but the block call, so no PatchFunctor is
+    needed. The audio conditioning is a **block argument** computed once per step before the loop
+    (`transformer.audio_proj`), so it never varies per step and cannot be lost by a skipped block.
+  * `has_separate_cfg` is not a constant of the model: the undistilled 50-step recipe runs a
+    conditional and an unconditional call per step, while the distilled 8-step recipe samples at
+    guidance 1.0 and runs a single call. The pipeline records which recipe it loaded
+    (`cache_has_separate_cfg`) and rejects a cached run that does not match, because the mismatched
+    step bookkeeping silently halves (or doubles) the warmed-up step count.
+
+  :param pipe: `LongCatVideoAvatarPipeline` instance.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `blocks` denoising stack.
+  """
+
+  from ...models.pipelines.longcat_video_avatar.transformer import (
+    LongCatAvatarSingleStreamBlock,
+    LongCatVideoAvatarTransformer3DModel,
+  )
+
+  assert isinstance(pipe.transformer, LongCatVideoAvatarTransformer3DModel), (
+    f"LongCatVideoAvatar adapter expects LongCatVideoAvatarTransformer3DModel, got {type(pipe.transformer)}"
+  )
+  assert isinstance(pipe.transformer.blocks[0], LongCatAvatarSingleStreamBlock), (
+    f"LongCatVideoAvatar adapter expects LongCatAvatarSingleStreamBlock, got {type(pipe.transformer.blocks[0])}"
+  )
+
+  separate_cfg = getattr(pipe, "cache_has_separate_cfg", None)
+  if separate_cfg is None:
+    separate_cfg = pipe.do_classifier_free_guidance
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=separate_cfg,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("LongCatAudioDiT")
 def longcat_audio_dit_adapter(pipe, **kwargs) -> BlockAdapter:
   """Adapter for the LongCat-AudioDiT text-to-speech pipeline.

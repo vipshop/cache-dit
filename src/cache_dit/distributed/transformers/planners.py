@@ -168,6 +168,11 @@ def _activate_cp_planners():
     ".causvid", "CausVidContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   LongLive2ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  LongCatVideoAvatarContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".longcat_video_avatar",
+    "LongCatVideoAvatarContextParallelismPlanner",
+    ImportErrorContextParallelismPlanner,
+  )
 
   try:
     import nunchaku  # noqa: F401
@@ -285,3 +290,8 @@ def _activate_tp_planners():
     ".sana_wm", "SanaWMTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   LingBotVideoTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".lingbot_video", "LingBotVideoTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  LongCatVideoAvatarTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".longcat_video_avatar",
+    "LongCatVideoAvatarTensorParallelismPlanner",
+    ImportErrorTensorParallelismPlanner,
+  )
