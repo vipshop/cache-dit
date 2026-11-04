@@ -251,5 +251,3 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Z-Image-Turbo-Fun-ControlNet-2.1|✅|
 |Qwen-Image-ControlNet|TODO|
 |Qwen-Image-ControlNet-Inpainting|TODO|
-
-<i>* Magi-2-Preview: cache is wired and bit-exact whenever a step is not skipped, but the release writes the diffusion time into the first channels of every token and its blocks are hyper-connections, so no DBCache threshold gives a usable point (0.5 → 1.47×/2.51 dB). CP/TP are model-owned (tiny parity bit-exact: CP 0.0, TP 2.6e-7); on the released 114 B checkpoint they reach 26.2 dB (CP2) and 27.6 dB (TP2, fp32), below the 35 dB gate. Requires `--layerwise-offload` on a single card (9.4 GiB peak).</i>
