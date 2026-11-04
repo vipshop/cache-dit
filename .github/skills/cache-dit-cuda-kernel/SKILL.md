@@ -1,6 +1,6 @@
 ---
 name: cache-dit-cuda-kernel
-description: This skill should be used when developing, building, reviewing, profiling, or optimizing Cache-DiT CUDA/CuTe kernels, especially SVDQ INT4/NVFP4 producers, fused LoRA paths, GEMM, pybind/torch.library integration, and FLUX end-to-end validation. It records the native/cute dispatch contract, reproducible ccache builds, measurement discipline, completed SVDQ CuTe rewrite, performance evidence, failed attempts, and future optimization RFC.
+description: This skill should be used when developing, building, reviewing, profiling, or optimizing Cache-DiT CUDA/CuTe kernels, especially SVDQ INT4/NVFP4 producers, fused LoRA paths, GEMM, pybind/torch.library integration, and FLUX end-to-end validation. It also routes questions about understanding SVDQuant mathematical principles, from SmoothQuant outlier migration to low-rank residual quantization. It records the native/cute dispatch contract, reproducible ccache builds, measurement discipline, completed SVDQ CuTe rewrite, performance evidence, failed attempts, and future optimization RFC.
 ---
 
 # Cache-DiT CUDA Kernel 开发与优化
@@ -11,6 +11,14 @@ description: This skill should be used when developing, building, reviewing, pro
 
 - `references/svdq-nvfp4-cute.md`：当前实现、有效/无效尝试和实测性能。
 - `references/rfc-cuda-optimizations.md`：优化门槛、待办、状态更新规则。
+
+### 原理理解路由
+
+任务涉及理解 SVDQ/SVDQuant 原理、SmoothQuant → SVDQuant 推导、异常值迁移、量化误差上界、scale 粒度或低秩残差分解时：
+
+1. 先读 `references/svdquant-mathematics.md` 的 §1–4，建立统一记号并复核完整推导与成立条件。
+2. 需要落到当前实现时继续读 §5；评估 TurboQuant、DVD-Quant 是否可借鉴时读 §6–8。
+3. 当前 kernel 的性能结论和数值契约仍以 `references/svdq-nvfp4-cute.md` 为准。
 
 配合 `cuda-auto-tune`、`cuda-cpp-kernel`、`cutlass-cpp-kernel` 使用。NCU 优化必须先 profile 后修改，再复采验证。
 
