@@ -92,6 +92,17 @@ class QwenImageContextParallelismPlanner(ContextParallelismPlanner):
 
 @TensorParallelismPlannerRegister.register("QwenImageTransformer2DModel")
 class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
+  """Tensor parallelism for the double-stream Qwen-Image 1.x transformer.
+
+  Both `attn.heads` and `attn.inner_dim` must be divided, because
+  `QwenDoubleStreamAttnProcessor2_0` reshapes the column-sharded QKV with them and the two
+  diffusers generations read them differently: `< 0.40` does
+  `unflatten(-1, (attn.heads, -1))` (explicit head count, implied head dim), while `>= 0.40` does
+  `head_dim = attn.inner_dim // attn.heads` followed by `unflatten(-1, (-1, head_dim))` (explicit
+  head dim, implied head count). Dividing only `heads` keeps the `< 0.40` path correct but makes the
+  `>= 0.40` path compute `2 * head_dim`, which breaks the QK-norm (`RMSNorm(head_dim)`) and the
+  3-axis RoPE tables.
+  """
 
   def _apply(
     self,
@@ -112,10 +123,12 @@ class QwenImageTensorParallelismPlanner(TensorParallelismPlanner):
     transformer: QwenImageTransformer2DModel,
     tp_mesh: DeviceMesh,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
+    tp_size = tp_mesh.size()
     layer_plans = []
     for _, block in transformer.transformer_blocks.named_children():
       assert isinstance(block, QwenImageTransformerBlock)
-      shard_div_attr(block.attn, "heads", tp_mesh.size())
+      shard_div_attr(block.attn, "heads", tp_size)
+      shard_div_attr(block.attn, "inner_dim", tp_size)
       layer_plan = {
         "attn.to_q": ColwiseParallel(),
         "attn.to_k": ColwiseParallel(),
