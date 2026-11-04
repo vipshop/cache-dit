@@ -31,9 +31,9 @@ W\in\mathbb{R}^{N\times K},\qquad
 Y=XW^\top\in\mathbb{R}^{M\times N}.
 $$
 
-SVDQuant 原文使用 $W\in\mathbb{R}^{m\times n}$ 和 $Y=XW$。本文统一写成其转置等价形式，便于对照 `nn.Linear.weight[N,K]`。原文的 $L_1$ 是 down 因子、 $L_2$ 是 up 因子；转置后本文的 $L_1$ 是 up 因子、 $L_2$ 是 down 因子，二者角色相反，交叉阅读时不能只换矩阵形状。原文平滑式写成 $W\operatorname{diag}(\lambda)$，与其 $W\in\mathbb{R}^{m\times n}$、 $\lambda\in\mathbb{R}^m$ 在维度上不一致；按逐输入通道缩放定义应为 $\operatorname{diag}(\lambda)W$，转置后即本文的 $WS$。
+SVDQuant 原文使用 $W\in\mathbb{R}^{m\times n}$ 和 $Y=XW$。本文统一写成其转置等价形式，便于对照 `nn.Linear.weight[N,K]`。原文的 $L_1$ 是 down 因子、 $L_2$ 是 up 因子；转置后本文的 $L_1$ 是 up 因子、 $L_2$ 是 down 因子，二者角色相反，交叉阅读时不能只换矩阵形状。原文平滑式写成 $W\mathrm{diag}(\lambda)$，与其 $W\in\mathbb{R}^{m\times n}$、 $\lambda\in\mathbb{R}^m$ 在维度上不一致；按逐输入通道缩放定义应为 $\mathrm{diag}(\lambda)W$，转置后即本文的 $WS$。
 
-令 $s\in\mathbb{R}_{>0}^{K}$， $S=\operatorname{diag}(s)$。SmoothQuant 和 SVDQuant 的平滑变换在本文记号下始终是
+令 $s\in\mathbb{R}_{>0}^{K}$， $S=\mathrm{diag}(s)$。SmoothQuant 和 SVDQuant 的平滑变换在本文记号下始终是
 
 $$
 \widehat X=XS^{-1},\qquad \widehat W=WS,
@@ -70,7 +70,7 @@ $$
 $$
 q_{\max}=2^{b-1}-1,\qquad
 \Delta_X=\frac{\max|X|}{q_{\max}},\qquad
-\bar q_X=\operatorname{round}\left(\frac{X}{\Delta_X}\right),\qquad
+\bar q_X=\mathrm{round}\left(\frac{X}{\Delta_X}\right),\qquad
 \mathcal Q(X)=\Delta_X\bar q_X.
 $$
 
@@ -82,9 +82,9 @@ $$
 
 $$
 Y\approx
-\operatorname{diag}(\Delta_X)
+\mathrm{diag}(\Delta_X)
 (\bar q_X\bar q_W^\top)
-\operatorname{diag}(\Delta_W).
+\mathrm{diag}(\Delta_W).
 $$
 
 但激活的逐输入通道 scale 位于归约轴 $K$：
@@ -342,7 +342,7 @@ $$
 }
 $$
 
-推导如下。由 $\mathcal Q(R)=\Delta_R\operatorname{round}(R/\Delta_R)$，
+推导如下。由 $\mathcal Q(R)=\Delta_R\mathrm{round}(R/\Delta_R)$，
 
 $$
 \|R-\mathcal Q(R)\|_F
@@ -404,7 +404,7 @@ Eckart–Young–Mirsky 定理给出
 
 $$
 L_1L_2
-=\arg\min_{\operatorname{rank}(L)\leq r}
+=\arg\min_{\mathrm{rank}(L)\leq r}
 \|\widehat W-L\|_F,
 $$
 
@@ -422,7 +422,7 @@ $$
 
 不能进一步声称“SVD 使量化误差最小”，原因有三层：
 
-1. Eckart–Young 优化无权重的 $\|\widehat W-L\|_F$，而真实层输出误差含激活加权，直接目标更接近 $\min_{\operatorname{rank}(L)\leq r}\|\widehat X(\widehat W-L)^\top\|_F$。
+1. Eckart–Young 优化无权重的 $\|\widehat W-L\|_F$，而真实层输出误差含激活加权，直接目标更接近 $\min_{\mathrm{rank}(L)\leq r}\|\widehat X(\widehat W-L)^\top\|_F$。
 
 2. Proposition 4.2 只是上界，且常数依赖残差分布。
 3. 实际还有 group scale、GPTQ/RTN、低精度累加和后续非线性，均不在 Eckart–Young 目标内。
@@ -637,7 +637,7 @@ $$
 令 $S\in\mathbb R^{d\times d}$，元素独立服从 $\mathcal N(0,1)$。对单位向量 $u$，定义
 
 $$
-Q_{qjl}(u)=\operatorname{sign}(Su),
+Q_{qjl}(u)=\mathrm{sign}(Su),
 $$
 
 $$
@@ -648,7 +648,7 @@ $$
 对任意一行 $s_i\sim\mathcal N(0,I)$，有
 
 $$
-\mathbb E\left[s_i\operatorname{sign}(s_i^\top u)\right]
+\mathbb E\left[s_i\mathrm{sign}(s_i^\top u)\right]
 =\sqrt{\frac{2}{\pi}}u.
 $$
 
@@ -664,7 +664,7 @@ $$
 于是对任意 $y$，内积估计无偏；论文同时给出
 
 $$
-\operatorname{Var}
+\mathrm{Var}
 \left(\langle y,Q_{qjl}^{-1}Q_{qjl}(u)\rangle\right)
 \leq\frac{\pi}{2d}\|y\|_2^2.
 $$
@@ -691,10 +691,10 @@ $$
 \widetilde x
 =\widetilde x_{mse}
 +\gamma\frac{\sqrt{\pi/2}}{d}
-S^\top\operatorname{sign}(Sr).
+S^\top\mathrm{sign}(Sr).
 $$
 
-由于 $\operatorname{sign}(Sr)=\operatorname{sign}(S(r/\gamma))$，以 $\widetilde x_{mse}$ 为条件，
+由于 $\mathrm{sign}(Sr)=\mathrm{sign}(S(r/\gamma))$，以 $\widetilde x_{mse}$ 为条件，
 
 $$
 \mathbb E_S[\widetilde x\mid\widetilde x_{mse}]
@@ -704,7 +704,7 @@ $$
 并且
 
 $$
-D_{prod}=\mathbb E_{\widetilde x_{mse}}\operatorname{Var}_S\left(\langle y,\widetilde x\rangle\mid\widetilde x_{mse}\right).
+D_{prod}=\mathbb E_{\widetilde x_{mse}}\mathrm{Var}_S\left(\langle y,\widetilde x\rangle\mid\widetilde x_{mse}\right).
 $$
 
 $$
@@ -746,12 +746,12 @@ DVD-Quant 的 data-free 主要指**不依赖离线校准数据集**，不是推�
 $$
 \Delta=\frac{\max W-\min W}{2^b-1},
 \qquad
-z=-\operatorname{round}\left(\frac{\min W}{\Delta}\right),
+z=-\mathrm{round}\left(\frac{\min W}{\Delta}\right),
 $$
 
 $$
-q=\operatorname{clamp}
-\left(\operatorname{round}(W/\Delta)+z,0,2^b-1\right),
+q=\mathrm{clamp}
+\left(\mathrm{round}(W/\Delta)+z,0,2^b-1\right),
 \qquad
 \widetilde W=\Delta(q-z).
 $$
@@ -817,7 +817,7 @@ DVD-Quant 令
 $$
 \widetilde X=XH,
 \qquad
-\Lambda=\operatorname{diag}(\lambda_1,\ldots,\lambda_K),
+\Lambda=\mathrm{diag}(\lambda_1,\ldots,\lambda_K),
 \qquad
 \lambda_j=\max_i|\widetilde X_{ij}|,
 $$
@@ -827,7 +827,7 @@ $$
 $$
 \widehat X=\mathcal Q(\widetilde X\Lambda^{-1}),
 \qquad
-\widehat W=\operatorname{BGR}(WH),
+\widehat W=\mathrm{BGR}(WH),
 $$
 
 并将 $\Lambda$ 折回激活反量化侧，即
