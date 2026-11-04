@@ -222,7 +222,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | LongCat-Video (A2V/AI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
 
-<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers</i>
+<i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers.</i>
 
 </div>
 
