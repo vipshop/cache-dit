@@ -37,11 +37,11 @@ Pick one route before reading anything else; the rest of this file is only route
 | 触发场景 | 去读 |
 |---|---|
 | 量化相关的模型测试与精度归因：`--quantize-type` 选哪个、precision plan / regional / `per_tensor_fallback`、svdq 选 PTQ 还是 DQ、observer 怎么定位掉精度的层、"量化掉多少精度"该归因到哪条路径 | `cache-dit-quantization` |
-| 模型里要新增或改动 CUDA 算子、算子注册与构建、从 nunchaku 等上游移植 kernel | `cache-dit-cuda-kernel`（迁移方法论在其 `references/operator-migration.md`） |
+| 模型里要新增或改动 CUDA 算子、算子注册与构建、从 nunchaku 等上游移植 kernel | `cache-dit-custom-kernel`（迁移方法论在其 `references/operator-migration.md`） |
 | 发版本、构建 cu13 wheel、索引与安装验收 | `cache-dit-build-release` |
 | 只要 CUDA/PTX 细节、CUTLASS/CuTe C++ 模板、CuTe DSL Python、NCU 驱动的 kernel 优化 | `cuda-cpp-kernel` / `cutlass-cpp-kernel` / `cute-dsl-kernel` / `cuda-auto-tune` |
 
-边界：本 skill 管"模型怎么接、怎么验收"；量化配置与后端语义归 `cache-dit-quantization`，算子实现归 `cache-dit-cuda-kernel`，发布流程归 `cache-dit-build-release`。
+边界：本 skill 管"模型怎么接、怎么验收"；量化配置与后端语义归 `cache-dit-quantization`，算子实现归 `cache-dit-custom-kernel`，发布流程归 `cache-dit-build-release`。
 
 ## GATE CHECK
 

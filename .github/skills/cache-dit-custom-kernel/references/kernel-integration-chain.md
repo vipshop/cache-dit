@@ -253,4 +253,4 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 
 - **从上游仓库移植算子**（nunchaku / deepcompressor / flashinfer 等）走同目录的 `operator-migration.md`。
 - **NCU 驱动的迭代优化**走 `cuda-auto-tune`。
-- **CUDA/PTX/架构细节**走 `cuda-cpp-kernel`；**CUTLASS/CuTe C++ 模板**走 `cutlass-cpp-kernel`；**CuTe DSL Python**（`@cute.kernel`）走 `cute-dsl-kernel`——本仓只维护 CUDA/CuTe C++，不维护 CuTe DSL 算子。
+- **CUDA/PTX/架构细节**走 `cuda-cpp-kernel`；**CUTLASS/CuTe C++ 模板**走 `cutlass-cpp-kernel`；**CuTe DSL Python**（`@cute.kernel`）的 kernel 编写走 `cute-dsl-kernel`。本仓当前只有 CUDA/CuTe C++ 算子；将来若引入 CuTe DSL 算子，其接入、注册与构建仍按本文 §3–§5 走一条完整链路，Triton 则始终不支持。

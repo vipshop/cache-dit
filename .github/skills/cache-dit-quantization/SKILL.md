@@ -14,7 +14,7 @@ user-invocable: true
 | 选一种量化 / 跑通量化 | 只是调用 `enable_cache` / `quantize` | §2、§3；用户文档以 `docs/user_guide/QUANTIZATION.md` 为唯一权威 |
 | 调精度与显存 | 要动 regional / exclude / precision plan / fallback / observer | §4–§6 |
 | 接入新量化后端或新 PTQ 工作流 | 要新增 `src/cache_dit/quantization/<backend>/` 或改共享 config/dispatch | §7–§11 |
-| 改 SVDQ 算子或 GEMM 本身 | 动 `csrc/kernels/svdq/` | 走 `cache-dit-cuda-kernel`，本 skill 只管工作流与配置 |
+| 改 SVDQ 算子或 GEMM 本身 | 动 `csrc/kernels/svdq/` | 走 `cache-dit-custom-kernel`，本 skill 只管工作流与配置 |
 
 代码、文档、CLI 三处描述同一个量化能力时，**先改 `docs/user_guide/QUANTIZATION.md`，再同步本 skill**；本 skill 只做索引与判据，不复制整段用户文档。
 
@@ -146,7 +146,7 @@ CLI：`--quantize` / `--quantize-type` / 预设（如 `--svdq-int4-r32-dq`、`--
 4. **序列化确定**：确定性文件名 + manifest + 元数据先校验再改模块；load 路径解析收敛到一处。
 5. **慢测必须 opt-in**：默认跑快的公共 API 测试；pipeline/compile/大模型对比用环境变量门控。
 
-同时明确：cache-dit 的量化算子只维护 CUDA（详见 `cache-dit-cuda-kernel` 的后端政策），不要引入 Triton/CuTe DSL 后端。
+同时明确：cache-dit 的量化算子目前全是 CUDA/CuTe C++ 实现（详见 `cache-dit-custom-kernel` 的算子形态说明），不要引入 Triton 后端；CuTe DSL 若将来引入，需按该 skill 的要求补齐注册与构建链，而不是在量化路径里单独加一条。
 
 ## 8. 文件落点
 

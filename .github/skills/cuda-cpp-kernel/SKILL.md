@@ -26,7 +26,7 @@ Do not use this skill for:
 
 - CUTLASS or CuTe template design as the primary task; use `cutlass-cpp-kernel`
 - CuTe DSL Python kernel authoring as the primary task; use `cute-dsl-kernel`
-- cache-dit operator registration, packaging, or public API migration work by itself; pair with `cache-dit-cuda-kernel`
+- cache-dit operator registration, packaging, or public API migration work by itself; pair with `cache-dit-custom-kernel`
 
 ## Reference Style Rule
 
@@ -120,7 +120,7 @@ Before changing code, answer these questions:
 4. Which CUDA Runtime, Driver, or PTX rules must be preserved?
 5. What verification will prove the kernel is correct and faster enough to justify the change?
 
-If the task is a migration into cache-dit, keep the kernel work separate from registration and packaging decisions and use `cache-dit-cuda-kernel` (`references/operator-migration.md`) for the repository-integration layer.
+If the task is a migration into cache-dit, keep the kernel work separate from registration and packaging decisions and use `cache-dit-custom-kernel` (`references/operator-migration.md`) for the repository-integration layer.
 
 ## Debugging Workflow
 
