@@ -169,12 +169,14 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
 - 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，无 finalize。
-- 独立 GEMM kernel-only：M=1024 hybrid 30.432us vs native 31.040us，M=4096 hybrid 114.75us vs native 约117.5us，约快 2%；同轮全 TMA 为 36.64/133.55us。完整 Linear 层为 native 的约 0.987x（快 1.3%–1.5%），relative L2 约 0.00215。
-- mbarrier 唯一初始化、init fence 已落地；K-block 流水、提前 release 和 prologue 前移未形成净收益，不要在没有新 spill 证据时重复。
-- stages/tile 扫描与全 TMA 路线已完成：全 TMA 相对 hybrid 明显更慢；**除非有新 NCU 证据，否则不要再次盲目扫描 stages/smem**。
-- G2R 的 v1 pack 映射已找回并实证：当前 producer 在 identity smooth 下与 native qact/ascales 逐字节一致；不要让 producer 再写 standard row-major A/SFA。
-- 全 TMA 的 NCU 差距是 shared 指令约 9 倍、bank conflict 约 39 倍和额外 mbarrier stall。persistent CTA 慢约 4.4%，BN128 小 tile 慢约 23%，light producer 路线已停；不要重复这几条结构实验。
-- 默认 NVFP4 runtime 仍可保持 native，直到 e2e 达到 5% 门槛；当前 hybrid 只达到 GEMM 约 2%、层约 1.3%–1.5%。
+- 独立 GEMM kernel-only：M=1024 hybrid 30.432us vs native 31.040us；M=4096 committed hybrid nsys 116.8–117.4us vs native 117.536us，仅快约0.3%；完整 Linear 层约快1.3%–1.5%，relative L2 约0.00215。
+- **大 shape 下 native 反超**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` native 分别快2.58%/1.70%/4.52%/6.58%。不能把 hybrid 快于 native 当普适结论；下一条主矛盾是大 shape 退化。
+- hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
+- K-block 在 hybrid 上已无 spill，wait/math/sleeping 降约5%，但四个大 shape 平均仅0.12%（一个 shape 还 -0.23%），无明确 wall-clock 收益，不保留。
+- stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
+- 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB；TMA swizzle 与无 swizzle row-major overlay 不匹配。SFB G2R、LDS128、裸 LDSM、D/L1 G2R、手写 SW64 均已试：只有 D/L1 G2R 把冲突降到66，但 global/local 代价使延迟 121.1us（慢3.3%），不保留。除非用 canonical SW64 TMA atom + 匹配 LDSM，否则不要再试。
+- G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
+- persistent CTA 慢4.4% 的旧结论来自全 TMA；hybrid 下 store_done 串行化机制仍在，未重测。旧 persistent/K-block/BN128 数据不能直接外推到 hybrid。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。

@@ -216,17 +216,115 @@ dest_word      = base*256 + local + half*2 + w*4
 scale word     = base*32 + 4*(row%8) + (row%32)/8
 ```
 
-identity smooth 下，当前 producer 的 v1 qact/ascales 与 native quantize 逐字节一致；随机 smooth 的差异来自既有的 BF16 smooth 舍入，不是布局错位。仍然没有 `lora_act_to_bf16` 或任何 finalize。
+identity smooth 下，当前 producer 的 v1 qact 与 native quantize 逐字节一致；ascales 在 native 中按 `[K/16,M]` 存储，当前 v1 pack 为扁平顺序，但两者的 scale 值集合完全一致。随机 smooth 的差异来自既有的 BF16 smooth 舍入，不是布局错位。仍然没有 `lora_act_to_bf16` 或任何 finalize。
 
 性能（同输入、同 shape）：
 
 | 口径 | hybrid | native | 全 TMA | 结论 |
 |---|---:|---:|---:|---|
 | standalone kernel M=1024，nsys median | 30.432us | 31.040us | 36.640us | hybrid 比 native 快约 2.0%，比全 TMA 快 20.4% |
-| standalone event M=4096 | 114.752us | 约117.5us（nsys） | 133.546us | hybrid 比 native 约快 2.3%，比全 TMA 快 16.4% |
+| committed kernel M=4096，nsys median | 116.80–117.44us（三次 117.440/116.800/117.344） | 117.536us（同轮） | 约137.4us | 比 native 快约 0.3%，比全 TMA 快约 14.7%；不再引用 event 114.75us 的跨工具比较 |
 | 完整 Linear M=1024，event median | 63.024us | 63.888us | - | hybrid 为 native 的 0.986x |
 | 完整 Linear M=4096，event median | 166.016us | 168.176us | - | hybrid 为 native 的 0.987x；relative L2 0.00215 |
 
 验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 91 passed。producer 测试新增 native v1 pack parity、非 256 padded batch 负向用例，并保留 0.12 去量化精度门槛；另有一条真实量化 Linear 的 native/hybrid 端到端 parity。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
 
-**边界**：M 必须是 256 倍数（v1 以 256 行为块）；N 必须为 128 倍数。hybrid 目前约 2% GEMM / 1.3%–1.5% 层收益，尚未达到 e2e 5% 目标。下一步应优化 v1 producer 的分散写回或减少 G2R 重复 load，而不是回到全 TMA。
+**边界**：M 必须是 256 倍数（v1 以 256 行为块）；N 必须为 128 倍数。M4096/N3072 下 hybrid kernel-only 只比 native 快约0.3%，完整层约1.3%–1.5%；但大 shape 下 native 反超（16Kx8Kx8K 快6.58%，见 §12），不能宣称 hybrid 普遍快于 native。下一步应优先解释大 shape 退化，而不是继续微调调度。
+
+## 11. 为什么 hybrid G2R 更快，以及旧结论的失效边界（2026-11-05）
+
+同 shape（M=4096/N=K=3072/R32）、同 harness 的 NCU full 三方对比。NCU duration 受 replay 影响，不作为延迟结论，只用于机制归因；wall-clock 使用同轮 nsys。
+
+| 指标 | hybrid G2R | 全 TMA | native | 读法 |
+|---|---:|---:|---:|---|
+| nsys kernel median（M4096/N3072/K3072） | 117.2us | 约137.4us | 117.5us | hybrid 比全 TMA 快约14.7%，与 native 基本持平/略快；大 shape 下 native 反超，见 §12 |
+| shared 指令 | 2.064M | 2.654M | 0.295M | hybrid 比全 TMA 少22.2% |
+| shared load | 0.836M | 1.130M | 0.098M | 少26.1% |
+| shared wavefront | 7.283M | 8.893M | 0.647M | 少18.1% |
+| shared bank conflict | 0.738M | 1.036M | 0.026M | 少28.8% |
+| global load 请求 | 0.786M | 0.197M | 1.923M | hybrid 是全 TMA 的4倍，但仅为 native 的41% |
+| global sectors | 6.095M | 0.197M | 27.771M | hybrid 仅为 native 的22% |
+| L1 hit | 55.10% | 94.55% | 65.22% | hybrid 的 A G2R 降低 L1 命中，但 L2 吸收 |
+| L2 hit | 87.34% | 87.26% | 85.54% | 三者相同量级 |
+| DRAM throughput | 8.51% | 8.61% | 9.79% | G2R 没增加 DRAM 压力 |
+| math_pipe_throttle /issue | 4.614 | 6.000 | 5.783 | hybrid 最低 |
+| wait /issue | 4.369 | 4.471 | 4.102 | 略低于全 TMA |
+| long_scoreboard /issue | 2.923 | 0.666 | 1.458 | G2R 的直接 global load 代价 |
+| tensor active | 79.79% | 81.59% | 74.25% | hybrid 高于 native |
+| registers / smem | 168 / 85.0KiB | 168 / 85.0KiB | 252 / 18.4KiB | hybrid 仍 1 CTA/SM，无 spill |
+| local store sectors | 0 | 0 | 1.032M | native 有 spill |
+
+机制结论：
+
+1. **hybrid 的收益主要来自拆掉 activation 的 smem 中转，而不是减少总指令数。** 相对全 TMA，shared 指令/wavefront/bank conflict 分别下降约22%/18%/29%，`math_pipe_throttle` 从6.00降到4.61；静态 SASS 的 `FENCE` 从9条降到2条。A/SFA 不再进入 TMA full barrier，也没有每 stage 的 A LDSM 与 SFA 逐字节 shared copy。
+2. **代价是 A 的重复 global load。** 每个 CTA、每个 MMA 线程都直接从 v1 pack 取 A/SFA，跨 N tile 和 ThrN 广播产生重复请求：global 请求/ sectors 相对全 TMA 升4倍/31倍，L1 hit 从94.5%降到55.1%，`long_scoreboard` 从0.67升到2.92。但这些额外流量有87%在 L2 命中，DRAM 吞吐不变，而且总量仍远小于 native（请求41%、sectors22%）。
+3. **hybrid 优于 native 的原因不同：它保留了 weight 的 CTA 内共享。** native 每个 warp 直接从 gmem 取 fragment，global 请求是 hybrid 的2.45倍、sectors是4.56倍，并带约103万 local-store sectors 的 spill；hybrid 把 B/SFB 一次 TMA 进 smem 给8个 consumer warp 复用，regs 168 vs 252，tensor active 79.8% vs 74.3%。所以 hybrid 同时避免了“全 TMA 的 smem 税”和“native 的重复 weight load/spill”。
+4. 尚未隔离 A 与 SFA 各自的贡献。SFA 是逐字节 shared copy，A 是 LDSM；从指标看 SFA scalar copy 很可能是主要节省项，但需要“A TMA + SFA G2R”的 A/B 才能定论，不能把全部收益归给 A G2R。
+
+旧全 TMA 优化的失效边界：
+
+| 旧结论 | hybrid 下是否仍成立 | 新证据 |
+|---|---|---|
+| K-block 流水必 spill、不可用 | **失效**：hybrid 上逐 k-block `load A_k -> copy B_k -> MMA_k` 为 168 regs、零 spill，wait/math/sleeping 各降约5% | 大 shape 复测仍未形成明确收益：`8192x3072` -0.23%、`4096x6144` +0.31%、`8192x6144` +0.20%、`16Kx8Kx8K` +0.21%，平均约0.12%，未保留 |
+| stages 调优已完成、S3 最优 | **部分仍成立**：S2 被输出 overlay 的64KiB > pipeline55.3KiB 静态拒绝；S4 的110.6KiB超过99KiB。G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 per-stage overlay 占用 | 要增加 stages，必须先解耦 D/L1/output overlay，不能只靠 G2R 释放的 smem |
+| persistent CTA 慢4.4% | **未重测，旧机制仍在**：`store_done` 让同一 CTA 下一 tile 等上一 tile 的 output TMA store，丢失 CTA 间 epilogue/mainloop overlap；该串行化与 A 走 G2R 无关 | 只有改成不串行 store 的 persistent 设计才值得重测 |
+| BN128 小 tile 慢23% | **需在 hybrid 下重测**：旧数据来自全 TMA；hybrid 的 shared 结构已变，且 BN128 可用 S4 | 未做，不能直接沿用旧结论 |
+| direct G2R 因 pack 不匹配不可行 | **对 native pack 仍成立，对 v1 pack 已失效**：v1 producer + G2R 已落地 | 当前 hybrid 即该路线 |
+
+下一步优先级：
+
+1. A TMA + SFA G2R 的隔离实验，确认收益来自 A 还是 SFA copy；若 SFA 为主，可只针对 SF 设计更低成本的装载。
+2. 降低 A G2R 重复 load：跨 N tile 复用、cache hint、或在 cluster 内共享 A。
+3. 解耦 D/L1/output overlay，让 S4 或专用 LoRA buffer 成为可能；这是 stages 继续优化的前提。
+4. 优化 producer v1 的分散 u32 写回（当前为保持零 finalize 的代价）。
+5. persistent 只有在设计出去串行 store 的版本后再测。
+
+## 12. 大 shape 标定：K-block 不放大收益，native 随规模反超（2026-11-05）
+
+同 harness、同 nsys 口径，每个配置 3 次 `Med (ns)`。baseline 为 committed hybrid；K-block 为 hybrid 上逐 k-block `A G2R -> B copy -> MMA`；native 为 native SVDQ GEMM。
+
+| shape | hybrid baseline (us) | hybrid K-block (us) | native (us) | K-block vs baseline | native vs baseline |
+|---|---:|---:|---:|---:|---:|
+| 8192x3072x3072 | 210.0 / 209.7 / 210.0 / 210.8* | 210.7 / 210.2 / 210.9 | 205.1 / 204.7 / 204.6 | -0.23% | **+2.58%** |
+| 4096x6144x3072 | 208.8 / 209.0 / 209.2 | 208.4 / 208.4 / 208.4 | 205.2 / 205.7 / 205.7 | +0.31% | **+1.70%** |
+| 8192x6144x3072 | 423.4 / 422.2 / 422.0 | 421.0 / 421.7 / 422.3 | 404.1 / 404.0 / 404.6 | +0.20% | **+4.52%** |
+| 16384x8192x8192 | 2572.6 / 2573.2 / 2573.9 | 2568.9 / 2568.9 / 2566.1 | 2414.0 / 2413.9 / 2415.3 | +0.21% | **+6.58%** |
+
+\* 第一个 shape 有一个额外的 baseline probe run；其余为三次正式 run。
+
+结论：
+
+- **K-block 的收益不会随 shape 放大，反而被噪声淹没。** 四个 shape 平均只有约0.12%，其中 `8192x3072` 还是负的 -0.23%。虽然 K-block 仍保持 168 regs、零 spill，且 wait/math/sleeping 约降5%，但没有可保留的 wall-clock 指标，故回退。
+- **native 的优势随输出规模增加。** M4096/N3072 时 hybrid 仅快约0.3%，但 `16Kx8Kx8K` 下 native 快6.58%。这与全 TMA 对比时的结论不同：不能把“hybrid 比 native 快”当成普适结论。
+- 一个待验证的解释是：规模增大后 CTA 数和 L2 复用形态变化，hybrid 的 per-CTA TMA/smem 固定开销和 A 的重复 G2R load 占比上升；native 的 warp-direct load 在更多 waves 下由 L2 更好吸收，且没有 barrier/TMA 环。该解释尚未用 16K NCU 证明，不能写成定论。
+- 下一步优先级应改为：先在 `16Kx8Kx8K` 上做 native/hybrid 的 NCU 对比，找出规模相关退化点；K-block、persistent、stages 微调在 native 仍领先6.6%时不是首要矛盾。
+
+## 13. 剩余 0.737M shared bank conflict：来源与消除尝试（2026-11-05）
+
+NCU source/SASS 分组（committed hybrid）：
+
+| 指令 | excessive shared wavefront | 说明 |
+|---|---:|---|
+| `LDSM`（FP4 B） | 0 | TMA `Layout_K_SW32` + LDSM 无冲突 |
+| `STSM`（output） | 0 | 无冲突 |
+| 标量 `LDS` | 737,900 | 剩余冲突全部在此 |
+| `LDG`（A/SFA G2R） | - | 不走 shared |
+
+top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 区，因此冲突源是 **BF16 LoRA D/L1**，不是 SFB。`LoraCopyAtom = AutoVectorizingCopyWithAssumedAlignment<32>`，D/L1 又是无 swizzle 的 row-major overlay；每 lane 4B、行 stride 64B 使 32 lane 聚到相同 bank group，形成 4-way conflict。
+
+尝试与结论：
+
+| 方案 | 结果 | 结论 |
+|---|---|---|
+| SFB G2R | conflict 仍 737.9k；global 请求 0.79M→10.2M，stack16B，local load 1.18M sectors，167us | SFB 不是冲突源，已回退 |
+| `AutoVectorizingCopyWithAssumedAlignment<128>` | SASS/shared 计数完全不变 | 该 CopyAtom 没有把 LoRA copy 提升到 LDS.128 |
+| 直接改 `SM75_U32x4_LDSM_N` + row-major | conflict 仍 737.9k，但从4-way变为16-way LDSM；118.3us | 无 swizzle 的 LDSM 更差，已回退 |
+| D/L1 G2R（移除 LoRA TMA/smem） | **conflict 737.9k→66**；global requests+31%、sectors+32%，stack8B/local 67k，121.1us | 冲突可消，但重复/非合并 global load 抵消收益，慢3.3%，已回退 |
+| 手写 SW64 composed layout + TMA | 编译通过但端到端数值不一致 | TMA descriptor 的 swizzle 与手写 layout 未对齐，已回退 |
+
+核心经验：
+
+1. **bank conflict 的绝对值不等于瓶颈。** 737.9k excessive wavefront 只占 shared wavefront 约10%；把冲突降到66 的版本反而慢3.3%，因为 LoRA G2R 的 global traffic 和 local spill 更贵。
+2. TMA 的 swizzle 只服务于匹配的 copy atom；LoRA overlay 为了保证与 A/B 字节级复用，使用了无 swizzle row-major 布局，因此标量 LDS 冲突是布局选择的结果，不是 TMA 失效。
+3. 想在保留 TMA 的前提下消冲突，必须使用 **canonical SW64 TMA atom + 匹配的 LDSM/copy 视图**；手写 `composition(swizzle, row-major)` 不足以让 TMA descriptor 与 consumer 视图一致。
+4. 该冲突暂不保留修复；当前 baseline 仍是 committed hybrid。若后续重启，优先参考 CUTLASS 的 canonical TMA SW64 布局构造，而不是再做 G2R 或仅换 copy atom。
