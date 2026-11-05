@@ -51,12 +51,8 @@ __device__ __nv_bfloat16 from_float<__nv_bfloat16>(float value) {
   return __float2bfloat16_rn(value);
 }
 
-__device__ void compute_merge_weights(
-  float p_lse,
-  float s_lse,
-  float& p_scale,
-  float& s_scale,
-  float& merged_lse) {
+__device__ void compute_merge_weights(float p_lse, float s_lse, float& p_scale, float& s_scale,
+                                      float& merged_lse) {
   const float neg_inf = -std::numeric_limits<float>::infinity();
   if (isnan(p_lse) || isnan(s_lse)) {
     p_scale = std::numeric_limits<float>::quiet_NaN();
@@ -77,15 +73,10 @@ __device__ void compute_merge_weights(
 }
 
 template <typename scalar_t, typename lse_t>
-__global__ void merge_attn_states_packed_kernel(
-  const scalar_t* prev_out,
-  const lse_t* prev_lse,
-  const scalar_t* suff_out,
-  const lse_t* suff_lse,
-  scalar_t* out,
-  lse_t* lse,
-  int64_t rows,
-  int64_t head_size) {
+__global__ void merge_attn_states_packed_kernel(const scalar_t* prev_out, const lse_t* prev_lse,
+                                                const scalar_t* suff_out, const lse_t* suff_lse,
+                                                scalar_t* out, lse_t* lse, int64_t rows,
+                                                int64_t head_size) {
   constexpr int pack_size = 16 / sizeof(scalar_t);
   const int64_t packs_per_row = head_size / pack_size;
   const int64_t index = static_cast<int64_t>(blockIdx.x) * kThreads + threadIdx.x;
@@ -96,14 +87,14 @@ __global__ void merge_attn_states_packed_kernel(
   float p_scale;
   float s_scale;
   float merged_lse;
-  compute_merge_weights(
-    to_float(prev_lse[row]), to_float(suff_lse[row]), p_scale, s_scale, merged_lse);
+  compute_merge_weights(to_float(prev_lse[row]), to_float(suff_lse[row]), p_scale, s_scale,
+                        merged_lse);
 
   const int64_t offset = row * head_size;
   const uint4 prev_pack = reinterpret_cast<const uint4*>(prev_out + offset)[pack_index];
   const uint4 suff_pack = reinterpret_cast<const uint4*>(suff_out + offset)[pack_index];
   uint4 out_pack;
-  #pragma unroll
+#pragma unroll
   for (int i = 0; i < pack_size; ++i) {
     const float prev_value = to_float(reinterpret_cast<const scalar_t*>(&prev_pack)[i]);
     const float suff_value = to_float(reinterpret_cast<const scalar_t*>(&suff_pack)[i]);
@@ -117,15 +108,10 @@ __global__ void merge_attn_states_packed_kernel(
 }
 
 template <typename scalar_t, typename lse_t>
-__global__ void merge_attn_states_kernel(
-  const scalar_t* prev_out,
-  const lse_t* prev_lse,
-  const scalar_t* suff_out,
-  const lse_t* suff_lse,
-  scalar_t* out,
-  lse_t* lse,
-  int64_t rows,
-  int64_t head_size) {
+__global__ void merge_attn_states_kernel(const scalar_t* prev_out, const lse_t* prev_lse,
+                                         const scalar_t* suff_out, const lse_t* suff_lse,
+                                         scalar_t* out, lse_t* lse, int64_t rows,
+                                         int64_t head_size) {
   const int warp = threadIdx.x / kWarpSize;
   const int lane = threadIdx.x % kWarpSize;
   const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp;
@@ -134,8 +120,8 @@ __global__ void merge_attn_states_kernel(
   float p_scale;
   float s_scale;
   float merged_lse;
-  compute_merge_weights(
-    to_float(prev_lse[row]), to_float(suff_lse[row]), p_scale, s_scale, merged_lse);
+  compute_merge_weights(to_float(prev_lse[row]), to_float(suff_lse[row]), p_scale, s_scale,
+                        merged_lse);
 
   const int64_t offset = row * head_size;
   for (int64_t d = lane; d < head_size; d += kWarpSize) {
@@ -149,23 +135,15 @@ __global__ void merge_attn_states_kernel(
 }
 
 template <typename scalar_t, typename lse_t>
-void launch_merge(
-  const at::Tensor& prev_out,
-  const at::Tensor& prev_lse,
-  const at::Tensor& suff_out,
-  const at::Tensor& suff_lse,
-  at::Tensor& out,
-  at::Tensor& lse,
-  int64_t rows,
-  int64_t head_size,
-  cudaStream_t stream) {
+void launch_merge(const at::Tensor& prev_out, const at::Tensor& prev_lse,
+                  const at::Tensor& suff_out, const at::Tensor& suff_lse, at::Tensor& out,
+                  at::Tensor& lse, int64_t rows, int64_t head_size, cudaStream_t stream) {
   if (rows == 0) return;
 
   constexpr int pack_size = 16 / sizeof(scalar_t);
-  const bool aligned =
-    reinterpret_cast<uintptr_t>(prev_out.data_ptr()) % 16 == 0 &&
-    reinterpret_cast<uintptr_t>(suff_out.data_ptr()) % 16 == 0 &&
-    reinterpret_cast<uintptr_t>(out.data_ptr()) % 16 == 0;
+  const bool aligned = reinterpret_cast<uintptr_t>(prev_out.data_ptr()) % 16 == 0 &&
+                       reinterpret_cast<uintptr_t>(suff_out.data_ptr()) % 16 == 0 &&
+                       reinterpret_cast<uintptr_t>(out.data_ptr()) % 16 == 0;
   if (head_size % pack_size == 0 && aligned) {
     const int64_t total_threads = rows * (head_size / pack_size);
     merge_attn_states_packed_kernel<scalar_t, lse_t>
@@ -174,9 +152,7 @@ void launch_merge(
         reinterpret_cast<const lse_t*>(prev_lse.data_ptr()),
         reinterpret_cast<const scalar_t*>(suff_out.data_ptr()),
         reinterpret_cast<const lse_t*>(suff_lse.data_ptr()),
-        reinterpret_cast<scalar_t*>(out.data_ptr()),
-        reinterpret_cast<lse_t*>(lse.data_ptr()),
-        rows,
+        reinterpret_cast<scalar_t*>(out.data_ptr()), reinterpret_cast<lse_t*>(lse.data_ptr()), rows,
         head_size);
   } else {
     merge_attn_states_kernel<scalar_t, lse_t>
@@ -185,69 +161,50 @@ void launch_merge(
         reinterpret_cast<const lse_t*>(prev_lse.data_ptr()),
         reinterpret_cast<const scalar_t*>(suff_out.data_ptr()),
         reinterpret_cast<const lse_t*>(suff_lse.data_ptr()),
-        reinterpret_cast<scalar_t*>(out.data_ptr()),
-        reinterpret_cast<lse_t*>(lse.data_ptr()),
-        rows,
+        reinterpret_cast<scalar_t*>(out.data_ptr()), reinterpret_cast<lse_t*>(lse.data_ptr()), rows,
         head_size);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 template <typename scalar_t>
-void dispatch_lse(
-  const at::Tensor& prev_out,
-  const at::Tensor& prev_lse,
-  const at::Tensor& suff_out,
-  const at::Tensor& suff_lse,
-  at::Tensor& out,
-  at::Tensor& lse,
-  int64_t rows,
-  int64_t head_size,
-  cudaStream_t stream) {
+void dispatch_lse(const at::Tensor& prev_out, const at::Tensor& prev_lse,
+                  const at::Tensor& suff_out, const at::Tensor& suff_lse, at::Tensor& out,
+                  at::Tensor& lse, int64_t rows, int64_t head_size, cudaStream_t stream) {
   if (lse.scalar_type() == at::kFloat) {
-    launch_merge<scalar_t, float>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    launch_merge<scalar_t, float>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size,
+                                  stream);
   } else if (lse.scalar_type() == at::kHalf) {
-    launch_merge<scalar_t, __half>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    launch_merge<scalar_t, __half>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows,
+                                   head_size, stream);
   } else if (lse.scalar_type() == at::kBFloat16) {
-    launch_merge<scalar_t, __nv_bfloat16>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    launch_merge<scalar_t, __nv_bfloat16>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows,
+                                          head_size, stream);
   } else {
     TORCH_CHECK(false, "unsupported LSE dtype: ", lse.scalar_type());
   }
 }
 
-} // namespace
+}  // namespace
 
-void fused_merge_attn_states(
-  at::Tensor prev_out,
-  at::Tensor prev_lse,
-  at::Tensor suff_out,
-  at::Tensor suff_lse,
-  at::Tensor out,
-  at::Tensor lse) {
-  TORCH_CHECK(
-    prev_out.is_cuda() && prev_lse.is_cuda() && suff_out.is_cuda() && suff_lse.is_cuda() &&
-    out.is_cuda() && lse.is_cuda(),
-    "merge_attn_states requires CUDA tensors");
-  TORCH_CHECK(
-    prev_out.device() == out.device() && prev_lse.device() == out.device() &&
-    suff_out.device() == out.device() && suff_lse.device() == out.device() &&
-    lse.device() == out.device(),
-    "all merge_attn_states tensors must be on the same CUDA device");
-  TORCH_CHECK(
-    prev_out.is_contiguous() && prev_lse.is_contiguous() && suff_out.is_contiguous() &&
-    suff_lse.is_contiguous() && out.is_contiguous() && lse.is_contiguous(),
-    "merge_attn_states expects contiguous tensors");
-  TORCH_CHECK(
-    prev_out.dim() == 3 && suff_out.dim() == 3 && out.dim() == 3 &&
-    prev_lse.dim() == 2 && suff_lse.dim() == 2 && lse.dim() == 2,
-    "merge_attn_states expects flattened 3D outputs and 2D LSE tensors");
-  TORCH_CHECK(
-    prev_out.sizes() == suff_out.sizes() && suff_out.sizes() == out.sizes() &&
-    prev_lse.sizes() == suff_lse.sizes() && suff_lse.sizes() == lse.sizes(),
-    "merge_attn_states input and output shapes must match");
+void fused_merge_attn_states(at::Tensor prev_out, at::Tensor prev_lse, at::Tensor suff_out,
+                             at::Tensor suff_lse, at::Tensor out, at::Tensor lse) {
+  TORCH_CHECK(prev_out.is_cuda() && prev_lse.is_cuda() && suff_out.is_cuda() &&
+                suff_lse.is_cuda() && out.is_cuda() && lse.is_cuda(),
+              "merge_attn_states requires CUDA tensors");
+  TORCH_CHECK(prev_out.device() == out.device() && prev_lse.device() == out.device() &&
+                suff_out.device() == out.device() && suff_lse.device() == out.device() &&
+                lse.device() == out.device(),
+              "all merge_attn_states tensors must be on the same CUDA device");
+  TORCH_CHECK(prev_out.is_contiguous() && prev_lse.is_contiguous() && suff_out.is_contiguous() &&
+                suff_lse.is_contiguous() && out.is_contiguous() && lse.is_contiguous(),
+              "merge_attn_states expects contiguous tensors");
+  TORCH_CHECK(prev_out.dim() == 3 && suff_out.dim() == 3 && out.dim() == 3 && prev_lse.dim() == 2 &&
+                suff_lse.dim() == 2 && lse.dim() == 2,
+              "merge_attn_states expects flattened 3D outputs and 2D LSE tensors");
+  TORCH_CHECK(prev_out.sizes() == suff_out.sizes() && suff_out.sizes() == out.sizes() &&
+                prev_lse.sizes() == suff_lse.sizes() && suff_lse.sizes() == lse.sizes(),
+              "merge_attn_states input and output shapes must match");
   TORCH_CHECK(
     prev_out.scalar_type() == suff_out.scalar_type() && suff_out.scalar_type() == out.scalar_type(),
     "attention output tensors must share dtype");
@@ -262,17 +219,15 @@ void fused_merge_attn_states(
   const c10::cuda::CUDAGuard guard(out.device());
   const auto stream = at::cuda::getCurrentCUDAStream(out.device().index());
   if (out.scalar_type() == at::kFloat) {
-    dispatch_lse<float>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    dispatch_lse<float>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
   } else if (out.scalar_type() == at::kHalf) {
-    dispatch_lse<__half>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    dispatch_lse<__half>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
   } else if (out.scalar_type() == at::kBFloat16) {
-    dispatch_lse<__nv_bfloat16>(
-      prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size, stream);
+    dispatch_lse<__nv_bfloat16>(prev_out, prev_lse, suff_out, suff_lse, out, lse, rows, head_size,
+                                stream);
   } else {
     TORCH_CHECK(false, "unsupported attention output dtype: ", out.scalar_type());
   }
 }
 
-} // namespace cache_dit::attn
+}  // namespace cache_dit::attn

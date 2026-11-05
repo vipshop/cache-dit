@@ -38,13 +38,13 @@ namespace svdq::cute_kernels {
 // BF16 is the only LoRA/output dtype implemented by this CuTe path. FP16 LoRA remains on the
 // old native path and is rejected by the public module rather than silently converted.
 void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Tensor wscales,
-                    ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
-                    float alpha);
+               ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
+               float alpha);
 
 // Produce v1 interleaved E2M1 activation, matching v1 SFA and row-major BF16 LoRA-down D
 // directly. No FP32 LoRA scratch, finalize kernel or activation repack is involved. The producer
 // completes its full K reduction in warp registers and emits the GEMM's D TMA input in one launch.
 void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
-                        ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales);
+                   ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales);
 
 }  // namespace svdq::cute_kernels

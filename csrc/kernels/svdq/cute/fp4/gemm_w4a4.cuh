@@ -126,10 +126,10 @@ struct SfSmemAtom {
   using shapeK = decltype(prepend(
     make_shape(Int<kSFVecPerBlk / kMMA_NSF>{}, Int<kBK_ / kSFVec / kSFVecPerBlk>{}),
     kBlockShape{}));
-  using strideK = decltype(prepend(make_stride(Int<kMMA_NSF>{}, Int<kMN / kRowBlock * 512>{}),
-                                   kBlockStride{}));
-  using type = decltype(make_layout(make_shape(shapeM{}, shapeK{}),
-                                    make_stride(strideM{}, strideK{})));
+  using strideK =
+    decltype(prepend(make_stride(Int<kMMA_NSF>{}, Int<kMN / kRowBlock * 512>{}), kBlockStride{}));
+  using type =
+    decltype(make_layout(make_shape(shapeM{}, shapeK{}), make_stride(strideM{}, strideK{})));
 };
 
 // Scale-factor operands are neither plain smem tensors nor ordinary row-major fragments. The
@@ -161,12 +161,12 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfa(SFATensor &&sfatensor,
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
   auto t_tile = make_tile(get<0>(permutation_mnk), get<2>(permutation_mnk));
   auto t_tensor = logical_divide(sfatensor, t_tile);
-  auto a_tile = make_tile(make_layout(size<0>(AtomShape_MNK{})),
-                          make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tile =
+    make_tile(make_layout(size<0>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
   auto a_tensor = zipped_divide(t_tensor, a_tile);
   auto tv_tensor = a_tensor.compose(AtomLayoutSFA_TV{}, _);
-  auto thr_tile = make_tile(_, make_tile(make_layout(size<1>(thr_layout_vmnk)),
-                                        make_layout(size<3>(thr_layout_vmnk))));
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<1>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
   return zipped_divide(tv_tensor, thr_tile);
 }
 
@@ -185,12 +185,12 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor &&sfbtensor,
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
   auto t_tile = make_tile(get<1>(permutation_mnk), get<2>(permutation_mnk));
   auto t_tensor = logical_divide(sfbtensor, t_tile);
-  auto a_tile = make_tile(make_layout(size<1>(AtomShape_MNK{})),
-                          make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tile =
+    make_tile(make_layout(size<1>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
   auto a_tensor = zipped_divide(t_tensor, a_tile);
   auto tv_tensor = a_tensor.compose(AtomLayoutSFB_TV{}, _);
-  auto thr_tile = make_tile(_, make_tile(make_layout(size<2>(thr_layout_vmnk)),
-                                        make_layout(size<3>(thr_layout_vmnk))));
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<2>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
   return zipped_divide(tv_tensor, thr_tile);
 }
 
@@ -202,14 +202,12 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor &&sfbtensor,
 // Per m16n8k64 atom this is one u32 containing four UE4M3 bytes for four consecutive K groups.
 // The actual gmem/smem read happens later through G2R or a TiledCopy, not inside this function.
 template <class SFATensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor,
-                                                      ThrMma &thread_mma) {
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor, ThrMma &thread_mma) {
   using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
   auto thr_tensor = make_tensor(static_cast<SFATensor &&>(sfatensor).data(),
                                 thrfrg_sfa(sfatensor.layout(), thread_mma));
   auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vmk =
-    make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
+  auto thr_vmk = make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
   auto part = thr_tensor(thr_vmk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
   return make_fragment_like<ValTypeSF>(part);
 }
@@ -219,14 +217,12 @@ CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor,
 // reused across output rows. The returned u32 fragment is paired with tCrB by make_zip_tensor in
 // the NVFP4 mainloop; no scale values are fetched until the explicit copy is issued.
 template <class SFBTensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor &&sfbtensor,
-                                                      ThrMma &thread_mma) {
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor &&sfbtensor, ThrMma &thread_mma) {
   using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
   auto thr_tensor = make_tensor(static_cast<SFBTensor &&>(sfbtensor).data(),
                                 thrfrg_sfb(sfbtensor.layout(), thread_mma));
   auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vnk =
-    make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
+  auto thr_vnk = make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
   auto part = thr_tensor(thr_vnk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
   return make_fragment_like<ValTypeSF>(part);
 }
@@ -246,10 +242,10 @@ CUTE_HOST_DEVICE constexpr auto layout_sfa_tv(TiledMma &mma) {
   auto tile_shape_mnk = tile_shape(mma);
   auto ref_A = make_layout(make_shape(size<0>(tile_shape_mnk), size<2>(tile_shape_mnk)));
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto atile = make_tile(_, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk),
-                                                            size<2>(thr_layout_vmnk)),
-                                                  make_stride(Int<1>{}, Int<0>{})),
-                                      _));
+  auto atile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<1>{}, Int<0>{})),
+                 _));
   auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
   return thrfrg_sfa(ref_A, mma).compose(atile, _).compose(thridx_2_thrid, _);
 }
@@ -264,10 +260,10 @@ CUTE_HOST_DEVICE constexpr auto layout_sfb_tv(TiledMma &mma) {
   auto tile_shape_mnk = tile_shape(mma);
   auto ref_B = make_layout(make_shape(size<1>(tile_shape_mnk), size<2>(tile_shape_mnk)));
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto btile = make_tile(_, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk),
-                                                            size<2>(thr_layout_vmnk)),
-                                                  make_stride(Int<0>{}, Int<1>{})),
-                                      _));
+  auto btile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<0>{}, Int<1>{})),
+                 _));
   auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
   return thrfrg_sfb(ref_B, mma).compose(btile, _).compose(thridx_2_thrid, _);
 }
@@ -326,8 +322,8 @@ struct W4A4CuteTraits {
   using ElementO = cutlass::bfloat16_t;
   using ElementAcc = float;
 
-  using MmaAtom = SM120::BLOCKSCALED::SM120_16x8x64_TN_VS<Element, Element, ElementAcc,
-                                                         ElementSF, kSFVec>;
+  using MmaAtom =
+    SM120::BLOCKSCALED::SM120_16x8x64_TN_VS<Element, Element, ElementAcc, ElementSF, kSFVec>;
   using AtomLayoutMNK = Layout<Shape<_4, _2, _1>>;
   // The N permutation ((8,2,2):(1,16,8)) spans 32 output columns and is part of the atom's
   // thread/value mapping. It is a compile-time coordinate recipe, not a runtime N transpose.
@@ -344,11 +340,10 @@ struct W4A4CuteTraits {
 
   static_assert(size(LoraMma{}) == size(TiledMma{}),
                 "the LoRA MMA must use the same thread count as the NVFP4 MMA");
-  static_assert(is_same_v<decltype(partition_shape_C(TiledMma{}, make_shape(Int<kBM>{},
-                                                                          Int<kBN>{}))),
-                          decltype(partition_shape_C(LoraMma{}, make_shape(Int<kBM>{},
-                                                                         Int<kBN>{})))>,
-                "the LoRA MMA accumulator partition must match the NVFP4 MMA one");
+  static_assert(
+    is_same_v<decltype(partition_shape_C(TiledMma{}, make_shape(Int<kBM>{}, Int<kBN>{}))),
+              decltype(partition_shape_C(LoraMma{}, make_shape(Int<kBM>{}, Int<kBN>{})))>,
+    "the LoRA MMA accumulator partition must match the NVFP4 MMA one");
   static_assert(kRankTile % size<2>(typename LoraAtom::Shape_MNK{}) == 0,
                 "one rank tile must be a whole number of BF16 MMA atoms");
 
@@ -383,15 +378,15 @@ struct W4A4CuteTraits {
   // SmemLayoutD: BF16 LoRA-down result D, logical (BM,kRankTile,stages), with strides
   // (kRankTile,1,BM*kRankTile). Thus one stage is an ordinary row-major [BM,kRankTile] matrix;
   // kRankTile=BK/4 is 32 for the default BK=128. tma.d writes it over the A byte allocation.
-  using SmemLayoutD = decltype(make_layout(
-    make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{}),
-    make_stride(Int<kRankTile>{}, _1{}, Int<kBM * kRankTile>{})));
+  using SmemLayoutD =
+    decltype(make_layout(make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{}),
+                         make_stride(Int<kRankTile>{}, _1{}, Int<kBM * kRankTile>{})));
   // SmemLayoutL1: BF16 LoRA-up weight L1, logical (BN,kRankTile,stages), with analogous
   // row-major strides. tma.l1 writes it over the B allocation after empty[stage] opens. Again,
   // L1 names the second low-rank factor and has no relationship to the hardware L1 cache.
-  using SmemLayoutL1 = decltype(make_layout(
-    make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{}),
-    make_stride(Int<kRankTile>{}, _1{}, Int<kBN * kRankTile>{})));
+  using SmemLayoutL1 =
+    decltype(make_layout(make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{}),
+                         make_stride(Int<kRankTile>{}, _1{}, Int<kBN * kRankTile>{})));
 
   // Append the pipeline-stage mode to each SF atom. filter_zeros removes the logical broadcast
   // modes before computing the stage stride: 16 codes share one stored scale, so advancing to the
@@ -434,8 +429,7 @@ struct W4A4CuteTraits {
   static constexpr int kSFBStageBytes = cosize_v<SmemLayoutSFB> / kStages;
   static constexpr int kDStageBytes = kBM * kRankTile * static_cast<int>(sizeof(ElementLora));
   static constexpr int kL1StageBytes = kBN * kRankTile * static_cast<int>(sizeof(ElementLora));
-  static constexpr int kStageBytes =
-    kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
+  static constexpr int kStageBytes = kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
   static constexpr int kSmemBytes = kStages * kStageBytes;
 
   static_assert(kDStageBytes == kAStageBytes, "a D rank tile must overlay one A stage");
@@ -495,11 +489,11 @@ struct W4A4CuteCacheHash {
 // steps before the main K loop ends instead of exposing a serial LoRA load tail.
 template <class Traits, class TmaParams>
 __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
-gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
-                      uint4 const *__restrict__ act, uint32_t const *__restrict__ ascales,
-                      cutlass::bfloat16_t const *__restrict__ bias,
-                      cutlass::bfloat16_t const *__restrict__ wcscales, float alpha, int M,
-                      int N, int K, int rank) {
+  gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma, uint4 const *__restrict__ act,
+                   uint32_t const *__restrict__ ascales,
+                   cutlass::bfloat16_t const *__restrict__ bias,
+                   cutlass::bfloat16_t const *__restrict__ wcscales, float alpha, int M, int N,
+                   int K, int rank) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -724,7 +718,8 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
       const int64_t block_base =
         (static_cast<int64_t>(old_block) * (K / 64) + old_kt) * 8 + old_warp;
       const int64_t index = (block_base * 2 + old_mt) * 32 + lane;
-      *reinterpret_cast<uint4 *>(raw_pointer_cast(tCrA(_, mt, k_block).data())) = __ldg(act + index);
+      *reinterpret_cast<uint4 *>(raw_pointer_cast(tCrA(_, mt, k_block).data())) =
+        __ldg(act + index);
       const int64_t scale_index = block_base * 32 + (lane ^ (old_mt * 2));
       *reinterpret_cast<uint32_t *>(tCrSFA(_, mt, k_block).data()) = __ldg(ascales + scale_index);
     }
@@ -871,12 +866,10 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
 // The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
-                           cutlass::float_ue4m3_t const *act_sf,
-                           cutlass::float_ue4m3_t const *wgt_sf,
-                           cutlass::bfloat16_t const *lora_act_in,
-                           cutlass::bfloat16_t const *lora_up, cutlass::bfloat16_t const *bias,
-                           cutlass::bfloat16_t const *wcscales, float alpha, int M, int N,
-                           int K, int rank, cudaStream_t stream) {
+                      cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
+                      cutlass::bfloat16_t const *lora_act_in, cutlass::bfloat16_t const *lora_up,
+                      cutlass::bfloat16_t const *bias, cutlass::bfloat16_t const *wcscales,
+                      float alpha, int M, int N, int K, int rank, cudaStream_t stream) {
   using Traits = W4A4CuteTraits<kBN, kStages, kBK_>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
@@ -886,8 +879,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   constexpr int kBK = Traits::kBK;
   constexpr int kRankTile = Traits::kRankTile;
 
-  auto mB = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(wgt)),
-                        make_shape(N, K), make_stride(K, _1{}));
+  auto mB = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(wgt)), make_shape(N, K),
+                        make_stride(K, _1{}));
   auto mC = make_tensor(make_gmem_ptr(static_cast<ElementO *>(out)), make_shape(M, N),
                         make_stride(N, _1{}));
   auto mSFB = make_tensor(recast_ptr<ElementSF>(wgt_sf), sf_gmem_layout(N, K));
@@ -898,17 +891,15 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   const int rankTma = rank > 0 ? rank : kRankTile;
   auto const *d_ptr = rank > 0 ? lora_act_in : reinterpret_cast<ElementLora const *>(out);
   auto const *l1_ptr = rank > 0 ? lora_up : reinterpret_cast<ElementLora const *>(out);
-  auto mD = make_tensor(make_gmem_ptr(d_ptr), make_shape(M, rankTma),
-                        make_stride(rankTma, _1{}));
-  auto mL1 = make_tensor(make_gmem_ptr(l1_ptr), make_shape(N, rankTma),
-                         make_stride(rankTma, _1{}));
+  auto mD = make_tensor(make_gmem_ptr(d_ptr), make_shape(M, rankTma), make_stride(rankTma, _1{}));
+  auto mL1 = make_tensor(make_gmem_ptr(l1_ptr), make_shape(N, rankTma), make_stride(rankTma, _1{}));
 
   auto build_params = [&]() {
     auto tma_b = make_tma_copy(SM90_TMA_LOAD{}, mB, typename Traits::SmemLayoutB{}(_, _, Int<0>{}),
                                Shape<Int<kBN>, Int<kBK>>{}, _1{});
-    auto tma_sfb = make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFB,
-                                          typename Traits::SmemLayoutAtomSFB{},
-                                          Shape<Int<kBN>, Int<kBK>>{}, _1{});
+    auto tma_sfb =
+      make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFB, typename Traits::SmemLayoutAtomSFB{},
+                              Shape<Int<kBN>, Int<kBK>>{}, _1{});
     auto tma_d = make_tma_copy(SM90_TMA_LOAD{}, mD, typename Traits::SmemLayoutD{}(_, _, Int<0>{}),
                                Shape<Int<kBM>, Int<kRankTile>>{}, _1{});
     auto tma_l1 =

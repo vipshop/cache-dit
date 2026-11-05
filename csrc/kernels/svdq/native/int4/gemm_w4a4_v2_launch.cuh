@@ -4,32 +4,15 @@
 
 namespace svdq::native_kernels {
 
-using gemm_w4a4_v2_launch_fn = void (*)(Tensor act,
-                                        Tensor wgt,
-                                        Tensor out,
-                                        Tensor ascales,
-                                        Tensor wscales,
-                                        Tensor lora_act_in,
-                                        Tensor lora_up,
-                                        Tensor bias,
-                                        bool act_unsigned,
-                                        float alpha,
-                                        Tensor wcscales,
-                                        int logical_block_m);
+using gemm_w4a4_v2_launch_fn = void (*)(Tensor act, Tensor wgt, Tensor out, Tensor ascales,
+                                        Tensor wscales, Tensor lora_act_in, Tensor lora_up,
+                                        Tensor bias, bool act_unsigned, float alpha,
+                                        Tensor wcscales, int logical_block_m);
 
-#define SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH(DTYPE_NAME, STAGE)              \
-  void launch_gemm_w4a4_v2_##DTYPE_NAME##_int4_stage##STAGE(             \
-    Tensor act,                                                          \
-    Tensor wgt,                                                          \
-    Tensor out,                                                          \
-    Tensor ascales,                                                      \
-    Tensor wscales,                                                      \
-    Tensor lora_act_in,                                                  \
-    Tensor lora_up,                                                      \
-    Tensor bias,                                                         \
-    bool act_unsigned,                                                   \
-    float alpha,                                                         \
-    Tensor wcscales,                                                     \
+#define SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH(DTYPE_NAME, STAGE)                                 \
+  void launch_gemm_w4a4_v2_##DTYPE_NAME##_int4_stage##STAGE(                                \
+    Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales, Tensor lora_act_in, \
+    Tensor lora_up, Tensor bias, bool act_unsigned, float alpha, Tensor wcscales,           \
     int logical_block_m)
 
 SVDQ_DECLARE_GEMM_W4A4_V2_LAUNCH(fp16, 1);

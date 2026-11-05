@@ -19,8 +19,8 @@ namespace svdq::cute_kernels {
 // BK controls both the number of NVFP4 atoms per stage and the LoRA overlay width (BK/4), which
 // is why rank divisibility is part of configuration selection. No runtime repack is performed.
 void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Tensor wscales,
-                    ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
-                    float alpha) {
+               ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
+               float alpha) {
   auto require = [](bool condition, const char *message) {
     if (!condition) {
       throw std::runtime_error(spdlog::fmt_lib::format("gemm_w4a4: {}", message));
@@ -42,8 +42,7 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
   require(ascales.dtype() == ::Tensor::FP8_E4M3 && wscales.dtype() == ::Tensor::FP8_E4M3,
           "ascales/wscales must be FP8_E4M3");
   require(out.dtype() == ::Tensor::BF16, "out must be BF16; only the BF16 epilogue is wired up");
-  require(act.is_cuda() && wgt.is_cuda() && out.is_cuda() && ascales.is_cuda() &&
-            wscales.is_cuda(),
+  require(act.is_cuda() && wgt.is_cuda() && out.is_cuda() && ascales.is_cuda() && wscales.is_cuda(),
           "act/wgt/out/ascales/wscales must be CUDA tensors");
   require(act.is_contiguous() && wgt.is_contiguous() && out.is_contiguous() &&
             ascales.is_contiguous() && wscales.is_contiguous(),
@@ -83,8 +82,7 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
   }
 
   const cudaDeviceProp *prop = getCurrentDeviceProperties();
-  require(prop->major * 10 + prop->minor >= 120,
-          "gemm_w4a4 requires an SM120 (or newer) device");
+  require(prop->major * 10 + prop->minor >= 120, "gemm_w4a4 requires an SM120 (or newer) device");
 
   using ElementSF = cutlass::float_ue4m3_t;
   using ElementLora = cutlass::bfloat16_t;
