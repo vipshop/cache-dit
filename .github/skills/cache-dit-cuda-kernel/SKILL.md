@@ -37,7 +37,7 @@ SVDQW4A4Linear.quantize / forward_quant
 
 目录与命名契约：
 
-- `csrc/kernels/svdq/natitve/`：旧 native 实现，使用 `svdq::native_kernels`。
+- `csrc/kernels/svdq/native/`：旧 native 实现，使用 `svdq::native_kernels`。
 - `csrc/kernels/svdq/cute/fp4/`：独立 CuTe 实现，使用 `svdq::cute_kernels`。
 - cute 文件和 C++ kernel/host/launch 名不重复携带 `_cute`；Python 的 `svdq_*_cute` 公开包装名可保留以区分公开 runtime。
 - `gemm_w4a4.cu/.cuh/.h`：NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。

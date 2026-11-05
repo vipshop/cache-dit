@@ -525,12 +525,12 @@ W4A4CuteTraits 的字节/layout 契约
 | 相对路径 | 行号 | 内容 |
 |---|---:|---|
 | `cache-dit/csrc/third_party/cutlass/include/cutlass/arch/barrier.h` | 726–738 | `fence_view_async_shared()` 实际对应 `fence.proxy.async.shared::cta` |
-| `cache-dit/csrc/kernels/svdq/natitve/core/gemm_w4a4.cuh` | 15–42 | `GEMM_W4A4` 和不支持 FP4 时的 `trap_no_fp4()` 兜底 |
+| `cache-dit/csrc/kernels/svdq/native/core/gemm_w4a4.cuh` | 15–42 | `GEMM_W4A4` 和不支持 FP4 时的 `trap_no_fp4()` 兜底 |
 | 同上 | 64–88 | `load_amscale/load_wmscale` 的 packed scale 读取 |
 | 同上 | 249–340 | `gemm_w4a4_fp4_block` 的 native stage 预取与主循环入口 |
-| `cache-dit/csrc/kernels/svdq/natitve/core/gemm_w4a4_impl.cuh` | 28–64 | native packed FP4 到当前 CuTe 布局转换的性能负结果背景 |
+| `cache-dit/csrc/kernels/svdq/native/core/gemm_w4a4_impl.cuh` | 28–64 | native packed FP4 到当前 CuTe 布局转换的性能负结果背景 |
 
-`natitve/` 是历史目录 typo；本文按当前真实路径引用。后续应单独统一重命名为 `native/` 并同步全部 include、构建和文档引用，本次报告不执行该目录改动。native 路径不含这里的 TMA smem pipeline，因此只适合作为性能、数值和数据布局参照，不适合作为 mbarrier 协议参考。
+本文写作时该目录名拼写有误；已在后续提交中统一更正为 `native/` 并同步全部 include、构建和文档引用，本文引用路径已按新名更新。native 实现不含这里的 TMA smem pipeline，因此只适合作为性能、数值和数据布局参照，不适合作为 mbarrier 协议参考。
 
 ### 9.3 CUTLASS：SM120 block-scaled C++ mainloop
 
@@ -772,6 +772,6 @@ CUTLASS 参考 epilogue 的 TMA store copy、commit 和 reuse-acquire 都由 `is
 
 - 上述行号是调研快照定位，不是永久 API；修改文件后应按符号重新搜索。
 - `flashinfer/flashinfer/...` 的重复目录分别是仓库根和 Python package，不是笔误。
-- `cache-dit/csrc/kernels/svdq/natitve/...` 的 `natitve` 是历史目录 typo。后续应单独重命名为 `native` 并同步全部引用，本次不扩大改动范围。
+- `cache-dit/csrc/kernels/svdq/native/...` 目录名此前拼写有误，已在后续提交中统一更正为 `native` 并同步全部引用；本文引用路径均已按新名更新。
 - FlashInfer 的 SM120 kernel 是 CuTe DSL Python 源，不代表 cache-dit 应引入 CuTe DSL 实现；这里只借鉴调度、barrier 和数据流，再用现有 CUDA/CuTe C++ 落地。
 - 所有性能候选仍需按第 8 节验证门实测；代码结构相似不能直接推出收益幅度。
