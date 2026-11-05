@@ -16,6 +16,9 @@ Pick one route before reading anything else; the rest of this file is only route
    (8 GPUs) extensions (hybrid CP+TP included). **Do NOT open Tier B/C unless the user explicitly
    asks to extend to 4/8 cards.**
    The GATE CHECK, the Hard rules and the §0.6 checklist below do not apply to this route.
+   量化类型与配置语义（fp8/int8/int4/nvfp4、svdq PTQ vs DQ、precision plan、regional、
+   `per_tensor_fallback`、observer）以 `cache-dit-quantization` 为准；本 route 只负责跑矩阵、
+   出加速比与 PSNR/SSIM，不负责解释量化后端行为。
 2. **Integrating a NEW model** — no `BlockAdapter`, no CLI example, new pipeline/transformer code
    → continue with the GATE CHECK and §0 below.
 3. **A measured speedup looks wrong, or choosing which optimizations can pay off before
@@ -26,6 +29,19 @@ Pick one route before reading anything else; the rest of this file is only route
    duration mask), the wav output path in the CLI, and the audio metrics + their noise floor — the
    image PSNR/SSIM gates below do **not** transfer. The rest of this file (GATE CHECK, phases) still
    applies — only route 1 skips them.
+
+## Related skills（跨 skill 路由）
+
+模型接完只是第一步；下面这些场景不要在本文里找答案：
+
+| 触发场景 | 去读 |
+|---|---|
+| 量化相关的模型测试与精度归因：`--quantize-type` 选哪个、precision plan / regional / `per_tensor_fallback`、svdq 选 PTQ 还是 DQ、observer 怎么定位掉精度的层、"量化掉多少精度"该归因到哪条路径 | `cache-dit-quantization` |
+| 模型里要新增或改动 CUDA 算子、算子注册与构建、从 nunchaku 等上游移植 kernel | `cache-dit-cuda-kernel`（迁移方法论在其 `references/operator-migration.md`） |
+| 发版本、构建 cu13 wheel、索引与安装验收 | `cache-dit-build-release` |
+| 只要 CUDA/PTX 细节、CUTLASS/CuTe C++ 模板、CuTe DSL Python、NCU 驱动的 kernel 优化 | `cuda-cpp-kernel` / `cutlass-cpp-kernel` / `cute-dsl-kernel` / `cuda-auto-tune` |
+
+边界：本 skill 管"模型怎么接、怎么验收"；量化配置与后端语义归 `cache-dit-quantization`，算子实现归 `cache-dit-cuda-kernel`，发布流程归 `cache-dit-build-release`。
 
 ## GATE CHECK
 

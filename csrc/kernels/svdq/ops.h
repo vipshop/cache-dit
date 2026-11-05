@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "torch.h"
-#include "natitve/zgemm.h"
+#include "native/zgemm.h"
 #include "cute/fp4/gemm_w4a4.h"
 
 namespace svdq::ops {

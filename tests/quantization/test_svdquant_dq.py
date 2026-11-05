@@ -657,7 +657,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "identity"
   assert args.svdq_calibrate_precision == "low"
-  assert args.svdq_runtime == "v1"
+  assert args.svdq_runtime is None
   assert args.svdq_quantize_device == "cuda"
   assert args.svdq_offload_quantized_layers_to_cpu is False
   assert args.svdq_defer_final_to_cuda is True
@@ -672,7 +672,7 @@ def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
   assert args.quantize_type == "svdq_nvfp4_r32_dq"
   assert args.svdq_smooth_strategy == "identity"
   assert args.svdq_calibrate_precision == "low"
-  assert args.svdq_runtime == "v1"
+  assert args.svdq_runtime is None
 
   args = maybe_postprocess_args(parser.parse_args(["--svdq-nvfp4-r128-dq"]))
   assert args.quantize
@@ -821,6 +821,41 @@ def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload
   assert args.layerwise_text_persistent_bins == 3
 
 
+def test_svdq_dq_cli_runtime_kernel_choices() -> None:
+  parser = get_args(parse=False)
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_int4_r32_dq",
+      "--svdq-smooth-strategy",
+      "weight_inv",
+      "--svdq-calib",
+      "high",
+      "--svdq-runtime",
+      "native",
+    ]))
+  assert args.quantize
+  assert args.quantize_type == "svdq_int4_r32_dq"
+  assert args.svdq_smooth_strategy == "weight_inv"
+  assert args.svdq_calibrate_precision == "high"
+  assert args.svdq_runtime == "native"
+
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-type",
+      "svdq_nvfp4_r32_dq",
+      "--svdq-runtime",
+      "cute",
+    ]))
+  assert args.svdq_runtime == "cute"
+
+  for deprecated in ("v1", "v2"):
+    with pytest.raises(SystemExit) as excinfo:
+      parser.parse_args(["--svdq-runtime", deprecated])
+    assert excinfo.value.code == 2
+
+
 def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
   parser = get_args(parse=False)
 
@@ -865,23 +900,6 @@ def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
   assert args.quantize_type == "svdq_int4_r32_dq"
   assert args.svdq_smooth_strategy == "few_shot"
   assert args.svdq_few_shot_relax_strategy == "stable_auto"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "weight_inv",
-      "--svdq-calib",
-      "high",
-      "--svdq-runtime",
-      "v2",
-    ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "weight_inv"
-  assert args.svdq_calibrate_precision == "high"
-  assert args.svdq_runtime == "v2"
 
   args = maybe_postprocess_args(
     parser.parse_args([
