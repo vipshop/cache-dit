@@ -148,6 +148,48 @@ def test_refresh_segment_cache_arms_the_hint_and_caps_warmup():
   pipe._refresh_segment_cache()
 
 
+def test_refresh_reads_the_manager_attached_to_the_transformer():
+  """The refresh must find the manager on the transformer even when the pipeline has no copy."""
+  import cache_dit
+  from cache_dit import DBCacheConfig
+  from cache_dit.models.pipelines.hy_nomas.transformer import NomasTransformer3DModel
+
+  pipe = _pipeline()
+  model = NomasTransformer3DModel(hidden_size=32,
+                                  num_attention_heads=2,
+                                  num_layers=2,
+                                  text_states_dim=16,
+                                  rope_dim_list=(4, 6, 6),
+                                  attention_backend="sdpa").eval().requires_grad_(False)
+  pipe.transformer = model
+  cache_dit.enable_cache(pipe,
+                         cache_config=DBCacheConfig(Fn_compute_blocks=2,
+                                                    Bn_compute_blocks=1,
+                                                    max_warmup_steps=8,
+                                                    num_inference_steps=8,
+                                                    enable_separate_cfg=False))
+  # cache-dit attaches a manager to the patched transformer as well as to the pipeline.
+  assert model.__dict__.get("_context_manager") is not None
+
+  class _Context:
+
+    def __init__(self):
+      self.cache_config = SimpleNamespace(max_warmup_steps=8,
+                                          force_refresh_step_hint=None,
+                                          force_refresh_step_policy="once")
+
+    def get_current_transformer_step(self):
+      return 3
+
+  context = _Context()
+  # Simulate a runtime that only tags the transformer, then read the effect back from the config.
+  model.__dict__["_context_manager"] = SimpleNamespace(get_context=lambda: context)
+  pipe.__dict__.pop("_context_manager", None)
+  pipe._refresh_segment_cache()
+  assert context.cache_config.force_refresh_step_hint == 4
+  assert context.cache_config.max_warmup_steps == 1
+
+
 def test_guidance_scale_must_be_one():
   pipe = _pipeline()
   with pytest.raises(ValueError, match="guidance_scale"):
