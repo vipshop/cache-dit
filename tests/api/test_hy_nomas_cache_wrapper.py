@@ -156,10 +156,20 @@ def test_collect_reports_missing_entries():
     model._block_list = original
 
 
-def test_set_parallel_rejects_context_parallel():
+def test_set_parallel_divides_attn_heads_by_tp_times_sp():
+  """`attn_heads` follows `tp * sp` while `heads` only follows `tp`.
+
+  The CP planner can only record the degree (the process group is created later, by
+  `_sync_context_parallel`), so this is the one place the two constants must diverge.
+  """
   model = _tiny_model()
-  with pytest.raises(NotImplementedError, match="not wired yet"):
-    model.set_parallel(NomasParallelInfo(sp_size=2))
+  model.set_parallel(NomasParallelInfo(tp_size=1, sp_size=2))
+  assert model.local_attention_heads == HEADS // 2
+  assert model.double_blocks[0].heads == HEADS
+  assert model.double_blocks[0].attn_heads == HEADS // 2
+  # `sp_size > 1` without a mesh is legal at planning time but must refuse to run.
+  with pytest.raises(RuntimeError, match="_cp_config"):
+    model._sync_context_parallel()
 
 
 def test_set_parallel_owns_head_metadata():
