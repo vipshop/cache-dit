@@ -223,7 +223,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 
 ## 🤖Agentic Workflows  
 
-Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tree/main/.github/skills/cache-dit-model-integration) SKILL to help users integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
+Cache-DiT provides a [model-integration](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-model-integration) SKILL to help users integrate new DiT pipelines into Cache-DiT, including **Cache, CP, TP, TE-P, VAE-P** and carefully designed test cases. Users can use it with Coding Agents, e.g, [GitHub Copilot](https://docs.github.com/en/copilot), [Claude Code](https://claude.ai), [Open Code](https://opencode.ai/). 
 
 ```bash
 gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-dirs
