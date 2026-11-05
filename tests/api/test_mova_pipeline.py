@@ -52,6 +52,25 @@ def test_uncached_run_accepts_both_modes():
   pipe._check_cache_compatible(1.0, True)
 
 
+def test_call_defaults_are_admissible():
+  """`pipe()` without size arguments must not be rejected by its own `check_inputs`.
+
+  The Wan VAE compresses spatially by 8 and the patch grid is 2x2, so both sides need to divide by 16.
+  `640x360` -- the geometry the checkpoint name suggests -- does not divide, which is exactly the trap
+  this test keeps out: the call defaults are the first thing a user without flags hits.
+  """
+
+  import inspect
+
+  parameters = inspect.signature(MOVAPipeline.__call__).parameters
+  height = parameters["height"].default
+  width = parameters["width"].default
+  num_frames = parameters["num_frames"].default
+  assert height % 16 == 0, f"default height {height} is not divisible by 16"
+  assert width % 16 == 0, f"default width {width} is not divisible by 16"
+  assert (num_frames - 1) % 4 == 0, f"default num_frames {num_frames} breaks the temporal stride"
+
+
 def test_resolve_dtypes_keeps_the_audio_vae_in_float32():
   """The DAC decoder is fp32; every other component follows the requested dtype."""
 

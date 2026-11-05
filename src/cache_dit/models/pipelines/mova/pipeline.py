@@ -505,7 +505,7 @@ class MOVAPipeline(DiffusionPipeline):
                prompt: Union[str, List[str]],
                image: Any,
                negative_prompt: Union[str, List[str]] = "",
-               height: int = 360,
+               height: int = 352,
                width: int = 640,
                num_frames: int = 193,
                video_fps: float = 24.0,
@@ -523,8 +523,10 @@ class MOVAPipeline(DiffusionPipeline):
     :param prompt: Text prompt.
     :param image: First frame (PIL image or a preprocessed tensor).
     :param negative_prompt: Negative prompt.
-    :param height: Request height.
-    :param width: Request width.
+    :param height: Request height; it must divide by 16, which is why the default is 352 and not the
+      360 that the checkpoint name suggests (640x360 would be rejected by :meth:`check_inputs`).
+    :param width: Request width. The defaults are the released script's 720x1280 downscaled to a
+      360p-class geometry (352x640); the released script itself defaults to 720x1280.
     :param num_frames: Request frame count (``num_frames - 1`` must divide by 4).
     :param video_fps: Request frame rate; also sets the audio duration.
     :param num_inference_steps: Denoising steps.
