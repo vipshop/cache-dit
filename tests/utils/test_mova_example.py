@@ -37,7 +37,7 @@ def test_example_is_registered():
 def test_env_path_mapping():
   """`MOVA_DIR` overrides the hub id with the local checkpoint root."""
 
-  assert _env_path_mapping["MOVA_DIR"] == "openmoss/MOVA-360p"
+  assert _env_path_mapping["MOVA_DIR"] == "OpenMOSS-Team/MOVA-360p"
 
 
 def test_cache_config_is_disabled_without_the_flag():

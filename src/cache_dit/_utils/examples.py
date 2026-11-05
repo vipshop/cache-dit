@@ -196,7 +196,7 @@ _env_path_mapping = {
   "LONGCAT_VIDEO_AVATAR_DIR": "meituan-longcat/LongCat-Video-Avatar-1.5",
   "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
   "MAGI2_DIR": "sand-ai/MAGI-2-preview",
-  "MOVA_DIR": "openmoss/MOVA-360p",
+  "MOVA_DIR": "OpenMOSS-Team/MOVA-360p",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -5235,7 +5235,7 @@ def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
     args=args,
     init_config=ExampleInitConfig(
       task_type=ExampleType.T2VA,
-      model_name_or_path=_path("openmoss/MOVA-360p", args),
+      model_name_or_path=_path("OpenMOSS-Team/MOVA-360p", args),
       pipeline_class=MOVAPipeline,
       post_init_hook=_mova_post_init_hook,
       extra_optimize_kwargs={"cache_config": _mova_cache_config(args, steps)},
