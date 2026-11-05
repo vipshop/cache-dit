@@ -174,7 +174,8 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
 - K-block 在 hybrid 上已无 spill，wait/math/sleeping 降约5%，但四个大 shape 平均仅0.12%（一个 shape 还 -0.23%），无明确 wall-clock 收益，不保留。
 - stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
-- 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB；TMA swizzle 与无 swizzle row-major overlay 不匹配。SFB G2R、LDS128、裸 LDSM、D/L1 G2R、手写 SW64 均已试：只有 D/L1 G2R 把冲突降到66，但 global/local 代价使延迟 121.1us（慢3.3%），不保留。除非用 canonical SW64 TMA atom + 匹配 LDSM，否则不要再试。
+- 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
+- FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
 - G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent CTA 慢4.4% 的旧结论来自全 TMA；hybrid 下 store_done 串行化机制仍在，未重测。旧 persistent/K-block/BN128 数据不能直接外推到 hybrid。
 - 下一步优先级：先解释 `16Kx8Kx8K` 下 native 反超；其次才是 canonical SW64 bank-conflict、A G2R 重复流量、去串行化的 persistent、FlashInfer benchmark。详见 `references/svdq-nvfp4-cute.md` §14。

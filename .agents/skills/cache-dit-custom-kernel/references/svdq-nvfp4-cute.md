@@ -321,22 +321,42 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 | 直接改 `SM75_U32x4_LDSM_N` + row-major | conflict 仍 737.9k，但从4-way变为16-way LDSM；118.3us | 无 swizzle 的 LDSM 更差，已回退 |
 | D/L1 G2R（移除 LoRA TMA/smem） | **conflict 737.9k→66**；global requests+31%、sectors+32%，stack8B/local 67k，121.1us | 冲突可消，但重复/非合并 global load 抵消收益，慢3.3%，已回退 |
 | 手写 SW64 composed layout + TMA | 编译通过但端到端数值不一致 | TMA descriptor 的 swizzle 与手写 layout 未对齐，已回退 |
+| **canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM** | **conflict 737.9k→483**；shared load -29%；M4096 三次116.704/116.320/116.960us（baseline 117.20），16K 2562.6 vs2573.3us；零 spill | **正确且保留**；BK64 fallback 用 SW32 atom |
 
 核心经验：
 
 1. **bank conflict 的绝对值不等于瓶颈。** 737.9k excessive wavefront 只占 shared wavefront 约10%；把冲突降到66 的版本反而慢3.3%，因为 LoRA G2R 的 global traffic 和 local spill 更贵。
 2. TMA 的 swizzle 只服务于匹配的 copy atom；LoRA overlay 为了保证与 A/B 字节级复用，使用了无 swizzle row-major 布局，因此标量 LDS 冲突是布局选择的结果，不是 TMA 失效。
 3. 想在保留 TMA 的前提下消冲突，必须使用 **canonical SW64 TMA atom + 匹配的 LDSM/copy 视图**；手写 `composition(swizzle, row-major)` 不足以让 TMA descriptor 与 consumer 视图一致。
-4. 该冲突暂不保留修复；当前 baseline 仍是 committed hybrid。若后续重启，优先参考 CUTLASS 的 canonical TMA SW64 布局构造，而不是再做 G2R 或仅换 copy atom。
+4. **canonical SW64 是正确解**：`tile_to_shape(UMMA::Layout_K_SW64_Atom<ElementLora>{}, (BM,rankTile,stages))` 不能加 `Step`；BK64 fallback 因 rankTile=16 必须改用 SW32。TMA descriptor 与 LDSM view 都由同一 canonical layout 派生后，数值正确、conflict 降到483、零 spill，M4096 约快0.45%、16K 约快0.42%。
 
 ## 14. 下一步优先级（2026-11-05）
 
 按当前证据排序，前一项没有结论前不要跳到后一项：
 
-1. **解释大 shape 下 native 反超。** 在 `16384x8192x8192` 上做 native/hybrid 的 NCU 对比，定位是 CTA 波次、L2 复用、A/SFA 重复 G2R load 还是 per-CTA TMA/barrier 固定成本导致 native 快 6.58%。产出必须给出具体 counter（shared/global/L2/stall/occupancy）和可验证假设。
-2. **只有在能同时满足 conflict 与 wall-clock 时才继续 bank conflict。** 使用 CUTLASS canonical SW64 TMA atom + 匹配 LDSM/copy 视图；验收要求 conflict 明显下降且 nsys 不慢于 baseline。不要再试 SFB G2R、裸 LDSM、仅改 CopyAtom 对齐参数或手写 `composition(swizzle,row-major)`。
-3. **降低 hybrid 的重复流量。** 优先优化 A G2R 在 N tile/ThrN 方向的重复 load，以及 producer v1 的分散 u32 写回；验收用 nsys + global sectors/L1/L2，而不是只看 producer 单 kernel。
+1. **解释大 shape 下 native 反超（未完成）。** 在 `16384x8192x8192` 上做 native/hybrid 的 NCU 对比，定位是 CTA 波次、L2 复用、A/SFA 重复 G2R load 还是 per-CTA TMA/barrier 固定成本导致 native 快 6.58%。产出必须给出具体 counter（shared/global/L2/stall/occupancy）和可验证假设。
+2. **canonical SW64 bank conflict（已完成）。** canonical `tile_to_shape(SW64 atom,...)` + LDSM 将 conflict 降到483并保留；BK64 fallback 用 SW32。不要重做 conflict 消除。
+3. **降低 hybrid 重复流量（部分完成，主路线受阻）。** A-only TMA 与 v1 pack 不兼容（rel_l2=1.30），producer coalesced 写回无收益（46.81→47.01us）。只有设计“v1 bytes 经 TMA/共享广播”的新方案才值得继续。
 4. **persistent 只在重新设计 output 生命周期后重测。** 当前 `store_done` 让同一 CTA 的下一 tile 等上一 tile 的 TMA store，和 A 走 G2R 无关；没有去串行化设计就不要重复 110-CTA 版本。
-5. **最后再做 FlashInfer CuTeDSL 同 shape benchmark。** 目标是对照 hybrid 的 GEMM-only 上限，不把 JIT/布局移植成本混进 kernel 结论；若环境要求 `cutlass-dsl[cu13]` 与当前 torch2.11 不兼容，记录为环境阻塞。
+5. **FlashInfer CuTeDSL benchmark（已完成，慢）。** 四 shape 比 native 慢9%–15%，不移植；只保留为外部参照。
 
-不要重复的路线：K-block（hybrid 四 shape 平均仅0.12%）、light producer、S2/S4 stages、BN128 小 tile、全 TMA 回退、D/L1 G2R（conflict 可消但慢3.3%）。
+不要重复的路线：K-block（hybrid 四 shape 平均仅0.12%）、light producer、S2/S4 stages、BN128 小 tile、全 TMA 回退、D/L1 G2R（conflict 可消但慢3.3%）。canonical SW64 已完成，不再重做 conflict 消除。
+
+## 16. A-only TMA 与 producer coalesced 写回（2026-11-05）
+
+- **A-only TMA 不可行**：TMA 只能搬 standard row-major，当前 producer 输出 v1 fragment pack；TMA 后直接 LDSM 得到 rel_l2=1.30。除非 producer 额外输出一份 standard A（增加写带宽/内存），否则不能用 TMA 去掉 A 的重复 G2R load。
+- **producer coalesced 写回无收益**：把每 warp 的 32 行×K64 qact/SFA 先在 smem 重组，再每 lane 写连续32B/4B。M4096 producer op：baseline 三次 median46.81us，候选47.01us；M1024 候选约慢1%。分散4B store 不是瓶颈，未保留。候选在 `.tmp/svdq-nvfp4-cute/g2r-recovered/quantize_w4a4_coalesced_candidate.cu`。
+
+
+## 15. FlashInfer CuTeDSL 同 shape benchmark（2026-11-05）
+
+条件：FlashInfer 源码通过 `PYTHONPATH=/workspace/dev/vipshop/flashinfer` 导入，`mm_nvfp4_svdquant(..., backend="cute-dsl")`，与 native/hybrid 使用同一随机输入、rank=32、CUDA Event median（20 iter）。FlashInfer 使用自己的 standard row-major `nvfp4_quantize_smooth` 输出和 CuTe standard weight pack，因此不跨量化口径比较 rel_l2；kernel 输出 finite。JIT 编译已完成，不计入计时。
+
+| shape | native | hybrid | FlashInfer | FlashInfer / native |
+|---|---:|---:|---:|---:|
+| 8192x3072x3072 | 216.5us | 219.6us | 251.5us | 0.861x |
+| 4096x6144x3072 | 216.9us | 218.2us | 252.1us | 0.860x |
+| 8192x6144x3072 | 401.6us | 430.8us | 442.9us | 0.907x |
+| 16384x8192x8192 | 2354.6us | 2578.6us | 2767.6us | 0.851x |
+
+结论：FlashInfer fused CuTeDSL kernel 在 SM120 上不比当前 native/hybrid 快，慢约 9%–15%；其默认 tile/plan 不是这个 shape 的优势配置。暂不把 kernel 复制进 cache-dit，也不以它作为后续优化目标；保留为外部上限参照。JIT 只约 1s，环境本身不是阻塞项。
