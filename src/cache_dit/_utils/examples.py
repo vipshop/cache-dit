@@ -5486,10 +5486,14 @@ def pika_h3_flex_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
   the `t2va` / `fl2va` weights. References are consumed in the order they are given; the generated
   geometry still comes from `height` / `width`.
 
+  Every video reference has to run 2 to 15 seconds (the video durations and the standalone audio
+  durations each sum to at most 15 seconds as well), so pass a clip that long through
+  `--reference-video-path`. The bundled MiniMax-H3 demo clip is 1.5 s and would be rejected.
+
   :param args: CLI arguments.
   :returns: The Pika H3 Flex ref2va example.
   """
-  from ..models.pipelines.pika_h3_flex import PikaH3FlexImageReference, PikaH3FlexVideoReference
+  from ..models.pipelines.pika_h3_flex import PikaH3FlexImageReference
 
   example = _pika_h3_flex_example(args, workflow="ref2va", task_type=ExampleType.REF2VA)
   input_data = _pika_h3_flex_input_data(
@@ -5505,9 +5509,10 @@ def pika_h3_flex_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
   if not any(
       getattr(args, attr, None)
       for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
+    # Image only: the bundled MiniMax-H3 demo clip is 1.5 s, below this model's 2 s floor, so using it
+    # by default would fail the reference validation only after the 62 GiB `transformer_ref` load.
     input_data.set_references([
       PikaH3FlexImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
-      PikaH3FlexVideoReference.from_file(_minimax_h3_demo_asset("reference_video.mp4")),
     ])
   example.input_data = input_data
   return example
