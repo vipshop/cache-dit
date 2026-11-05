@@ -15,6 +15,7 @@ Usage:
 """
 
 import os
+import socket
 
 import pytest
 import torch
@@ -30,7 +31,17 @@ _SIDE = 2
 _IN_CHANNELS = 32
 _CAPACITY = 64
 _REL_TOL = 1e-6
-_PORT = 29611
+
+
+def _free_port() -> int:
+  """Bind port 0 and hand the kernel's choice to the spawn.
+
+  A hardcoded rendezvous port collides whenever a previous case's spawned children still hold it,
+  which is exactly what turned the full `tests/parallelism` run flaky.
+  """
+  with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+    probe.bind(("127.0.0.1", 0))
+    return probe.getsockname()[1]
 
 
 def _build() -> "torch.nn.Module":
@@ -81,9 +92,9 @@ def _forward(model, inputs, device):
   return out.float().cpu()
 
 
-def _run_rank(rank: int, world: int) -> None:
+def _run_rank(rank: int, world: int, port: int) -> None:
   os.environ["MASTER_ADDR"] = "127.0.0.1"
-  os.environ["MASTER_PORT"] = str(_PORT)
+  os.environ["MASTER_PORT"] = str(port)
   torch.cuda.set_device(rank)
   torch.distributed.init_process_group("nccl", rank=rank, world_size=world)
   device = f"cuda:{rank}"
@@ -126,4 +137,4 @@ def _run_rank(rank: int, world: int) -> None:
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 def test_hy_nomas_tp_matches_single_rank():
-  mp.spawn(_run_rank, args=(2, ), nprocs=2, join=True)
+  mp.spawn(_run_rank, args=(2, _free_port()), nprocs=2, join=True)
