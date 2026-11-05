@@ -1,6 +1,6 @@
 # Cache-DiT CUDA Kernel 优化 RFC
 
-> 状态：Active ｜ 日期：2026-11-04
+> 状态：Active ｜ 日期：2026-11-05
 > 关联：[SKILL.md](../SKILL.md)、[SVDQ 性能记录](svdq-nvfp4-cute.md)。
 
 ## 1. 验收目标
@@ -21,7 +21,7 @@
 | CDK-1 | 独立 CuTe producer 与工作流解耦 | 已完成 | 无旧 producer、v1 scratch、G2R 反解或 finalize |
 | CDK-2 | Producer kernel 性能追平/略优 | 进行中 | 当前 median 约慢 0.8%，需继续稳定复测 |
 | CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前性能与数值，利用 TMA/WS/多级流水 |
-| CDK-4 | GEMM 稳态快于 native 至少 5% | 待开始 | 当前 median 约慢 16.3% |
+| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | stage/tile 扫描已完成；最佳 128x256/BK128/S2 仍慢 15.89% |
 | CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 待开始 | 多次 FLUX native/CuTe 对照 |
 | CDK-6 | 可重复 ccache 构建链路 | 已完成 | `build_fast.sh` editable + nvcc shim 验证通过 |
 
@@ -32,7 +32,7 @@
 - [x] CDK-1：独立 CuTe producer + 全 TMA A/B/SFA/SFB GEMM；删除 `lora_act_to_bf16` 和 forward 中旧 native 依赖。
 - [ ] CDK-2：producer 稳态性能追平/略优。当前最终 nsys median 为 CuTe 32.192us、native 31.936us。
 - [ ] CDK-3：将手写 `mma.sync/ldmatrix` producer 迁移为 CuTe atoms；不得恢复旧 pack 或降低当前性能。
-- [ ] CDK-4：GEMM 快于 native 至少 5%。当前最终 nsys median 为 CuTe 133.823us、native 115.135us；按延迟降低 5% 计算，同条件目标约 109.4us 或更低。
+- [ ] CDK-4：GEMM 快于 native 至少 5%。当前最佳 `128x256/BK128/S2` 为 133.76µs，native 115.10µs；目标 ≤109.35µs。stages/tile 扫描已完成，均未达到目标。
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。达标前 NVFP4 默认 runtime 保持 native。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 
@@ -49,10 +49,13 @@
 按单个假设逐项验证：
 
 1. **Persistent CTA 调度**：减少小 M/波次尾损和重复 CTA 初始化；需核对每 tile 的 stage phase、descriptor 生命周期和 output overlay 重置。
-2. **Stages/smem 复用调优**：扫描 stage 数和 BK/BN 组合；NCU 检查 TMA 供给、consumer wait、smem 占用和 occupancy。不得破坏 A/B 与 D/L1/output overlay 的 empty-stage barrier。
-3. **独立 consumer WG**：考虑 1 个 producer WG + 2 个 consumer WG，将 NVFP4 与 BF16 LoRA MMA 分给不同 WG。必须解决共享 FP32 accumulator 或跨 WG 归约成本；先做原型测量，不能直接作为主路径。
-4. **指令与装载路径**：结合 SASS/PC sampling 检查 LDSM、SF copy、MMA 依赖链和 epilogue，不凭理论 TFLOPS 推断收益。
-5. **Descriptor/调度开销**：使用 nsys 区分 kernel 本体与 host/descriptor 成本；kernel-only 优化不能用 host 缓存收益替代。
+2. **Stages/smem 复用调优**：已完成 stages 1/2/3/4 与 128x128/128x256/256x128/256x256 扫描。最佳 `128x256/BK128/S2` = 133.76µs，native 115.10µs，仍慢 15.89%；256x128 8-warp 数值错 4.3%，16-warp 编译失败；256x256 被 99KiB 资源门禁拒绝。**结论：stages/smem 不是主因，除非有新 NCU 证据，否则不要再次盲目重复扫描。**
+3. **Direct g2r + pack 重排**：已尝试并回退。独立 `gemm_w4a4_direct_kernel` 不用 TMA/smem，但数值始终错误；根因是 native pack 按 MMA fragment 直接排布，而 CuTe producer 输出 standard row-major E2M1，二者不匹配。继续此路线前必须先做 fragment-aligned pack 或把 CuTe fragment reinterpret 成 native `uint4` 布局。
+4. **独立 consumer WG**：考虑 1 个 producer WG + 2 个 consumer WG，将 NVFP4 与 BF16 LoRA MMA 分给不同 WG。必须解决共享 FP32 accumulator 或跨 WG 归约成本；先做原型测量，不能直接作为主路径。
+5. **指令与装载路径**：结合 SASS/PC sampling 检查 LDSM、SF copy、MMA 依赖链和 epilogue，不凭理论 TFLOPS 推断收益。
+6. **Descriptor/调度开销**：使用 nsys 区分 kernel 本体与 host/descriptor 成本；kernel-only 优化不能用 host 缓存收益替代。
+
+FlashInfer 参考调研已完成：其方形 tile、2 物理 buffer、仅 warp0 发 TMA 的思路仅作参考，未直接采纳。
 
 GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验收。
 

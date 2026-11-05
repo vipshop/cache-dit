@@ -115,10 +115,12 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 ## 6. 当前性能结论与边界
 
-截至 2026-11-04，SM120、M=4096/N=K=3072/rank=32：
+截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
 - producer 已基本追平 native，但最终稳态 median 仍略慢约 0.8%；继续保留优化项。
 - CuTe GEMM 比 native 慢约 16%，尚未达到“快至少 5%”目标。
+- stages/tile 扫描已完成：最佳 `128x256/BK128/S2` 仍慢 15.89%；**除非有新 NCU 证据，否则不要再次盲目扫描 stages/smem**。
+- direct g2r 原型已回退：native pack 按 MMA fragment 直接排布，CuTe standard row-major pack 不匹配；继续该路线前必须先做 fragment-aligned pack。
 - NVFP4 默认 runtime 因而保持 native；不能将 producer 进展描述成完整工作流已达标。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
