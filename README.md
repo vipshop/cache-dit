@@ -205,6 +205,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
+| **Video** | Pika H3 Flex (T2VA/FL2VA/REF2VA) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Pika-Labs/Pika-H3-Flex) | 3 | ✔️/✔️/✔️/✔️ |
 | **Video** | SANA-Video 2.0 (T2V/TI2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
 | **Video** | LingBot-Video Dense 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
 | **Video** | MAGI-2 Preview (T2VA/I2VA) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/sand-ai/MAGI-2-preview) | 2 | ✖️/✔️/✖️/✔️ |
