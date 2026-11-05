@@ -22,12 +22,6 @@ Use this skill when you need to:
 - debug CUTLASS template errors, layout mismatches, or schedule/configuration issues
 - review a rewrite plan from an existing C++ kernel to another CUTLASS- or CuTe-based implementation
 
-Do not use this skill for:
-
-- CuTe DSL Python kernel authoring as the primary task; use `cute-dsl-kernel`
-- generic CUDA/PTX debugging with no CUTLASS or CuTe angle; use `cuda-cpp-kernel`
-- cache-dit integration plumbing by itself; pair with `cache-dit-custom-kernel`
-
 ## Scope Split
 
 This skill is the main home for:

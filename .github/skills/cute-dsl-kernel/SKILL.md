@@ -21,12 +21,6 @@ Use this skill when you need to:
 - use CuTe DSL examples from the workspace CUTLASS checkout as reference material
 - debug CuTe DSL compilation, runtime behavior, layout issues, or integration problems
 
-Do not use this skill for:
-
-- CUTLASS or CuTe C++ template work as the primary task; use `cutlass-cpp-kernel`
-- generic CUDA/PTX documentation lookup with no CuTe DSL angle; use `cuda-cpp-kernel`
-- repository integration plumbing by itself; pair with `cache-dit-custom-kernel`
-
 ## Core Rule
 
 Read the relevant API reference files before writing kernel code.

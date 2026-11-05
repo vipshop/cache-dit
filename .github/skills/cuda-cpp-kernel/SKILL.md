@@ -22,12 +22,6 @@ Use this skill when you need to:
 - investigate shared memory bank conflicts, memory coalescing, occupancy, register pressure, async copy, TMA, or cluster behavior
 - compare a custom operator or kernel against a PyTorch baseline for correctness or performance
 
-Do not use this skill for:
-
-- CUTLASS or CuTe template design as the primary task; use `cutlass-cpp-kernel`
-- CuTe DSL Python kernel authoring as the primary task; use `cute-dsl-kernel`
-- cache-dit operator registration, packaging, or public API migration work by itself; pair with `cache-dit-custom-kernel`
-
 ## Reference Style Rule
 
 Use skill-local relative paths for bundled references, for example:
