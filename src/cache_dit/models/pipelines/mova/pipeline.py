@@ -171,6 +171,28 @@ class MOVAPipeline(DiffusionPipeline):
     self.audio_vae_scale_factor = int(self.audio_vae.hop_length)
     self.audio_sample_rate = int(self.audio_vae.sample_rate)
 
+  @property
+  def vae(self) -> AutoencoderKLWan:
+    """The **video** VAE, under the diffusers component name.
+
+    Everything outside the pipeline (`--parallel-vae`, `--compile-vae`, `--vae-tiling`, and
+    ``from_pretrained(vae=...)`` above) addresses the VAE as ``pipe.vae``. Without this alias those
+    flags log "no VAE found" and silently do nothing on MOVA.
+
+    The audio decoder is deliberately not exposed: :class:`~.dac_vae.MovaAudioDAC` has no
+    registration in `cache_dit.distributed.autoencoders.planners`, so it can only decode on a single
+    rank (or be replicated) — aliasing it here would advertise parallelism that does not exist.
+
+    Note that `--parallel-vae` still fails on MOVA, but it now fails *inside* the shared
+    `AutoencoderKLWanDataParallelismPlanner`: its patched `tiled_decode` relays p2p messages in an
+    order that leaves the second rank reading a stale buffer (`recv_shape` returns garbage integers).
+    That is a Wan-VAE planner bug, not a MOVA wiring gap, so it is reported rather than worked around.
+
+    :returns: The video VAE.
+    """
+
+    return self.video_vae
+
   @classmethod
   def from_pretrained(cls,
                       pretrained_model_name_or_path,
