@@ -1,6 +1,6 @@
 # SVDQ NVFP4 CuTe 重写与性能记录
 
-> 日期：2026-11-04。代码路径均相对 cache-dit 仓库根目录。
+> 日期：2026-11-05。代码路径均相对 cache-dit 仓库根目录。
 > 本文记录当前实现、有效/无效尝试和测量边界；未来工作见 `rfc-cuda-optimizations.md`。
 
 ## 1. 最终工作流结构
@@ -72,6 +72,21 @@
 
 这些记录是已证伪清单；重新尝试前必须提出新的瓶颈证据。
 
+## 4.1 GEMM stages/tile 扫描结论（2026-11-04）
+
+条件：SM120、M=4096、N=K=3072、rank=32，三次独立 nsys。
+
+- 最佳配置 `128x256/BK128/S2`：133.76µs，native 115.10µs，仍慢 **15.89%**。
+- S3：134.26µs；S1/S4 更慢。**stages 不是主因**。
+- 256x128 8-warp：数值错 4.3%，已回退。
+- 256x128 16-warp：TiledCopy 编译失败，已移除。
+- 256x256：输出 staging 131072B > 99KiB，被资源门禁拒绝。
+- light producer 双 buffer：134.8µs，无收益。
+- SF copy 向量化、epilogue 无 scale/bias 快路径：数值正确但无性能收益。
+- NCU 归因：tensor 指令量与 native 相同；shared 指令 2.65M vs native 0.295M，**9 倍差距**；主 stall 为 math_pipe_throttle 与 wait。
+
+**结论**：不要在无新 NCU 证据时再次盲目扫描 stages/smem 或重复 256x128/256x256；下一轮优先考虑 persistent CTA 或 direct g2r + pack 重排。
+
 ## 5. 当前限制与优化线索
 
 ### Producer
@@ -84,9 +99,21 @@
 ### GEMM
 
 - 当前 GEMM 是比 producer 更大的差距来源。
-- 后续候选：persistent CTA、stage 数扫描、smem/overlay 生命周期优化、NVFP4 与 BF16 LoRA 分属不同 consumer WG。
+- stages/tile 扫描已完成，结论见 §4.1；**不要再次盲目扫描 stages/smem**。
+- 后续候选按优先级：persistent CTA、direct g2r + pack 重排、NVFP4 与 BF16 LoRA 分属不同 consumer WG。
 - 当前为 1 个 TMA producer WG + 8 个 consumer warps。若改为 1 producer WG + 2 个独立 consumer WG，必须处理两套 MMA 的 FP32 累加/归约，不能假定调度拆分天然更快。
 - 源码 `gemm_w4a4.cuh` 已记录对应 TODO。
+
+### Direct g2r 实验现状（2026-11-05，已回退）
+
+- 已尝试独立 `gemm_w4a4_direct_kernel`：不用 TMA/smem，A/B/SFA/SFB/LoRA 直接 gmem→register，主循环双 buffer。
+- 数值始终错误；`AutoVectorizingCopy`、`UniversalCopy`、自定义 `SubbyteCopy` 均不能修复。
+- 根因不是 copy atom，而是 **pack 布局不匹配**：
+  - native pack 按 MMA fragment 直接排布，每个 `uint4` 就是一个 m16n8k64 fragment；
+  - CuTe producer 输出 standard row-major E2M1，适合 TMA，不适合 direct g2r。
+- 256x128 8-warp direct 变体同样数值错误；问题与 tile 无关。
+- 代码已回退；实验补丁保存在 `.tmp/svdq-nvfp4-cute/gemm-tune/abandoned/g2r_direct_experiment.patch`。
+- 下次继续 direct 路线时，必须先解决 fragment-aligned pack 或把 CuTe fragment reinterpret 成 native `uint4` 布局，否则不要重复同一实验。
 
 ### 默认 runtime
 
