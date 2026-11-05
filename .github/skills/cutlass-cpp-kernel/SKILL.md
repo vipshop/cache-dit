@@ -22,12 +22,6 @@ Use this skill when you need to:
 - debug CUTLASS template errors, layout mismatches, or schedule/configuration issues
 - review a rewrite plan from an existing C++ kernel to another CUTLASS- or CuTe-based implementation
 
-Do not use this skill for:
-
-- CuTe DSL Python kernel authoring as the primary task; use `cute-dsl-kernel`
-- generic CUDA/PTX debugging with no CUTLASS or CuTe angle; use `cuda-cpp-kernel`
-- cache-dit integration plumbing by itself; pair with `cache-dit-cuda-kernel`
-
 ## Scope Split
 
 This skill is the main home for:
@@ -130,7 +124,7 @@ Before editing code, answer these questions:
 
 If the kernel uses shared memory, async-copy pipelines, TMA-like staging, or multi-stage buffering, explicitly audit synchronization before blaming layout algebra or MMA semantics. When only some shapes, stage counts, or schedule variants fail, prioritize checking barrier placement, stage-slot reuse, and predicate guards for partial tiles.
 
-If the task becomes repository integration work, move that part to `cache-dit-cuda-kernel` (`references/operator-migration.md`) and keep this skill focused on kernel structure and source study.
+If the task becomes repository integration work, move that part to `cache-dit-custom-kernel` (`references/operator-migration.md`) and keep this skill focused on kernel structure and source study.
 
 For architecture-specific bottlenecks or Nsight interpretation questions, use the bundled optimization guides as supporting reference material instead of assuming the same diagnosis applies across Ada, Hopper, and Blackwell.
 

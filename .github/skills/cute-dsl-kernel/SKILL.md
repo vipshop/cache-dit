@@ -21,12 +21,6 @@ Use this skill when you need to:
 - use CuTe DSL examples from the workspace CUTLASS checkout as reference material
 - debug CuTe DSL compilation, runtime behavior, layout issues, or integration problems
 
-Do not use this skill for:
-
-- CUTLASS or CuTe C++ template work as the primary task; use `cutlass-cpp-kernel`
-- generic CUDA/PTX documentation lookup with no CuTe DSL angle; use `cuda-cpp-kernel`
-- repository integration plumbing by itself; pair with `cache-dit-cuda-kernel`
-
 ## Core Rule
 
 Read the relevant API reference files before writing kernel code.
@@ -170,7 +164,7 @@ For cache-dit or other repositories:
 1. preserve the external operator contract first
 2. keep the integration layer explicit rather than burying it inside the kernel definition
 3. document any generated artifact layout, launcher assumptions, or runtime dependencies
-4. if repository-level registration or packaging changes are needed, pair this skill with `cache-dit-cuda-kernel` (`references/operator-migration.md`)
+4. if repository-level registration or packaging changes are needed, pair this skill with `cache-dit-custom-kernel` (`references/operator-migration.md`)
 
 ## Rewrite Guidance
 

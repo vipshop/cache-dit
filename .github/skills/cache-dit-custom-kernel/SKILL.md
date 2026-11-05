@@ -1,15 +1,15 @@
 ---
-name: cache-dit-cuda-kernel
-description: 'This skill should be used when adding, building, reviewing, profiling, or optimizing any Cache-DiT CUDA/CuTe C++ operator family — SVDQ INT4/NVFP4 producers, fused LoRA, GEMM, CuTe rewrite, native/cute dispatch, SmoothQuant outlier migration and low-rank residual quantization — plus the full CUDA -> pybind -> Python -> torch.library -> internal-call chain, porting operators from nunchaku or deepcompressor, reproducible ccache builds, and layered validation.'
+name: cache-dit-custom-kernel
+description: 'Use when adding, building, reviewing, profiling, or optimizing a Cache-DiT custom operator — SVDQ INT4/NVFP4 producers, fused LoRA, GEMM, CuTe rewrite, native/cute dispatch, SmoothQuant outlier migration and low-rank residual quantization — plus the full CUDA -> pybind -> Python -> torch.library -> internal-call chain, ports from nunchaku or deepcompressor, reproducible ccache builds, and layered validation. Every operator in the repo today is a CUDA/CuTe C++ kernel; CuTe DSL is a possible future backend, Triton is explicitly not supported.'
 argument-hint: 'Describe the operator family or kernel, the target repo/extension, dtypes and architectures, and whether this is a new operator, a port, or a performance change.'
 user-invocable: true
 ---
 
-# Cache-DiT CUDA 算子开发与优化
+# Cache-DiT 自定义算子开发与优化
 
 ## 使用范围与路由
 
-本 skill 处理 `csrc/kernels/` 下**所有**算子族（现有 `comm`、`attn`、`svdq`）的接入、移植、构建、profile 与优化。读完本节再动手：
+本 skill 处理 `csrc/kernels/` 下**所有**算子族（现有 `comm`、`attn`、`svdq`，目前全部是 CUDA/CuTe C++ kernel）的接入、移植、构建、profile 与优化。读完本节再动手：
 
 | 任务 | 判据 | 读哪里 |
 |---|---|---|
@@ -27,9 +27,9 @@ SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
 
 原理路由：先读 `references/svdquant-mathematics.md` 的 §1–4 建立记号并复核推导与成立条件，需要落到当前实现时读 §5，评估 TurboQuant / DVD-Quant 是否可借鉴时读 §6–8；性能结论与数值契约仍以 `references/svdq-nvfp4-cute.md` 为准。
 
-配合 `cuda-auto-tune`（NCU 驱动迭代优化）、`cuda-cpp-kernel`（CUDA/PTX/架构细节）、`cutlass-cpp-kernel`（CUTLASS/CuTe C++ 模板）使用；CuTe DSL Python（`@cute.kernel`）走 `cute-dsl-kernel`，本仓不维护 CuTe DSL 算子。NCU 优化必须先 profile 后修改，再复采验证。
+配合 `cuda-auto-tune`（NCU 驱动迭代优化）、`cuda-cpp-kernel`（CUDA/PTX/架构细节）、`cutlass-cpp-kernel`（CUTLASS/CuTe C++ 模板）、`cute-dsl-kernel`（CuTe DSL Python kernel 编写）使用。本仓目前没有 CuTe DSL 算子；将来引入时，kernel 编写走 `cute-dsl-kernel`，接入、注册与构建仍走本 skill。NCU 优化必须先 profile 后修改，再复采验证。
 
-**后端政策（硬约束）**：cache-dit 长期只维护 CUDA 算子，不引入 Triton / CuTe DSL 实现，不恢复 `kernels/backend.py` 之类后端选择层。若上游只有 Triton 实现，读算法后用 CUDA 重写。细则与反模式见 `references/operator-migration.md` §1、§9。
+**算子形态现状与后端边界**：仓库当前**只有纯 CUDA/CuTe C++ kernel**（`csrc/kernels/`），没有 Triton，也没有 CuTe DSL 算子。后续**可能**引入 CuTe DSL（`@cute.kernel`）算子，但必须先补齐 Python 侧注册、扩展构建与打包这条链再落地；**Triton 明确不支持**，不要新增，也不要恢复 `kernels/backend.py` 之类后端选择层。上游只有 Triton 实现时，读算法后用 CUDA 重写。细则与反模式见 `references/operator-migration.md` §1、§9。
 
 ## 1. 分层架构（所有算子族共用）
 

@@ -1,6 +1,6 @@
 # 从上游仓库移植算子（operator migration）
 
-> 本文原为独立 skill `cache-dit-operator-migration`，2026-11-05 合并进 `cache-dit-cuda-kernel`。
+> 本文原为独立 skill `cache-dit-operator-migration`，2026-11-05 合并进 `cache-dit-custom-kernel`。
 > 读它之前先读 `kernel-integration-chain.md`（本仓的层级契约、模板与构建触点）；本文只补"从别的仓库搬算子"这一层的判断与流程。
 
 ## 何时读本文
@@ -14,13 +14,6 @@
 - 为刚移植的算子设计 cache-dit 的公开封装
 - 审查一份移植计划，判断它是"想清楚了"还是"机械照搬"
 
-不要用本文的场景：
-
-- 与算子/内核无关的普通模型接入
-- 与 kernel、扩展都无关的纯 Python 功能开发
-- Triton 或 CuTe DSL 算子开发——本仓不维护这两类
-- 无脑"把上游 `csrc` 整段拷进来"的执行
-
 ## 目标
 
 把一个算子或 kernel 家族搬进 cache-dit 时，要同时满足：
@@ -30,23 +23,20 @@
 - 可选 native 扩展缺失时仍然能安全 import
 - 有分层验证，而不是一个 smoke test 就宣布完成
 
-## 1. 后端政策：只维护 CUDA
+## 1. 算子形态：当前只有 CUDA，Triton 不支持，CuTe DSL 可能在未来引入
 
-这是长期的硬约束，不是某个任务的偏好。
+现状（2026-11）：仓库里长期存在的算子全部是 `csrc/kernels/` 下的 CUDA/CuTe C++ kernel，通过 `cache_dit_cuda_ops` 命名空间的 `torch.library` schema 暴露；没有 Triton 算子，也没有 CuTe DSL 算子。
 
-cache-dit **只维护 CUDA 算子**。长期留在仓库里的算子都是 `csrc/kernels/` 下的 CUDA kernel，通过 `cache_dit_cuda_ops` 命名空间里的 `torch.library` schema 暴露。
+边界：
 
-因此：
+1. **Triton：明确不支持。** 不要往 cache-dit 里加 Triton 算子，不做快速路径、不做可移植兜底、不做"先给 A100 用"、不做临时方案。上游只有 Triton 实现时，读它拿算法，再用 CUDA 重写——Triton 只当伪代码，永远不要当目标语言。
+2. **CuTe DSL：当前没有，但允许将来引入。** 如果某个 kernel 用 CuTe DSL（`@cute.kernel`）明显更合适，可以规划引入；但要先补齐 Python 侧注册（`torch.library` 的 schema/impl/fake，device key 仍是 `"CUDA"`）、扩展构建与打包、错误信息这条链，并写清它与现有 C++ 扩展的共存方式。不要以"顺便加个后端"的方式混进现有扩展。
+3. **不要重建后端选择层。** `kernels/backend.py`、`kernels/ops.py`、`KernelBackend` 枚举以及 `_resolve_backend` / `_select_*_backend` 都已删除，`test_ops_dispatch.py` 断言它们不会回来。多实现若真要共存，由调用点显式选择（像 SVDQ 的 `runtime_kernel=native|cute`），不要回到隐式分派表。
+4. **不要复活旧目录。** `src/cache_dit/kernels/{triton,cutedsl}/` 已被删除，`tests/kernels/test_ops_dispatch.py` 守着它们不回来；引入 CuTe DSL 时按届时的接入方案新建结构，而不是重建旧树。
 
-1. 不要往 cache-dit 里加 Triton 或 CuTe DSL 算子。不做快速路径，不做可移植兜底，不做"先给 A100 用"，也不做临时方案。
-2. 不要重建 `src/cache_dit/kernels/triton/`、`src/cache_dit/kernels/cutedsl/` 或任何按后端拆分的子包。这些树已被删除，且由回归守卫盯着，见 `tests/kernels/test_ops_dispatch.py`。
-3. 不要重新引入后端选择层。`kernels/backend.py`、`kernels/ops.py`、`KernelBackend` 枚举以及 `_resolve_backend` / `_select_*_backend` 都已删除，`test_ops_dispatch.py` 断言它们不会回来。单一 CUDA 路径 + 清晰的错误信息，取代原来的分派表。
-4. 如果上游只有 Triton 实现，读它拿算法，然后用 CUDA 重写 kernel。把 Triton 当伪代码，永远不要当目标语言。
-5. 如果有人要 Triton 或 CuTe DSL 支持，明确说明维护政策排除了它们，并给出 CUDA 路线。
+理由是维护成本：多套并行后端 = 多套注册层 + 多套 fake 注册路径 + 多套构建故事。只有在收益明确（例如某个 kernel 用 CuTe DSL 能显著缩短实现或拿到性能）时才值得增开一条，并且要一次把注册/构建/验收补齐。
 
-理由是维护成本：三套并行后端 = 三套注册层 + 三套 fake 注册路径 + 三套构建故事，收益抵不过成本，而发布 wheel 里只有 CUDA 路径。
-
-仓外独立的 kernel 工作请用 `triton-kernel` 或 `cute-dsl-kernel`，不要把那些工作流带进本仓。
+仓外独立的 kernel 工作请用 `triton-kernel` / `cute-dsl-kernel`，不要把那些工作流整体带进本仓。
 
 ## 2. 核心规则
 
@@ -252,15 +242,20 @@ from ._comm import fp8_comm_per_token_quant
 
 ## 9. 反模式
 
-### 不要加 Triton 或 CuTe DSL 算子
+### 不要加 Triton 算子
 
 坏：把 Triton kernel 原样搬进来，或以"可移植性"为名复活 `kernels/triton/`。
-好：把算法重写成 `csrc/kernels/<domain>/` 下的 CUDA kernel。
+好：把算法重写成 `csrc/kernels/<domain>/` 下的 CUDA kernel；Triton 只当伪代码。
+
+### 不要"顺便"塞进一个 CuTe DSL 实现
+
+坏：在既有的 C++ 扩展里顺手加一个 CuTe DSL kernel，注册、构建、错误处理和测试都没跟上，只在中途或收尾补一句说明。
+好：按 §1 第 2 条走一次完整接入——`torch.library` 的 schema/impl/fake、扩展构建与打包、可用性门禁与错误信息、分层测试都补齐，并写清与现有 C++ 扩展的共存方式。
 
 ### 不要恢复后端分派层
 
 坏：新增 `kernels/backend.py`、`KernelBackend` 枚举或 `_resolve_backend` 来在多份实现间切换。
-好：单一 CUDA 路径 + 一个 `torch.library` schema + 扩展缺失时点名构建命令的 `RuntimeError`。
+好：由调用点显式选择实现（如 SVDQ 的 `runtime_kernel=native|cute`），扩展缺失时抛点名构建命令的 `RuntimeError`。
 
 ### 不要机械镜像上游布局
 
@@ -317,7 +312,7 @@ comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现�
 - native 源文件分别落在 `csrc/kernels/comm/` 与 `csrc/kernels/attn/`
 - 每族通过自己的 pybind TU 注册：FP8 comm 是 `cache_dit._C_comm`，attention 状态合并是 `cache_dit._C_attn`（拆分前两者共用 `_C_comm`）
 - 它们的 Python 模块把注册与封装放在一起，取代旧的 `cuda/_ops_registery.py` + `ops.py` 组合
-- Triton 与 CuTe DSL 两棵树、后端选择器及其测试被删除，现在 `tests/kernels/test_ops_dispatch.py` 防止它们回来
+- Triton 与 CuTe DSL 两棵旧目录、后端选择器及其测试被删除，现在 `tests/kernels/test_ops_dispatch.py` 只守着这些**旧目录**不复活（将来引入 CuTe DSL 按 §1 第 2 条新建结构，不是重建旧树）
 
 ### 有用的 cache-dit 参考文件
 
