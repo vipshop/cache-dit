@@ -122,7 +122,6 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| Image | FireRed-Image-Edit | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/FireRedTeam/FireRed-Image-Edit-1.1) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | SANA-Video 2B (T2V/I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_480p_diffusers) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | SANA-WM (I2V) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-WM_bidirectional-diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | FLUX.3 Klein 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/black-forest-labs/flux-3-image-klein) | 1 | ✔️/✔️/✔️/✔️ |
@@ -159,6 +158,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Image | Hunyuan-Image 🔥 | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/hunyuanvideo-community/HunyuanImage-2.1-Diffusers) | 2 | ✔️/✔️/✔️/✔️ |
 | Image | Bria | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/briaai/BRIA-3.2) | 1 | ✔️/✖️/✔️/✔️ |
 | Image | PRX / PRXPixel 🔥| [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/Photoroom/prx-512-t2i-sft) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | FireRed-Image-Edit | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/FireRedTeam/FireRed-Image-Edit-1.1) | 2 | ✔️/✔️/✔️/✔️ |
 | Video | HunyuanVideo 1.5 🔥| [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/hunyuanvideo-community/HunyuanVideo-1.5-480p_t2v) | 2 | ✔️/✖️/✔️/✔️ |
 | Video | ChronoEdit | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/nvidia/ChronoEdit-14B-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | Kandinsky5 (T2V/I2V) | [`🤗diffusers@0.36.0`][diffusers-url], [`🤗HF`](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 4 | ✔️/✔️/✔️/✔️ |
