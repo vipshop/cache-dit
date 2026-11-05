@@ -66,7 +66,7 @@ def get_meshgrid_nd(start, stop, device=None):
 
 def get_1d_rotary_pos_embed(dim: int, pos: torch.Tensor, theta: float = 10000.0):
   """``(cos, sin)`` of shape ``[S, dim]`` for float positions ``pos`` ``[S]``."""
-  freqs = 1.0 / (theta**(torch.arange(0, dim, 2, device=pos.device)[:dim // 2].float() / dim))
+  freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, device=pos.device)[:dim // 2].float() / dim))
   freqs = torch.outer(pos, freqs)
   return freqs.cos().repeat_interleave(2, dim=1), freqs.sin().repeat_interleave(2, dim=1)
 
@@ -83,8 +83,8 @@ def get_nd_rotary_pos_embed(rope_dim_list, start, stop, theta, device=None):
 def timestep_embedding(t: torch.Tensor, dim: int = 256, max_period: int = 10000) -> torch.Tensor:
   """Sinusoidal embedding of fractional timesteps, ``(*t.shape, dim)``; ``dim`` is even."""
   half = dim // 2
-  freqs = torch.exp(-math.log(max_period) *
-                    torch.arange(start=0, end=half, dtype=torch.float32) / half).to(device=t.device)
+  freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) /
+                    half).to(device=t.device)
   args = t.flatten()[:, None].float() * freqs[None]
   embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
   return embedding.view(*t.shape, dim)
@@ -206,7 +206,7 @@ class NomasTimestepEmbedder(nn.Module):
 
 
 class NomasFinalLayer(nn.Module):
-  """adaLN final layer; ``c`` is the per-request timestep vector ``[B, D]``."""
+  """AdaLN final layer; ``c`` is the per-request timestep vector ``[B, D]``."""
 
   def __init__(self, hidden_size: int, patch_size: Sequence[int], out_channels: int):
     super().__init__()
@@ -334,8 +334,7 @@ class NomasCameraAttention(nn.Module):
       out = self.proj_keyboard(v[:, frame].flatten(2))
     else:
       q = self.img_attn_q(x).view(b, n, 16, 64)
-      k, v = self.keyboard_attn_kv(self.keyboard_embed(camera)).view(b, frames, 2, 16,
-                                                                     64).unbind(2)
+      k, v = self.keyboard_attn_kv(self.keyboard_embed(camera)).view(b, frames, 2, 16, 64).unbind(2)
       tokens = torch.arange(n, device=x.device) + token_offset
       qids = (tokens // spatial_tokens).clamp(max=7499)
       kids = torch.arange(frames, device=x.device).clamp(max=7499)
@@ -417,8 +416,7 @@ class NomasDoubleStreamBlock(nn.Module):
     for stream in ("img", "txt"):
       setattr(self, f"{stream}_mod", NomasModulate(d, factor=6))
       for i in (1, 2):
-        setattr(self, f"{stream}_norm{i}",
-                nn.LayerNorm(d, eps=1e-6, elementwise_affine=False))
+        setattr(self, f"{stream}_norm{i}", nn.LayerNorm(d, eps=1e-6, elementwise_affine=False))
       for name in ("q", "k", "v"):
         setattr(self, f"{stream}_attn_{name}", nn.Linear(d, d, bias=True))
       setattr(self, f"{stream}_attn_proj", nn.Linear(d, d, bias=True))
@@ -469,14 +467,18 @@ class NomasDoubleStreamBlock(nn.Module):
       x = gated_residual(x, getattr(self, f"{stream}_attn_proj")(attn.flatten(2)), mod[2])
       x = gated_residual(
         x,
-        getattr(self, f"{stream}_mlp")(
-          modulate_for_linear(getattr(self, f"{stream}_norm2")(x), shift=mod[3], scale=mod[4])),
+        getattr(self, f"{stream}_mlp")(modulate_for_linear(getattr(self, f"{stream}_norm2")(x),
+                                                           shift=mod[3],
+                                                           scale=mod[4])),
         mod[5],
       )
       outputs.append(x)
     img, txt = outputs
     if ctx.camera_embedding is not None:
-      img = self.action(img, ctx.camera_embedding, ctx.spatial_tokens, ctx.camera_has_mask,
+      img = self.action(img,
+                        ctx.camera_embedding,
+                        ctx.spatial_tokens,
+                        ctx.camera_has_mask,
                         token_offset=ctx.token_offset)
     return img, txt
 
@@ -526,10 +528,11 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
     if camera_chunk_size != 1:
       # That branch keeps an upstream-faithful raw SDPA over a camera chunk instead of going
       # through cache-dit's dispatcher; it must be converted before it is ever enabled.
-      logger.warning("HY-Nomas: camera_chunk_size=%d uses a raw SDPA camera branch that bypasses "
-                     "cache-dit's attention dispatcher (upstream parity only; the released "
-                     "checkpoint uses 1). Convert it to `_dispatch_attention_fn` before enabling.",
-                     camera_chunk_size)
+      logger.warning(
+        "HY-Nomas: camera_chunk_size=%d uses a raw SDPA camera branch that bypasses "
+        "cache-dit's attention dispatcher (upstream parity only; the released "
+        "checkpoint uses 1). Convert it to `_dispatch_attention_fn` before enabling.",
+        camera_chunk_size)
     self.hidden_size = hidden_size
     self.num_attention_heads = num_attention_heads
     self.local_attention_heads = num_attention_heads

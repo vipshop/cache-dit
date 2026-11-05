@@ -36,7 +36,7 @@ LATENT_CHANNELS = 32
 # A DCAE latent cell is (4, 32, 32) pixels: 1 tubelet in time, 2 x 2 in space.
 LATENT_TOKEN_GRID = 2
 # Target float32 bytes per QK-normalisation chunk.
-_QK_CHUNK_BYTES = 256 * 2**20
+_QK_CHUNK_BYTES = 256 * 2 ** 20
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,7 @@ def mrope_tables(arch: PixelUMMArch, grid: Tuple[int, int, int], device):
   thetas = (arch.rope_theta_t, arch.rope_theta_hw, arch.rope_theta_hw)
   cos_parts, sin_parts = [], []
   for position, dim, theta in zip(positions, arch.rope_sections, thetas):
-    inv_freq = theta**(-torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim)
+    inv_freq = theta ** (-torch.arange(0, dim, 2, device=device, dtype=torch.float32) / dim)
     angles = position.flatten().float()[:, None] * inv_freq[None]
     angles = torch.cat((angles, angles), dim=-1)
     cos_parts.append(angles.cos())
@@ -165,7 +165,6 @@ def _split_norm(x: torch.Tensor, norm_t: PixelUMMRMSNorm, norm_hw: PixelUMMRMSNo
 
 def _prepare_qk_chunked(x, cos, sin, norm_t, norm_hw, dtype, sections):
   """Float32 QK-norm + MRoPE, chunked over tokens to bound the float32 footprint."""
-  half = x.shape[-1] // 2
   result = torch.empty_like(x, dtype=dtype)
   chunk = max(1, _QK_CHUNK_BYTES // max(1, x.shape[0] * x.shape[2] * x.shape[3] * 4))
   for first in range(0, x.shape[1], chunk):
@@ -244,8 +243,7 @@ class PixelUMMAttention(nn.Module):
   def __init__(self, arch: PixelUMMArch):
     super().__init__()
     self.arch = arch
-    hidden, heads, kv, dim = (
-      arch.hidden_size, arch.num_heads, arch.num_kv_heads, arch.head_dim)
+    hidden, heads, kv, dim = (arch.hidden_size, arch.num_heads, arch.num_kv_heads, arch.head_dim)
     self.q_proj = nn.Linear(hidden, heads * dim, bias=False)
     self.k_proj = nn.Linear(hidden, kv * dim, bias=False)
     self.v_proj = nn.Linear(hidden, kv * dim, bias=False)
@@ -262,10 +260,8 @@ class PixelUMMAttention(nn.Module):
     k = self.k_proj(x).view(batch, count, arch.num_kv_heads, arch.head_dim)
     v = self.v_proj(x).view(batch, count, arch.num_kv_heads, arch.head_dim)
     # PixelUMM keeps q/k in float32 through QK-norm and RoPE.
-    q = _prepare_qk_chunked(q, cos, sin, self.q_norm_t, self.q_norm_hw, v.dtype,
-                            arch.rope_sections)
-    k = _prepare_qk_chunked(k, cos, sin, self.k_norm_t, self.k_norm_hw, v.dtype,
-                            arch.rope_sections)
+    q = _prepare_qk_chunked(q, cos, sin, self.q_norm_t, self.q_norm_hw, v.dtype, arch.rope_sections)
+    k = _prepare_qk_chunked(k, cos, sin, self.k_norm_t, self.k_norm_hw, v.dtype, arch.rope_sections)
     if block_mask is not None:
       out = _flex_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), block_mask)
     else:
@@ -323,7 +319,7 @@ class PixelUMMDecoder(nn.Module):
     self.arch = arch
     hidden = arch.hidden_size
     self.embed = nn.Linear(TUBE_DIM, hidden)
-    self.cond_proj = nn.Linear(LATENT_CHANNELS, LATENT_TOKEN_GRID**2 * hidden)
+    self.cond_proj = nn.Linear(LATENT_CHANNELS, LATENT_TOKEN_GRID ** 2 * hidden)
     self.layers = nn.ModuleList(PixelUMMLayer(arch) for _ in range(arch.num_layers))
     self.final_norm = PixelUMMRMSNorm(hidden, arch.rms_norm_eps)
     self.head = PixelUMMHead(hidden)
@@ -402,7 +398,7 @@ _PIXELUMM_PREFIX = "decoder."
 
 
 def load_pixelumm_state_dict(path: str,
-                           dtype: torch.dtype = torch.bfloat16) -> Dict[str, torch.Tensor]:
+                             dtype: torch.dtype = torch.bfloat16) -> Dict[str, torch.Tensor]:
   """Read either PixelUMM checkpoint variant into this module's state-dict names.
 
   Handles the ``decoder.`` prefix, the fp8 variant (``*.fp8_weight`` + ``*.fp8_scale`` block-wise
@@ -426,16 +422,16 @@ def load_pixelumm_state_dict(path: str,
       }
   else:
     state = torch.load(path, map_location="cpu")
-    if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"],
-                                                                      dict):
+    if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
       state = state["state_dict"]
-    decoder_keys = {key: value for key, value in state.items()
-                    if key.startswith(_PIXELUMM_PREFIX)}
+    decoder_keys = {key: value for key, value in state.items() if key.startswith(_PIXELUMM_PREFIX)}
   if not decoder_keys:
     raise ValueError(f"{path} carries no `{_PIXELUMM_PREFIX}` tensors; this loader expects the "
                      f"released DCAE-V + PixelUMM bundle")
-  scales = {key[:-len(".fp8_scale")]: value for key, value in decoder_keys.items()
-            if key.endswith(".fp8_scale")}
+  scales = {
+    key[:-len(".fp8_scale")]: value
+    for key, value in decoder_keys.items() if key.endswith(".fp8_scale")
+  }
   out: Dict[str, torch.Tensor] = {}
   for key, value in decoder_keys.items():
     if key.endswith(".fp8_scale") or key.endswith(".fp8_weight"):
@@ -453,8 +449,7 @@ def load_pixelumm_state_dict(path: str,
   return out
 
 
-def _load_pixelumm_weights(module: "NomasPixelUMMDecoder", path: str,
-                           dtype: torch.dtype) -> None:
+def _load_pixelumm_weights(module: "NomasPixelUMMDecoder", path: str, dtype: torch.dtype) -> None:
   """Load a decoder checkpoint, refusing to run on an unconverted module.
 
   ``load_state_dict`` copies into the **existing** parameter dtype, so loading a bf16 checkpoint
@@ -490,7 +485,9 @@ class NomasPixelUMMDecoder(nn.Module):
     self.noise_frame_offset = 0
 
   @classmethod
-  def from_checkpoint(cls, path: str, dtype: torch.dtype = torch.bfloat16,
+  def from_checkpoint(cls,
+                      path: str,
+                      dtype: torch.dtype = torch.bfloat16,
                       arch: Optional[PixelUMMArch] = None) -> "NomasPixelUMMDecoder":
     """Build the decoder and load either checkpoint variant with ``strict=True``.
 
@@ -530,8 +527,8 @@ class NomasPixelUMMDecoder(nn.Module):
           (batch, 3, 4, height * 32, width * 32),
           device=latent.device,
           dtype=torch.float32,
-          generator=torch.Generator(device=latent.device).manual_seed(
-            self.arch.seed * 1_000_003 + index),
+          generator=torch.Generator(device=latent.device).manual_seed(self.arch.seed * 1_000_003 +
+                                                                      index),
         ) for index in range(start, end)
       ],
       dim=2,
@@ -561,8 +558,8 @@ class NomasPixelUMMDecoder(nn.Module):
 
       def decode_window(start):
         end = min(start + arch.temporal_window_latents, length)
-        noise = (self._noise(latent, offset + start, offset + end) if state is None else
-                 state[:, :, start * 4:end * 4])
+        noise = (self._noise(latent, offset + start, offset +
+                             end) if state is None else state[:, :, start * 4:end * 4])
         return self.decoder(latent[:, :, start:end], noise)
 
       video = merge_windows([decode_window(start) for start in starts], [s * 4 for s in starts])

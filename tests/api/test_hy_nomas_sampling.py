@@ -35,8 +35,14 @@ class _FakeTokenizer:
   def encode(self, text, add_special_tokens=False):
     return [ord(char) for char in text]
 
-  def apply_chat_template(self, conversations, tokenize=True, add_generation_prompt=True,
-                          return_dict=False, truncation=False, max_length=None, padding=None,
+  def apply_chat_template(self,
+                          conversations,
+                          tokenize=True,
+                          add_generation_prompt=True,
+                          return_dict=False,
+                          truncation=False,
+                          max_length=None,
+                          padding=None,
                           return_tensors=None):
     if isinstance(conversations[0], dict):
       conversations = [conversations]
@@ -83,8 +89,13 @@ def test_plan_segments_uniform_and_explicit():
   assert [s.caption for s in many][:3] == ["a fox", "a", "b"]
   with pytest.raises(ValueError, match="one caption per segment"):
     plan_segments(240, "a fox", None, ["a"], segment_size=10)
-  explicit = plan_segments(240, "a fox", [{"frames": 120, "caption": "a"},
-                                          {"frames": 120, "caption": "b"}], None)
+  explicit = plan_segments(240, "a fox", [{
+    "frames": 120,
+    "caption": "a"
+  }, {
+    "frames": 120,
+    "caption": "b"
+  }], None)
   assert [(s.start, s.end) for s in explicit] == [(0, 30), (30, 60)]
   with pytest.raises(ValueError, match="must equal num_frames"):
     plan_segments(240, "x", [{"frames": 120, "caption": "a"}], None)
@@ -93,8 +104,11 @@ def test_plan_segments_uniform_and_explicit():
 
 
 def test_canonical_caption_keeps_actions_last():
-  raw = _event(actions=[{"start_time": "00:00.000", "end_time": "00:01.000",
-                         "action_description": "walks"}])
+  raw = _event(actions=[{
+    "start_time": "00:00.000",
+    "end_time": "00:01.000",
+    "action_description": "walks"
+  }])
   out = canonical_caption(raw, "json")
   event = json.loads(out)["segments"][0]
   assert list(event)[-1] == "contained_actions"
@@ -107,8 +121,14 @@ def test_canonical_caption_keeps_actions_last():
 
 def test_action_windows_tile_the_segment():
   actions = [
-    {"start_time": "00:00.000", "end_time": "00:01.000"},
-    {"start_time": "00:01.000", "end_time": "00:02.000"},
+    {
+      "start_time": "00:00.000",
+      "end_time": "00:01.000"
+    },
+    {
+      "start_time": "00:01.000",
+      "end_time": "00:02.000"
+    },
   ]
   # fps 24: frame 1 s -> int(24)//4 = 6 latent frames.
   windows = action_video_windows(actions, frames=12, fps=24)
@@ -116,15 +136,28 @@ def test_action_windows_tile_the_segment():
   assert windows[0][0] == 0 and windows[-1][1] == 12
   assert all(windows[i][1] == windows[i + 1][0] for i in range(len(windows) - 1))
   # Overlapping actions degrade to full attention instead of failing.
-  assert action_video_windows([{"start_time": "0", "end_time": "2"},
-                               {"start_time": "1", "end_time": "3"}], 12, 24) is None
+  assert action_video_windows([{
+    "start_time": "0",
+    "end_time": "2"
+  }, {
+    "start_time": "1",
+    "end_time": "3"
+  }], 12, 24) is None
   assert action_video_windows([{"start_time": "0"}], 12, 24) is None
 
 
 def test_action_metadata_offsets_follow_the_common_prefix():
   actions = [
-    {"start_time": "00:00.000", "end_time": "00:01.000", "action_description": "walks"},
-    {"start_time": "00:01.000", "end_time": "00:02.000", "action_description": "sits"},
+    {
+      "start_time": "00:00.000",
+      "end_time": "00:01.000",
+      "action_description": "walks"
+    },
+    {
+      "start_time": "00:01.000",
+      "end_time": "00:02.000",
+      "action_description": "sits"
+    },
   ]
   caption = canonical_caption(_event(actions=actions), "json")
   tokenizer = _FakeTokenizer()
@@ -159,6 +192,7 @@ def test_build_text_inputs_rejects_a_tokenizer_without_the_marker():
   """The crop is found by locating the Qwen user marker; without it the crop is undefined."""
 
   class _NoMarkerTokenizer(_FakeTokenizer):
+
     def apply_chat_template(self, conversations, **kwargs):
       result = super().apply_chat_template(conversations, **kwargs)
       if isinstance(result, dict):
@@ -190,7 +224,7 @@ def test_cache_budget_math():
   required = check_cache_budget(1000, 54, 2048, 1, budget_gib=32.0)
   assert required == 1000 * 2 * 54 * 2048 * 2
   with pytest.raises(ValueError, match="reduce resolution"):
-    check_cache_budget(10**7, 54, 2048, 1, budget_gib=1.0)
+    check_cache_budget(10 ** 7, 54, 2048, 1, budget_gib=1.0)
 
 
 def test_camera_timeline_and_segment_slice():

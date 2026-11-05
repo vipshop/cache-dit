@@ -5145,8 +5145,7 @@ _HY_NOMAS_PROMPT = (
   'alongside at eye level.", "lighting_description": "Cold blue light fades to warm lamplight.", '
   '"aesthetic_description": "Crisp, quiet, cinematic realism.", "motion_description": "Short, '
   'careful steps with the tail held low.", "background_description": "Snow-covered pines and a '
-  'distant cabin."}]}'
-)
+  'distant cabin."}]}')
 # The released checkpoint is an 8-forward distilled student.
 _HY_NOMAS_FORWARDS = 8
 _HY_NOMAS_DEFAULT_THRESHOLD = 0.10
@@ -5171,8 +5170,9 @@ def _hy_nomas_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig]:
     return None
   steps = _HY_NOMAS_FORWARDS if args.num_inference_steps is None else args.num_inference_steps
   if args.max_warmup_steps >= steps:
-    logger.warning("HY-Nomas: max_warmup_steps(%d) >= forwards per segment(%d), so caching can "
-                   "never engage; lower `--ws`.", args.max_warmup_steps, steps)
+    logger.warning(
+      "HY-Nomas: max_warmup_steps(%d) >= forwards per segment(%d), so caching can "
+      "never engage; lower `--ws`.", args.max_warmup_steps, steps)
   threshold = args.residual_diff_threshold
   if threshold == DEFAULT_RESIDUAL_DIFF_THRESHOLD:
     threshold = _HY_NOMAS_DEFAULT_THRESHOLD

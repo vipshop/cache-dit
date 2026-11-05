@@ -87,8 +87,11 @@ class NomasPipeline(DiffusionPipeline):
     scheduler=None,
   ):
     super().__init__()
-    self.register_modules(transformer=transformer, vae=vae, text_encoder=text_encoder,
-                          tokenizer=tokenizer, scheduler=scheduler)
+    self.register_modules(transformer=transformer,
+                          vae=vae,
+                          text_encoder=text_encoder,
+                          tokenizer=tokenizer,
+                          scheduler=scheduler)
     self.text_len = DEFAULT_TEXT_LEN
     self.segment_latent_frames = DEFAULT_SEGMENT_LATENT_FRAMES
     self.flow_shift = DEFAULT_FLOW_SHIFT
@@ -136,14 +139,17 @@ class NomasPipeline(DiffusionPipeline):
       logger.debug("Ignoring unsupported from_pretrained arguments: %s", sorted(kwargs))
 
     if transformer is None:
-      weight = _single_file(os.path.join(model_path, "DiT", variant,
-                                         "diffusion_pytorch_model*.safetensors"))
+      weight = _single_file(
+        os.path.join(model_path, "DiT", variant, "diffusion_pytorch_model*.safetensors"))
       transformer = NomasTransformer3DModel(attention_backend="flex").to(torch_dtype)
       from safetensors.torch import load_file
 
       state = load_file(weight)
-      transformer.load_state_dict({key: value.to(torch_dtype) for key, value in state.items()},
-                                 strict=True)
+      transformer.load_state_dict({
+        key: value.to(torch_dtype)
+        for key, value in state.items()
+      },
+                                  strict=True)
       transformer.post_load_weights()
       transformer.eval().requires_grad_(False)
     if vae is None:
@@ -155,10 +161,7 @@ class NomasPipeline(DiffusionPipeline):
       tokenizer = tokenizer or AutoTokenizer.from_pretrained(source)
       text_encoder = (text_encoder or Qwen2_5_VLForConditionalGeneration.from_pretrained(
         source, torch_dtype=torch_dtype).eval().requires_grad_(False))
-    return cls(transformer=transformer,
-               vae=vae,
-               text_encoder=text_encoder,
-               tokenizer=tokenizer)
+    return cls(transformer=transformer, vae=vae, text_encoder=text_encoder, tokenizer=tokenizer)
 
   def _refresh_segment_cache(self) -> None:
     """Force the next transformer call to recompute every block.
@@ -191,7 +194,8 @@ class NomasPipeline(DiffusionPipeline):
     inputs = build_text_inputs(self.tokenizer, list(captions), max_length=self.text_len)
     input_ids = inputs["input_ids"].to(device)
     attention_mask = inputs["attention_mask"].to(device)
-    outputs = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask,
+    outputs = self.text_encoder(input_ids=input_ids,
+                                attention_mask=attention_mask,
                                 output_hidden_states=True)
     states, mask = postprocess_text(outputs.hidden_states, inputs)
     return states.to(dtype), mask.to(device)
@@ -272,9 +276,12 @@ class NomasPipeline(DiffusionPipeline):
       text_offsets = video_windows = None
       action_start = -1
       if prompt_format == "json":
-        action_start, text_offsets, video_windows = action_metadata(
-          segment.caption, self.tokenizer, mask, segment.end - segment.start, fps,
-          text_len=self.text_len)
+        action_start, text_offsets, video_windows = action_metadata(segment.caption,
+                                                                    self.tokenizer,
+                                                                    mask,
+                                                                    segment.end - segment.start,
+                                                                    fps,
+                                                                    text_len=self.text_len)
       conditions.append({
         "text_states": states,
         "text_mask": mask,
@@ -290,9 +297,11 @@ class NomasPipeline(DiffusionPipeline):
     if device.type == "cuda":
       free_bytes = torch.cuda.mem_get_info(device)[0] + torch.cuda.memory_reserved(device) \
         - torch.cuda.memory_allocated(device)
-    check_cache_budget(max(capacity, 1), self.transformer.config.num_layers,
+    check_cache_budget(max(capacity, 1),
+                       self.transformer.config.num_layers,
                        self.transformer.config.hidden_size,
-                       self.transformer.parallel.head_shards, self.max_cache_gib,
+                       self.transformer.parallel.head_shards,
+                       self.max_cache_gib,
                        free_bytes=free_bytes)
     cache = self.transformer.allocate_cache(max(capacity, 1))
 
@@ -301,9 +310,17 @@ class NomasPipeline(DiffusionPipeline):
     sigmas = nomas_sigmas(num_inference_steps, self.flow_shift)
     latents: List[torch.Tensor] = []
     for index, (segment, condition) in enumerate(zip(plan, conditions)):
-      latents.append(self._run_segment(segment, condition, latent_hw, sigmas, cache,
-                                       camera_embedding, generator, device, dtype,
-                                       cache_segment=index < len(plan) - 1))
+      latents.append(
+        self._run_segment(segment,
+                          condition,
+                          latent_hw,
+                          sigmas,
+                          cache,
+                          camera_embedding,
+                          generator,
+                          device,
+                          dtype,
+                          cache_segment=index < len(plan) - 1))
     video_latents = torch.cat(latents, dim=2)
     pixels = self.vae.decode(video_latents).sample
     pixels = to_unit_range(pixels)[:, :, :num_frames]
@@ -324,9 +341,12 @@ class NomasPipeline(DiffusionPipeline):
     shape = (1, self.transformer.config.in_channels, frames, height, width)
     latent = self._noise(shape, generator, device, dtype)
     camera = segment_camera_embedding(camera_embedding, segment.start, segment.end)
-    context = self.transformer.prepare_segment_context(
-      latent, condition["text_mask"], cache, text_offsets=condition["text_offsets"],
-      video_windows=condition["video_windows"], hide_cached_action_tails=True)
+    context = self.transformer.prepare_segment_context(latent,
+                                                       condition["text_mask"],
+                                                       cache,
+                                                       text_offsets=condition["text_offsets"],
+                                                       video_windows=condition["video_windows"],
+                                                       hide_cached_action_tails=True)
     # A cached step would reuse the previous segment's residual baseline.
     self._refresh_segment_cache()
     for index in range(sigmas.shape[0] - 1):

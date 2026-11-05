@@ -31,8 +31,7 @@ NOMAS_SYSTEM_PROMPT = (
   "        3. Actions, events, behaviors temporal relationships, physical movement changes of the "
   "objects. "
   "        4. background environment, light, style and atmosphere. "
-  "        5. camera angles, movements, and transitions used in the video."
-)
+  "        5. camera angles, movements, and transitions used in the video.")
 
 DEFAULT_TEXT_LEN = 1280
 DEFAULT_SEGMENT_LATENT_FRAMES = 10
@@ -141,7 +140,7 @@ def _seconds(value) -> float:
   parts = str(value).split(":")
   if not 1 <= len(parts) <= 3:
     raise ValueError("action timestamp must be seconds, MM:SS or HH:MM:SS")
-  seconds = sum(float(part) * 60**i for i, part in enumerate(reversed(parts)))
+  seconds = sum(float(part) * 60 ** i for i, part in enumerate(reversed(parts)))
   if not math.isfinite(seconds):
     raise ValueError("action timestamps must be finite")
   return seconds
@@ -182,7 +181,11 @@ def action_video_windows(actions: Sequence[dict], frames: int, fps: int):
   return tuple(windows)
 
 
-def action_metadata(caption: str, tokenizer, text_mask: torch.Tensor, frames: int, fps: int,
+def action_metadata(caption: str,
+                    tokenizer,
+                    text_mask: torch.Tensor,
+                    frames: int,
+                    fps: int,
                     text_len: int = DEFAULT_TEXT_LEN):
   """Derive the head/action text offsets and the action windows of one event.
 
@@ -215,8 +218,8 @@ def action_metadata(caption: str, tokenizer, text_mask: torch.Tensor, frames: in
                                       if isinstance(actions, dict) else actions[:k])
     text = json.dumps(obj | {"segments": [variant]}, ensure_ascii=False)
     other = build_text_inputs(tokenizer, [text], max_length=length)["input_ids"][0].tolist()
-    common = next((i for i, (a, b) in enumerate(zip(ids, other)) if a != b), min(len(ids),
-                                                                                len(other)))
+    common = next((i for i, (a, b) in enumerate(zip(ids, other)) if a != b),
+                  min(len(ids), len(other)))
     offset = max(0, min(common - crop, length - 1, valid))
     offsets.append(max(offset, offsets[-1] if offsets else 0))
   offsets.append(valid)
@@ -236,22 +239,33 @@ def build_text_inputs(tokenizer, prompts: Sequence[str], max_length: int = DEFAU
   """
   if tokenizer.padding_side != "right":
     raise ValueError("Nomas requires right-padded text")
-  conversations = [
-    [
-      {"role": "system", "content": NOMAS_SYSTEM_PROMPT},
-      {"role": "user", "content": text or " "},
-    ] for text in prompts
-  ]
+  conversations = [[
+    {
+      "role": "system",
+      "content": NOMAS_SYSTEM_PROMPT
+    },
+    {
+      "role": "user",
+      "content": text or " "
+    },
+  ] for text in prompts]
   marker = tokenizer.encode("<|im_start|>user\n", add_special_tokens=False)
-  ids = tokenizer.apply_chat_template(conversations[0], tokenize=True, add_generation_prompt=True,
+  ids = tokenizer.apply_chat_template(conversations[0],
+                                      tokenize=True,
+                                      add_generation_prompt=True,
                                       return_dict=False)
-  crop = next((i + len(marker) for i in range(len(ids) - len(marker) + 1)
-               if ids[i:i + len(marker)] == marker), None)
+  crop = next((i + len(marker)
+               for i in range(len(ids) - len(marker) + 1) if ids[i:i + len(marker)] == marker),
+              None)
   if crop is None:
     raise ValueError("Tokenizer must provide the Qwen user chat marker")
-  inputs = tokenizer.apply_chat_template(conversations, tokenize=True, add_generation_prompt=True,
-                                         return_dict=True, truncation=True,
-                                         max_length=int(max_length) + crop, padding="max_length",
+  inputs = tokenizer.apply_chat_template(conversations,
+                                         tokenize=True,
+                                         add_generation_prompt=True,
+                                         return_dict=True,
+                                         truncation=True,
+                                         max_length=int(max_length) + crop,
+                                         padding="max_length",
                                          return_tensors="pt")
   inputs["crop"] = crop
   return inputs
@@ -303,8 +317,12 @@ def cache_bytes_per_token(num_layers: int, hidden_size: int, head_shards: int = 
   return 2 * num_layers * hidden_size * 2 // head_shards
 
 
-def check_cache_budget(capacity: int, num_layers: int, hidden_size: int, head_shards: int,
-                       budget_gib: float, free_bytes: Optional[int] = None,
+def check_cache_budget(capacity: int,
+                       num_layers: int,
+                       hidden_size: int,
+                       head_shards: int,
+                       budget_gib: float,
+                       free_bytes: Optional[int] = None,
                        reserve_gib: float = 8.0) -> int:
   """Bound the persistent K/V before allocating it.
 
@@ -319,9 +337,9 @@ def check_cache_budget(capacity: int, num_layers: int, hidden_size: int, head_sh
   :raises ValueError: When the request needs more than the budget.
   """
   required = capacity * cache_bytes_per_token(num_layers, hidden_size, head_shards)
-  limit = budget_gib * 2**30
+  limit = budget_gib * 2 ** 30
   if free_bytes is not None:
-    limit = min(limit, max(0, free_bytes - reserve_gib * 2**30))
+    limit = min(limit, max(0, free_bytes - reserve_gib * 2 ** 30))
   if required > limit:
     raise ValueError(f"Nomas KV requires {required / 2**30:.2f} GiB, budget "
                      f"{limit / 2**30:.2f} GiB; reduce resolution, event count or text length.")

@@ -75,10 +75,10 @@ class NomasCache:
       num_heads or config.num_attention_heads,
       config.hidden_size // config.num_attention_heads,
     )
-    layers = [
-      {key: torch.zeros(shape, device=device, dtype=dtype) for key in ("k", "v")}
-      for _ in range(config.num_layers)
-    ]
+    layers = [{
+      key: torch.zeros(shape, device=device, dtype=dtype)
+      for key in ("k", "v")
+    } for _ in range(config.num_layers)]
     return cls(layers, torch.zeros(1, capacity, device=device, dtype=torch.bool))
 
   @property
@@ -342,8 +342,7 @@ class NomasAttentionPlan:
         if len(window) != 3 or any(type(x) is not int for x in window):
           raise ValueError("each video window must be [start_frame, end_frame, action_index]")
         start, end, action = window
-        if (start != cursor or not start < end <= frames
-            or not -1 <= action < len(offsets) - 1):
+        if (start != cursor or not start < end <= frames or not -1 <= action < len(offsets) - 1):
           raise ValueError("video windows must tile the segment without gaps/overlap")
         query_action[start * spatial_tokens:end * spatial_tokens] = action
         cursor = end
@@ -377,7 +376,8 @@ class NomasAttentionPlan:
       # Bounded debug/reference backend, never silently allocate an enormous mask.
       if n * key_valid.numel() > 16_777_216:
         raise ValueError("SDPA reference mask is too large; select flex")
-      self.mask = mask_mod(0, 0, torch.arange(n, device=device)[:, None],
+      self.mask = mask_mod(0, 0,
+                           torch.arange(n, device=device)[:, None],
                            torch.arange(key_valid.numel(), device=device)[None, :])
 
   def _prepare_fa3(self, history_mask, valid, offsets, windows, spatial_tokens) -> None:
@@ -400,13 +400,13 @@ class NomasAttentionPlan:
     for action, (start, end) in enumerate(zip(offsets or (), (offsets or ())[1:])):
       if end <= start:
         continue
-      rows = [(a * spatial_tokens, b * spatial_tokens)
-              for a, b, index in windows if index == action]
+      rows = [(a * spatial_tokens, b * spatial_tokens) for a, b, index in windows
+              if index == action]
       rows.append((video + start, video + end))
       keys = (hvis + video + start, hvis + video + end)
       self.actions.extend((q_range, keys, torch.tensor([0, q_range[1] - q_range[0]], **int32),
-                           torch.tensor([0, keys[1] - keys[0]], **int32))
-                          for q_range in rows if q_range[1] > q_range[0])
+                           torch.tensor([0, keys[1] - keys[0]], **int32)) for q_range in rows
+                          if q_range[1] > q_range[0])
 
   def __call__(self, q, k, v, layer_cache=None, history_length=0):
     """Attend over the current segment plus the cached history.
@@ -435,6 +435,7 @@ class NomasAttentionPlan:
     return result.transpose(1, 2) * self.query_valid[:, :, None, None]
 
   def _fa3(self, q, k, v, layer_cache):
+
     def compact(current, key):
       # [visible history | current video | valid text]: padding and hidden action tails are dropped
       # instead of masked.  History is gathered straight into the buffer.

@@ -48,6 +48,7 @@ class _StubTransformer:
 
 
 class _StubCache:
+
   def __init__(self):
     self.commits = []
 
@@ -89,8 +90,15 @@ def test_denoise_uses_forward_and_kv_write_uses_predict():
   cache = _StubCache()
   segment = NomasSegment(0, 2, "caption")
   pipe._refresh_segment_cache = lambda: None
-  pipe._run_segment(segment, _condition(), (2, 2), nomas_sigmas(8), cache, None, None,
-                    torch.device("cpu"), torch.float32, cache_segment=True)
+  pipe._run_segment(segment,
+                    _condition(), (2, 2),
+                    nomas_sigmas(8),
+                    cache,
+                    None,
+                    None,
+                    torch.device("cpu"),
+                    torch.float32,
+                    cache_segment=True)
   # Eight Euler steps must go through `__call__` (the patched `forward`), then one K/V pass.
   assert pipe.transformer.calls.count("forward") == 8
   assert pipe.transformer.calls.count("predict") == 1
@@ -103,8 +111,15 @@ def test_last_segment_skips_the_kv_write():
   pipe = _pipeline()
   cache = _StubCache()
   pipe._refresh_segment_cache = lambda: None
-  pipe._run_segment(NomasSegment(0, 2, "caption"), _condition(), (2, 2), nomas_sigmas(4), cache,
-                    None, None, torch.device("cpu"), torch.float32, cache_segment=False)
+  pipe._run_segment(NomasSegment(0, 2, "caption"),
+                    _condition(), (2, 2),
+                    nomas_sigmas(4),
+                    cache,
+                    None,
+                    None,
+                    torch.device("cpu"),
+                    torch.float32,
+                    cache_segment=False)
   assert "predict" not in pipe.transformer.calls
   assert cache.commits == []
 
@@ -113,8 +128,10 @@ def test_refresh_segment_cache_arms_the_hint_and_caps_warmup():
   pipe = _pipeline()
 
   class _Context:
+
     def __init__(self):
-      self.cache_config = SimpleNamespace(max_warmup_steps=8, force_refresh_step_hint=None,
+      self.cache_config = SimpleNamespace(max_warmup_steps=8,
+                                          force_refresh_step_hint=None,
                                           force_refresh_step_policy="once")
 
     def get_current_transformer_step(self):

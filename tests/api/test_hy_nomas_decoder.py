@@ -16,7 +16,6 @@ from cache_dit.models.pipelines.hy_nomas.components import (
   NomasPixelUMMDecoder,
   PixelUMMArch,
   _dequant_blockwise,
-  load_pixelumm_state_dict,
   merge_windows,
   patchify,
   unpatchify,

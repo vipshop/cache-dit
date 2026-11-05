@@ -31,8 +31,11 @@ TEXT_DIM = 16
 
 def _tiny_model():
   torch.manual_seed(0)
-  model = NomasTransformer3DModel(hidden_size=HIDDEN, num_attention_heads=HEADS, num_layers=LAYERS,
-                                  text_states_dim=TEXT_DIM, rope_dim_list=(4, 6, 6),
+  model = NomasTransformer3DModel(hidden_size=HIDDEN,
+                                  num_attention_heads=HEADS,
+                                  num_layers=LAYERS,
+                                  text_states_dim=TEXT_DIM,
+                                  rope_dim_list=(4, 6, 6),
                                   attention_backend="sdpa").eval().requires_grad_(False)
   with torch.no_grad():
     for name, param in model.named_parameters():
@@ -104,11 +107,19 @@ def test_real_wrapper_updates_both_streams():
     context = model.prepare_segment_context(latent, text_mask, cache)
     from cache_dit.models.pipelines.hy_nomas.transformer import NomasBlockContext
 
-    ctx = NomasBlockContext(vec=vec, rope=context[1], valid_length=cache.valid_length,
-                           frame_offset=cache.frame_offset, attention=context[0], cache=cache,
-                           camera_embedding=None, camera_has_mask=None, spatial_tokens=4,
-                           token_offset=0, collect_cache=False, entries=None,
-                           parallel=model.parallel)
+    ctx = NomasBlockContext(vec=vec,
+                            rope=context[1],
+                            valid_length=cache.valid_length,
+                            frame_offset=cache.frame_offset,
+                            attention=context[0],
+                            cache=cache,
+                            camera_embedding=None,
+                            camera_has_mask=None,
+                            spatial_tokens=4,
+                            token_offset=0,
+                            collect_cache=False,
+                            entries=None,
+                            parallel=model.parallel)
     img_out, txt_out = wrapper(img, txt, ctx)
   # BOTH streams must move: a frozen text stream is the silent failure of a one-output block.
   assert img_out.shape == img.shape and txt_out.shape == txt.shape
@@ -174,7 +185,9 @@ def test_ulysses_rejects_indivisible_heads():
 
 def _dense_reference(q, k, v, key_valid, query_valid):
   mask = key_valid[None, None, None, :].expand(1, 1, q.shape[1], -1).to(torch.bool)
-  out = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
+  out = F.scaled_dot_product_attention(q.transpose(1, 2),
+                                       k.transpose(1, 2),
+                                       v.transpose(1, 2),
                                        attn_mask=mask)
   return out.transpose(1, 2) * query_valid[:, :, None, None]
 
@@ -190,8 +203,10 @@ def test_plan_matches_dense_reference(history_length):
   plan = NomasAttentionPlan(text_mask, history_mask, frames, spatial, backend="sdpa")
   cache = None
   if history_length:
-    cache = {"k": torch.randn(1, history_length, HEADS, HIDDEN // HEADS),
-             "v": torch.randn(1, history_length, HEADS, HIDDEN // HEADS)}
+    cache = {
+      "k": torch.randn(1, history_length, HEADS, HIDDEN // HEADS),
+      "v": torch.randn(1, history_length, HEADS, HIDDEN // HEADS)
+    }
   q = torch.randn(1, video_tokens + text_len, HEADS, HIDDEN // HEADS)
   k = torch.randn(1, video_tokens + text_len, HEADS, HIDDEN // HEADS)
   v = torch.randn(1, video_tokens + text_len, HEADS, HIDDEN // HEADS)
@@ -215,12 +230,12 @@ def test_flex_backend_matches_sdpa_on_dense_case():
   text_mask = (torch.arange(text_len)[None] < 3).cuda()
   history_mask = torch.zeros(1, 0, dtype=torch.bool, device="cuda")
   tokens = frames * spatial + text_len
-  q, k, v = (torch.randn(1, tokens, HEADS, HIDDEN // HEADS, device="cuda",
-                         dtype=torch.bfloat16) for _ in range(3))
-  ref = NomasAttentionPlan(text_mask, history_mask, frames, spatial,
-                           backend="sdpa")(q, k, v, None, 0)
-  out = NomasAttentionPlan(text_mask, history_mask, frames, spatial,
-                           backend="flex")(q, k, v, None, 0)
+  q, k, v = (torch.randn(1, tokens, HEADS, HIDDEN // HEADS, device="cuda", dtype=torch.bfloat16)
+             for _ in range(3))
+  ref = NomasAttentionPlan(text_mask, history_mask, frames, spatial, backend="sdpa")(q, k, v, None,
+                                                                                     0)
+  out = NomasAttentionPlan(text_mask, history_mask, frames, spatial, backend="flex")(q, k, v, None,
+                                                                                     0)
   torch.testing.assert_close(out, ref, atol=2e-2, rtol=2e-2)
 
 
@@ -259,7 +274,11 @@ def test_layerwise_offload_keeps_camera_module_resident():
   # non-registered reference this test has to watch.
   camera = model.embed_camera(torch.randn(1, (2 - 1) * 4 + 1, 4, 4, device=device))
   with torch.inference_mode():
-    reference = model(latent, text_states, timestep, text_mask=text_mask, cache=cache,
+    reference = model(latent,
+                      text_states,
+                      timestep,
+                      text_mask=text_mask,
+                      cache=cache,
                       camera_embedding=camera)
 
   handle = layerwise_offload(
@@ -285,7 +304,11 @@ def test_layerwise_offload_keeps_camera_module_resident():
     hook = model.double_blocks[0].action.register_forward_pre_hook(_record)
     try:
       with torch.inference_mode():
-        out = model(latent, text_states, timestep, text_mask=text_mask, cache=cache,
+        out = model(latent,
+                    text_states,
+                    timestep,
+                    text_mask=text_mask,
+                    cache=cache,
                     camera_embedding=camera)
     finally:
       hook.remove()

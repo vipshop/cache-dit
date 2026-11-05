@@ -115,10 +115,10 @@ def test_cache_dit_pattern_checker_accepts_every_block():
 def test_state_dict_keeps_checkpoint_layout():
   model = _tiny_transformer()
   state = model.state_dict()
-  assert sum(1 for key in state if key.startswith("double_blocks.")) == (
-    LAYERS * RELEASE_TENSORS_PER_BLOCK)
-  assert sum(1 for key in state if key.startswith("action_modules.")) == (
-    LAYERS * RELEASE_TENSORS_PER_ACTION_MODULE)
+  assert sum(1 for key in state
+             if key.startswith("double_blocks.")) == (LAYERS * RELEASE_TENSORS_PER_BLOCK)
+  assert sum(1 for key in state
+             if key.startswith("action_modules.")) == (LAYERS * RELEASE_TENSORS_PER_ACTION_MODULE)
   # Non-persistent camera tables must stay out of the checkpoint.
   assert not [key for key in state if "freqs" in key]
   assert "double_blocks.0.img_mlp.fc1.weight" in state
@@ -152,7 +152,11 @@ def test_collect_returns_one_entry_per_layer():
   cache = model.allocate_cache(64)
   latent, text_states, timestep, text_mask = _inputs(model, cache)
   with torch.inference_mode():
-    _, entries = model.predict(latent, timestep, text_states, text_mask, cache=cache,
+    _, entries = model.predict(latent,
+                               timestep,
+                               text_states,
+                               text_mask,
+                               cache=cache,
                                collect_cache=True)
   assert len(entries) == LAYERS
   video_tokens = FRAMES * SIDE * SIDE
@@ -167,7 +171,11 @@ def test_commit_publishes_visibility_and_history():
   latent, text_states, timestep, text_mask = _inputs(model, cache, seed=3)
   video_tokens = FRAMES * SIDE * SIDE
   with torch.inference_mode():
-    before, entries = model.predict(latent, timestep, text_states, text_mask, cache=cache,
+    before, entries = model.predict(latent,
+                                    timestep,
+                                    text_states,
+                                    text_mask,
+                                    cache=cache,
                                     collect_cache=True)
   cache.commit(entries, text_mask, video_tokens, FRAMES)
   assert cache.valid_length == video_tokens + TEXT_TOKENS
@@ -183,7 +191,11 @@ def test_commit_publishes_visibility_and_history():
   # A committed action tail is the only way `hide_cached_action_tails` can change the mask, and the
   # stored rows must never change with it.
   with torch.inference_mode():
-    before_tail, entries_tail = model.predict(latent, timestep, text_states, text_mask, cache=cache,
+    before_tail, entries_tail = model.predict(latent,
+                                              timestep,
+                                              text_states,
+                                              text_mask,
+                                              cache=cache,
                                               collect_cache=True)
   action_start = 2 if int(text_mask.sum()) > 2 else -1
   if action_start >= 0:
@@ -202,7 +214,11 @@ def test_evict_oldest_segment_keeps_frame_offset():
   latent, text_states, timestep, text_mask = _inputs(model, cache, seed=5)
   video_tokens = FRAMES * SIDE * SIDE
   with torch.inference_mode():
-    _, entries = model.predict(latent, timestep, text_states, text_mask, cache=cache,
+    _, entries = model.predict(latent,
+                               timestep,
+                               text_states,
+                               text_mask,
+                               cache=cache,
                                collect_cache=True)
   cache.commit(entries, text_mask, video_tokens, FRAMES)
   evicted = cache.evict_oldest_segment()
@@ -215,8 +231,11 @@ def test_evict_oldest_segment_keeps_frame_offset():
 
 def test_cache_head_count_must_match_rank():
   model = _tiny_transformer()
-  cache = NomasCache.allocate(model.config, 64, device=torch.device("cpu"),
-                              dtype=next(model.parameters()).dtype, num_heads=1)
+  cache = NomasCache.allocate(model.config,
+                              64,
+                              device=torch.device("cpu"),
+                              dtype=next(model.parameters()).dtype,
+                              num_heads=1)
   latent, text_states, timestep, text_mask = _inputs(model, cache)
   with pytest.raises(ValueError, match="allocate the cache after parallelism"):
     with torch.inference_mode():
@@ -232,7 +251,11 @@ def test_camera_embedding_follows_latent_timeline():
   embedding = model.embed_camera(poses)
   assert embedding.shape == (1, FRAMES, 64)
   with torch.inference_mode():
-    with_camera = model(latent, text_states, timestep, text_mask=text_mask, cache=cache,
+    with_camera = model(latent,
+                        text_states,
+                        timestep,
+                        text_mask=text_mask,
+                        cache=cache,
                         camera_embedding=embedding)
     without = model(latent, text_states, timestep, text_mask=text_mask, cache=cache)
   assert torch.isfinite(with_camera).all()
