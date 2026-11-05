@@ -375,18 +375,15 @@ struct W4A4CuteTraits {
   // output staging. Main B really occupies its allocation, but the empty-stage barrier proves
   // all consumer warps finished it before L1 overwrites that stage. Reusing A's swizzled FP4
   // layout for BF16 would be incorrect even though the byte count matches.
-  // SmemLayoutD: BF16 LoRA-down result D, logical (BM,kRankTile,stages), with strides
-  // (kRankTile,1,BM*kRankTile). Thus one stage is an ordinary row-major [BM,kRankTile] matrix;
-  // kRankTile=BK/4 is 32 for the default BK=128. tma.d writes it over the A byte allocation.
-  using SmemLayoutD =
-    decltype(make_layout(make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{}),
-                         make_stride(Int<kRankTile>{}, _1{}, Int<kBM * kRankTile>{})));
-  // SmemLayoutL1: BF16 LoRA-up weight L1, logical (BN,kRankTile,stages), with analogous
-  // row-major strides. tma.l1 writes it over the B allocation after empty[stage] opens. Again,
-  // L1 names the second low-rank factor and has no relationship to the hardware L1 cache.
-  using SmemLayoutL1 =
-    decltype(make_layout(make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{}),
-                         make_stride(Int<kRankTile>{}, _1{}, Int<kBN * kRankTile>{})));
+  // SmemLayoutD/L1: canonical K-major 64-byte swizzle used by SM75 LDSM. kRankTile=BK/4 is 32
+  // BF16 elements (64B) for BK=128, exactly one SW64 atom row. TMA writes these layouts over the
+  // A/B byte allocations; the swizzle only changes bank mapping inside each rank tile.
+  using LoraSmemAtom = std::conditional_t<(kRankTile >= 32), UMMA::Layout_K_SW64_Atom<ElementLora>,
+                                          UMMA::Layout_K_SW32_Atom<ElementLora>>;
+  using SmemLayoutD = decltype(tile_to_shape(
+    LoraSmemAtom{}, make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{})));
+  using SmemLayoutL1 = decltype(tile_to_shape(
+    LoraSmemAtom{}, make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{})));
 
   // Append the pipeline-stage mode to each SF atom. filter_zeros removes the logical broadcast
   // modes before computing the stage stride: 16 codes share one stored scale, so advancing to the
@@ -795,13 +792,13 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     auto thr_lora = lora_mma.get_thread_slice(tid);
     auto tCrD = thr_lora.partition_fragment_A(sD_full(_, _, Int<0>{}));
     auto tCrL1 = thr_lora.partition_fragment_B(sL1_full(_, _, Int<0>{}));
-    using LoraCopyAtom = Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<32>, ElementLora>;
+    using LoraCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, ElementLora>;
     auto s2r_copy_d = make_tiled_copy_A(LoraCopyAtom{}, lora_mma);
     auto s2r_copy_l1 = make_tiled_copy_B(LoraCopyAtom{}, lora_mma);
     auto s2r_thr_d = s2r_copy_d.get_thread_slice(tid);
     auto s2r_thr_l1 = s2r_copy_l1.get_thread_slice(tid);
-    auto tCsD = s2r_thr_d.partition_S(sD_full);
-    auto tCsL1 = s2r_thr_l1.partition_S(sL1_full);
+    auto tCsD = s2r_thr_d.partition_S(as_position_independent_swizzle_tensor(sD_full));
+    auto tCsL1 = s2r_thr_l1.partition_S(as_position_independent_swizzle_tensor(sL1_full));
     auto tCrD_view = s2r_thr_d.retile_D(tCrD);
     auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
 
