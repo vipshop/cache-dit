@@ -1,385 +1,325 @@
-# Operator Migration for cache-dit
+# 从上游仓库移植算子（operator migration）
 
 > 本文原为独立 skill `cache-dit-operator-migration`，2026-11-05 合并进 `cache-dit-cuda-kernel`。
 > 读它之前先读 `kernel-integration-chain.md`（本仓的层级契约、模板与构建触点）；本文只补"从别的仓库搬算子"这一层的判断与流程。
 
-## When to use this document
+## 何时读本文
 
-Use it when you need to:
+需要用本文的场景：
 
-- migrate a CUDA operator from another repo into cache-dit
-- port a nunchaku operator or kernel family into cache-dit
-- add a new CUDA operator domain (a new native directory plus its Python module)
-- decide what native files are actually required for a migration
-- design cache-dit public wrappers for a newly migrated operator
-- review whether an operator migration plan is thoughtful or mechanical
+- 从别的仓库往 cache-dit 搬一个 CUDA 算子
+- 把 nunchaku 的算子或 kernel 家族移植进 cache-dit
+- 新增一个 CUDA 算子域（新的 native 目录 + 对应 Python 模块）
+- 判断一次移植到底必须搬哪些 native 文件
+- 为刚移植的算子设计 cache-dit 的公开封装
+- 审查一份移植计划，判断它是"想清楚了"还是"机械照搬"
 
-Do not use it for:
+不要用本文的场景：
 
-- generic model integration with no operator or kernel work
-- pure Python feature work unrelated to kernels or extensions
-- Triton or CuTe DSL operator work, which this repository does not maintain
-- blind "copy upstream into csrc" execution
+- 与算子/内核无关的普通模型接入
+- 与 kernel、扩展都无关的纯 Python 功能开发
+- Triton 或 CuTe DSL 算子开发——本仓不维护这两类
+- 无脑"把上游 `csrc` 整段拷进来"的执行
 
-## Goal
+## 目标
 
-Migrate one operator or kernel family into cache-dit in a way that is:
+把一个算子或 kernel 家族搬进 cache-dit 时，要同时满足：
 
-- semantically correct
-- aligned with cache-dit repository conventions
-- safe to import when optional native extensions are absent
-- validated at multiple layers instead of by one smoke test
+- 语义正确
+- 与 cache-dit 仓库约定一致
+- 可选 native 扩展缺失时仍然能安全 import
+- 有分层验证，而不是一个 smoke test 就宣布完成
 
-## 1. Backend policy: CUDA only
+## 1. 后端政策：只维护 CUDA
 
-This is a hard, long-term constraint, not a per-task preference.
+这是长期的硬约束，不是某个任务的偏好。
 
-cache-dit maintains **CUDA operators exclusively**. Every operator that lives long term in the
-repository is a CUDA kernel under `csrc/kernels/`, reachable through a `torch.library` schema in the
-`cache_dit_cuda_ops` namespace.
+cache-dit **只维护 CUDA 算子**。长期留在仓库里的算子都是 `csrc/kernels/` 下的 CUDA kernel，通过 `cache_dit_cuda_ops` 命名空间里的 `torch.library` schema 暴露。
 
-Therefore:
+因此：
 
-1. Do not add a Triton or CuTe DSL operator to cache-dit. Not as a fast path, not as a portable
-   fallback, not "just for A100", not temporarily.
-2. Do not recreate `src/cache_dit/kernels/triton/`, `src/cache_dit/kernels/cutedsl/`, or any
-   per-backend subpackage. Those trees were removed and are covered by regression guards, see
-   `tests/kernels/test_ops_dispatch.py`.
-3. Do not reintroduce a backend selector. `kernels/backend.py`, `kernels/ops.py`, the
-   `KernelBackend` enum, and the `_resolve_backend` / `_select_*_backend` dispatch helpers are
-   gone; `test_ops_dispatch.py` asserts they stay gone. A single CUDA path with a clear error
-   message replaces the dispatch table.
-4. If a source repository only has a Triton implementation, read it for the algorithm and rewrite
-   the kernel in CUDA. Treat Triton as pseudocode, never as a target language.
-5. If someone asks for Triton or CuTe DSL support, say the maintenance policy excludes it, and
-   offer the CUDA route instead.
+1. 不要往 cache-dit 里加 Triton 或 CuTe DSL 算子。不做快速路径，不做可移植兜底，不做"先给 A100 用"，也不做临时方案。
+2. 不要重建 `src/cache_dit/kernels/triton/`、`src/cache_dit/kernels/cutedsl/` 或任何按后端拆分的子包。这些树已被删除，且由回归守卫盯着，见 `tests/kernels/test_ops_dispatch.py`。
+3. 不要重新引入后端选择层。`kernels/backend.py`、`kernels/ops.py`、`KernelBackend` 枚举以及 `_resolve_backend` / `_select_*_backend` 都已删除，`test_ops_dispatch.py` 断言它们不会回来。单一 CUDA 路径 + 清晰的错误信息，取代原来的分派表。
+4. 如果上游只有 Triton 实现，读它拿算法，然后用 CUDA 重写 kernel。把 Triton 当伪代码，永远不要当目标语言。
+5. 如果有人要 Triton 或 CuTe DSL 支持，明确说明维护政策排除了它们，并给出 CUDA 路线。
 
-The reason is maintenance cost: three parallel backends with three registration layers, three
-fake-registration paths, and three build stories cost more than the wins they deliver, and the CUDA
-path is the only one that ships in the release wheel.
+理由是维护成本：三套并行后端 = 三套注册层 + 三套 fake 注册路径 + 三套构建故事，收益抵不过成本，而发布 wheel 里只有 CUDA 路径。
 
-Use `triton-kernel` or `cute-dsl-kernel` for standalone kernel work outside cache-dit; do not let
-those workflows leak into this repository.
+仓外独立的 kernel 工作请用 `triton-kernel` 或 `cute-dsl-kernel`，不要把那些工作流带进本仓。
 
-## 2. Core rule
+## 2. 核心规则
 
-Do not mechanically replay upstream structure. Treat the source repository as the reference for
-semantics, not as the required layout.
+**不要机械复刻上游结构**。把上游仓库当作语义参考，而不是必须遵守的目录布局。
 
-Before writing code, answer these questions:
+动代码之前先回答这五个问题：
 
-1. What behavior is essential to preserve?
-2. What is the smallest native and Python closure needed to preserve that behavior?
-3. Which names should remain source-compatible, and which should be renamed to match cache-dit
-   conventions?
-4. What must be public, and what should remain private implementation detail?
-5. Which tests prove the migration works, instead of merely compiling?
+1. 哪些行为是必须保住的？
+2. 保住这些行为所需的最小 native + Python 闭包是什么？
+3. 哪些名字要保持与上游源码兼容，哪些应该改成 cache-dit 的命名约定？
+4. 哪些必须公开，哪些应当留在私有实现里？
+5. 哪些测试能证明移植成功，而不只是"能编译"？
 
-If those questions are not answered yet, do not start copying files.
+这五个问题答不出来，就不要开始拷文件。
 
-### Reference style rule
+### 引用路径规则
 
-Use portable references only:
+只写可移植的引用：
 
-- For cache-dit files, use repo-relative paths such as `src/cache_dit/kernels/_comm.py` or
-  `tests/kernels/test_cuda_fp8_comm_ops.py`.
-- For sibling or external repos, use repository-relative or GitHub-searchable paths such as
-  `nunchaku/nunchaku/models/linear.py` or `deepcompressor/deepcompressor/backend/nunchaku/utils.py`.
-- Do not write machine-local absolute paths such as `/abs/path/to/workspace/...` into the skill,
-  its supporting documentation, or any error message you add to cache-dit.
+- 引用 cache-dit 自身文件时写仓内相对路径，例如 `src/cache_dit/kernels/_comm.py`、`tests/kernels/test_cuda_fp8_comm_ops.py`。
+- 引用同级或外部仓库时写仓库相对、可被 GitHub 搜索到的路径，例如 `nunchaku/nunchaku/models/linear.py`、`deepcompressor/deepcompressor/backend/nunchaku/utils.py`。
+- 不要把 `/abs/path/to/workspace/...` 这类本机绝对路径写进 skill、配套文档，或你为 cache-dit 新增的任何错误信息。
 
-## 3. Phase 0: gather before coding
+## 3. Phase 0：动手前先收集
 
-### Required inputs
+### 必需输入
 
-1. Source operator and source repo. Example: `nunchaku/nunchaku/ops/gemm.py` plus the native files
-   it depends on.
-2. Target cache-dit user-facing surface. Example: a low-level op wrapper, a quantized module, or
-   both.
-3. Required dtypes, architectures, and scope boundaries. Example: "INT4 CUDA is required now; FP4
-   implementation may be retained but not gate current validation."
-4. Build and packaging requirements. Example: which extension hosts the op, which flag enables it,
-   whether a submodule is needed.
-5. Validation target. Example: import safety, low-level parity, module parity, end-to-end
-   inference, or shape rejection.
+1. 源算子与源仓库。例：`nunchaku/nunchaku/ops/gemm.py` 以及它依赖的 native 文件。
+2. cache-dit 侧的目标公开面。例：只做底层 op 封装、只做量化模块，或两者都要。
+3. 必需的 dtype、架构与范围边界。例："当前必须交付 INT4 CUDA；FP4 实现可以保留但不作为本轮验收门禁。"
+4. 构建与打包要求。例：该算子归哪个扩展、由哪个开关启用、是否需要 submodule。
+5. 验收目标。例：import 安全、底层 parity、模块 parity、端到端推理，或非法形状拒绝。
 
-### Gather checklist
+### 收集清单
 
-- Identify the source operator entry points.
-- Identify the native files that implement them.
-- Identify helper files that are truly required by those implementations.
-- Identify which existing cache-dit domain module should host the migrated behavior.
-- Identify the minimum feature slice that must work first.
-- Identify what will explicitly not be validated in the current milestone.
+- 找出源算子的入口点。
+- 找出实现这些入口的 native 文件。
+- 找出实现真正必需的辅助文件。
+- 判断这批行为应该落在哪个既有域模块里。
+- 确定必须先跑通的最小功能切片。
+- 明确列出本轮**不做**验证的部分。
 
-## 4. Phase 1: survey the existing design
+## 4. Phase 1：调研两侧现状
 
-### Survey the source implementation
+改动前两边都要看。
 
-Look for:
+### 调研源实现
 
-- the true call chain from public API to kernel launch
-- required helper headers, interop layers, dispatch utilities, and packers
-- runtime assumptions such as shape, rank, alignment, architecture, or dtype restrictions
-- dependency assumptions such as vendored headers, submodules, or environment variables
-- test coverage that already encodes behavior worth preserving
-- whether the source is CUDA already; if not, note that the kernel must be rewritten
+重点看：
 
-### Survey cache-dit integration points
+- 从公开 API 到 kernel launch 的真实调用链
+- 需要的辅助头文件、互操作层、dispatch 工具与 packer
+- 运行期假设：shape、rank、对齐、架构、dtype 限制
+- 依赖假设：vendored 头、submodule、环境变量
+- 已有测试里值得保留的行为契约
+- 上游是否本来就是 CUDA；不是的话记下"kernel 必须重写"
 
-Anchor files:
+### 调研 cache-dit 侧接入点
 
-- `src/cache_dit/kernels/__init__.py` — the public surface
-- `src/cache_dit/kernels/_<domain>.py` — the module that will host the op
-- `csrc/kernels/<domain>/` — the native side
-- `setup.py` — `_required_<ext>_sources()`, `_missing_<ext>_sources()`, `_get_<ext>_extension()`,
-  `_get_extensions()`
-- `tests/kernels/` — operator tests
-- `tools/inspect_release_wheel.py` — release wheel content gates
+锚点文件：
 
-Ask these questions while surveying:
+- `src/cache_dit/kernels/__init__.py` —— 公开面
+- `src/cache_dit/kernels/_<domain>.py` —— 承载该算子的域模块
+- `csrc/kernels/<domain>/` —— native 侧
+- `setup.py` —— `_required_<ext>_sources()`、`_missing_<ext>_sources()`、`_get_<ext>_extension()`、`_get_extensions()`
+- `tests/kernels/` —— 算子测试
+- `tools/inspect_release_wheel.py` —— 发布 wheel 的内容门禁
 
-1. Which existing domain module is the right host, or is a new domain justified?
-2. Does the op belong in `cache_dit._C_comm`, `cache_dit._C_attn`, or a new/dedicated extension
-   module?
-3. How should extension loading fail when the op is unavailable?
-4. Is there already a naming convention in `cache_dit_cuda_ops` for this operator family?
-5. Does `test_ops_dispatch.py` already list the public names this migration will extend?
+调研时问自己：
 
-## 5. Phase 2: decide the migration shape
+1. 哪个既有域模块是合适的宿主，还是确实需要一个新域？
+2. 该算子应该进 `cache_dit._C_comm`、`cache_dit._C_attn`，还是新建/独立扩展？
+3. 扩展不可用时，加载失败的形态应该是什么？
+4. `cache_dit_cuda_ops` 里这个算子家族是否已有命名约定？
+5. `test_ops_dispatch.py` 里是否已经列了本次要扩展的公开名？
 
-### 1. Freeze the public surface first
+## 5. Phase 2：先定移植形态
 
-Settle early:
+在动文件之前把设计定下来。
 
-- Which operator names should be exposed publicly?
-- Should the public API be low-level only, module-level only, or both?
-- Should internal backend toggles be hidden from users?
-- Should wrapper functions be explicit rather than `partial(...)` so editors and type tools can see
-  the real signature?
+### 1. 先冻结公开面
 
-Default rule: keep tuning and launch details private unless there is a strong user-facing reason to
-expose them.
+尽早确定 cache-dit 面向用户的 API：
 
-### 2. Migrate the minimal viable closure
+- 哪些算子名要公开？
+- 公开面只做底层、只做模块层，还是两者都要？
+- 内部后端开关要对用户隐藏吗？
+- 封装函数要显式定义而不是 `partial(...)`，好让编辑器和类型工具看到真实签名吗？
 
-Do not import an entire subsystem if only one slice is needed.
+默认规则：调参细节和 launch 细节保持私有，除非有明确的用户需求。
 
-Usually migrate:
+### 2. 只搬最小可用闭包
 
-- the kernel implementation files that are actually on the call path
-- the minimum helper headers or Python utilities they require
-- the binding TU entry, the loader, the registration, and the wrappers
+只需要一个切片时，不要整段搬子系统。
 
-Usually do not migrate yet:
+通常要搬：
 
-- unrelated kernels in the same source repo directory
-- optimization branches that are not needed for the current milestone
-- extra tooling, benchmark harnesses, or framework abstractions with no direct execution path impact
+- 真正在调用链上的 kernel 实现文件
+- 它们必需的最少辅助头或 Python 工具
+- binding TU 入口、loader、注册与封装
 
-### 3. Preserve semantics before cleanup
+暂时不要搬：
 
-During the first migration pass, preserve behavior, shape/dtype rules, and dataflow first. Do not mix
-the migration with optional cleanups such as naming polish, API reshaping, or algorithmic changes
-unless they are necessary for repository consistency or import safety.
+- 上游同目录里与本次无关的 kernel
+- 本轮用不到的优化分支
+- 不在执行路径上的额外工具、benchmark harness 或框架抽象
 
-## 6. Phase 3: implement the migration
+### 3. 先保语义，再清理
 
-Apply changes from lowest level to highest level. The per-layer file layout, templates and the exact
-`setup.py` edit sites are in `kernel-integration-chain.md` §3–§5; this section only records the
-migration-specific decisions.
+第一轮移植：
 
-### A. Native code and dependency boundary
+- 先保行为
+- 先保 shape 与 dtype 规则
+- 先保数据流
 
-1. Move only the required native closure into `csrc/kernels/<domain>/`.
-2. Put new code in `namespace cache_dit::<domain>` and keep upstream helper names internal with an
-   anonymous namespace. The migrated SVDQ tree keeps its upstream `svdq::` namespace because it is
-   upstream-derived; do not rename it as part of unrelated work.
-3. Keep dispatch structure if it is functionally necessary (SVDQ needs its inheritance-based launch
-   dispatch); do not rewrite it just because it looks unfamiliar.
-4. Decide dependency strategy explicitly:
-   - vendored in-tree
-   - git submodule (`csrc/third_party/spdlog` is the only one today)
-   - preinstalled system dependency
-5. Extend an existing binding TU when the op belongs to that family; a new operator family gets its
-   own `<domain>/{<domain>.h,<domain>.cpp}` pair instead of borrowing another family's TU. The only
-   `PYBIND11_MODULE` entry points are `csrc/kernels/attn/attn.cpp`,
-   `csrc/kernels/comm/comm_ops.cpp` and `csrc/kernels/svdq/pybind.cpp`.
+不要在同一轮里顺手做命名润色、API 重构或算法改动，除非它们是仓库一致性或 import 安全的必要前提。
 
-### B. Domain Python module
+## 6. Phase 3：实施移植
 
-Put everything for one domain in a single private module, `src/cache_dit/kernels/_<domain>.py`:
-loader, bridge, registration, fake, public wrapper. Keep the loader in the same module as its ops so
-a domain's failure mode, registration and public API cannot drift apart. Each domain loads its own
-extension (`_attn.py` → `cache_dit._C_attn`, `_comm.py` → `cache_dit._C_comm`, `_svdquant.py` →
-`cache_dit._C_svdquant`); borrow a sibling loader only when the ops really ship in that sibling's
-extension.
+按从低层到高层推进。各层的文件布局、模板与 `setup.py` 具体改动点见 `kernel-integration-chain.md` §3–§5；本节只记移植特有的决策。
 
-Template and the rules it encodes: `kernel-integration-chain.md` §4.1–§4.5.
+### A. Native 代码与依赖边界
 
-### C. Public surface
+1. 只把必需的 native 闭包搬进 `csrc/kernels/<domain>/`。
+2. 新代码放 `namespace cache_dit::<domain>`，上游辅助名用匿名 namespace 留在内部。已迁移的 SVDQ 树保留上游的 `svdq::` namespace（它是上游派生代码），不要在无关任务里顺手改名。
+3. 功能上必要的 dispatch 结构要保留（SVDQ 需要它那套继承式 launch dispatch），不要因为"看起来陌生"就重写。
+4. 依赖策略必须显式决定：
+   - vendored 进树
+   - git submodule（目前只有 `csrc/third_party/spdlog`）
+   - 依赖系统预装
+5. 算子属于哪个家族就扩展哪个 binding TU；新算子家族要自己建 `<domain>/{<domain>.h,<domain>.cpp}`，不要借用别的家族的 TU。仓内 `PYBIND11_MODULE` 入口只有 `csrc/kernels/attn/attn.cpp`、`csrc/kernels/comm/comm_ops.cpp`、`csrc/kernels/svdq/pybind.cpp` 三个。
 
-Expose the operator from `src/cache_dit/kernels/__init__.py` with an explicit re-export and an
-`__all__` entry:
+### B. 域 Python 模块
+
+一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/_<domain>.py`：loader、桥、注册、fake、公开封装。loader 与算子同模块，域内的失败形态、注册和公开 API 才不会各自漂移。每个域加载自己的扩展（`_attn.py` → `cache_dit._C_attn`、`_comm.py` → `cache_dit._C_comm`、`_svdquant.py` → `cache_dit._C_svdquant`）；只有当算子确实在兄弟扩展里时才借用兄弟的 loader。
+
+模板与它强制遵守的规则：`kernel-integration-chain.md` §4.1–§4.5。
+
+### C. 公开面
+
+在 `src/cache_dit/kernels/__init__.py` 里显式 re-export，并加 `__all__` 条目：
 
 ```python
 from ._comm import fp8_comm_per_token_quant
 ```
 
-Default conventions:
+默认约定：
 
-- one flat namespace, mirroring the domain modules; no subpackage re-export layers
-- explicit functions rather than `partial(...)` aliases when signature discoverability matters
-- `__all__` must equal the non-underscore public names, which
-  `test_ops_dispatch.py::test_public_api_matches_all` enforces
-- each name must be the same object as the one in its domain module, which
-  `test_public_api_is_reexported_from_domain_module` enforces
+- 单层扁平命名空间，与域模块一一对应，不再加子包 re-export 层
+- 签名可发现性重要时用显式函数，而不是 `partial(...)` 别名
+- `__all__` 必须等于全部非下划线公开名，由 `test_ops_dispatch.py::test_public_api_matches_all` 校验
+- 每个名字必须与其域模块里的是同一个对象，由 `test_public_api_is_reexported_from_domain_module` 校验
 
-Do not create a `kernels/ops.py` or a registry module to "centralize" this. The centralization was
-removed on purpose; adding it back is the exact regression the policy forbids.
+不要为了"集中管理"新建 `kernels/ops.py` 或注册表模块。那套集中层是被刻意删掉的，加回来正是政策禁止的回归。
 
-### D. Higher-level modules and state adaptation
+### D. 上层模块与状态适配
 
-If the migration also adds a module abstraction such as a quantized `nn.Module`:
+如果移植同时引入模块抽象（例如量化 `nn.Module`）：
 
-1. keep the module's expected state keys stable
-2. adapt upstream raw export keys into cache-dit module keys explicitly
-3. do not leak source-repo naming into the public API if cache-dit already has a better convention
-4. route the module through the public wrapper, not through `_call_*` or `torch.ops` directly
+1. 模块期望的 state key 保持稳定
+2. 把上游的原始导出 key 显式适配成 cache-dit 的模块 key
+3. cache-dit 已有更合适的约定时，别把上游命名漏进公开 API
+4. 模块走公开封装，不要直接调 `_call_*` 或 `torch.ops`
 
-## 7. Phase 4: validate in layers
+## 7. Phase 4：分层验证
 
-Do not rely on one test. Validation should usually proceed in this order:
+不要只靠一个测试。验证通常按这个顺序推进：
 
-1. **Import safety** — importing cache-dit without the optional extension should not crash
-2. **API surface** — public names re-exported identically, `__all__` consistent
-3. **Low-level smoke** — the op runs with the expected dtype, device and shape
-4. **Low-level correctness** — compare against a dense or reference implementation
-5. **Module correctness** — the higher-level module uses the migrated operator path correctly
-6. **Fake / compile path** — at least one `register_fake` shape-and-dtype assertion, plus a
-   `fullgraph=True` compile smoke
-7. **Round-trip or end-to-end validation** — if serialization, quantization or pipeline integration
-   exists, test it explicitly
-8. **Boundary tests** — unsupported geometry, rank, alignment or build conditions fail clearly
+1. **import 安全** —— 没有可选扩展时，import cache-dit 不应崩
+2. **API 表面** —— 公开名 re-export 是同一对象，`__all__` 一致
+3. **底层 smoke** —— 算子在预期 dtype / device / shape 下能跑
+4. **底层正确性** —— 与 dense 或参考实现对比
+5. **模块正确性** —— 上层模块确实走了移植后的算子路径
+6. **fake / compile 路径** —— 至少一个 `register_fake` 的 shape+dtype 断言，加一个 `fullgraph=True` 的 compile smoke
+7. **往返或端到端** —— 有序列化、量化或 pipeline 集成时必须单独测
+8. **边界** —— 不支持的几何、rank、对齐或构建条件要清晰失败
 
-Matching test files:
+对应测试文件：
 
-- `tests/kernels/test_ops_dispatch.py` — re-export identity, `__all__`, and the removed-dispatch guards
-- `tests/kernels/test_cuda_fp8_comm_ops.py` — FP8 comm correctness, fake path, empty input, compile smoke
-- `tests/kernels/test_cuda_merge_attn_states.py` — attention-state merge correctness and compile
-- `tests/kernels/test_svdquant_runtime.py` — SVDQ runtime behaviour and INT4 v1/v2 equivalence
-- `tests/quantization/` — module-level and quantizer behaviour
+- `tests/kernels/test_ops_dispatch.py` —— re-export 身份、`__all__`、已删 dispatch 的回归守卫
+- `tests/kernels/test_cuda_fp8_comm_ops.py` —— FP8 comm 正确性、fake 路径、空输入、compile smoke
+- `tests/kernels/test_cuda_merge_attn_states.py` —— attention 状态合并正确性与 compile
+- `tests/kernels/test_svdquant_runtime.py` —— SVDQ 运行期行为与 INT4 v1/v2 等价
+- `tests/quantization/` —— 模块层与量化器行为
 
-When scope is intentionally limited, say so explicitly:
+范围被刻意限制时要写明，例如：
 
-- "INT4 CUDA path is the validation gate."
-- "FP4 code is retained but not currently gated by runtime correctness tests."
+- "INT4 CUDA 路径是本轮验收门禁。"
+- "FP4 代码保留，但当前不由运行期正确性测试把关。"
 
-Do not imply feature maturity beyond what the tests actually cover.
+不要把成熟度说得超过测试实际覆盖。
 
-## 8. Phase 5: packaging and documentation
+## 8. Phase 5：打包与文档
 
-Operator migration is incomplete if build and packaging are wrong. The six `setup.py` edit sites and
-the three "family list" sync points are enumerated once in `kernel-integration-chain.md` §5.1 and
-§5.3 — follow that list. Migration-specific reminders:
+构建与打包不对，移植就没完成。`setup.py` 的 6 处改动与 4 个"族清单"同步点在 `kernel-integration-chain.md` §5.1、§5.3 只维护一处，照那张清单做。移植侧另外记几条：
 
-1. `_missing_*_sources()` turns a forgotten entry into a clear build error; a source that is on disk
-   but not in the list is silently not compiled.
-2. Keep default install and import behaviour safe without any extension: no eager extension import
-   outside the lazy loader.
-3. `BuildExtension` only compares source mtimes, so after editing a shared header such as
-   `csrc/kernels/attn/attn.h`, wipe `build/` (`CACHE_DIT_CLEAN=1`) instead of trusting cached
-   objects.
-4. Update `tools/inspect_release_wheel.py` when a wheel-content expectation changes, e.g. an
-   additional `.so` that must be present in the SVDQuant wheel.
-5. Update `docs/user_guide/INSTALL.md` for any new flag or host requirement.
-6. Document only what is actually usable now; do not advertise unfinished features ahead of
-   validated capability.
+1. `_missing_*_sources()` 会把漏登记变成清晰的构建错误；反过来，磁盘上有但清单里没有的源文件会**静默不参与编译**。
+2. 没有扩展时默认安装与 import 必须安全：除了惰性 loader，任何地方都不要急切 import 扩展。
+3. `BuildExtension` 只比源文件 mtime，所以改了 `csrc/kernels/attn/attn.h` 这类共享头之后要清 `build/`（`CACHE_DIT_CLEAN=1`），不要相信缓存的 `.o`。
+4. wheel 内容预期变化时更新 `tools/inspect_release_wheel.py`，例如 SVDQuant wheel 里必须多一个 `.so`。
+5. 新增开关或宿主要求要更新 `docs/user_guide/INSTALL.md`。
+6. 只写现在真的能用的东西，不要在验收前就在 README 或用户文档里宣传未完成能力。
 
-## 9. Anti-patterns
+## 9. 反模式
 
-### Do not add a Triton or CuTe DSL operator
+### 不要加 Triton 或 CuTe DSL 算子
 
-Bad: porting a Triton kernel as-is, or reinstating `kernels/triton/` "for portability".
-Better: rewrite the algorithm as a CUDA kernel under `csrc/kernels/<domain>/`.
+坏：把 Triton kernel 原样搬进来，或以"可移植性"为名复活 `kernels/triton/`。
+好：把算法重写成 `csrc/kernels/<domain>/` 下的 CUDA kernel。
 
-### Do not reintroduce a backend dispatch layer
+### 不要恢复后端分派层
 
-Bad: adding `kernels/backend.py`, a `KernelBackend` enum, or `_resolve_backend` to pick between
-implementations.
-Better: one CUDA path, one `torch.library` schema, and a `RuntimeError` naming the build command
-when the extension is missing.
+坏：新增 `kernels/backend.py`、`KernelBackend` 枚举或 `_resolve_backend` 来在多份实现间切换。
+好：单一 CUDA 路径 + 一个 `torch.library` schema + 扩展缺失时点名构建命令的 `RuntimeError`。
 
-### Do not mechanically mirror upstream layout
+### 不要机械镜像上游布局
 
-Bad: copying an entire source repo subtree into `csrc/` because one operator needed two files.
-Better: identify the minimum closure and migrate only that set.
+坏：因为一个算子用了上游两个文件，就把整棵子目录拷进 `csrc/`。
+好：找出最小闭包，只搬这一组。
 
-### Do not scatter one domain across files
+### 不要把一个域拆散在多个文件里
 
-Bad: registering the op in one module, loading the extension in another, wrapping in a third.
-Better: one `_<domain>.py` holding loader, bridge, registration, fake and wrapper.
+坏：一个模块注册算子、另一个模块加载扩展、第三个模块做封装。
+好：一个 `_<domain>.py` 里同时放 loader、桥、注册、fake 与封装。
 
-### Do not expose internal control knobs casually
+### 不要随手暴露内部控制旋钮
 
-Bad: exposing stage counts, launch tuning, or migration-only switches because they were convenient
-during development.
-Better: hardcode them at the internal wrapper layer until a real product need exists.
+坏：因为开发时方便，就把 stage 数、launch 调参或仅迁移期使用的开关暴露给用户。
+好：在内部封装层写死，直到出现真实产品需求。
 
-### Do not leak source-repo naming when cache-dit conventions already exist
+### 不要在上游命名之外重复发明命名
 
-Bad: keeping raw upstream helper names or state keys in the public interface.
-Better: adapt them to the repository's public naming rules and keep the raw names private.
+坏：cache-dit 已有约定时，仍把上游原始辅助名或 state key 留在公开接口上。
+好：适配成仓库的公开命名规则，原始名按需留在私有侧。
 
-### Do not let optional extensions break base imports
+### 不要让可选扩展打断基础 import
 
-Bad: importing the extension eagerly from top-level package import paths.
-Better: delay extension import until the migrated operator is actually needed (the loader pattern in
-`kernel-integration-chain.md` §4.1).
+坏：在顶层包 import 路径里急切 import 扩展。
+好：延迟到真正需要该算子时再 import（loader 形态见 `kernel-integration-chain.md` §4.1）。
 
-### Do not claim correctness from one smoke test
+### 不要用一个 smoke test 宣称正确
 
-Bad: compiling the extension and declaring the migration complete.
-Better: prove import safety, API surface, low-level execution, low-level correctness, higher-level
-module behaviour and boundary failures.
+坏：扩展编译通过就宣布移植完成。
+好：证明 import 安全、API 表面、底层执行、底层正确性、上层模块行为与边界失败。
 
-### Do not write machine-local reference paths
+### 不要写本机绝对路径
 
-Bad: `/abs/path/to/workspace/...` in a docstring, an error message, or a skill reference.
-Better: `src/cache_dit/kernels/_comm.py`, `nunchaku/nunchaku/models/linear.py`,
-`deepcompressor/deepcompressor/calib/smooth.py`.
+坏：在 docstring、错误信息或 skill 引用里写 `/abs/path/to/workspace/...`。
+好：`src/cache_dit/kernels/_comm.py`、`nunchaku/nunchaku/models/linear.py`、`deepcompressor/deepcompressor/calib/smooth.py`。
 
-## 10. Reference case: SVDQ / Nunchaku migration
+## 10. 参考案例：SVDQ / Nunchaku 移植
 
-Use this as an example of the workflow, not as a recipe to replay line by line.
+把它当流程示例，不要逐行复刻。
 
-### What the migration demonstrated
+### 这次移植证明了什么
 
-- native W4A4 closure can be migrated without importing an entire upstream project
-  (`csrc/kernels/svdq/` was later reorganized into `core/`, `int4/`, `fp4/`, and those now live under
-  the `csrc/kernels/svdq/native/` directory with `csrc/kernels/svdq/cute/` as its sibling, which is a
-  local layout choice: upstream nunchaku keeps a flat `csrc/`)
-- public operator wrappers should remain explicit and repository-aligned
-- `torch.library` schemas and implementations live beside their domain wrappers, in the
-  `cache_dit_cuda_ops` namespace
-- optional extension import should be delayed and load errors should be queryable
-- packaging may need submodule enforcement instead of hard-coded vendoring
-- layered tests should cover runtime, module and end-to-end behaviours separately
+- native W4A4 闭包可以不整包引入上游就迁过来（`csrc/kernels/svdq/` 后来重组为 `core/`、`int4/`、`fp4/`，这些现在位于 `csrc/kernels/svdq/native/` 之下、与 `csrc/kernels/svdq/cute/` 并列；这是本地布局选择，上游 nunchaku 保持扁平的 `csrc/`）
+- 公开算子封装要显式、与仓库约定对齐
+- `torch.library` 的 schema 与实现要和域封装放在一起，统一在 `cache_dit_cuda_ops` 命名空间
+- 可选扩展的 import 要延迟，加载错误要可查询
+- 打包可能要靠 submodule 强制，而不是把依赖硬编码进树
+- 测试分层要分别覆盖运行期、模块与端到端行为
 
-### What the later refactor changed
+### 后续那次重构改了什么
 
-The comm and attention-state-merge operators were CUDA ports of existing Triton and CuTe DSL kernels.
-That migration is the template for future work:
+comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现的 CUDA 版移植。那次迁移是后续工作的模板：
 
-- native sources landed in `csrc/kernels/comm/` and `csrc/kernels/attn/`
-- each family registers through its own pybind TU: `cache_dit._C_comm` for the FP8 comm ops,
-  `cache_dit._C_attn` for the attention-state merge (they shared `_C_comm` until the split)
-- their Python modules colocate registration with the wrappers, replacing the old
-  `cuda/_ops_registery.py` + `ops.py` pair
-- the Triton and CuTe DSL trees, the backend selector and their tests were deleted, and
-  `tests/kernels/test_ops_dispatch.py` now guards against their return
+- native 源文件分别落在 `csrc/kernels/comm/` 与 `csrc/kernels/attn/`
+- 每族通过自己的 pybind TU 注册：FP8 comm 是 `cache_dit._C_comm`，attention 状态合并是 `cache_dit._C_attn`（拆分前两者共用 `_C_comm`）
+- 它们的 Python 模块把注册与封装放在一起，取代旧的 `cuda/_ops_registery.py` + `ops.py` 组合
+- Triton 与 CuTe DSL 两棵树、后端选择器及其测试被删除，现在 `tests/kernels/test_ops_dispatch.py` 防止它们回来
 
-### Useful cache-dit reference files
+### 有用的 cache-dit 参考文件
 
 - `src/cache_dit/kernels/__init__.py`
 - `src/cache_dit/kernels/_attn.py`
@@ -400,7 +340,7 @@ That migration is the template for future work:
 - `setup.py`
 - `tools/inspect_release_wheel.py`
 
-### Useful external reference cases
+### 有用的外部参考案例
 
 - `nunchaku/nunchaku/models/linear.py`
 - `nunchaku/nunchaku/ops/gemm.py`
@@ -409,42 +349,42 @@ That migration is the template for future work:
 - `deepcompressor/deepcompressor/calib/smooth.py`
 - `deepcompressor/deepcompressor/calib/lowrank.py`
 
-### What was specific to that case
+### 哪些是那次案例特有的
 
-These details were important for SVDQ but are not universal migration rules:
+这些细节对 SVDQ 很重要，但不是普遍移植规则：
 
-- `svdq_*` naming convention
-- W4A4 INT4 and FP4 split in scope and validation
-- specific geometry and rank constraints
-- quantized module state adaptation rules
-- submodule choice for `spdlog`
+- `svdq_*` 命名约定
+- W4A4 的 INT4 与 FP4 在范围与验收上的拆分
+- 具体的几何与 rank 约束
+- 量化模块的状态适配规则
+- `spdlog` 用 submodule 的选择
 
-If your operator family differs, keep the workflow but re-evaluate the decisions.
+如果你的算子族不同，保留流程，但把决策重新评估一遍。
 
-## 11. Execution order and exit criteria
+## 11. 执行顺序与完成判据
 
-Suggested order for a real migration:
+真实移植建议按这个顺序：
 
-1. confirm the target is CUDA; if the source is Triton or CuTe DSL, plan a rewrite
-2. summarize the target operator and current scope boundary
-3. list source files and the cache-dit host module
-4. identify the minimum viable closure
-5. freeze the public API and naming strategy
-6. migrate native code and extend the pybind TU
-7. add loader, bridge, registration, fake and wrapper in one domain module
-8. re-export from `kernels/__init__.py`
-9. wire `setup.py` source lists and build gates
-10. add or adapt higher-level module code if needed
-11. validate in layers for kernel, module and end-to-end behaviour
-12. document only validated scope
+1. 确认目标是 CUDA；源头是 Triton 或 CuTe DSL 就先规划重写
+2. 概括目标算子与当前范围边界
+3. 列出源文件与 cache-dit 侧的宿主模块
+4. 确定最小可用闭包
+5. 冻结公开 API 与命名策略
+6. 迁 native 代码并扩展 pybind TU
+7. 在一个域模块里补齐 loader、桥、注册、fake、封装
+8. 从 `kernels/__init__.py` 导出
+9. 接 `setup.py` 的源清单与构建门禁
+10. 需要时加上或适配上层模块代码
+11. 按 kernel、模块、端到端三层验证
+12. 只把已验证的范围写进文档
 
-The migration is not done until all of these are true:
+以下全部为真才算完成：
 
-- the operator is CUDA, with no Triton or CuTe DSL component anywhere in the change
-- the public API is intentional and repository-aligned
-- optional extension behaviour is safe
-- dependency strategy is explicit
-- every new native source appears in the `setup.py` source list
-- tests prove correctness at the right layers, kernel and module level as needed
-- unsupported cases fail clearly
-- documentation matches validated reality
+- 算子是 CUDA 的，改动里没有任何 Triton 或 CuTe DSL 成分
+- 公开 API 是有意设计的、与仓库约定一致
+- 可选扩展缺失时的行为是安全的
+- 依赖策略已明确
+- 每个新增 native 源文件都出现在 `setup.py` 的源清单里
+- 测试在正确的层级证明了正确性（kernel 层与模块层按需）
+- 不支持的场景会清晰失败
+- 文档与已验证的现实一致
