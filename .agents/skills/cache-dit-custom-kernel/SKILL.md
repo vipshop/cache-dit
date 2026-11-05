@@ -169,8 +169,8 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
 - 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，无 finalize。
-- 独立 GEMM kernel-only：M=1024 hybrid 30.432us vs native 31.040us；M=4096 committed hybrid nsys 116.8–117.4us vs native 117.536us，仅快约0.3%；完整 Linear 层约快1.3%–1.5%，relative L2 约0.00215。
-- **大 shape 下 native 反超**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` native 分别快2.58%/1.70%/4.52%/6.58%。不能把 hybrid 快于 native 当普适结论；下一条主矛盾是大 shape 退化。
+- 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。
+- **rank32 大 shape 仍落后 native**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` 的 cute/native 为1.026/1.020/1.047/1.064。rank128 在所有大 shape 略优于 native（0.32%–1.43%）；rank64 在 `8192x6144`/16K 退化。下一条主矛盾是 rank32/64 大 shape。
 - hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
 - K-block 在 hybrid 上已无 spill，wait/math/sleeping 降约5%，但四个大 shape 平均仅0.12%（一个 shape 还 -0.23%），无明确 wall-clock 收益，不保留。
 - stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
@@ -178,7 +178,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
 - G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent CTA 慢4.4% 的旧结论来自全 TMA；hybrid 下 store_done 串行化机制仍在，未重测。旧 persistent/K-block/BN128 数据不能直接外推到 hybrid。
-- 下一步优先级：先解释 `16Kx8Kx8K` 下 native 反超；其次才是 canonical SW64 bank-conflict、A G2R 重复流量、去串行化的 persistent、FlashInfer benchmark。详见 `references/svdq-nvfp4-cute.md` §14。
+- 下一步优先级：先对 `16Kx8Kx8K` rank32 做 native/cute NCU 归因；canonical SW64 已完成，A-only TMA/producer coalesced 已证伪。FlashInfer 可选 backend 和 cutlass-sm120 对比为当前进行项。统一数据见 §17，历史负结果见 §14/§16。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。

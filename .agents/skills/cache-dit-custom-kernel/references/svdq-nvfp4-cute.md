@@ -298,6 +298,9 @@ rank128 在大 shape 均略优于 native；rank64 在 `8192x6144`/16K 明显落�
 
 ## 12. 大 shape 标定：K-block 不放大收益，native 随规模反超（2026-11-05）
 
+> 历史口径：本章为 nsys 标定，当前 CUDA Event 统一基线见 §17。
+
+
 同 harness、同 nsys 口径，每个配置 3 次 `Med (ns)`。baseline 为 committed hybrid；K-block 为 hybrid 上逐 k-block `A G2R -> B copy -> MMA`；native 为 native SVDQ GEMM。
 
 | shape | hybrid baseline (us) | hybrid K-block (us) | native (us) | K-block vs baseline | native vs baseline |
@@ -367,6 +370,9 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 
 ## 15. FlashInfer CuTeDSL 同 shape benchmark（2026-11-05）
 
+> 历史口径：本章只测了 FlashInfer cute-dsl 的 kernel-only（20 iter），不是当前完整 backend 结论。cutlass-sm120 与 cache-dit 全链对比见后续 FlashInfer 章节。
+
+
 条件：FlashInfer 源码通过 `PYTHONPATH=/workspace/dev/vipshop/flashinfer` 导入，`mm_nvfp4_svdquant(..., backend="cute-dsl")`，与 native/hybrid 使用同一随机输入、rank=32、CUDA Event median（20 iter）。FlashInfer 使用自己的 standard row-major `nvfp4_quantize_smooth` 输出和 CuTe standard weight pack，因此不跨量化口径比较 rel_l2；kernel 输出 finite。JIT 编译已完成，不计入计时。
 
 | shape | native | hybrid | FlashInfer | FlashInfer / native |
@@ -377,3 +383,56 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 | 16384x8192x8192 | 2354.6us | 2578.6us | 2767.6us | 0.851x |
 
 结论：FlashInfer fused CuTeDSL kernel 在 SM120 上不比当前 native/hybrid 快，慢约 9%–15%；其默认 tile/plan 不是这个 shape 的优势配置。暂不把 kernel 复制进 cache-dit，也不以它作为后续优化目标；保留为外部上限参照。JIT 只约 1s，环境本身不是阻塞项。
+
+## 17. SVDQ 性能基线总表（2026-11-05）
+
+这是后续优化的唯一 CUDA Event 基线；§10/§12/§15 的 nsys/早期 Event 数据只作为历史证据，不与本节拼接。
+
+**测量条件**
+
+- GPU4；`torch.backends.cuda.matmul.allow_tf32=False`。
+- 同一 `gemm_harness.py` 的 native/cute 路径；CUDA Event 50 次 median，warmup 10。
+- 每配置至少 3 轮；rank32 的 `8192x6144`/`16K` 另做正反序各 3 轮，消除预热顺序偏差。
+- `cute/native < 1` 表示 cute 更快；`> 1` 表示 cute 更慢。绝对值不要与 nsys 表比较。
+- 当前 CuTe：A/SFA G2R + B/SFB/D/L1 TMA + canonical SW64/SW32 LoRA，producer 输出 v1 pack + BF16 D。
+
+### 17.1 GEMM kernel-only，rank32
+
+| Shape M×N×K | native (us) | cute (us) | cute/native |
+|---|---:|---:|---:|
+| 4096×3072×3072 | 120.24 | 120.22 | 0.9999 |
+| 8192×3072×3072 | 206.80 | 212.18 | 1.0260 |
+| 4096×6144×3072 | 206.26 | 210.34 | 1.0198 |
+| 8192×6144×3072 | 404.08 | 422.92 | 1.0466 |
+| 16384×8192×8192 | 2406.63 | 2560.39 | 1.0639 |
+
+### 17.2 GEMM kernel-only，rank64/128
+
+| Shape | rank | native (us) | cute (us) | cute/native |
+|---|---:|---:|---:|---:|
+| 4096×3072×3072 | 64 | 124.34 | 124.14 | 0.9984 |
+| 4096×3072×3072 | 128 | 132.46 | 130.28 | 0.9835 |
+| 8192×3072×3072 | 64 | 214.33 | 215.22 | 1.0042 |
+| 8192×3072×3072 | 128 | 229.93 | 226.64 | 0.9857 |
+| 4096×6144×3072 | 64 | 214.30 | 214.39 | 1.0004 |
+| 4096×6144×3072 | 128 | 228.54 | 226.71 | 0.9920 |
+| 8192×6144×3072 | 64 | 421.39 | 433.48 | 1.0287 |
+| 8192×6144×3072 | 128 | 456.63 | 455.18 | 0.9968 |
+| 16384×8192×8192 | 64 | 2475.42 | 2587.15 | 1.0451 |
+| 16384×8192×8192 | 128 | 2674.07 | 2645.22 | 0.9892 |
+
+### 17.3 完整 Linear 层，rank32
+
+| M | native (us) | cute (us) | cute/native | relative L2 |
+|---:|---:|---:|---:|---:|
+| 1024 | 63.648 | 62.992 | 0.9897 | 0.0 |
+| 4096 | 168.336 | 164.624 | 0.9780 | 0.00215 |
+
+rank64/128 的完整层、以及更多 M 的层数据尚未测，不推算、不填 N/A 数字。
+
+### 17.4 当前结论
+
+1. **M4096 所有已测 rank 基本持平或略优 native**；rank128 在 kernel-only 已稳定快约1%–1.6%。
+2. **rank32 大 shape 仍明显落后**：`8192x6144` 慢4.66%、`16K` 慢6.39%，是下一步 NCU 的主目标。
+3. **rank128 在大 shape 全部略优于 native**（0.3%–1.4%），说明当前 CuTe 结构并非先天不适合大 shape；rank64 在 `8192x6144`/16K 的退化是 rank-specific 问题。
+4. 完整层 M1024/M4096 已快1%–2.2%，但 kernel-only 的大 shape 退化会在更大 M 下吃掉层收益。
