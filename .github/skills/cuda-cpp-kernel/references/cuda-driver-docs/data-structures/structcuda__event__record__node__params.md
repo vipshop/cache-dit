@@ -1,6 +1,0 @@
-# 7.20. CUDA_EVENT_RECORD_NODE_PARAMS
-
-**Source:** structCUDA__EVENT__RECORD__NODE__PARAMS.html#structCUDA__EVENT__RECORD__NODE__PARAMS
-
-
-### Public Variables
