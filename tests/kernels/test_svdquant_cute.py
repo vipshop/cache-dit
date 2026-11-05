@@ -22,7 +22,7 @@ def _relative_l2(actual: torch.Tensor, expected: torch.Tensor) -> float:
           expected.float().norm().clamp_min(1e-12)).item()
 
 
-@pytest.mark.parametrize("rank,scales", [(32, [0.5, 2.0]), (128, [1.0] * 8)])
+@pytest.mark.parametrize("rank,scales", [(32, [0.5, 2.0]), (64, [1.0] * 4), (128, [1.0] * 8)])
 def test_cute_quantize_producer(rank: int, scales: list[float]) -> None:
   _require_sm120()
   torch.manual_seed(1234)
@@ -82,11 +82,11 @@ def test_cute_producer_rejects_non_256_padded_batch() -> None:
     svdq_quantize_w4a4_cute(x, None, smooth, [1.0], 128)
 
 
-def test_cute_gemm_matches_native_runtime() -> None:
+@pytest.mark.parametrize("rank", [32, 64, 128])
+def test_cute_gemm_matches_native_runtime(rank: int) -> None:
   _require_sm120()
   torch.manual_seed(20261112)
   in_features = out_features = 512
-  rank = 32
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
   state_dict = quantize_linear_svdq_w4a4(

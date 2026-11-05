@@ -17,7 +17,7 @@
 3. NVFP4 主积和 BF16 LoRA-up 积共享同一 FP32 accumulator，最后只舍入一次。
 4. 旧 checkpoint 在 `_prepare_cute_pack()` 中做一次加载时转换；forward 不经过旧 pack producer、FP32 scratch 或 finalize。
 
-数值验收已覆盖 rank 0/32/128、独立 producer（identity smooth 下 v1 qact 与 native 逐字节一致，ascales 值集合一致）、真实量化 Linear 的 native/hybrid parity、INT4 隔离和 FLUX 出图。随机有限量化状态下高层 hybrid/native relative L2 约 0.00215；91 个 SVDQ kernel/runtime 测试通过。
+数值验收已覆盖 rank 0/32/64/128、独立 producer（identity smooth 下 v1 qact 与 native 逐字节一致，ascales 值集合一致）、真实量化 Linear 在 rank32/64/128 的 native/hybrid parity、INT4 隔离和 FLUX 出图。随机有限量化状态下高层 hybrid/native relative L2 约 0.00215；94 个 SVDQ kernel/runtime 测试通过。
 
 ## 2. 性能测量条件
 
@@ -226,8 +226,10 @@ identity smooth 下，当前 producer 的 v1 qact 与 native quantize 逐字节�
 | committed kernel M=4096，nsys median | 116.80–117.44us（三次 117.440/116.800/117.344） | 117.536us（同轮） | 约137.4us | 比 native 快约 0.3%，比全 TMA 快约 14.7%；不再引用 event 114.75us 的跨工具比较 |
 | 完整 Linear M=1024，event median | 63.024us | 63.888us | - | hybrid 为 native 的 0.986x |
 | 完整 Linear M=4096，event median | 166.016us | 168.176us | - | hybrid 为 native 的 0.987x；relative L2 0.00215 |
+| kernel M4096/N3072/K3072，rank64，event median | 124.14us | 124.34us | - | hybrid 快约0.16% |
+| kernel M4096/N3072/K3072，rank128，event median | 130.28us | 132.46us | - | hybrid 快约1.65% |
 
-验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 91 passed。producer 测试新增 native v1 pack parity、非 256 padded batch 负向用例，并保留 0.12 去量化精度门槛；另有一条真实量化 Linear 的 native/hybrid 端到端 parity。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
+验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 94 passed。producer 测试覆盖 rank32/64/128，并包含 native v1 pack parity、非 256 padded batch 负向用例和 0.12 去量化精度门槛；真实量化 Linear 的 native/hybrid 端到端 parity 覆盖 rank32/64/128。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
 
 **边界**：M 必须是 256 倍数（v1 以 256 行为块）；N 必须为 128 倍数。M4096/N3072 下 hybrid kernel-only 只比 native 快约0.3%，完整层约1.3%–1.5%；但大 shape 下 native 反超（16Kx8Kx8K 快6.58%，见 §12），不能宣称 hybrid 普遍快于 native。下一步应优先解释大 shape 退化，而不是继续微调调度。
 
