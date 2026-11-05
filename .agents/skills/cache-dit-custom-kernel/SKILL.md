@@ -168,11 +168,13 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
-- producer 已基本追平 native，但最终稳态 median 仍略慢约 0.8%；继续保留优化项。
-- CuTe GEMM 比 native 慢约 16%，尚未达到“快至少 5%”目标。
-- stages/tile 扫描已完成：最佳 `128x256/BK128/S2` 仍慢 15.89%；**除非有新 NCU 证据，否则不要再次盲目扫描 stages/smem**。
-- direct g2r 原型已回退：native pack 按 MMA fragment 直接排布，CuTe standard row-major pack 不匹配；继续该路线前必须先做 fragment-aligned pack。
-- NVFP4 默认 runtime 因而保持 native；不能将 producer 进展描述成完整工作流已达标。
+- 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，无 finalize。
+- 独立 GEMM kernel-only：M=1024 hybrid 30.432us vs native 31.040us，M=4096 hybrid 114.75us vs native 约117.5us，约快 2%；同轮全 TMA 为 36.64/133.55us。完整 Linear 层为 native 的约 0.987x（快 1.3%–1.5%），relative L2 约 0.00215。
+- mbarrier 唯一初始化、init fence 已落地；K-block 流水、提前 release 和 prologue 前移未形成净收益，不要在没有新 spill 证据时重复。
+- stages/tile 扫描与全 TMA 路线已完成：全 TMA 相对 hybrid 明显更慢；**除非有新 NCU 证据，否则不要再次盲目扫描 stages/smem**。
+- G2R 的 v1 pack 映射已找回并实证：当前 producer 在 identity smooth 下与 native qact/ascales 逐字节一致；不要让 producer 再写 standard row-major A/SFA。
+- 全 TMA 的 NCU 差距是 shared 指令约 9 倍、bank conflict 约 39 倍和额外 mbarrier stall。persistent CTA 慢约 4.4%，BN128 小 tile 慢约 23%，light producer 路线已停；不要重复这几条结构实验。
+- 默认 NVFP4 runtime 仍可保持 native，直到 e2e 达到 5% 门槛；当前 hybrid 只达到 GEMM 约 2%、层约 1.3%–1.5%。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。

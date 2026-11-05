@@ -11,9 +11,9 @@ namespace svdq::cute_kernels {
 namespace {
 
 // Independent CuTe activation producer. One warp owns 32 rows and the whole K reduction:
-//   qact/ascales are written directly in the TMA-compatible NVFP4 layouts;
+//   qact/ascales are written directly in the v1 256-row MMA-fragment pack consumed by G2R;
 //   D = input @ lora_down is accumulated in registers and written once as row-major BF16.
-// There is no v1 activation fragment, FP32 LoRA scratch, atomic, or post-processing kernel.
+// There is no FP32 LoRA scratch, atomic, finalize kernel, or extra activation repack.
 struct PackedBF16 {
   __nv_bfloat162 data[4];
 };
@@ -132,15 +132,10 @@ __device__ __forceinline__ PackedF32 mma_lora(PackedBF16 a, PackedBF16 b, Packed
   return acc;
 }
 
-__device__ __forceinline__ size_t sf_offset(int row, int group, int groups) {
-  return size_t(row / 128) * (groups * 128) + size_t(group / 4) * 512 + 16 * (row % 32) +
-         4 * ((row / 32) % 4) + group % 4;
-}
-
-// Quantize four K16 groups and write standard row-major qact plus CUTLASS 128x4 SFA.
-// The max/shuffle/rounding sequence matches the native producer, but the stores bypass its v1
-// fragment layout completely. Each lane writes two u32 per row half, so the result is linear TMA
-// input rather than an MMA register image in gmem.
+// Quantize four K16 groups and write the v1 activation qact/scale pack consumed by G2R.
+// The max/shuffle/rounding sequence matches the native producer. Each lane owns four u32 words
+// per K32 half; the stores place those words at their MMA-fragment positions in the 256-row v1
+// block, so the GEMM can load A/SFA directly into registers without TMA or shared memory.
 __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qact,
                                                 uint8_t *ascales, int M, int K, int row0, int k0,
                                                 int lane) {
@@ -209,36 +204,44 @@ __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qa
     }
   }
 
-  // Two lanes per row emit the full 32-byte K64 qact slice as adjacent 16-byte stores. The old
-  // four-lane/4-byte form produced half-used sectors; this keeps the same standard row-major
-  // bytes while letting the coalescer fill complete 32-byte sectors.
+  // Redistribute each K32 word into the v1 256-row interleaved activation pack. Each lane still
+  // owns four u32 words per K half, but the destination word interleaves rows and K halves for
+  // the SM120 MMA fragment. The mapping was reverse-engineered from the native producer's v1
+  // output and verified word-for-word for both qact and ascales.
   const int i = lane % 4;
   if (i < 2) {
 #pragma unroll
     for (int j = 0; j < 2; ++j) {
       const int row = row0 + lane / 4 + j * 8;
-      const uint4 packed = make_uint4(qpacks[j][i * 4 + 0], qpacks[j][i * 4 + 1],
-                                      qpacks[j][i * 4 + 2], qpacks[j][i * 4 + 3]);
-      *reinterpret_cast<uint4 *>(qact + size_t(row) * (K / 2) + k0 / 2 + i * 16) = packed;
+      const int local = 16 * (row % 8) + ((row % 16) / 8) + 128 * ((row % 32) / 16);
+      const int64_t base =
+        ((static_cast<int64_t>(row / 256) * (K / 64) + k0 / 64) * 8 + (row % 256) / 32) * 256;
+      uint32_t *dst = reinterpret_cast<uint32_t *>(qact) + base + local + i * 2;
+      dst[0] = qpacks[j][i * 4 + 0];
+      dst[4] = qpacks[j][i * 4 + 1];
+      dst[8] = qpacks[j][i * 4 + 2];
+      dst[12] = qpacks[j][i * 4 + 3];
     }
   }
 
-  // All four lanes in a row group own the same four scales. Let lane%4==0 write the packed u32.
+  // The v1 scale word is one row's four FP8 factors. Its lane is 4*(row%8) + row/8 within the
+  // 32-row producer warp panel; the block/K/warp base matches the qact base above.
   if (lane % 4 == 0) {
-    const int group = k0 / 16;
-    const int groups = K / 16;
 #pragma unroll
     for (int j = 0; j < 2; ++j) {
       const int row = row0 + lane / 4 + j * 8;
-      *reinterpret_cast<uint32_t *>(ascales + sf_offset(row, group, groups)) = fp8scale[j];
+      const int64_t base =
+        (static_cast<int64_t>(row / 256) * (K / 64) + k0 / 64) * 8 + (row % 256) / 32;
+      const int scale_lane = 4 * (row % 8) + ((row % 32) / 8);
+      reinterpret_cast<uint32_t *>(ascales)[base * 32 + scale_lane] = fp8scale[j];
     }
   }
 }
 
 // TODO(cute-producer-migration): This fused activation-quant + LoRA-down producer currently uses
 // manual mma.sync/ldmatrix and explicit shared-memory staging. Once the native-matching schedule
-// is locked, re-express the same tile/reduction/coalesced-output plan with CuTe TiledMMA/TiledCopy
-// atoms. Keep the standard row-major A/SFA and row-major BF16 D contract unchanged.
+// is locked, re-express the same tile/reduction/output plan with CuTe TiledMMA/TiledCopy atoms.
+// Keep the v1 A/SFA and row-major BF16 D contract unchanged.
 template <int kRankTiles, int kWarps>
 __global__ void quantize_w4a4_fused_lora_kernel(
   const __nv_bfloat16 *__restrict__ input,
@@ -418,7 +421,8 @@ void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor l
   const int K = input.shape[-1];
   const int M = input.numel() / K;
   const int rank = lora_down.valid() ? lora_down.shape[-1] : 0;
-  require(M % 32 == 0 && K % 64 == 0, "quantize_w4a4 requires M%32==0 and K%64==0");
+  require(M % 256 == 0 && K % 64 == 0,
+          "quantize_w4a4 requires M%256==0 for the v1 activation pack and K%64==0");
   require(rank == 0 || (rank % 16 == 0 && rank <= 128),
           "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
   require(static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),

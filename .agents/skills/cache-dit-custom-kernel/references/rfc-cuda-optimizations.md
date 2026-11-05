@@ -18,10 +18,10 @@
 
 | 编号 | 项目 | 状态 | 验收标准 |
 |---|---|---|---|
-| CDK-1 | 独立 CuTe producer 与工作流解耦 | 已完成 | 无旧 producer、v1 scratch、G2R 反解或 finalize |
-| CDK-2 | Producer kernel 性能追平/略优 | 进行中 | 当前 median 约慢 0.8%，需继续稳定复测 |
-| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前性能与数值，利用 TMA/WS/多级流水 |
-| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | stage/tile 扫描已完成；最佳 128x256/BK128/S2 仍慢 15.89% |
+| CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 直接输出 v1 A/SFA + BF16 D，无 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
+| CDK-2 | Producer kernel 性能追平/略优 | 进行中 | M=4096 v1 producer 约 46.8us vs native 46.6us；仍需扩大 shape 复测 |
+| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前 v1 A/SFA 与 BF16 D 性能 |
+| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | hybrid kernel M=1024 30.432us vs native 31.040us、M=4096 114.75us vs 117.5us，约 2%，未达 5% |
 | CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 待开始 | 多次 FLUX native/CuTe 对照 |
 | CDK-6 | 可重复 ccache 构建链路 | 已完成 | `build_fast.sh` editable + nvcc shim 验证通过 |
 
@@ -29,10 +29,10 @@
 
 ## 3. 完成状态清单
 
-- [x] CDK-1：独立 CuTe producer + 全 TMA A/B/SFA/SFB GEMM；删除 `lora_act_to_bf16` 和 forward 中旧 native 依赖。
-- [ ] CDK-2：producer 稳态性能追平/略优。当前最终 nsys median 为 CuTe 32.192us、native 31.936us。
+- [x] CDK-1：独立 CuTe producer + hybrid A/SFA G2R、B/SFB/D/L1 TMA GEMM；producer 直接输出 v1 A/SFA + BF16 D，无 FP32 scratch/finalize。
+- [ ] CDK-2：producer 稳态性能追平/略优。M=4096 v1 producer 46.8us vs native 46.6us；M=1024 仍需复测。
 - [ ] CDK-3：将手写 `mma.sync/ldmatrix` producer 迁移为 CuTe atoms；不得恢复旧 pack 或降低当前性能。
-- [ ] CDK-4：GEMM 快于 native 至少 5%。当前最佳 `128x256/BK128/S2` 为 133.76µs，native 115.10µs；目标 ≤109.35µs。stages/tile 扫描已完成，均未达到目标。
+- [ ] CDK-4：GEMM 快于 native 至少 5%。hybrid kernel M=1024 30.432µs vs native 31.040µs、M=4096 114.75µs vs 约117.5µs，约 2%，尚未达到 5%。
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。达标前 NVFP4 默认 runtime 保持 native。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 
@@ -54,8 +54,10 @@
 4. **独立 consumer WG**：考虑 1 个 producer WG + 2 个 consumer WG，将 NVFP4 与 BF16 LoRA MMA 分给不同 WG。必须解决共享 FP32 accumulator 或跨 WG 归约成本；先做原型测量，不能直接作为主路径。
 5. **指令与装载路径**：结合 SASS/PC sampling 检查 LDSM、SF copy、MMA 依赖链和 epilogue，不凭理论 TFLOPS 推断收益。
 6. **Descriptor/调度开销**：使用 nsys 区分 kernel 本体与 host/descriptor 成本；kernel-only 优化不能用 host 缓存收益替代。
+7. **K-block/prologue 调度**：提前 release、FlashInfer/CUTLASS 两种 K-block 顺序、232-register budget 和 consumer 初始化后移均已实测；wait 局部改善被 fragment spill 或地址状态开销抵消，最终 nsys 无净收益。详见 `svdq-nvfp4-cute.md` §8，无新 spill 证据时不要重复。
+8. **Persistent/light producer/小 tile**：persistent 110 CTAs 为 143.52us，慢约 4.4%（output overlay 串行化）；light producer 288T 路线已停；BN128/S3 为 168.99us 且 occupancy 不变，已回退；BM64 被 128-row SF atom 阻止。详见 `svdq-nvfp4-cute.md` §9。
 
-FlashInfer 参考调研已完成：其方形 tile、2 物理 buffer、仅 warp0 发 TMA 的思路仅作参考，未直接采纳。
+FlashInfer/CUTLASS 的 K-block 顺序和 producer start state 已完成对照实验；start state 保留为标准协议，K-block 变体均已回退。最新 NCU 归因显示真正差距是 shared 指令/bank conflict 与同步开销，下一步应针对该路径或 fragment-aligned pack，而不是继续改调度外形。
 
 GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验收。
 

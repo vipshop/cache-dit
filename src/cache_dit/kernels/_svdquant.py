@@ -572,6 +572,10 @@ def _svdq_quantize_w4a4_cute(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   batch_size, channels = input.shape
   batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
+  if batch_size_pad % 256 != 0:
+    raise RuntimeError(
+      "svdq_quantize_w4a4_cute requires the padded batch to be a multiple of 256 "
+      f"for the v1 activation pack, got {batch_size_pad} (batch={batch_size}, pad_size={pad_size})")
   rank = 0 if lora_down is None else lora_down.shape[1]
   padded_input = input.contiguous()
   if batch_size_pad != batch_size:

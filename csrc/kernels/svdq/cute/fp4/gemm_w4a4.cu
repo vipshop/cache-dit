@@ -8,9 +8,10 @@
 namespace svdq::cute_kernels {
 
 // Host entry for the SM120 CuTe path. Validation happens before any launch so unsupported dtypes
-// or layouts fail instead of being misinterpreted by a TMA descriptor. Both activation and weight
-// sides now use standard row-major E2M1 codes plus CUTLASS 128x4 SF atoms. The independent CuTe
-// activation producer emits this layout directly; there is no v1 fragment or LoRA finalize step.
+// or layouts fail instead of being misinterpreted by a TMA descriptor. Activation A/SFA keep the
+// v1 256-row MMA-fragment pack and are loaded G2R; weights use standard row-major E2M1 codes plus
+// CUTLASS 128x4 SF atoms and are loaded by TMA. The independent CuTe activation producer emits the
+// v1 pack plus BF16 D directly, so there is no LoRA finalize or extra repack step.
 //
 // Two tile specializations are compiled:
 //   BN=256, stages=3, BK=128: default when N/K alignment allows it; rank tiles have 32 columns.
@@ -50,11 +51,11 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
 
   require(wgt.size(1) == act.size(1), "wgt must have the same packed K extent as act");
   require(out.size(0) == M && out.size(1) == N, "out must be [M, N]");
-  require(M % 128 == 0 && N % 128 == 0,
-          "M and N must be multiples of 128 for the CUTLASS SF atom layout");
+  require(M % 256 == 0 && N % 128 == 0,
+          "M must be a multiple of 256 for the v1 activation pack; N must be a multiple of 128");
   require(K % 64 == 0, "K must be a multiple of 64");
   require(ascales.numel() == sf_buffer_bytes(M, K),
-          "ascales must be a flat 128x4 512B atom buffer for [M, K]");
+          "ascales must be the v1 interleaved activation scale pack for [M, K]");
   require(wscales.numel() == sf_buffer_bytes(N, K),
           "wscales must be a flat 128x4 512B atom buffer for [N, K]");
 
