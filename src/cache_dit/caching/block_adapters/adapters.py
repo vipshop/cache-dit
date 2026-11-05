@@ -202,6 +202,15 @@ def fast_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   return minimax_h3_adapter(pipe, **kwargs)
 
 
+@BlockAdapterRegister.register("PikaH3Flex")
+def pika_h3_flex_adapter(pipe, **kwargs) -> BlockAdapter:
+  # Pika H3 Flex is the post-trained six-step MiniMax-H3: same `MiniMaxH3Transformer3DModel`, same
+  # packed-sequence block contract, one forward per step, no classifier-free guidance. Only the
+  # pipeline layer is vendored (the released modular pipeline is absent from the installed
+  # diffusers), so the pipeline class name differs while the adapter stays the MiniMax-H3 one.
+  return minimax_h3_adapter(pipe, **kwargs)
+
+
 # NOTE: The registry returns the first class-name prefix that matches, so these must be registered
 # before "WanAnimate2" and "Wan". Two prefixes on purpose: the model is matched by *pipeline* class
 # name, whose upstream name is `WanSpeechToVideoPipeline` and which does not start with "WanS2V";

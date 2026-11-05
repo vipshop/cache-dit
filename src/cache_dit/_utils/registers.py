@@ -4,6 +4,7 @@ import types
 import torch
 import argparse
 import dataclasses
+import importlib
 from PIL import Image
 from enum import Enum
 import numpy as np
@@ -84,34 +85,54 @@ _REFERENCE_PATH_ARGS = (
   ("reference_audio_path", "MiniMaxH3AudioReference"),
 )
 
+# The same mapping keyed by flag destination, so a model can override the class of one flag only.
+_REFERENCE_PATH_ARGS_NAMES = dict(_REFERENCE_PATH_ARGS)
 
-def _references_from_args(args: argparse.Namespace) -> Optional[list]:
+
+def _references_from_args(
+  args: argparse.Namespace,
+  package: Optional[str] = None,
+  class_names: Optional[Dict[str, str]] = None,
+) -> Optional[list]:
   """Build reference objects from the `--reference-*-path` flags.
 
   :param args: CLI arguments.
+  :param package: Import path of the module holding the model's reference classes, e.g.
+    ``cache_dit.models.pipelines.pika_h3_flex`` for a vendored pipeline. None keeps the MiniMax-H3
+    classes of the installed diffusers.
+  :param class_names: Per-flag overrides of the class names, keyed by the flag destination.
   :returns: The reference objects in image -> video -> audio order, or None when no flag is set.
-  :raises ImportError: When the installed diffusers has no reference classes for this model.
+  :raises ImportError: When the selected module does not expose the class of a used flag.
   """
-  selected = [(attr, cls_name) for attr, cls_name in _REFERENCE_PATH_ARGS
-              if getattr(args, attr, None)]
+  names = dict(_REFERENCE_PATH_ARGS_NAMES)
+  if class_names:
+    names.update(class_names)
+  selected = [(attr, names[attr]) for attr, _ in _REFERENCE_PATH_ARGS if getattr(args, attr, None)]
   if not selected:
     return None
-  import diffusers
 
-  # The reference data classes come from the pipeline package when the installed diffusers has
-  # them; an older release only exposes some of them at the top level.
-  try:
-    from diffusers.modular_pipelines import minimax_h3 as _h3_references
-  except ImportError:  # pragma: no cover - older diffusers
-    _h3_references = None
+  if package is not None:
+    reference_module = importlib.import_module(package)
+    fallback_module = None
+  else:
+    import diffusers
+
+    # The reference data classes come from the pipeline package when the installed diffusers has
+    # them; an older release only exposes some of them at the top level.
+    try:
+      from diffusers.modular_pipelines import minimax_h3 as reference_module
+    except ImportError:  # pragma: no cover - older diffusers
+      reference_module = None
+    fallback_module = diffusers
 
   references = []
   for attr, cls_name in selected:
-    reference_cls = getattr(_h3_references, cls_name, None)
+    reference_cls = getattr(reference_module, cls_name, None) if reference_module else None
+    if reference_cls is None and fallback_module is not None:
+      reference_cls = getattr(fallback_module, cls_name, None)
     if reference_cls is None:
-      reference_cls = getattr(diffusers, cls_name, None)
-    if reference_cls is None:
-      raise ImportError(f"`{cls_name}` is not exposed by the installed diffusers, so "
+      source = package or "the installed diffusers"
+      raise ImportError(f"`{cls_name}` is not exposed by {source}, so "
                         f"--{attr.replace('_', '-')} cannot be used. Pass `references` "
                         "programmatically instead.")
     paths = getattr(args, attr)
@@ -162,6 +183,12 @@ class ExampleInputData:
   # Forward `--num-frames` to the pipeline. Pipelines whose frame count is named differently
   # (Wan2.2-S2V takes `num_frames_per_chunk`) map the flag themselves and clear this.
   use_num_frames: bool = True
+  # Where the `--reference-*-path` flags get their data classes from. Vendored pipelines ship their own
+  # (`PikaH3FlexReference` is unrelated to `MiniMaxH3Reference`) and reject a foreign class with an
+  # `isinstance` check, which runs *after* the checkpoint has loaded. Defaults keep the MiniMax-H3
+  # classes. Builder-only: `data()` pops both before forwarding.
+  reference_package: Optional[str] = None
+  reference_class_names: Optional[Dict[str, str]] = None
   # Specific inputs for video generation, e.g, Wan VACE
   video: Optional[List[Image.Image]] = None
   mask: Optional[List[Image.Image]] = None
@@ -212,6 +239,8 @@ class ExampleInputData:
     keep_alpha = data.pop("keep_alpha", False)
     use_num_inference_steps = data.pop("use_num_inference_steps", True)
     use_num_frames = data.pop("use_num_frames", True)
+    reference_package = data.pop("reference_package", None)
+    reference_class_names = data.pop("reference_class_names", None)
     # Reference objects stay out of `asdict` on purpose (see the field comment), so they are
     # forwarded separately, after the arg overrides.
     allow_references = getattr(self, "allow_references", True)
@@ -221,12 +250,20 @@ class ExampleInputData:
     # the media is decoded once.
     references_from_args = None
     if allow_references:
-      cache_key = tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS)
+      cache_key = (
+        reference_package,
+        tuple(sorted((reference_class_names or {}).items())),
+        tuple(tuple(getattr(args, attr, None) or ()) for attr, _ in _REFERENCE_PATH_ARGS),
+      )
       cached = getattr(self, "_references_from_args_cache", None)
       if cached is not None and cached[0] == cache_key:
         references_from_args = cached[1]
       else:
-        references_from_args = _references_from_args(args)
+        references_from_args = _references_from_args(
+          args,
+          reference_package,
+          reference_class_names,
+        )
         self._references_from_args_cache = (cache_key, references_from_args)
     # Flatten extra_args and merge into main dict
     extra_args = data.pop("extra_input_kwargs")  # {key: value, ...}
