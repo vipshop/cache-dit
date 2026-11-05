@@ -537,8 +537,9 @@ Use this as an example of the workflow, not as a recipe to replay line by line.
 ### What the migration demonstrated
 
 - native W4A4 closure can be migrated without importing an entire upstream project
-  (`csrc/kernels/svdq/` was later reorganized into `core/`, `int4/`, `fp4/`, which is a local
-  layout choice: upstream nunchaku keeps a flat `csrc/`)
+  (`csrc/kernels/svdq/` was later reorganized into `core/`, `int4/`, `fp4/`, and those now live
+  under the `csrc/kernels/svdq/native/` directory with `csrc/kernels/svdq/cute/` as its sibling,
+  which is a local layout choice: upstream nunchaku keeps a flat `csrc/`)
 - public operator wrappers should remain explicit and repository-aligned
 - `torch.library` schemas and implementations live beside their domain wrappers, in the
   `cache_dit_cuda_ops` namespace

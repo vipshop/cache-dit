@@ -106,8 +106,11 @@ bash tools/build_fast.sh install -e . --no-build-isolation --no-deps
 python -m pytest -q \
   tests/kernels/test_ops_dispatch.py \
   tests/kernels/test_svdquant_cute.py \
+  tests/kernels/test_svdquant_source_manifest.py \
   tests/quantization/test_quantize_config.py
 ```
+
+`test_svdquant_source_manifest.py` 是 CPU-only 护栏（不 import torch、扩展或 setup.py）：它用 `ast` 抽取并执行 `setup.py` 的源清单函数，双向比对 `csrc/kernels/svdq/` 下的 `.cu/.cpp`。改动该目录的文件名或源清单后必须跑；CI 不收集它（workflows 不许改），只能本地执行。
 
 CUDA 数值改动还需运行 producer、独立 GEMM、高层 Linear 和 INT4 隔离回归。改名时同时检查 Python 私有 pybind 调用、公开 torch.library 名称、fake 实现、CLI、文档和临时 harness。运行 `pre-commit run --files ...`、`git diff --check` 和 `read_lints`。
 
