@@ -2189,3 +2189,44 @@ def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("Nomas")
+def hy_nomas_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for HY-Nomas (`NomasPipeline`).
+
+  The transformer is cache-dit's built-in copy (`cache_dit.models.pipelines.hy_nomas`), so it is not
+  a diffusers module.  Three model specifics matter:
+
+  * The denoising stack is `transformer.double_blocks` and each block takes
+    `(hidden_states, encoder_hidden_states, ctx)` and returns `(img, txt)` — Pattern_0.  The
+    persistent segment cache and the camera module are owned **by** each block (looked up by its
+    `index`), so the constant `*args` tuple the wrapper forwards is enough.
+  * `check_forward_pattern=True` **and** `check_num_outputs=True` are passed explicitly: cache-dit
+    turns the pattern check off by default for non-diffusers transformers, and without the output
+    count a block that returned a single tensor would silently keep the previous
+    `encoder_hidden_states` for every later block.
+  * `has_separate_cfg=False`: the distilled checkpoint has no unconditional branch (guidance 1.0),
+    so one `transformer.forward()` per step is one cache step.
+
+  :param pipe: `NomasPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the `double_blocks` denoising stack.
+  """
+  from cache_dit.models.pipelines.hy_nomas import NomasTransformer3DModel
+
+  transformer = pipe.transformer
+  if not isinstance(transformer, NomasTransformer3DModel):
+    raise AssertionError(f"hy_nomas_adapter expects a NomasTransformer3DModel, got "
+                         f"{type(transformer).__name__}; register the right adapter for this model")
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.double_blocks,
+    blocks_name="double_blocks",
+    forward_pattern=ForwardPattern.Pattern_0,
+    check_forward_pattern=True,
+    check_num_outputs=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
