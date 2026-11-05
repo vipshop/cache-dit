@@ -586,6 +586,21 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
       block.attn_heads = local
     return self
 
+  def set_tensor_parallel(self, tp_size: int) -> "NomasTransformer3DModel":
+    """Adopt a tensor-parallel degree, keeping the context-parallel geometry in place.
+
+    :param tp_size: Tensor-parallel size; ``1`` disables sharding.
+    :returns: ``self``, for chaining.
+    """
+    current = self.parallel
+    return self.set_parallel(
+      NomasParallelInfo(
+        tp_size=tp_size,
+        sp_size=current.sp_size,
+        sp_rank=current.sp_rank,
+        group=current.group,
+      ))
+
   def post_load_weights(self) -> "NomasTransformer3DModel":
     """Rebuild the camera RoPE tables, which the checkpoint does not ship."""
     if self.config.camera_chunk_size == 1:
