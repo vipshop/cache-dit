@@ -5142,8 +5142,10 @@ def magi2_i2va_example(args: argparse.Namespace, **kwargs) -> Example:
 
 _MOVA_PROMPT = ("A close-up of a street musician playing a violin in the rain, water dripping from "
                 "the brim of his hat, the low rumble of traffic behind him")
-# Development geometry: 192x320 keeps the latent grid at 24x40, i.e. 720 video tokens for 9 frames
-# (49 latent frames at the released 360p/193-frame setting is ~43k tokens, a multi-minute single step).
+# Development geometry: 192x320 keeps the latent grid at 24x40, i.e. 720 video tokens for 9 frames.
+# The released setting is 720x1280 (`/tmp/ref/MOVA/scripts/inference_single.py:38-40`), i.e. 176k
+# tokens at 193 frames; the 360p-class 352x640 variant is ~43k. Both need offload or 2 cards, so they
+# stay opt-in via `--height/--width/--num-frames`.
 _MOVA_DEFAULT_HEIGHT = 192
 _MOVA_DEFAULT_WIDTH = 320
 
@@ -5201,9 +5203,13 @@ def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
   `audio_dit/`, `dual_tower_bridge/`, `video_vae/`, `audio_vae/`, `text_encoder/`, `tokenizer/` and
   `scheduler/`). MOVA always conditions on a first frame, so `--image-path` is required.
 
-  The released recipe is 360x640 / 193 frames / 50 steps / guidance 5.0, which no single card can
-  hold (the two video experts alone are ~52 GB in bf16); run it with `--layerwise-offload`, and use
-  `--height/--width/--num-frames/--steps` for development runs.
+  The released script (`scripts/inference_single.py`) defaults to **720x1280 / 193 frames / 50 steps
+  / guidance 5.0**: the two video experts alone are ~52 GB in bf16, so it needs `--layerwise-offload`
+  or `--parallel tp` on two cards. Note that neither the 360p geometry the checkpoint name suggests
+  (640x360) nor any other odd-latent size is admissible: `check_inputs` requires both sides divisible
+  by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640** for a 360p-class run (an
+  8-pixel height crop, ~43k video tokens at 49 latent frames). The defaults below stay at the
+  development geometry; override with `--height/--width/--num-frames/--steps`.
 
   :param args: CLI arguments.
   :returns: The MOVA 360p t2va example.

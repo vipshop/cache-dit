@@ -63,20 +63,44 @@ _BRIDGE_CFG = dict(
   apply_cross_rope=True,
 )
 
+# Unequal conditioner head counts: the released model pairs a 3072-wide video tower with a 1536-wide
+# audio one (24 vs 12 heads). The default tiny config keeps both widths equal, which hides any mistake
+# that divides one side's head count but not the other's, so the parity test also runs this variant:
+# 32 / head_dim 8 = 4 heads one way, 48 / 8 = 6 the other. `dim=48` (not 16) is the narrowest audio
+# tower whose 1-D rotary table still chunks three ways (`head_dim` 12, see `_AUDIO_CFG`).
+_UNEQUAL_AUDIO_CFG = {**_AUDIO_CFG, "dim": 48, "num_heads": 4}
+_UNEQUAL_BRIDGE_CFG = {**_BRIDGE_CFG, "audio_hidden_dim": 48, "head_dim": 8}
 
-def _tiny_stack() -> MOVAStack:
+_VARIANTS = {
+  "default": (_AUDIO_CFG, _BRIDGE_CFG),
+  "unequal_conditioner_heads": (_UNEQUAL_AUDIO_CFG, _UNEQUAL_BRIDGE_CFG),
+}
+
+
+def _tiny_stack(variant: str = "default") -> MOVAStack:
   """Build a deterministic two-layer stack.
 
+  :param variant: Key of `_VARIANTS`.
   :returns: A `MOVAStack` on CPU.
   """
 
+  audio_cfg, bridge_cfg = _VARIANTS[variant]
   torch.manual_seed(0)
   return MOVAStack(
     video_dit=WanModel(**_VIDEO_CFG),
     video_dit_2=WanModel(**_VIDEO_CFG),
-    audio_dit=WanAudioModel(**_AUDIO_CFG),
-    dual_tower_bridge=DualTowerConditionalBridge(**_BRIDGE_CFG),
+    audio_dit=WanAudioModel(**audio_cfg),
+    dual_tower_bridge=DualTowerConditionalBridge(**bridge_cfg),
   ).eval()
+
+
+def test_unequal_variant_really_has_unequal_conditioner_heads():
+  """The second parity variant must differ in the thing it is meant to cover."""
+
+  stack = _tiny_stack("unequal_conditioner_heads")
+  block = stack.blocks[0]
+  assert block.a2v_conditioner.inner.num_heads == 4
+  assert block.v2a_conditioner.inner.num_heads == 6
 
 
 def _config(**kwargs) -> ParallelismConfig:
@@ -181,20 +205,23 @@ def _parity_inputs(device, dtype):
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
-@pytest.mark.parametrize("mode", ["cp", "tp"])
-def test_parallel_forward_matches_single_rank(mode):
+@pytest.mark.parametrize("mode,variant", [("cp", "default"), ("tp", "default"),
+                                          ("tp", "unequal_conditioner_heads")])
+def test_parallel_forward_matches_single_rank(mode, variant):
   """One fused step in float32 must match the un-parallelized reference within 1e-6.
 
   This is the correctness judgment for the parallel plans: bf16 end-to-end PSNR cannot separate
-  "different sample" from "wrong sharding", while a float32 relative error can.
+  "different sample" from "wrong sharding", while a float32 relative error can. The TP case runs twice:
+  once with equal conditioner widths and once with unequal head counts (4 vs 6), because only the
+  second one can catch a head count divided on one bridge direction but not the other.
   """
 
   import torch.multiprocessing as mp
 
-  mp.spawn(_run_rank, args=(mode, _free_port()), nprocs=2, join=True)
+  mp.spawn(_run_rank, args=(mode, _free_port(), variant), nprocs=2, join=True)
 
 
-def _run_rank(rank, mode, port):
+def _run_rank(rank, mode, port, variant="default"):
   import torch.distributed as dist
 
   from cache_dit.distributed.backend import ParallelismBackend
@@ -203,7 +230,7 @@ def _run_rank(rank, mode, port):
   dist.init_process_group("nccl", init_method=f"tcp://localhost:{port}", rank=rank, world_size=2)
   torch.cuda.set_device(rank)
   try:
-    stack = _tiny_stack().to("cuda")
+    stack = _tiny_stack(variant).to("cuda")
     visual, audio, context, timestep = _parity_inputs("cuda", torch.float32)
     with torch.no_grad():
       reference = stack(visual, audio, context, timestep)
@@ -236,7 +263,7 @@ def _run_rank(rank, mode, port):
                                                                            output[1].float())):
       relative = ((out - ref).abs().mean() / ref.abs().mean().clamp_min(1e-6)).item()
       if rank == 0:
-        print(f"[mova-{mode}] {name} rel={relative:.3e}")
+        print(f"[mova-{mode}/{variant}] {name} rel={relative:.3e}")
       assert out.shape == ref.shape
       assert relative < _PARITY_TOL, f"MOVA {mode} {name} diverged (rel={relative:.3e})"
     dist.barrier()

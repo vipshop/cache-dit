@@ -196,3 +196,128 @@ def test_adapter_rejects_a_foreign_transformer():
 
   with pytest.raises(TypeError):
     mova_adapter(_Wrapper(WanModel(**_VIDEO_CFG)))
+
+
+def _cache_inputs(seed: int = 11):
+  """Fixed stack inputs shared by the cached and the plain run.
+
+  :param seed: Input seed.
+  :returns: Positional inputs of `MOVAStack.forward`.
+  """
+
+  generator = torch.Generator().manual_seed(seed)
+  return (
+    torch.randn(1, 36, 3, 4, 4, generator=generator),
+    torch.randn(1, 8, 5, generator=generator),
+    torch.randn(1, 4, 16, generator=generator),
+    torch.tensor([500.0]),
+  )
+
+
+def _fake_adapter(stack: MOVAStack):
+  """Adapt a bare stack the way the transformer-only entry point does.
+
+  `FakeDiffusionPipeline` is what makes the cache contexts persistent; with a hand-rolled pipe object
+  the wrapper logs "Cache context not exist" and silently recomputes every step.
+
+  :param stack: The stack to adapt.
+  :returns: The block adapter.
+  """
+
+  from cache_dit.caching.block_adapters.block_adapters import FakeDiffusionPipeline
+
+  return mova_adapter(FakeDiffusionPipeline(stack))
+
+
+def _cache_config(**kwargs):
+  """Cache config that keeps both streams in the picture.
+
+  :param kwargs: Overrides of the shared defaults.
+  :returns: The `DBCacheConfig`.
+  """
+
+  from cache_dit import DBCacheConfig
+
+  base = dict(Fn_compute_blocks=1,
+              Bn_compute_blocks=1,
+              max_warmup_steps=0,
+              num_inference_steps=2,
+              enable_separate_cfg=True)
+  base.update(kwargs)
+  return DBCacheConfig(**base)
+
+
+def test_cached_run_is_bit_exact_for_both_streams_when_no_step_is_cached():
+  """With caching disabled the wrapper must be numerically transparent for video **and** audio.
+
+  The audio stream travels through the same block as `encoder_hidden_states`, so a wrapper that only
+  forwards the video tensor would keep every shape legal while quietly dropping the audio residual.
+  """
+
+  import copy
+
+  import cache_dit
+
+  reference = _tiny_stack()
+  stack = copy.deepcopy(reference)
+  inputs = _cache_inputs()
+  with torch.no_grad():
+    expected_video, expected_audio = reference(*inputs)
+
+  cache_dit.enable_cache(_fake_adapter(stack),
+                         cache_config=_cache_config(max_cached_steps=0,
+                                                    residual_diff_threshold=0.0))
+  with torch.no_grad():
+    actual_video, actual_audio = stack(*inputs)
+
+  assert torch.equal(actual_video,
+                     expected_video), "the cached run must reproduce the video velocity"
+  assert torch.equal(actual_audio,
+                     expected_audio), "the cached run must reproduce the audio velocity"
+
+
+def test_forced_cache_hit_replays_both_streams():
+  """A forced hit must add the audio residual too, not only the video one.
+
+  Every forward sees identical inputs, so a correctly cached step replays the previous full output
+  on both streams. If the audio residual were dropped, the audio output would be the partial (Fn+Bn)
+  result of a step whose later blocks never ran.
+  """
+
+  import copy
+
+  import cache_dit
+
+  reference = _tiny_stack()
+  stack = copy.deepcopy(reference)
+  inputs = _cache_inputs()
+  cache_dit.enable_cache(_fake_adapter(stack),
+                         cache_config=_cache_config(residual_diff_threshold=1e9))
+
+  # With three fused blocks, `Fn=1` + `Bn=1` leave block 1 as the only skippable one, so counting it
+  # separates "served from the cache" from "replayed through the originals".
+  middle_calls = [0]
+  stack.blocks[1].register_forward_pre_hook(
+    lambda module, args, kwargs=None: middle_calls.__setitem__(0, middle_calls[0] + 1))
+
+  outputs = []
+  for _ in range(4):  # two steps, one conditional and one unconditional forward each
+    with torch.no_grad():
+      outputs.append(stack(*inputs))
+
+  cached = None
+  for _, module in stack.named_modules():
+    if hasattr(module, "_accumulated_cached_steps"):
+      cached = int(module._accumulated_cached_steps)
+      break
+  assert cached is not None and cached > 0, "the forced threshold must produce a cached step"
+  assert middle_calls[0] == 2, (
+    f"the middle block ran {middle_calls[0]} times over four identical forwards; a served step must "
+    "skip it, so only the two warmup halves may reach it")
+
+  for step, half in ((2, 0), (3, 1)):
+    hit_video, hit_audio = outputs[step]
+    exp_video, exp_audio = outputs[half]
+    assert hit_audio is not None, "the audio stream must survive the cache"
+    torch.testing.assert_close(hit_video, exp_video, atol=1e-5, rtol=1e-4)
+    torch.testing.assert_close(hit_audio, exp_audio, atol=1e-5, rtol=1e-4)

@@ -26,7 +26,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, List, Optional, Union
 
-import ftfy
 import torch
 from diffusers import AutoencoderKLWan, DiffusionPipeline
 from diffusers.utils.torch_utils import randn_tensor
@@ -48,9 +47,15 @@ _PROMPT_MAX_LENGTH = 512
 def _prompt_clean(text: str) -> str:
   """Normalize a prompt the way the released pipeline does.
 
+  `ftfy` is imported here, not at module scope: it only ships in the `[dev]` extra, and the MOVAPipeline
+  import chain is reached by `--cache` on any installation, so a top-level import would break a plain
+  `pip install cache_dit` for every user.
+
   :param text: Raw prompt.
   :returns: Cleaned prompt.
   """
+
+  import ftfy
 
   text = ftfy.fix_text(text)
   text = html.unescape(html.unescape(text))
