@@ -20,12 +20,16 @@ Intentional differences from the sglang copy:
 * **The KV write never goes through the cached ``forward``.** ``predict(..., collect_cache=True)``
   is the only entry that produces entries; it looks through cache-dit's one-element block wrapper
   and raises instead of silently writing partial history.
-* **Context parallelism is not wired yet.**  The sglang copy slices ``img[:, lo:hi]`` by hand and
-  gathers with ``sp_all_gather``; here the plan is to let a hook plan do both (split on
-  ``double_blocks.0``, gather on ``final_layer``, which sits outside the cached block container),
-  and to slice the RoPE table per rank because a dataclass cannot enter a CP plan.  Until
-  ``distributed/transformers/hy_nomas.py`` exists, :meth:`NomasTransformer3DModel.set_parallel`
-  rejects ``sp_size > 1`` and the exchange helpers are exercised only by tests.
+* **Context parallelism is a hook plan, not a manual slice.**  The sglang copy slices
+  ``img[:, lo:hi]`` by hand and gathers with ``sp_all_gather``;
+  :class:`distributed.transformers.hy_nomas.NomasContextParallelismPlanner` instead splits on
+  ``double_blocks.0`` and gathers on ``final_layer`` (which sits outside the cached block
+  container, so a cached step still restores the full token count), while
+  :meth:`NomasTransformer3DModel.prepare_segment_context` slices the RoPE table per rank because a
+  dataclass cannot enter a CP plan.  :meth:`NomasTransformer3DModel.set_context_parallel` records
+  the degree and :meth:`NomasTransformer3DModel._sync_context_parallel` binds the CP sub-mesh from
+  ``_cp_config`` on the first forward -- never the global process group, which would divide by
+  ``tp_size * sp_size`` on a hybrid run.
 * ``msgspec`` structs and the sglang parallel/linear layers are replaced by dataclasses,
   ``nn.Linear`` and the Ulysses helpers of :mod:`.attention`.
 """

@@ -325,3 +325,55 @@ def test_kv_sink_keeps_identity_through_the_offload_argument_walk():
   assert rebuilt.sink is sink
   rebuilt.sink[1] = {"k": torch.zeros(1)}
   assert sink.entries[1] is not None
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(),
+                    reason="layerwise offload streams to a CUDA device")
+def test_layerwise_offload_still_collects_every_layer():
+  """`predict(collect_cache=True)` must fill every entry with offload hooks installed.
+
+  The offload hook walks the block arguments with `_map_tensors` and rebuilds dataclasses, which
+  silently dropped the old list-based K/V sink; this is the end-to-end guard for that fix, covering
+  the collect path (the plain `forward` path never writes entries).
+  """
+  from cache_dit.offload import layerwise_cpu_offload
+
+  device = torch.device("cuda")
+  model = _tiny_transformer().to(device)
+  cache = model.allocate_cache(64)
+  latent, text_states, timestep, text_mask = _inputs(model, cache)
+  with torch.inference_mode():
+    clean_out = model(latent.to(device),
+                      text_states.to(device),
+                      timestep.to(device),
+                      text_mask=text_mask.to(device),
+                      cache=cache)
+    clean_entries = model.predict(latent.to(device),
+                                  timestep.to(device),
+                                  text_states.to(device),
+                                  text_mask.to(device),
+                                  cache=cache,
+                                  collect_cache=True)[1]
+
+  layerwise_cpu_offload(model, module_filter=model.layerwise_offload_filter, async_transfer=True)
+  model.resident_to(device)
+  cache = model.allocate_cache(64)
+  with torch.inference_mode():
+    offload_out = model(latent.to(device),
+                        text_states.to(device),
+                        timestep.to(device),
+                        text_mask=text_mask.to(device),
+                        cache=cache)
+    offload_entries = model.predict(latent.to(device),
+                                    timestep.to(device),
+                                    text_states.to(device),
+                                    text_mask.to(device),
+                                    cache=cache,
+                                    collect_cache=True)[1]
+
+  assert len(offload_entries) == LAYERS
+  assert all(entry is not None for entry in offload_entries)
+  assert torch.equal(clean_out, offload_out)
+  for clean, offloaded in zip(clean_entries, offload_entries):
+    assert torch.equal(clean["k"], offloaded["k"])
+    assert torch.equal(clean["v"], offloaded["v"])
