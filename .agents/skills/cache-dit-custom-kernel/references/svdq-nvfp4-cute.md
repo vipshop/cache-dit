@@ -328,3 +328,15 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 2. TMA 的 swizzle 只服务于匹配的 copy atom；LoRA overlay 为了保证与 A/B 字节级复用，使用了无 swizzle row-major 布局，因此标量 LDS 冲突是布局选择的结果，不是 TMA 失效。
 3. 想在保留 TMA 的前提下消冲突，必须使用 **canonical SW64 TMA atom + 匹配的 LDSM/copy 视图**；手写 `composition(swizzle, row-major)` 不足以让 TMA descriptor 与 consumer 视图一致。
 4. 该冲突暂不保留修复；当前 baseline 仍是 committed hybrid。若后续重启，优先参考 CUTLASS 的 canonical TMA SW64 布局构造，而不是再做 G2R 或仅换 copy atom。
+
+## 14. 下一步优先级（2026-11-05）
+
+按当前证据排序，前一项没有结论前不要跳到后一项：
+
+1. **解释大 shape 下 native 反超。** 在 `16384x8192x8192` 上做 native/hybrid 的 NCU 对比，定位是 CTA 波次、L2 复用、A/SFA 重复 G2R load 还是 per-CTA TMA/barrier 固定成本导致 native 快 6.58%。产出必须给出具体 counter（shared/global/L2/stall/occupancy）和可验证假设。
+2. **只有在能同时满足 conflict 与 wall-clock 时才继续 bank conflict。** 使用 CUTLASS canonical SW64 TMA atom + 匹配 LDSM/copy 视图；验收要求 conflict 明显下降且 nsys 不慢于 baseline。不要再试 SFB G2R、裸 LDSM、仅改 CopyAtom 对齐参数或手写 `composition(swizzle,row-major)`。
+3. **降低 hybrid 的重复流量。** 优先优化 A G2R 在 N tile/ThrN 方向的重复 load，以及 producer v1 的分散 u32 写回；验收用 nsys + global sectors/L1/L2，而不是只看 producer 单 kernel。
+4. **persistent 只在重新设计 output 生命周期后重测。** 当前 `store_done` 让同一 CTA 的下一 tile 等上一 tile 的 TMA store，和 A 走 G2R 无关；没有去串行化设计就不要重复 110-CTA 版本。
+5. **最后再做 FlashInfer CuTeDSL 同 shape benchmark。** 目标是对照 hybrid 的 GEMM-only 上限，不把 JIT/布局移植成本混进 kernel 结论；若环境要求 `cutlass-dsl[cu13]` 与当前 torch2.11 不兼容，记录为环境阻塞。
+
+不要重复的路线：K-block（hybrid 四 shape 平均仅0.12%）、light producer、S2/S4 stages、BN128 小 tile、全 TMA 回退、D/L1 G2R（conflict 可消但慢3.3%）。

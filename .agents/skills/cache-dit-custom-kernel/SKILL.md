@@ -177,6 +177,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB；TMA swizzle 与无 swizzle row-major overlay 不匹配。SFB G2R、LDS128、裸 LDSM、D/L1 G2R、手写 SW64 均已试：只有 D/L1 G2R 把冲突降到66，但 global/local 代价使延迟 121.1us（慢3.3%），不保留。除非用 canonical SW64 TMA atom + 匹配 LDSM，否则不要再试。
 - G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent CTA 慢4.4% 的旧结论来自全 TMA；hybrid 下 store_done 串行化机制仍在，未重测。旧 persistent/K-block/BN128 数据不能直接外推到 hybrid。
+- 下一步优先级：先解释 `16Kx8Kx8K` 下 native 反超；其次才是 canonical SW64 bank-conflict、A G2R 重复流量、去串行化的 persistent、FlashInfer benchmark。详见 `references/svdq-nvfp4-cute.md` §14。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
