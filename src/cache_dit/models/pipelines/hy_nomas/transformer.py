@@ -363,6 +363,28 @@ class NomasCameraAttention(nn.Module):
     return x + out
 
 
+class NomasEntrySink:
+  """Per-layer K/V sink the blocks write into while collecting a segment's history.
+
+  Deliberately **not** a list/dict/dataclass: cache-dit's layerwise CPU offload walks the block
+  arguments with ``_map_tensors`` and rebuilds every container it meets (``dataclasses.replace``
+  for dataclasses, a fresh comprehension for lists), so a plain ``[None] * num_layers`` would be
+  replaced by a copy and every K/V written by a block would be silently dropped -- which the
+  pipeline only notices as ``Nomas K/V collection skipped N of 54 blocks`` after the whole segment
+  has been computed.  A plain object falls through ``_map_tensors`` unchanged, keeping the identity
+  of the sink across the offload hook.
+  """
+
+  def __init__(self, size: int):
+    self.entries: list = [None] * size
+
+  def __setitem__(self, index: int, value) -> None:
+    self.entries[index] = value
+
+  def __len__(self) -> int:
+    return len(self.entries)
+
+
 @dataclass(frozen=True, eq=False)
 class NomasBlockContext:
   """Per-forward constants shared by every block of one transformer call.
@@ -384,7 +406,7 @@ class NomasBlockContext:
   :param spatial_tokens: Tokens per latent frame.
   :param token_offset: Absolute index of this rank's first video token.
   :param collect_cache: Whether blocks should write K/V into ``entries``.
-  :param entries: Preallocated ``[None] * num_layers`` sink when collecting, else ``None``.
+  :param entries: The :class:`NomasEntrySink` to fill when collecting, else ``None``.
   :param parallel: Shard geometry (tensor × context parallel).
   """
 
@@ -399,7 +421,7 @@ class NomasBlockContext:
   spatial_tokens: int
   token_offset: int
   collect_cache: bool
-  entries: Optional[list]
+  entries: Optional[NomasEntrySink]
   parallel: NomasParallelInfo
 
 
@@ -564,15 +586,9 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
     A tensor-parallel planner must therefore *not* additionally call ``shard_div_attr`` on these
     blocks.
 
-    :param parallel: Target geometry; ``sp_size > 1`` is not wired yet.
+    :param parallel: Target geometry.
     :returns: ``self``, for chaining.
-    :raises NotImplementedError: When context parallelism is requested.
     """
-    if parallel.sp_size > 1:
-      raise NotImplementedError(
-        "HY-Nomas context parallelism is not wired yet: the video-token split/gather hooks live in "
-        "`distributed/transformers/hy_nomas.py`, which does not exist. Track it in the model plan "
-        "before enabling `--parallel ulysses`.")
     heads = self.config.num_attention_heads
     # Checked before `local_heads` so a tensor-parallel mismatch names tp_size, not tp*sp.
     if heads % parallel.tp_size:
@@ -599,6 +615,56 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
         sp_size=current.sp_size,
         sp_rank=current.sp_rank,
         group=current.group,
+      ))
+
+  def set_context_parallel(self, sp_size: int) -> "NomasTransformer3DModel":
+    """Adopt a context-parallel degree, keeping the tensor-parallel geometry in place.
+
+    The process group is filled in lazily by :meth:`_sync_context_parallel` once cache-dit has
+    installed `_cp_config` (the planner runs before the mesh exists).
+
+    :param sp_size: Ulysses degree; ``1`` disables sharding.
+    :returns: ``self``, for chaining.
+    """
+    current = self.parallel
+    return self.set_parallel(
+      NomasParallelInfo(
+        tp_size=current.tp_size,
+        sp_size=sp_size,
+        sp_rank=current.sp_rank,
+        group=current.group,
+      ))
+
+  def _sync_context_parallel(self) -> "NomasTransformer3DModel":
+    """Bind this rank's CP group/rank from the runtime `_cp_config`, once.
+
+    The context-parallel planner runs *before* cache-dit creates the mesh, so it can only record
+    the degree.  Every collective of this model takes that group explicitly: the global process
+    group would divide by ``tp_size * sp_size`` on a hybrid run.
+
+    :returns: ``self``, for chaining.
+    """
+    if self.parallel.sp_size <= 1 or self.parallel.group is not None:
+      return self
+    cp_config = getattr(self, "_cp_config", None)
+    if cp_config is None:
+      raise RuntimeError("context parallelism is enabled but `_cp_config` is missing; the CP "
+                         "runtime must arm the transformer before the first forward.")
+    mesh = getattr(cp_config, "_flattened_mesh", None)
+    if mesh is None:
+      raise RuntimeError("context parallelism is enabled but the CP mesh is missing")
+    self._cp_group = mesh.get_group()
+    self._cp_rank = torch.distributed.get_rank(self._cp_group)
+    self._cp_world_size = torch.distributed.get_world_size(self._cp_group)
+    if self._cp_world_size != self.parallel.sp_size:
+      raise RuntimeError(f"CP group has {self._cp_world_size} ranks but the planner recorded "
+                         f"sp_size={self.parallel.sp_size}")
+    return self.set_parallel(
+      NomasParallelInfo(
+        tp_size=self.parallel.tp_size,
+        sp_size=self.parallel.sp_size,
+        sp_rank=self._cp_rank,
+        group=self._cp_group,
       ))
 
   def post_load_weights(self) -> "NomasTransformer3DModel":
@@ -688,6 +754,7 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
     :param rope: Optional prebuilt RoPE tables that survive an eviction.
     :returns: ``(attention_plan, local_rope, (t, h, w))``.
     """
+    self._sync_context_parallel()
     t, h, w = latent.shape[2:]
     c = self.config
     attention = NomasAttentionPlan(
@@ -789,7 +856,7 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
         or cache.frame_offset != frame_offset):
       raise ValueError("stale Nomas segment context; rebuild after cache changes")
     lo, _ = local_token_range(t * h * w, self.parallel)
-    entries = [None] * c.num_layers if collect_cache else None
+    entries = NomasEntrySink(c.num_layers) if collect_cache else None
     with torch.autocast(
         device_type=hidden_states.device.type,
         dtype=hidden_states.dtype,
@@ -818,14 +885,14 @@ class NomasTransformer3DModel(ModelMixin, ConfigMixin):
       for block in self._block_list(force_full_compute=collect_cache):
         img, txt = block(img, txt, ctx)
       img = self.final_layer(img, vec)
-    if collect_cache and any(entry is None for entry in entries):
-      missing = [index for index, entry in enumerate(entries) if entry is None]
+    if collect_cache and any(entry is None for entry in entries.entries):
+      missing = [index for index, entry in enumerate(entries.entries) if entry is None]
       raise RuntimeError(
         f"Nomas K/V collection skipped {len(missing)} of {c.num_layers} blocks (first: "
         f"{missing[0]}); committing a partial history would corrupt every later segment.")
     img = img.view(1, t, h, w, c.out_channels).permute(0, 4, 1, 2, 3).contiguous()
     if collect_cache:
-      return img, entries
+      return img, entries.entries
     return img, None
 
   def forward(

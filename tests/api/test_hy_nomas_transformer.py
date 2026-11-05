@@ -12,6 +12,7 @@ break silently and only shows up as a wrong video many segments later:
 """
 import ast
 import inspect
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -297,3 +298,30 @@ def test_attention_kernels_stay_in_the_plan():
   # cache.  Any additional raw kernel call (or moving this one) fails the exact-set comparison.
   expected = {"transformer.py": [("transformer.py", "scaled_dot_product_attention")]}
   assert offenders == expected, offenders
+
+
+def test_kv_sink_keeps_identity_through_the_offload_argument_walk():
+  """The layerwise offload hook rebuilds every dataclass/list it walks.
+
+  ``_map_tensors`` replaces a dataclass with ``dataclasses.replace`` and a list with a fresh
+  comprehension, so a plain ``[None] * num_layers`` sink would be swapped for a copy at every block
+  call and every collected K/V would be dropped -- silently, until the pipeline-level
+  "collection skipped N of 54 blocks" check fires after the whole segment was computed.
+  """
+  from cache_dit.offload.layerwise import _map_tensors
+  from cache_dit.models.pipelines.hy_nomas.transformer import NomasEntrySink
+
+  sink = NomasEntrySink(2)
+  assert _map_tensors(sink, transform=lambda tensor: tensor) is sink
+
+  @dataclass(frozen=True)
+  class Holder:
+    sink: NomasEntrySink
+    flag: int
+
+  holder = Holder(sink=sink, flag=1)
+  rebuilt = _map_tensors(holder, transform=lambda tensor: tensor)
+  assert rebuilt is not holder
+  assert rebuilt.sink is sink
+  rebuilt.sink[1] = {"k": torch.zeros(1)}
+  assert sink.entries[1] is not None

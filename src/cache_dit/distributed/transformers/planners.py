@@ -170,6 +170,8 @@ def _activate_cp_planners():
     ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Magi2PreviewContextParallelismPlanner = _safe_import(  # noqa: F841
     ".magi2", "Magi2PreviewContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  NomasContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".hy_nomas", "NomasContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   LongCatVideoAvatarContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_video_avatar",
     "LongCatVideoAvatarContextParallelismPlanner",
