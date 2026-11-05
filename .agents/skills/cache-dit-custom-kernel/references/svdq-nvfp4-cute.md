@@ -229,6 +229,21 @@ identity smooth 下，当前 producer 的 v1 qact 与 native quantize 逐字节�
 | kernel M4096/N3072/K3072，rank64，event median | 124.14us | 124.34us | - | hybrid 快约0.16% |
 | kernel M4096/N3072/K3072，rank128，event median | 130.28us | 132.46us | - | hybrid 快约1.65% |
 
+大 shape 的 rank64/128（GPU4，Event 50 次 median，各3轮）：
+
+| shape / rank | native | hybrid | hybrid/native |
+|---|---:|---:|---:|
+| 8192x3072 / 64 | 214.33us | 215.22us | 1.0042（慢0.42%） |
+| 8192x3072 / 128 | 229.93us | 226.64us | 0.9857（快1.43%） |
+| 4096x6144 / 64 | 214.30us | 214.39us | 1.0004（持平） |
+| 4096x6144 / 128 | 228.54us | 226.71us | 0.9920（快0.80%） |
+| 8192x6144 / 64 | 421.39us | 433.48us | 1.0287（慢2.87%） |
+| 8192x6144 / 128 | 456.63us | 455.18us | 0.9968（快0.32%） |
+| 16384x8192x8192 / 64 | 2475.42us | 2587.15us | 1.0451（慢4.51%） |
+| 16384x8192x8192 / 128 | 2674.07us | 2645.22us | 0.9892（快1.08%） |
+
+rank128 在大 shape 均略优于 native；rank64 在 `8192x6144`/16K 明显落后，rank 对 LoRA stage 数和流水行为的影响仍需单独归因。
+
 验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 94 passed。producer 测试覆盖 rank32/64/128，并包含 native v1 pack parity、非 256 padded batch 负向用例和 0.12 去量化精度门槛；真实量化 Linear 的 native/hybrid 端到端 parity 覆盖 rank32/64/128。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
 
 **边界**：M 必须是 256 倍数（v1 以 256 行为块）；N 必须为 128 倍数。M4096/N3072 下 hybrid kernel-only 只比 native 快约0.3%，完整层约1.3%–1.5%；但大 shape 下 native 反超（16Kx8Kx8K 快6.58%，见 §12），不能宣称 hybrid 普遍快于 native。下一步应优先解释大 shape 退化，而不是继续微调调度。
