@@ -436,3 +436,39 @@ rank64/128 的完整层、以及更多 M 的层数据尚未测，不推算、不
 2. **rank32 大 shape 仍明显落后**：`8192x6144` 慢4.66%、`16K` 慢6.39%，是下一步 NCU 的主目标。
 3. **rank128 在大 shape 全部略优于 native**（0.3%–1.4%），说明当前 CuTe 结构并非先天不适合大 shape；rank64 在 `8192x6144`/16K 的退化是 rank-specific 问题。
 4. 完整层 M1024/M4096 已快1%–2.2%，但 kernel-only 的大 shape 退化会在更大 M 下吃掉层收益。
+
+## 18. 16K NCU 归因与 load-side fence 清理（2026-11-05）
+
+同轮 NCU full：`16384x8192x8192`、rank32、native/cute 各 launch-skip 3。NCU duration 受 replay 影响，不作为 wall-clock；Event 结论见 §17。
+
+| 指标 | native | cute | 读法 |
+|---|---:|---:|---|
+| waves/SM | 37.24 | 37.24 | 完全一致，尾部/wave 数量不是差异源 |
+| L2 hit | 88.07% | 95.32% | cute 更高，L2 复用不是差异源 |
+| DRAM throughput | 31.66% | 11.37% | cute 更低 |
+| shared inst | 3.146M | 51.51M | cute 16.4× |
+| shared load wavefront % peak | 0.37% | 27.79% | cute 的 B/SFB/D/L1 smem→RF 成本 |
+| tensor active | 88.10% | 90.42% | cute 不低 |
+| sleeping /issue | 0 | 1.559 | cute 独有 TMA/mbarrier 等待 |
+| barrier /issue | 0 | 0.155 | cute 独有 |
+| long_scoreboard /issue | 0.853 | 3.102 | cute 的 G2R/共享依赖 |
+| wait /issue | 4.715 | 4.925 | cute 略高 |
+| math_pipe_throttle /issue | 6.872 | 5.359 | cute 更低 |
+
+归因：**排除 wave 尾部和 L2 复用**；剩余差距集中在 shared/B/SFB/D/L1 装载和 TMA/mbarrier 等待。native 靠更高的 DRAM 流量和 local spill 绕开 smem/TMA，但在大 shape 下更快。
+
+本轮单变量优化：删除 3 条 load-side `fence_view_async_shared()`（producer issue_tma、FP4 consumer 每 stage、LoRA consumer 每 stage），保留 output STSM→TMA store 前必需的 fence。TMA transaction barrier wait 已提供 shared 可见性。
+
+同候选 Event50×3：
+
+| shape | native | cute 候选 | 旧 baseline |
+|---|---:|---:|---:|
+| 4096x3072 | 120.15 | 120.16 | 120.22 |
+| 8192x3072 | 206.12 | 210.34 | 212.18 |
+| 4096x6144 | 206.14 | 210.75 | 210.34 |
+| 8192x6144 | 404.46 | 423.82 | 422.92 |
+| 16384x8192x8192 | 2401.25 | 2563.62 | 2560.39 |
+
+变化均在 ±0.2%（8192x3072 的 -0.87% 是旧 baseline 波动），没有实质性能回归；fence 删除保留为正确性等价的简化。验证：94 tests passed、memcheck 0 errors。
+
+剩余 blocker：删除 fence 只减少了同步指令，不改变 shared 装载和 TMA barrier 等待，因此没有缩小与 native 的大 shape 差距。下一步若继续追赶，需要改 epilogue/output store 生命周期或 shared 装载结构，而不是继续删除同步指令。

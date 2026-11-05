@@ -642,7 +642,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // same transaction barrier. The main branch transfers B/SFB only, while the LoRA branch uses
   // different descriptors to put D/L1 into the overlay. No A/SFA copy is hidden in this lambda.
   auto issue_tma = [&](int g, int stage) {
-    cutlass::arch::fence_view_async_shared();
     if (g < nKt) {
       auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
       auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
@@ -725,8 +724,8 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // -----------------------------------------------------------------------------------------------
   // Stage 6: consume all NVFP4 K stages and accumulate P in FP32.
   // -----------------------------------------------------------------------------------------------
-  // Waiting on full makes the B/SFB bytes visible; the async-shared fence orders subsequent smem
-  // reads after that wait. A/SFA are filled independently by load_act_g2r. B uses LDSM because its
+  // Waiting on full makes the B/SFB bytes visible; the transaction barrier already orders the
+  // subsequent smem reads. A/SFA are filled independently by load_act_g2r. B uses LDSM because its
   // swizzled FP4 layout matches the copy atom; SFB uses the special SF copy described above.
   // make_zip_tensor pairs data and scale fragments without combining their storage. cute::gemm
   // expands the tiled atoms and updates tCrC in place. Only after the warp's copy/MMA work is done
@@ -736,7 +735,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     const int stage = g % kStages;
     const int phase = (g / kStages) & 1;
     TmaBarrier::wait(&full[stage], phase);
-    cutlass::arch::fence_view_async_shared();
 #pragma unroll
     for (int k_block = 0; k_block < kBK / 64; ++k_block) {
       load_act_g2r(g, k_block);
@@ -807,7 +805,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
       const int stage = g % kStages;
       const int phase = (g / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
-      cutlass::arch::fence_view_async_shared();
       copy(s2r_copy_d, tCsD(_, _, _, stage), tCrD_view);
       copy(s2r_copy_l1, tCsL1(_, _, _, stage), tCrL1_view);
       cute::gemm(lora_mma, tCrD, tCrL1, tCrC);
