@@ -8,6 +8,8 @@ Stop and go back to `../SKILL.md` GATE CHECK if the model still has no `BlockAda
 `cdit.generate` example, or no CP/TP planner — that is an **integration** task, and its per-phase
 numbers live in `./testing.md`.
 
+量化行的类型选择、`--quantize-exclude-layers` / precision plan / observer 的用法，以及"精度掉了是量化还是接入的锅"这类归因，都去 `cache-dit-quantization`；本文件只规定跑哪些行、怎么出数、门槛多少。
+
 Run order (do not reorder):
 
 1. `./perf_analysis.md` — FLOPs budget (attention vs GEMM share). It decides **in advance** which
