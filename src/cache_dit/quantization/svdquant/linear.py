@@ -4,10 +4,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...kernels import svdq_gemm_w4a4_native
-from ...kernels import svdq_gemm_w4a4_cute
+from ...kernels import svdq_gemm_w4a4_f32d
 from ...kernels import svdq_gemm_w4a4_native_v2
 from ...kernels import svdq_quantize_w4a4_act_fuse_lora
-from ...kernels import svdq_quantize_w4a4_cute
 from .packing import convert_svdq_nvfp4_pack_to_cute
 
 
@@ -247,11 +246,15 @@ class SVDQW4A4Linear(nn.Module):
     """
 
     if self.runtime_kernel == "cute":
-      self._prepare_cute_pack()
-      return svdq_quantize_w4a4_cute(
+      # The native producer owns the fast K-split LoRA-down reduction. Its FP32 fragment D is
+      # consumed directly by gemm_w4a4_f32d, so no BF16 row-major D conversion is needed. Weight
+      # packing is prepared separately in forward_quant().
+      return svdq_quantize_w4a4_act_fuse_lora(
         input=x,
-        lora_down=self._cute_proj_down if self.rank > 0 else None,
-        smooth=self._cute_smooth,
+        lora_down=self.proj_down,
+        smooth=self.smooth_factor,
+        fuse_glu=False,
+        fp4=True,
         pad_size=pad_size,
       )
 
@@ -307,7 +310,7 @@ class SVDQW4A4Linear(nn.Module):
 
     if self.runtime_kernel == "cute":
       self._prepare_cute_pack()
-      result = svdq_gemm_w4a4_cute(
+      result = svdq_gemm_w4a4_f32d(
         act=quantized_x,
         wgt=self._cute_qweight,
         ascales=ascales,

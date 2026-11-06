@@ -59,6 +59,20 @@ inline void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Ten
                                 get_tensor(lora_up), get_tensor(bias), get_tensor(wcscales), alpha);
 }
 
+inline void gemm_w4a4_f32d(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+                           std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+                           std::optional<torch::Tensor> wscales,
+                           std::optional<torch::Tensor> lora_act_in,
+                           std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias,
+                           std::optional<torch::Tensor> wcscales, std::vector<float> lora_scales,
+                           float alpha) {
+  TorchOpContext ctx;
+  svdq::cute_kernels::gemm_w4a4_f32d(get_tensor(act), get_tensor(wgt), get_tensor(out),
+                                     get_tensor(ascales), get_tensor(wscales),
+                                     get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
+                                     get_tensor(wcscales), std::move(lora_scales), alpha);
+}
+
 inline void gemm_w4a4_native_v2(
   std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
   std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
