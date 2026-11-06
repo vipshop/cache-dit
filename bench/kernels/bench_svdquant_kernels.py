@@ -35,9 +35,7 @@ from dataclasses import dataclass
 
 import torch
 
-from cache_dit.kernels import svdq_gemm_w4a4_cute
-from cache_dit.kernels import svdq_gemm_w4a4_native
-from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
+from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.packing import convert_svdq_nvfp4_pack_to_cute
 from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
 
@@ -58,10 +56,14 @@ FLASHINFER_RANKS = {
 @dataclass
 class Case:
   x: torch.Tensor
+  native_module: SVDQW4A4Linear
+  cute_module: SVDQW4A4Linear
   qact_native: torch.Tensor
   a_sf_native: torch.Tensor
-  qweight_native: torch.Tensor
-  wscales_native: torch.Tensor
+  lora_act_native: torch.Tensor
+  qact_cute: torch.Tensor
+  a_sf_cute: torch.Tensor
+  lora_act_cute: torch.Tensor
   qweight_std: torch.Tensor
   wscales_std: torch.Tensor
   wscales_flash: torch.Tensor
@@ -74,7 +76,7 @@ class Case:
   wcscales: torch.Tensor | None
   smooth: torch.Tensor
   alpha_flash: torch.Tensor
-  out_native: torch.Tensor
+  out_flash: torch.Tensor
 
 
 def bench(fn, warmup: int, iterations: int) -> float:
@@ -123,19 +125,40 @@ def prepare_case(m: int,
     torch_dtype=torch.bfloat16,
     return_state_dict=True,
   )
-  qweight_std, wscales_std, _, _, bias, wcscales, smooth = (convert_svdq_nvfp4_pack_to_cute(
-    state["qweight"],
-    state["wscales"],
-    state["proj_up"],
-    state["proj_down"],
-    state.get("bias"),
-    state.get("wcscales"),
-    state["smooth_factor"],
-  ))
-  qweight_native = state["qweight"].contiguous()
-  wscales_native = state["wscales"].contiguous()
-  qact_native, a_sf_native, _ = svdq_quantize_w4a4_act_fuse_lora(x, None, smooth, False, True, 256)
+  qweight_std, wscales_std, proj_up_std, proj_down_std, bias, wcscales, smooth = (
+    convert_svdq_nvfp4_pack_to_cute(
+      state["qweight"],
+      state["wscales"],
+      state["proj_up"],
+      state["proj_down"],
+      state.get("bias"),
+      state.get("wcscales"),
+      state["smooth_factor"],
+    ))
+
+  native_module = SVDQW4A4Linear(k,
+                                 n,
+                                 rank=rank,
+                                 precision="nvfp4",
+                                 runtime_kernel="native",
+                                 device=device,
+                                 torch_dtype=torch.bfloat16).eval()
+  cute_module = SVDQW4A4Linear(k,
+                               n,
+                               rank=rank,
+                               precision="nvfp4",
+                               runtime_kernel="cute",
+                               device=device,
+                               torch_dtype=torch.bfloat16).eval()
+  native_module.load_state_dict(state)
+  cute_module.load_state_dict(state)
+  native_module.requires_grad_(False)
+  cute_module.requires_grad_(False)
+
+  qact_native, a_sf_native, lora_act_native = native_module.quantize(x)
+  qact_cute, a_sf_cute, lora_act_cute = cute_module.quantize(x)
   qweight_std_u8 = qweight_std.view(torch.uint8).contiguous()
+  wscales_std = wscales_std.contiguous()
   wscales_std_u8 = wscales_std.view(torch.uint8).flatten().contiguous()
 
   # FlashInfer's activation pack and alpha convention. This is only used for its own kernel.
@@ -152,14 +175,20 @@ def prepare_case(m: int,
     a_sf_flash = torch.empty(0, dtype=torch.uint8, device=device)
   alpha_flash = torch.tensor([alpha_scalar], dtype=torch.float32, device=device)
 
-  lora_d = torch.randn(m, rank, dtype=torch.bfloat16, device=device) * 0.02
-  lora_l1 = torch.randn(n, rank, dtype=torch.bfloat16, device=device) * 0.02
+  # Native emits an FP32 LoRA-down scratch; FlashInfer expects BF16 D/L1.
+  lora_d = lora_act_native[:m].to(torch.bfloat16).contiguous()
+  lora_l1 = proj_up_std.to(torch.bfloat16).contiguous()
+  del proj_down_std
   return Case(
     x=x,
+    native_module=native_module,
+    cute_module=cute_module,
     qact_native=qact_native,
     a_sf_native=a_sf_native,
-    qweight_native=qweight_native,
-    wscales_native=wscales_native,
+    lora_act_native=lora_act_native,
+    qact_cute=qact_cute,
+    a_sf_cute=a_sf_cute,
+    lora_act_cute=lora_act_cute,
     qweight_std=qweight_std_u8,
     wscales_std=wscales_std,
     wscales_flash=wscales_std_u8,
@@ -172,38 +201,16 @@ def prepare_case(m: int,
     wcscales=wcscales,
     smooth=smooth,
     alpha_flash=alpha_flash,
-    out_native=torch.empty(m, n, dtype=torch.bfloat16, device=device),
+    out_flash=torch.empty(m, n, dtype=torch.bfloat16, device=device),
   )
 
 
 def _native_call(case: Case):
-  return svdq_gemm_w4a4_native(
-    case.qact_native,
-    case.qweight_native,
-    case.a_sf_native,
-    case.wscales_native,
-    case.lora_d,
-    case.lora_l1,
-    None,
-    True,
-    1.0,
-    None,
-    False,
-  )
+  return case.native_module.forward_quant(case.qact_native, case.a_sf_native, case.lora_act_native)
 
 
 def _cute_call(case: Case):
-  return svdq_gemm_w4a4_cute(
-    case.qact_native,
-    case.qweight_std,
-    case.a_sf_native,
-    case.wscales_std,
-    case.lora_d,
-    case.lora_l1,
-    None,
-    None,
-    1.0,
-  )
+  return case.cute_module.forward_quant(case.qact_cute, case.a_sf_cute, case.lora_act_cute)
 
 
 def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
@@ -216,7 +223,7 @@ def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
     case.lora_d,
     case.lora_l1_flash,
     None,
-    case.out_native,
+    case.out_flash,
     backend=backend,
   )
 
