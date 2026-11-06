@@ -6,11 +6,9 @@ import pytest
 import torch
 
 from cache_dit.kernels import svdq_extension_is_available
-from cache_dit.kernels import svdq_gemm_w4a4_native
-from cache_dit.kernels import svdq_gemm_w4a4_native_v2
+from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_gemm_w4a4_ext
-from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
-from cache_dit.kernels import svdq_quantize_w4a4_wgt
+from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
@@ -19,6 +17,7 @@ from tests.quantization._svdq_test_utils import format_rank_report
 from tests.quantization._svdq_test_utils import make_rank_sensitive_linear
 from tests.quantization._svdq_test_utils import make_token_batch
 from tests.quantization._svdq_test_utils import make_token_samples
+from tests.quantization._svdq_test_utils import pack_int4_weight
 from tests.quantization._svdq_test_utils import run_svdq_operator_from_state_dict
 from tests.quantization._svdq_test_utils import runtime_dtype
 
@@ -52,7 +51,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
     lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
     bias = torch.zeros(out_features, device=device, dtype=dtype)
 
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
@@ -62,9 +61,9 @@ def test_svdquant_int4_runtime_smoke() -> None:
     )
 
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+    qweight, wscales = pack_int4_weight(weights)
 
-    output = svdq_gemm_w4a4_native(
+    output = svdq_gemm_w4a4_ext(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -107,7 +106,7 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
     lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
     bias = torch.zeros(out_features, device=device, dtype=dtype)
 
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
@@ -117,9 +116,9 @@ def test_svdquant_int4_runtime_v2_smoke() -> None:
     )
 
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+    qweight, wscales = pack_int4_weight(weights)
 
-    output = svdq_gemm_w4a4_native_v2(
+    output = svdq_gemm_w4a4(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -158,7 +157,7 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
     lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
     bias = torch.zeros(out_features, device=device, dtype=dtype)
 
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
@@ -168,9 +167,9 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
     )
 
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+    qweight, wscales = pack_int4_weight(weights)
 
-    base_output = svdq_gemm_w4a4_native(
+    base_output = svdq_gemm_w4a4_ext(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -225,7 +224,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
     lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
     bias = torch.zeros(out_features, device=device, dtype=dtype)
 
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
       input=activations,
       lora_down=lora_down,
       smooth=smooth,
@@ -235,9 +234,9 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
     )
 
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+    qweight, wscales = pack_int4_weight(weights)
 
-    output_v1 = svdq_gemm_w4a4_native(
+    output_v1 = svdq_gemm_w4a4_ext(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -250,7 +249,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
       fp4=False,
       alpha=1.0,
     )
-    output_v2 = svdq_gemm_w4a4_native_v2(
+    output_v2 = svdq_gemm_w4a4(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -289,7 +288,7 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
       smooth = torch.ones(in_features, device=device, dtype=dtype)
       bias = torch.randn(out_features, device=device, dtype=dtype) * 0.01
 
-      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
         input=activations,
         lora_down=None,
         smooth=smooth,
@@ -299,9 +298,9 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
       )
 
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-      qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+      qweight, wscales = pack_int4_weight(weights)
 
-      output_v1 = svdq_gemm_w4a4_native(
+      output_v1 = svdq_gemm_w4a4_ext(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -314,7 +313,7 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4_native_v2(
+      output_v2 = svdq_gemm_w4a4(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -361,7 +360,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
       lora_up = torch.randn(out_features, rank, device=device, dtype=dtype) * 0.01
       bias = torch.randn(out_features, device=device, dtype=dtype) * 0.01
 
-      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
         input=activations,
         lora_down=lora_down,
         smooth=smooth,
@@ -371,9 +370,9 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
       )
 
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-      qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+      qweight, wscales = pack_int4_weight(weights)
 
-      output_v1 = svdq_gemm_w4a4_native(
+      output_v1 = svdq_gemm_w4a4_ext(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -386,7 +385,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4_native_v2(
+      output_v2 = svdq_gemm_w4a4(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -420,7 +419,7 @@ def test_svdquant_int4_v2_rejects_invalid_stage(stage: int) -> None:
   with torch.inference_mode():
     activations = torch.randn(256, 128, device=device, dtype=dtype)
     smooth = torch.ones(128, device=device, dtype=dtype)
-    quantized_activations, ascales, _ = svdq_quantize_w4a4_act_fuse_lora(
+    quantized_activations, ascales, _ = svdq_quantize_w4a4(
       input=activations,
       lora_down=None,
       smooth=smooth,
@@ -429,10 +428,10 @@ def test_svdquant_int4_v2_rejects_invalid_stage(stage: int) -> None:
       pad_size=256,
     )
     weights = torch.randn(128, 128, device=device, dtype=dtype)
-    qweight, wscales = svdq_quantize_w4a4_wgt(weights)
+    qweight, wscales = pack_int4_weight(weights)
 
     with pytest.raises(ValueError, match="stage"):
-      svdq_gemm_w4a4_native_v2(
+      svdq_gemm_w4a4(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -505,70 +504,6 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
     torch.cuda.synchronize()
 
   print(format_rank_report("SVDQ operator accuracy report", metrics_by_rank))
-  assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
-  assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
-  assert metrics_by_rank[128].mae < metrics_by_rank[0].mae
-  assert metrics_by_rank[128].rel_l2 < metrics_by_rank[0].rel_l2
-
-
-def test_svdquant_operator_v2_rank_accuracy_improves_with_rank() -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  in_features = 128
-  out_features = 128
-
-  linear = make_rank_sensitive_linear(
-    in_features=in_features,
-    out_features=out_features,
-    seed=11,
-    device=device,
-    dtype=dtype,
-  )
-  calibration_samples = make_token_samples(
-    num_samples=8,
-    batch_size=1,
-    seq_len=16,
-    width=in_features,
-    seed=101,
-    device="cpu",
-    dtype=dtype,
-  )
-  eval_tokens = make_token_batch(
-    batch_size=6,
-    seq_len=16,
-    width=in_features,
-    seed=303,
-    device=device,
-    dtype=dtype,
-  )
-  eval_matrix = eval_tokens.reshape(-1, in_features)
-
-  metrics_by_rank = {}
-  with torch.inference_mode():
-    reference = linear(eval_matrix)
-    for rank in RANKS_WITH_BASELINE:
-      state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
-        linear,
-        calibration_samples,
-        rank=rank,
-        device=device,
-        torch_dtype=dtype,
-        return_state_dict=True,
-        calibrate_precision="low",
-        streaming=True,
-      )
-      operator_output = run_svdq_operator_from_state_dict(
-        state_dict,
-        eval_matrix,
-        output_dtype=dtype,
-        operator_version="v2",
-      )
-      metrics_by_rank[rank] = compute_accuracy_metrics(reference, operator_output)
-    torch.cuda.synchronize()
-
-  print(format_rank_report("SVDQ operator v2 accuracy report", metrics_by_rank))
   assert_rank_metric_trend(metrics_by_rank, "mae", ranks=RANKS_WITH_BASELINE)
   assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
   assert metrics_by_rank[128].mae < metrics_by_rank[0].mae

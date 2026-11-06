@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Compare SVDQuant kernels on identical shapes and rank settings.
 
-The benchmark intentionally measures *kernel-only* paths. It prepares each backend's required
-activation/weight pack once, then times one GEMM call with CUDA events. FlashInfer activation
-quantization uses its own standard 128x4 pack; native/cute use cache-dit's v1 activation pack.
+The benchmark reports three timings per runtime. `quantize` is the activation quantizer plus
+LoRA-down reduction (shared by both runtimes), `native`/`cute` are *kernel-only* GEMM timings
+(each backend's pack is prepared once and only the GEMM is timed), and `native+e2e`/`cute+e2e`
+measure one full `SVDQW4A4Linear.forward`, i.e. quantize + GEMM. `speedup_vs_native` compares
+against the matching native baseline, so kernel rows use the kernel-only baseline and e2e rows use
+the e2e baseline. FlashInfer activation quantization uses its own standard 128x4 pack; native/cute
+use cache-dit's v1 activation pack.
 
 Examples:
 
@@ -23,6 +27,9 @@ Examples:
 The FlashInfer kernel-only timings use its standard weight/activation pack. They are not
 numerically interchangeable with cache-dit's v1 activation pack; `finite` is reported for
 FlashInfer, while `rel_l2_vs_native` is only meaningful for cache-dit's cute kernel.
+
+The FlashInfer implementations are optional. When FlashInfer cannot be imported, those rows are
+reported as skipped and the cache-dit native/cute measurements still run to completion.
 """
 
 from __future__ import annotations
@@ -46,7 +53,15 @@ DEFAULT_SHAPES = (
   (8192, 6144, 3072),
   (16384, 8192, 8192),
 )
-DEFAULT_IMPLS = ("native", "cute", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120")
+DEFAULT_IMPLS = (
+  "quantize",
+  "native",
+  "cute",
+  "native+e2e",
+  "cute+e2e",
+  "flashinfer+cute-dsl",
+  "flashinfer+cutlass-sm120",
+)
 FLASHINFER_RANKS = {
   "flashinfer+cute-dsl": {32, 64, 128},
   "flashinfer+cutlass-sm120": {32, 64},
@@ -253,20 +268,54 @@ def run_case(m: int,
   # FlashInfer impl, after cache-dit's kernels have already been measured.
   mm_nvfp4_svdquant = None
   quantize_smooth = None
+  flashinfer_skip: str | None = None
   case = prepare_case(m, n, k, rank, seed, device, quantize_smooth=None)
   native_out = _native_call(case)
   native_us = bench(lambda: _native_call(case), warmup, iterations)
+  # End-to-end rows additionally include the activation quantization and LoRA-down reduction,
+  # which is what a real SVDQW4A4Linear forward pays on top of the GEMM.
+  native_e2e_out = case.native_module(case.x)
+  native_e2e_us = bench(lambda: case.native_module(case.x), warmup, iterations)
   rows = []
 
   for impl in impls:
+    if impl == "quantize":
+      # The activation quantizer plus LoRA-down reduction, shared by both runtimes. e2e rows are
+      # this step followed by the GEMM.
+      elapsed = bench(lambda: case.native_module.quantize(case.x), warmup, iterations)
+      rows.append({
+        "m": m,
+        "n": n,
+        "k": k,
+        "rank": rank,
+        "impl": impl,
+        "median_us": elapsed,
+        "speedup_vs_native": None,
+        "rel_l2_vs_native": None,
+        "finite": None,
+        "skipped": None,
+      })
+      continue
     if impl == "native":
       call = lambda: _native_call(case)
       out = native_out
       rel = 0.0
+      baseline_us = native_us
     elif impl == "cute":
       call = lambda: _cute_call(case)
       out = _cute_call(case)
       rel = ((out.float() - native_out.float()).norm() / native_out.float().norm()).item()
+      baseline_us = native_us
+    elif impl == "native+e2e":
+      call = lambda: case.native_module(case.x)
+      out = native_e2e_out
+      rel = 0.0
+      baseline_us = native_e2e_us
+    elif impl == "cute+e2e":
+      call = lambda: case.cute_module(case.x)
+      out = call()
+      rel = ((out.float() - native_e2e_out.float()).norm() / native_e2e_out.float().norm()).item()
+      baseline_us = native_e2e_us
     elif impl in FLASHINFER_RANKS:
       if rank not in FLASHINFER_RANKS[impl]:
         rows.append({
@@ -282,13 +331,47 @@ def run_case(m: int,
           "skipped": f"unsupported rank {rank}",
         })
         continue
+      if flashinfer_skip is not None:
+        rows.append({
+          "m": m,
+          "n": n,
+          "k": k,
+          "rank": rank,
+          "impl": impl,
+          "median_us": None,
+          "speedup_vs_native": None,
+          "rel_l2_vs_native": None,
+          "finite": None,
+          "skipped": flashinfer_skip,
+        })
+        continue
       if mm_nvfp4_svdquant is None:
-        mm_nvfp4_svdquant, quantize_smooth = _load_flashinfer(flashinfer_path)
+        try:
+          mm_nvfp4_svdquant, quantize_smooth = _load_flashinfer(flashinfer_path)
+        except Exception as exc:
+          # FlashInfer is optional: report the impl as skipped so the cache-dit kernels still run
+          # on hosts without it instead of aborting the whole sweep.
+          flashinfer_skip = "flashinfer unavailable"
+          print(f"[bench] skipping {impl}: {exc}", file=sys.stderr)
+          rows.append({
+            "m": m,
+            "n": n,
+            "k": k,
+            "rank": rank,
+            "impl": impl,
+            "median_us": None,
+            "speedup_vs_native": None,
+            "rel_l2_vs_native": None,
+            "finite": None,
+            "skipped": flashinfer_skip,
+          })
+          continue
         _prepare_flash_case(case, quantize_smooth)
       backend = impl.split("+", 1)[1]
       call = lambda: _flashinfer_call(case, mm_nvfp4_svdquant, backend)
       out = call()
       rel = None
+      baseline_us = native_us
     else:
       raise ValueError(f"unknown implementation {impl!r}")
 
@@ -300,7 +383,7 @@ def run_case(m: int,
       "rank": rank,
       "impl": impl,
       "median_us": elapsed,
-      "speedup_vs_native": native_us / elapsed,
+      "speedup_vs_native": baseline_us / elapsed,
       "rel_l2_vs_native": rel,
       "finite": bool(torch.isfinite(out).all()),
       "skipped": None,

@@ -47,30 +47,31 @@ inline void gemm_w4a4_native(
     attn_tokens);
 }
 
-inline void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
-                      std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
-                      std::optional<torch::Tensor> wscales,
-                      std::optional<torch::Tensor> lora_act_in,
-                      std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias,
-                      std::optional<torch::Tensor> wcscales, float alpha) {
-  TorchOpContext ctx;
-  svdq::cute_kernels::gemm_w4a4(get_tensor(act), get_tensor(wgt), get_tensor(out),
-                                get_tensor(ascales), get_tensor(wscales), get_tensor(lora_act_in),
-                                get_tensor(lora_up), get_tensor(bias), get_tensor(wcscales), alpha);
+// CuTe-backed NVFP4 GEMM. `lora_layout` selects whether the LoRA-down term arrives as the native
+// producer's packed FP32 fragment D ("native") or as row-major BF16 D ("row_major").
+inline svdq::cute_kernels::LoraLayout parse_lora_layout(const std::string &lora_layout) {
+  if (lora_layout == "native") {
+    return svdq::cute_kernels::LoraLayout::kNative;
+  }
+  if (lora_layout == "row_major") {
+    return svdq::cute_kernels::LoraLayout::kRowMajor;
+  }
+  throw std::runtime_error("lora_layout must be 'native' or 'row_major', got '" + lora_layout +
+                           "'.");
 }
 
-inline void gemm_w4a4_f32d(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+inline void gemm_w4a4_cute(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
                            std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
                            std::optional<torch::Tensor> wscales,
                            std::optional<torch::Tensor> lora_act_in,
                            std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias,
                            std::optional<torch::Tensor> wcscales, std::vector<float> lora_scales,
-                           float alpha) {
+                           float alpha, std::string lora_layout) {
   TorchOpContext ctx;
-  svdq::cute_kernels::gemm_w4a4_f32d(get_tensor(act), get_tensor(wgt), get_tensor(out),
-                                     get_tensor(ascales), get_tensor(wscales),
-                                     get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
-                                     get_tensor(wcscales), std::move(lora_scales), alpha);
+  svdq::cute_kernels::gemm_w4a4(get_tensor(act), get_tensor(wgt), get_tensor(out),
+                                get_tensor(ascales), get_tensor(wscales), get_tensor(lora_act_in),
+                                get_tensor(lora_up), get_tensor(bias), get_tensor(wcscales),
+                                std::move(lora_scales), alpha, parse_lora_layout(lora_layout));
 }
 
 inline void gemm_w4a4_native_v2(
@@ -97,26 +98,30 @@ inline void gemm_w4a4_native_v2(
     get_tensor(wcscales), stage);
 }
 
-inline void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
-                          std::optional<torch::Tensor> ascales,
-                          std::optional<torch::Tensor> lora_down,
-                          std::optional<torch::Tensor> lora_act,
-                          std::optional<torch::Tensor> smooth, std::vector<float> lora_scales) {
+// CuTe activation/LoRA-down producer: emits the v1 activation pack plus row-major BF16 D.
+inline void quantize_w4a4_row_major(std::optional<torch::Tensor> input,
+                                    std::optional<torch::Tensor> output,
+                                    std::optional<torch::Tensor> ascales,
+                                    std::optional<torch::Tensor> lora_down,
+                                    std::optional<torch::Tensor> lora_act,
+                                    std::optional<torch::Tensor> smooth,
+                                    std::vector<float> lora_scales) {
   TorchOpContext ctx;
-  svdq::cute_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),
-                                    get_tensor(lora_down), get_tensor(lora_act), get_tensor(smooth),
-                                    std::move(lora_scales));
+  svdq::cute_kernels::quantize_w4a4_row_major(
+    get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
+    get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales));
 }
 
-inline void quantize_w4a4_act_fuse_lora(std::optional<torch::Tensor> input,
-                                        std::optional<torch::Tensor> output,
-                                        std::optional<torch::Tensor> oscales,
-                                        std::optional<torch::Tensor> lora_down,
-                                        std::optional<torch::Tensor> lora_act_out,
-                                        std::optional<torch::Tensor> smooth, bool fuse_glu,
-                                        bool fp4) {
+// Native activation/LoRA-down producer: emits the native scale layout plus the FP32 fragment D
+// consumed by `gemm_w4a4_cute` with `lora_layout='native'`.
+inline void quantize_w4a4_native(std::optional<torch::Tensor> input,
+                                 std::optional<torch::Tensor> output,
+                                 std::optional<torch::Tensor> oscales,
+                                 std::optional<torch::Tensor> lora_down,
+                                 std::optional<torch::Tensor> lora_act_out,
+                                 std::optional<torch::Tensor> smooth, bool fuse_glu, bool fp4) {
   TorchOpContext ctx;
-  spdlog::trace("running quantize_w4a4_act_fuse_lora:");
+  spdlog::trace("running quantize_w4a4_native:");
   svdq::native_kernels::quantize_w4a4_act_fuse_lora(
     get_tensor(input), get_tensor(output), get_tensor(oscales), get_tensor(lora_down),
     get_tensor(lora_act_out), get_tensor(smooth), fuse_glu, fp4);

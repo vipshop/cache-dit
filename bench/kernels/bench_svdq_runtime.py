@@ -8,10 +8,10 @@ from pathlib import Path
 
 import torch
 
-from cache_dit.kernels import svdq_gemm_w4a4_native
-from cache_dit.kernels import svdq_gemm_w4a4_native_v2
-from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
-from cache_dit.kernels import svdq_quantize_w4a4_wgt
+from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_gemm_w4a4_ext
+from cache_dit.kernels import svdq_quantize_w4a4
+from cache_dit.quantization.svdquant.packing import pack_svdq_w4a4_linear_tensors
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BLOCK_MS = (64, 128, 256)
@@ -87,6 +87,35 @@ def time_cuda_call(fn):
   return start.elapsed_time(end), result
 
 
+def pack_int4_weight(weight: torch.Tensor, group_size: int = 64):
+  """Pack a dense weight into the native INT4 W4A4 layout with per-group scales.
+
+  :param weight: Dense weight with shape `[out_features, in_features]`.
+  :param group_size: Scale group size used by the INT4 runtime.
+  :returns:`(qweight, wscales)` in the runtime layout.
+  """
+
+  out_features, in_features = weight.shape
+  scale = weight.abs().view(out_features, in_features // group_size, group_size).amax(-1)
+  scale = (scale / 7.0).clamp_min(1e-8).view(out_features, 1, -1, 1)
+  qweight, wscales, *_ = pack_svdq_w4a4_linear_tensors(weight, scale)
+  return qweight, wscales.to(weight.dtype)
+
+
+def native_v1_kernel(**kwargs):
+  """Route the legacy INT4 native v1 kernel through the full-ABI escape hatch.
+
+  `svdq_gemm_w4a4` maps the native runtime to the v2 INT4 kernel, so the v1 baseline has to go
+  through `svdq_gemm_w4a4_ext`, which allocates its own output buffer.
+
+  :param kwargs: Keyword arguments shared with `svdq_gemm_w4a4`.
+  :returns: Dense output tensor.
+  """
+
+  kwargs.pop("output_dtype", None)
+  return svdq_gemm_w4a4_ext(**kwargs)
+
+
 def benchmark(op, kwargs, *, warmup: int, iters: int):
   """Benchmark a CUDA op and return latency, memory, and output.
 
@@ -158,7 +187,7 @@ def main() -> None:
   """Run the full runtime sweep and export JSON/CSV reports.
 
   The sweep includes both explicit `stage=1/2/3` calls and one additional
-  default-call group where `svdq_gemm_w4a4_native_v2` is invoked without a `stage`
+  default-call group where `svdq_gemm_w4a4` is invoked without a `stage`
   keyword. This keeps the report aligned with the current Python default path.
   """
 
@@ -186,16 +215,17 @@ def main() -> None:
         lora_up = torch.randn(EMBED_DIM, rank, device=device, dtype=dtype) * 0.01
         bias = torch.randn(EMBED_DIM, device=device, dtype=dtype) * 0.01
 
-        act_quant_ms, quantized = time_cuda_call(lambda: svdq_quantize_w4a4_act_fuse_lora(
+        act_quant_ms, quantized = time_cuda_call(lambda: svdq_quantize_w4a4(
           input=activations,
           lora_down=lora_down,
           smooth=smooth,
+          lora_layout="native",
           fp4=False,
           pad_size=256,
         ))
         qact, ascales, lora_act = quantized
-        wgt_quant_ms, quantized_wgt = time_cuda_call(lambda: svdq_quantize_w4a4_wgt(
-          torch.randn(EMBED_DIM, EMBED_DIM, device=device, dtype=dtype)))
+        wgt_quant_ms, quantized_wgt = time_cuda_call(
+          lambda: pack_int4_weight(torch.randn(EMBED_DIM, EMBED_DIM, device=device, dtype=dtype)))
         qweight, wscales = quantized_wgt
 
         common_kwargs = {
@@ -213,16 +243,13 @@ def main() -> None:
         }
 
         os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
-        v1 = benchmark(svdq_gemm_w4a4_native, common_kwargs, warmup=warmup, iters=iters)
+        v1 = benchmark(native_v1_kernel, common_kwargs, warmup=warmup, iters=iters)
 
         for block_m in BLOCK_MS:
           os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = str(block_m)
           v2_results: dict[str, dict[str, object]] = {}
 
-          default_v2 = benchmark(svdq_gemm_w4a4_native_v2,
-                                 common_kwargs,
-                                 warmup=warmup,
-                                 iters=iters)
+          default_v2 = benchmark(svdq_gemm_w4a4, common_kwargs, warmup=warmup, iters=iters)
           default_diff = (default_v2["output"].float() - v1["output"].float()).abs()
           rows.append({
             "M": seq_len,
@@ -252,7 +279,7 @@ def main() -> None:
           for stage in EXPLICIT_STAGES:
             v2_kwargs = dict(common_kwargs)
             v2_kwargs["stage"] = stage
-            explicit_v2 = benchmark(svdq_gemm_w4a4_native_v2, v2_kwargs, warmup=warmup, iters=iters)
+            explicit_v2 = benchmark(svdq_gemm_w4a4, v2_kwargs, warmup=warmup, iters=iters)
             explicit_diff = (explicit_v2["output"].float() - v1["output"].float()).abs()
             rows.append({
               "M": seq_len,

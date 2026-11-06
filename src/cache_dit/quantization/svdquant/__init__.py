@@ -25,19 +25,16 @@ Runtime path after the packed tensors have been loaded:
 
     SVDQW4A4Linear.forward(...)
         -> quantize(...)
-            -> svdq_quantize_w4a4_act_fuse_lora(...)
+            -> svdq_quantize_w4a4(lora_layout='native', ...)
         -> forward_quant(...)
-            -> svdq_gemm_w4a4_native_v2(...) for INT4 native
-            -> svdq_gemm_w4a4_native(...) for NVFP4 native
-            -> svdq_gemm_w4a4_cute(...) for NVFP4 CuTe
+            -> svdq_gemm_w4a4(runtime='native', lora_layout='native', ...) for INT4/NVFP4 native
+            -> svdq_gemm_w4a4(runtime='cute', lora_layout='native', ...) for NVFP4 CuTe
 
 Notes:
 - The main flow quantizes weights offline in Python and stores packed
     qweight/wscales tensors in the module state dict.
 - SVDQWeightPacker exists to serialize tensors into the warp-oriented W4A4
     kernel layout, not to define an arbitrary checkpoint packing format.
-- svdq_quantize_w4a4_wgt is a low-level CUDA helper used by runtime tests,
-    but it is not part of quantize_linear_svdq_w4a4's main call chain.
 """
 
 from ...kernels import svdq_extension_is_available as svdq_is_available

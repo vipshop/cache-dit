@@ -7,11 +7,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from cache_dit.kernels import svdq_gemm_w4a4_native
-from cache_dit.kernels import svdq_gemm_w4a4_native_v2
-from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
+from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant.packing import pack_svdq_w4a4_linear_tensors
 
 RANKS_WITH_BASELINE = (0, 16, 32, 128)
 EVALUATED_RANKS = (16, 32, 128)
@@ -21,6 +21,27 @@ TOY_ATTENTION_LINEAR_NAMES = (
   "block.to_v",
   "block.to_out",
 )
+
+
+def pack_int4_weight(
+  weight: torch.Tensor,
+  group_size: int = 64,
+) -> tuple[torch.Tensor, torch.Tensor]:
+  """Pack a dense weight into the native INT4 W4A4 layout with per-group scales.
+
+  The runtime module only consumes packs produced offline, so tests that need a standalone
+  weight pack go through the same Python packer instead of a dedicated CUDA quantizer.
+
+  :param weight: Dense weight with shape `[out_features, in_features]`.
+  :param group_size: Scale group size; the INT4 runtime uses 64.
+  :returns: `(qweight, wscales)` in the layout expected by `svdq_gemm_w4a4`.
+  """
+
+  out_features, in_features = weight.shape
+  scale = weight.abs().view(out_features, in_features // group_size, group_size).amax(-1)
+  scale = (scale / 7.0).clamp_min(1e-8).view(out_features, 1, -1, 1)
+  qweight, wscales, *_ = pack_svdq_w4a4_linear_tensors(weight, scale)
+  return qweight, wscales.to(weight.dtype)
 
 
 @dataclass(frozen=True)
@@ -284,17 +305,15 @@ def run_svdq_operator_from_state_dict(
   *,
   output_dtype: torch.dtype,
   act_unsigned: bool = False,
-  operator_version: str = "v1",
 ) -> torch.Tensor:
-  if operator_version not in {"v1", "v2"}:
-    raise ValueError(f"operator_version must be 'v1' or 'v2', got {operator_version!r}.")
+  """Run the INT4 native route through the unified SVDQ entry points."""
 
   proj_down = state_dict["proj_down"]
-  quantized_activations, ascales, lora_activations = svdq_quantize_w4a4_act_fuse_lora(
+  quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
     input=activations,
     lora_down=None if proj_down.shape[1] == 0 else proj_down,
     smooth=state_dict["smooth_factor"],
-    fuse_glu=False,
+    lora_layout="native",
     fp4=False,
     pad_size=256,
   )
@@ -306,6 +325,8 @@ def run_svdq_operator_from_state_dict(
     "bias": state_dict.get("bias"),
     "lora_act_in": None,
     "lora_up": None,
+    "runtime": "native",
+    "lora_layout": "native",
     "fp4": False,
     "alpha": 1.0,
     "wcscales": None,
@@ -315,11 +336,7 @@ def run_svdq_operator_from_state_dict(
   if proj_down.shape[1] > 0:
     gemm_kwargs["lora_act_in"] = lora_activations
     gemm_kwargs["lora_up"] = state_dict["proj_up"]
-  if operator_version == "v2":
-    gemm_op = svdq_gemm_w4a4_native_v2
-  else:
-    gemm_op = svdq_gemm_w4a4_native
-  output = gemm_op(**gemm_kwargs)
+  output = svdq_gemm_w4a4(**gemm_kwargs)
   return output[:activations.shape[0]]
 
 
@@ -462,6 +479,7 @@ __all__ = [
   "make_token_batch",
   "make_token_samples",
   "make_toy_model",
+  "pack_int4_weight",
   "quantize_toy_model",
   "run_svdq_operator_from_state_dict",
   "runtime_dtype",

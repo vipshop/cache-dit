@@ -3,11 +3,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...kernels import svdq_gemm_w4a4_native
-from ...kernels import svdq_gemm_w4a4_f32d
-from ...kernels import svdq_gemm_w4a4_native_v2
-from ...kernels import svdq_quantize_w4a4_act_fuse_lora
-from .packing import convert_svdq_nvfp4_pack_to_cute
+from ...kernels import svdq_gemm_w4a4
+from ...kernels import svdq_quantize_w4a4
 
 
 class SVDQW4A4Linear(nn.Module):
@@ -245,44 +242,55 @@ class SVDQW4A4Linear(nn.Module):
       `forward_quant`.
     """
 
-    if self.runtime_kernel == "cute":
-      # The native producer owns the fast K-split LoRA-down reduction. Its FP32 fragment D is
-      # consumed directly by gemm_w4a4_f32d, so no BF16 row-major D conversion is needed. Weight
-      # packing is prepared separately in forward_quant().
-      return svdq_quantize_w4a4_act_fuse_lora(
-        input=x,
-        lora_down=self.proj_down,
-        smooth=self.smooth_factor,
-        fuse_glu=False,
-        fp4=True,
-        pad_size=pad_size,
-      )
-
-    return svdq_quantize_w4a4_act_fuse_lora(
+    # The native producer owns the fast K-split LoRA-down reduction. Its packed FP32 fragment D is
+    # consumed in place by both runtimes, so no BF16 row-major D conversion is needed. Weight
+    # packing for the CuTe runtime is prepared separately in forward_quant().
+    return svdq_quantize_w4a4(
       input=x,
       lora_down=self.proj_down,
       smooth=self.smooth_factor,
-      fuse_glu=False,
+      lora_layout="native",
       fp4=self.precision == "nvfp4",
       pad_size=pad_size,
     )
 
   def _load_from_state_dict(self, *args, **kwargs) -> None:
     super()._load_from_state_dict(*args, **kwargs)
+    # The CuTe pack is a pure function of the loaded checkpoint, so it is rebuilt here, once per
+    # load, and never on the forward path.
     self._cute_pack_ready = False
+    if self.runtime_kernel == "cute":
+      self._prepare_cute_pack()
+
+  def _apply(self, fn, *args, **kwargs):
+    """Rebuild the cached CuTe pack across device or dtype conversions.
+
+    The `_cute_*` tensors are plain attributes, so `Module.to`/`.cuda()` would otherwise leave a
+    stale pack behind on the previous device.
+    """
+
+    rebuild = self._cute_pack_ready
+    self._cute_pack_ready = False
+    module = super()._apply(fn, *args, **kwargs)
+    if rebuild and self.runtime_kernel == "cute":
+      self._prepare_cute_pack()
+    return module
 
   def _prepare_cute_pack(self) -> None:
     """Cache CuTe runtime tensors without mutating the native checkpoint parameters.
 
     The original native parameters remain the only state-dict entries, so saving and reloading
-    never serializes the converted layout. A later load invalidates this cache and triggers a
-    fresh conversion. The cache is private implementation data, not a `nn.Parameter` or registered
-    buffer.
+    never serializes the converted layout. The conversion runs once from `_load_from_state_dict`
+    and again after any device or dtype move; it is never part of the forward path. The cache is
+    private implementation data, not a `nn.Parameter` or registered buffer.
 
     :returns: None. The converted tensors are stored on `_cute_*` attributes with pack version 1.
     """
     if self._cute_pack_ready:
       return
+
+    from .packing import convert_svdq_nvfp4_pack_to_cute
+
     (self._cute_qweight, self._cute_wscales, self._cute_proj_up, self._cute_proj_down,
      self._cute_bias, self._cute_wcscales,
      self._cute_smooth) = convert_svdq_nvfp4_pack_to_cute(self.qweight, self.wscales, self.proj_up,
@@ -309,8 +317,11 @@ class SVDQW4A4Linear(nn.Module):
     """
 
     if self.runtime_kernel == "cute":
-      self._prepare_cute_pack()
-      result = svdq_gemm_w4a4_f32d(
+      if not self._cute_pack_ready:
+        raise RuntimeError(
+          "The CuTe weight pack is not built. Load the module with `load_state_dict` (or call "
+          "`_prepare_cute_pack`) before running the CuTe runtime.")
+      result = svdq_gemm_w4a4(
         act=quantized_x,
         wgt=self._cute_qweight,
         ascales=ascales,
@@ -319,6 +330,9 @@ class SVDQW4A4Linear(nn.Module):
         lora_up=self._cute_proj_up if self.rank > 0 else None,
         bias=self._cute_bias,
         wcscales=self._cute_wcscales,
+        runtime="cute",
+        lora_layout="native",
+        fp4=True,
         alpha=self.wtscale,
       )
       if output is not None:
@@ -332,6 +346,8 @@ class SVDQW4A4Linear(nn.Module):
       ascales=ascales,
       wscales=self.wscales,
       bias=self.bias,
+      runtime="native",
+      lora_layout="native",
       fp4=self.precision == "nvfp4",
       alpha=self.wtscale,
       wcscales=self.wcscales,
@@ -341,13 +357,7 @@ class SVDQW4A4Linear(nn.Module):
     gemm_kwargs["lora_act_in"] = lora_act if self.rank > 0 else None
     gemm_kwargs["lora_up"] = self.proj_up if self.rank > 0 else None
 
-    if self.precision == "int4":
-      # native means the native family, never a request for deprecated INT4 v1.
-      gemm_op = svdq_gemm_w4a4_native_v2
-    else:
-      # NVFP4 native retains the old kernel for explicit compatibility/fallback.
-      gemm_op = svdq_gemm_w4a4_native
-    result = gemm_op(**gemm_kwargs)
+    result = svdq_gemm_w4a4(**gemm_kwargs)
     if output is not None:
       output.copy_(result)
       return output
