@@ -271,14 +271,13 @@ void GEMM_W4A4_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
     if (out.valid()) {
       launch_lora.template operator()<
         typename GEMM::EpilogueCombination<typename GEMM::EpilogueDefault, EpilogueQuantize>,
-        typename Epilogues::EpilogueGelu>(
-        {typename GEMM::EpilogueDefault::Arguments{
-           .out = out.data_ptr<half_t>(),
-           .actualM = actualM,
-           .actualN = actualN,
-         },
-         argsQuantize},
-        {});
+        typename Epilogues::EpilogueGelu>({typename GEMM::EpilogueDefault::Arguments{
+                                             .out = out.data_ptr<half_t>(),
+                                             .actualM = actualM,
+                                             .actualN = actualN,
+                                           },
+                                           argsQuantize},
+                                          {});
     } else {
       launch_lora.template operator()<EpilogueQuantize, typename Epilogues::EpilogueGelu>(
         argsQuantize, {});

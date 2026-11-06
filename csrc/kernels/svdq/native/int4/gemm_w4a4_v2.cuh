@@ -80,9 +80,11 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   using Base::WARP_SIZE;
   using Base::WSCALES_NUM_PACKS;
   using Base::WSCALES_VALID_LANES;
-  using typename Base::BlockInfo;
   using typename Base::act_warp;
   using typename Base::ascale_warp;
+  using typename Base::BlockInfo;
+  using typename Base::EpilogueDefault;
+  using typename Base::EpilogueNop;
   using typename Base::f32psum_warp;
   using typename Base::fpsum_warp;
   using typename Base::packed_act_t;
@@ -93,8 +95,6 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   using typename Base::packed_wscale_t;
   using typename Base::wgt_warp;
   using typename Base::wscale_warp;
-  using typename Base::EpilogueDefault;
-  using typename Base::EpilogueNop;
   template <bool USE_BIAS, bool USE_SCALE>
   using EpilogueBias = typename Base::template EpilogueBias<USE_BIAS, USE_SCALE>;
   template <typename... Epilogues>
@@ -132,9 +132,9 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     for (int tile = 0; tile < WARP_M_TILES; tile++) {
       out[tile] = load_pred(
         &ptr[(((packed_bm * (K / WARP_K) + k) * PACKED_NUM_WARPS + packed_warp) * WARP_M_TILES +
-               tile) *
-                WARP_SIZE +
-              laneId],
+              tile) *
+               WARP_SIZE +
+             laneId],
         pred);
     }
   }
@@ -149,13 +149,13 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
 
 #pragma unroll
     for (int pack = 0; pack < ASCALES_NUM_PACKS; pack++) {
-      out[pack] = load_pred(
-        &ptr[(((packed_bm * (K / WARP_K) + group) * PACKED_NUM_WARPS + packed_warp) *
-                ASCALES_NUM_PACKS +
-              pack) *
-                ASCALES_VALID_LANES +
-              laneId],
-        pred && laneId < ASCALES_VALID_LANES);
+      out[pack] =
+        load_pred(&ptr[(((packed_bm * (K / WARP_K) + group) * PACKED_NUM_WARPS + packed_warp) *
+                          ASCALES_NUM_PACKS +
+                        pack) *
+                         ASCALES_VALID_LANES +
+                       laneId],
+                  pred && laneId < ASCALES_VALID_LANES);
     }
   }
 
@@ -172,7 +172,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
 
     const float *ptrlane =
       &ptr[(((packed_bm * (rank / LoraKernel::WARP_R) + rtile) * PACKED_NUM_WARPS + packed_warp) *
-              LORA_TILE_SIZE) +
+            LORA_TILE_SIZE) +
            laneId];
 
     unrolled_loop<LoraKernel::LORA_M_TILES>([&]<int m>() {
@@ -199,9 +199,11 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     return (tile * WARP_SIZE) + laneId;
   }
 
-  __device__ __forceinline__ static void prefetch_act_compat_to_shared(
-    SharedStorage &shared, int stage_slot, const packed_act_t *ptr, int logical_block_m, int k,
-    int K, bool pred) {
+  __device__ __forceinline__ static void prefetch_act_compat_to_shared(SharedStorage &shared,
+                                                                       int stage_slot,
+                                                                       const packed_act_t *ptr,
+                                                                       int logical_block_m, int k,
+                                                                       int K, bool pred) {
     const int laneId = threadIdx.x % WARP_SIZE;
     const int warpId = threadIdx.x / WARP_SIZE;
     const int packed_bm = packed_block_index(logical_block_m);
@@ -212,15 +214,17 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       const int shared_offset = act_shared_offset(warpId, tile, laneId);
       const packed_act_t *src =
         &ptr[(((packed_bm * (K / WARP_K) + k) * PACKED_NUM_WARPS + packed_warp) * WARP_M_TILES +
-               tile) *
-                WARP_SIZE +
-              laneId];
+              tile) *
+               WARP_SIZE +
+             laneId];
       cp_async_ca(&shared.act_tiles[stage_slot][shared_offset], src, pred);
     }
   }
 
-  __device__ __forceinline__ static void prefetch_wgt_to_shared(
-    SharedStorage &shared, int stage_slot, const packed_wgt_t *ptr, int k, int K, bool pred) {
+  __device__ __forceinline__ static void prefetch_wgt_to_shared(SharedStorage &shared,
+                                                                int stage_slot,
+                                                                const packed_wgt_t *ptr, int k,
+                                                                int K, bool pred) {
     const int laneId = threadIdx.x % WARP_SIZE;
     unused_var(K, false);
 
@@ -233,20 +237,19 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   }
 
   __device__ __forceinline__ static void load_act_from_shared(const SharedStorage &shared,
-                                                              int stage_slot,
-                                                              act_warp &out) {
+                                                              int stage_slot, act_warp &out) {
     const int laneId = threadIdx.x % WARP_SIZE;
     const int warpId = threadIdx.x / WARP_SIZE;
 
 #pragma unroll
     for (int tile = 0; tile < WARP_M_TILES; tile++) {
-      out[tile] = load<true>(&shared.act_tiles[stage_slot][act_shared_offset(warpId, tile, laneId)]);
+      out[tile] =
+        load<true>(&shared.act_tiles[stage_slot][act_shared_offset(warpId, tile, laneId)]);
     }
   }
 
   __device__ __forceinline__ static void load_wgt_from_shared(const SharedStorage &shared,
-                                                              int stage_slot,
-                                                              wgt_warp &out) {
+                                                              int stage_slot, wgt_warp &out) {
     const int laneId = threadIdx.x % WARP_SIZE;
 
 #pragma unroll
@@ -256,11 +259,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   }
 
   __device__ __forceinline__ static void load_act_compat_safe(const packed_act_t *ptr,
-                                                              int logical_block_m,
-                                                              int k,
-                                                              int K,
-                                                              act_warp &out,
-                                                              bool pred) {
+                                                              int logical_block_m, int k, int K,
+                                                              act_warp &out, bool pred) {
     if (!pred) {
       clear_warp(out);
       return;
@@ -268,11 +268,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     load_act_compat(ptr, logical_block_m, k, K, out, true);
   }
 
-  __device__ __forceinline__ static void load_wgt_safe(const packed_wgt_t *ptr,
-                                                       int k,
-                                                       int K,
-                                                       wgt_warp &out,
-                                                       bool pred) {
+  __device__ __forceinline__ static void load_wgt_safe(const packed_wgt_t *ptr, int k, int K,
+                                                       wgt_warp &out, bool pred) {
     if (!pred) {
       clear_warp(out);
       return;
@@ -281,10 +278,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   }
 
   __device__ __forceinline__ static void load_ascale_compat_safe(const packed_ascale_t *ptr,
-                                                                 int logical_block_m,
-                                                                 int group,
-                                                                 int K,
-                                                                 ascale_warp &out,
+                                                                 int logical_block_m, int group,
+                                                                 int K, ascale_warp &out,
                                                                  bool pred) {
     if (!pred) {
       clear_warp(out);
@@ -293,11 +288,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     load_ascale_compat(ptr, logical_block_m, group, K, out, true);
   }
 
-  __device__ __forceinline__ static void load_wscale_safe(const packed_wscale_t *ptr,
-                                                          int group,
-                                                          int N,
-                                                          wscale_warp &out,
-                                                          bool pred) {
+  __device__ __forceinline__ static void load_wscale_safe(const packed_wscale_t *ptr, int group,
+                                                          int N, wscale_warp &out, bool pred) {
     if (!pred) {
       clear_warp(out);
       return;
@@ -305,8 +297,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     load_wscale(ptr, group, N, out, true);
   }
 
-  __device__ __forceinline__ static void load_lora_act_safe(const float *ptr,
-                                                            int rtile,
+  __device__ __forceinline__ static void load_lora_act_safe(const float *ptr, int rtile,
                                                             typename LoraKernel::lora_act_warp &out,
                                                             bool pred) {
     if (!pred) {
@@ -326,9 +317,10 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     load_lora_act_compat(ptr, logical_block_m, rtile, rank, out, true);
   }
 
-  __device__ __forceinline__ static void load_lora_wgt_safe(
-    const packed_fpsum_t *ptr, int rtile, int rank, typename LoraKernel::lora_wgt_warp &out,
-    bool pred) {
+  __device__ __forceinline__ static void load_lora_wgt_safe(const packed_fpsum_t *ptr, int rtile,
+                                                            int rank,
+                                                            typename LoraKernel::lora_wgt_warp &out,
+                                                            bool pred) {
     if (!pred) {
       clear_warp(out);
       return;
@@ -393,9 +385,9 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
 
   template <typename Epilogue, bool ACT_UNSIGNED>
   __device__ __forceinline__ static void gemm_w4a4_v2_block_compat_smem(
-    SharedStorage &shared, const BlockInfo binfo, const packed_act_t *act,
-    const packed_wgt_t *wgt, const packed_ascale_t *ascales, const packed_wscale_t *wscales,
-    int M, int N, int K, const typename Epilogue::Arguments &epilogueArgs, bool alwaysfalse) {
+    SharedStorage &shared, const BlockInfo binfo, const packed_act_t *act, const packed_wgt_t *wgt,
+    const packed_ascale_t *ascales, const packed_wscale_t *wscales, int M, int N, int K,
+    const typename Epilogue::Arguments &epilogueArgs, bool alwaysfalse) {
     fpsum_warp fpsum;
 
     for (auto &pack : fpsum) {
@@ -443,8 +435,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
         load_ascale_compat_safe(ascales, binfo.bm, k, K, current_ascale, true);
         load_wscale_safe(wscales, k, N, current_wscale, true);
 
-        Parent::template compute<ACT_UNSIGNED>(
-          current_act, current_wgt, current_ascale, current_wscale, fpsum);
+        Parent::template compute<ACT_UNSIGNED>(current_act, current_wgt, current_ascale,
+                                               current_wscale, fpsum);
       }
 
       if (nextk < num_k_tiles) {
@@ -465,10 +457,10 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     static constexpr bool USE_COMPAT_SMEM_OPT = false;
 
     __device__ void operator()(SharedStorage &shared, const packed_act_t *act,
-                               const packed_wgt_t *wgt,
-                               const packed_ascale_t *ascales, const packed_wscale_t *wscales,
-                               int M, int N, int K, typename Epilogue::Arguments epilogueArgs,
-                               bool swapBlockXY, bool alwaysfalse) {
+                               const packed_wgt_t *wgt, const packed_ascale_t *ascales,
+                               const packed_wscale_t *wscales, int M, int N, int K,
+                               typename Epilogue::Arguments epilogueArgs, bool swapBlockXY,
+                               bool alwaysfalse) {
       BlockInfo binfo = {
         .bm = static_cast<int>(blockIdx.x),
         .bn = static_cast<int>(blockIdx.y),
@@ -489,43 +481,23 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
         if constexpr (USE_COMPAT_SMEM_OPT && NumPipelineStages >= 2) {
           GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat_smem<
             Epilogue, ACT_UNSIGNED>(
-            shared,
-            binfo,
-            act,
-            wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
-            ascales,
-            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
-            M,
-            N,
-            K,
-            epilogueArgs,
-            alwaysfalse);
+            shared, binfo, act, wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE, ascales,
+            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES, M, N, K,
+            epilogueArgs, alwaysfalse);
         } else {
-          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat<
-            Epilogue, ACT_UNSIGNED>(
-            binfo,
-            act,
-            wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
-            ascales,
-            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
-            M,
-            N,
-            K,
-            epilogueArgs,
-            alwaysfalse);
+          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat<Epilogue,
+                                                                                      ACT_UNSIGNED>(
+            binfo, act, wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE, ascales,
+            wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES, M, N, K,
+            epilogueArgs, alwaysfalse);
         }
       } else {
         Parent::template gemm_w4a4_block<Epilogue, ACT_UNSIGNED, false>(
-          binfo,
-          act + bm * (K / WARP_K) * NUM_WARPS * WARP_M_TILES * WARP_SIZE,
+          binfo, act + bm * (K / WARP_K) * NUM_WARPS * WARP_M_TILES * WARP_SIZE,
           wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE,
           ascales + bm * (K / WARP_K) * NUM_WARPS * ASCALES_NUM_PACKS * ASCALES_VALID_LANES,
-          wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES,
-          M,
-          N,
-          K,
-          epilogueArgs,
-          alwaysfalse);
+          wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES, M, N, K,
+          epilogueArgs, alwaysfalse);
       }
     }
   };
@@ -533,9 +505,10 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   struct EpilogueLoraUpRuntime {
     using Arguments = typename LoraKernel::EpilogueLoraUp::Arguments;
 
-    __device__ __forceinline__ static void apply_lora_up(
-      fpsum_warp &fpsum, const float *act, const packed_fpsum_t *wgt,
-      const typename LoraKernel::scale_t &scales, int rank, bool alwaysfalse) {
+    __device__ __forceinline__ static void apply_lora_up(fpsum_warp &fpsum, const float *act,
+                                                         const packed_fpsum_t *wgt,
+                                                         const typename LoraKernel::scale_t &scales,
+                                                         int rank, bool alwaysfalse) {
       constexpr int NUM_STAGES = NUM_PIPELINE_STAGES;
 
       typename LoraKernel::lora_act_warp lora_act[NUM_STAGES];
@@ -554,8 +527,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       f32psum_warp f32psum = packed_fp16_to_fp32(fpsum);
 
       auto compute = [&scales](const typename LoraKernel::lora_act_warp &A,
-                               const typename LoraKernel::lora_wgt_warp &W,
-                               f32psum_warp &accum, int rtile) ALWAYSINLINE {
+                               const typename LoraKernel::lora_wgt_warp &W, f32psum_warp &accum,
+                               int rtile) ALWAYSINLINE {
         typename LoraKernel::lora_act16_warp A_fp16;
 
 #pragma unroll
@@ -577,10 +550,9 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
           for (int n = 0; n < LoraKernel::LORA_N_TILES; n++) {
 #pragma unroll
             for (int r = 0; r < LoraKernel::LORA_R_TILES; r++) {
-              accum[m * WARP_N_TILES + n] = mma_f16xf16_f32(
-                A_fp16[m * LoraKernel::LORA_R_TILES + r],
-                W[n * LoraKernel::LORA_R_TILES + r],
-                accum[m * WARP_N_TILES + n]);
+              accum[m * WARP_N_TILES + n] =
+                mma_f16xf16_f32(A_fp16[m * LoraKernel::LORA_R_TILES + r],
+                                W[n * LoraKernel::LORA_R_TILES + r], accum[m * WARP_N_TILES + n]);
             }
           }
         }
@@ -641,15 +613,12 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       (void)K;
       CHECK_NAN(fpsum, "fpsum");
 
-      apply_lora_up(
-        fpsum,
-        args.lora_act + bm * (args.rank / LoraKernel::WARP_R) *
-                          (NUM_WARPS * LoraKernel::LORA_M_TILES * LoraKernel::LORA_R_TILES * 8 *
-                           WARP_SIZE),
-        args.lora_wgt_up + bn * (BLOCK_N / 16) * (args.rank / 16) * WARP_SIZE,
-        args.scales,
-        args.rank,
-        args.alwaysfalse);
+      apply_lora_up(fpsum,
+                    args.lora_act + bm * (args.rank / LoraKernel::WARP_R) *
+                                      (NUM_WARPS * LoraKernel::LORA_M_TILES *
+                                       LoraKernel::LORA_R_TILES * 8 * WARP_SIZE),
+                    args.lora_wgt_up + bn * (BLOCK_N / 16) * (args.rank / 16) * WARP_SIZE,
+                    args.scales, args.rank, args.alwaysfalse);
 
       CHECK_NAN(fpsum, "fpsum");
     }
@@ -661,10 +630,11 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     // The LoRA up path reuses the original packed lora_act tensor layout from the quantizer.
     // When v2 shrinks the logical row block on Ada, only the base GEMM block shape changes; the
     // LoRA activations must still be read with the original packed warp-group stride.
-    __device__ __forceinline__ static void apply_lora_up(
-      fpsum_warp &fpsum, const float *act, const packed_fpsum_t *wgt,
-      const typename LoraKernel::scale_t &scales, int rank, int logical_block_m,
-      bool alwaysfalse) {
+    __device__ __forceinline__ static void apply_lora_up(fpsum_warp &fpsum, const float *act,
+                                                         const packed_fpsum_t *wgt,
+                                                         const typename LoraKernel::scale_t &scales,
+                                                         int rank, int logical_block_m,
+                                                         bool alwaysfalse) {
       constexpr int NUM_STAGES = NUM_PIPELINE_STAGES;
 
       typename LoraKernel::lora_act_warp lora_act[NUM_STAGES];
@@ -683,8 +653,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       f32psum_warp f32psum = packed_fp16_to_fp32(fpsum);
 
       auto compute = [&scales](const typename LoraKernel::lora_act_warp &A,
-                               const typename LoraKernel::lora_wgt_warp &W,
-                               f32psum_warp &accum, int rtile) ALWAYSINLINE {
+                               const typename LoraKernel::lora_wgt_warp &W, f32psum_warp &accum,
+                               int rtile) ALWAYSINLINE {
         typename LoraKernel::lora_act16_warp A_fp16;
 
 #pragma unroll
@@ -706,10 +676,9 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
           for (int n = 0; n < LoraKernel::LORA_N_TILES; n++) {
 #pragma unroll
             for (int r = 0; r < LoraKernel::LORA_R_TILES; r++) {
-              accum[m * WARP_N_TILES + n] = mma_f16xf16_f32(
-                A_fp16[m * LoraKernel::LORA_R_TILES + r],
-                W[n * LoraKernel::LORA_R_TILES + r],
-                accum[m * WARP_N_TILES + n]);
+              accum[m * WARP_N_TILES + n] =
+                mma_f16xf16_f32(A_fp16[m * LoraKernel::LORA_R_TILES + r],
+                                W[n * LoraKernel::LORA_R_TILES + r], accum[m * WARP_N_TILES + n]);
             }
           }
         }
@@ -769,14 +738,9 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       (void)K;
       CHECK_NAN(fpsum, "fpsum");
 
-      apply_lora_up(
-        fpsum,
-        args.lora_act,
-        args.lora_wgt_up + bn * (BLOCK_N / 16) * (args.rank / 16) * WARP_SIZE,
-        args.scales,
-        args.rank,
-        binfo.bm,
-        args.alwaysfalse);
+      apply_lora_up(fpsum, args.lora_act,
+                    args.lora_wgt_up + bn * (BLOCK_N / 16) * (args.rank / 16) * WARP_SIZE,
+                    args.scales, args.rank, binfo.bm, args.alwaysfalse);
 
       CHECK_NAN(fpsum, "fpsum");
     }
@@ -827,16 +791,9 @@ class GEMM_W4A4_V2_Launch {
                                      int, typename Epilogue::Arguments, bool, bool>;
 
         func<<<grid, GEMM::WARP_SIZE * GEMM::NUM_WARPS, 0, getCurrentCUDAStream()>>>(
-          act.data_ptr<packed_act_t>(),
-          wgt.data_ptr<packed_wgt_t>(),
-          ascales.data_ptr<packed_ascale_t>(),
-          wscales.data_ptr<packed_wscale_t>(),
-          M,
-          N,
-          K,
-          args,
-          swapBlockMN,
-          false);
+          act.data_ptr<packed_act_t>(), wgt.data_ptr<packed_wgt_t>(),
+          ascales.data_ptr<packed_ascale_t>(), wscales.data_ptr<packed_wscale_t>(), M, N, K, args,
+          swapBlockMN, false);
         checkCUDA(cudaGetLastError());
       });
     };
@@ -848,19 +805,15 @@ class GEMM_W4A4_V2_Launch {
       dispatchBool(bias.valid(), [&]<bool USE_BIAS>() {
         dispatchBool(wcscales.valid(), [&]<bool USE_SCALE>() {
           using EpilogueBias = typename GEMM::template EpilogueBias<USE_BIAS, USE_SCALE>;
-          using Epilogue = typename GEMM::template EpilogueCombination<EpilogueBias,
-                                                                       NextEpilogue,
+          using Epilogue = typename GEMM::template EpilogueCombination<EpilogueBias, NextEpilogue,
                                                                        typename GEMM::EpilogueNop>;
-          launch.template operator()<Epilogue>({typename EpilogueBias::Arguments{
-                                                 .bias = USE_BIAS
-                                                   ? bias.data_ptr<packed_wscale_t>()
-                                                   : nullptr,
-                                                 .scale = USE_SCALE
-                                                   ? wcscales.data_ptr<packed_wscale_t>()
-                                                   : nullptr,
-                                               },
-                                               nextArgs,
-                                               {}});
+          launch.template operator()<Epilogue>(
+            {typename EpilogueBias::Arguments{
+               .bias = USE_BIAS ? bias.data_ptr<packed_wscale_t>() : nullptr,
+               .scale = USE_SCALE ? wcscales.data_ptr<packed_wscale_t>() : nullptr,
+             },
+             nextArgs,
+             {}});
         });
       });
     };
@@ -884,10 +837,9 @@ class GEMM_W4A4_V2_Launch {
       }
 
       if constexpr (GEMM::USE_PACKED_LAYOUT_COMPAT) {
-        using Epilogue = typename GEMM::template EpilogueCombination<
-          typename GEMM::EpilogueLoraUpCompat,
-          NextEpilogue,
-          typename GEMM::EpilogueNop>;
+        using Epilogue =
+          typename GEMM::template EpilogueCombination<typename GEMM::EpilogueLoraUpCompat,
+                                                      NextEpilogue, typename GEMM::EpilogueNop>;
 
         return launch_bias.template operator()<Epilogue>(
           {typename GEMM::EpilogueLoraUpCompat::Arguments{
@@ -901,10 +853,9 @@ class GEMM_W4A4_V2_Launch {
            {}});
       }
 
-      using Epilogue = typename GEMM::template EpilogueCombination<
-        typename GEMM::EpilogueLoraUpRuntime,
-        NextEpilogue,
-        typename GEMM::EpilogueNop>;
+      using Epilogue =
+        typename GEMM::template EpilogueCombination<typename GEMM::EpilogueLoraUpRuntime,
+                                                    NextEpilogue, typename GEMM::EpilogueNop>;
 
       return launch_bias.template operator()<Epilogue>(
         {typename LoraKernel::EpilogueLoraUp::Arguments{

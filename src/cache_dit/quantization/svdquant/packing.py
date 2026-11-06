@@ -92,7 +92,7 @@ def convert_svdq_nvfp4_pack_to_cute(
 
   This is a one-time load-time conversion only. The CuTe forward path never converts activation or
   LoRA scratch, and never calls the native activation quantizer. `proj_down` and `smooth_factor`
-  are included so `quantize_w4a4_cute` can generate standard A/SFA and BF16 D directly.
+  are included so `quantize_w4a4_cute` can generate v1 A/SFA and BF16 D directly.
 
   :param qweight: Native fragment-packed E2M1 weight `[N, K / 2]`.
   :param wscales: Native fragment-packed group scales `[K / 16, N]`.

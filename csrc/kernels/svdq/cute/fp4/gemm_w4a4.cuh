@@ -64,14 +64,15 @@ using namespace cute;
 // D is the LoRA-down result and L1 is the LoRA-up weight. lora_scales are folded into D by the
 // independent CuTe activation producer before this GEMM starts. alpha and wcscales apply only to
 // the NVFP4 product; neither may scale the LoRA term. Both matrix products accumulate into the
-// same FP32 C fragment, so there is no cross-warpgroup reduction and only one final BF16 rounding.
+// same FP32 C fragment, so there is no cross-warpgroup reduction and only one BF16 rounding.
 //
-// The implementation uses one standard TMA input path for all four NVFP4 operands:
-//   A/B/SFA/SFB: standard packed gmem -> TMA -> smem -> register fragment
-//   D/L1:        row-major BF16 gmem -> TMA -> A/B smem overlay -> BF16 register fragments
+// The implementation deliberately mixes two input paths:
+//   B/SFB: packed gmem -> TMA -> smem -> register fragment (shared by all consumer warps)
+//   A/SFA: v1 packed gmem -> direct G2R loads -> register fragment (no activation repack)
+//   D/L1:  row-major BF16 gmem -> TMA -> A/B smem overlay -> BF16 register fragments
 //
-// The independent producer emits standard A/SFA and row-major BF16 D directly, so no v1 fragment,
-// FP32 LoRA scratch, G2R activation load, or finalize kernel remains. The two CuTe TiledMMAs
+// Keeping A/SFA in the producer's native v1 layout avoids a runtime transpose/repack. Moving B
+// through smem removes the old kernel's repeated per-warp weight reads. The two CuTe TiledMMAs
 // have different input types and K extents, but statically identical C partitions.
 //
 // Only BF16 D/L1 and BF16 output are instantiated here. FP16 LoRA remains on the old native
@@ -125,10 +126,10 @@ struct SfSmemAtom {
   using shapeK = decltype(prepend(
     make_shape(Int<kSFVecPerBlk / kMMA_NSF>{}, Int<kBK_ / kSFVec / kSFVecPerBlk>{}),
     kBlockShape{}));
-  using strideK = decltype(prepend(make_stride(Int<kMMA_NSF>{}, Int<kMN / kRowBlock * 512>{}),
-                                   kBlockStride{}));
-  using type = decltype(make_layout(make_shape(shapeM{}, shapeK{}),
-                                    make_stride(strideM{}, strideK{})));
+  using strideK =
+    decltype(prepend(make_stride(Int<kMMA_NSF>{}, Int<kMN / kRowBlock * 512>{}), kBlockStride{}));
+  using type =
+    decltype(make_layout(make_shape(shapeM{}, shapeK{}), make_stride(strideM{}, strideK{})));
 };
 
 // Scale-factor operands are neither plain smem tensors nor ordinary row-major fragments. The
@@ -160,12 +161,12 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfa(SFATensor &&sfatensor,
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
   auto t_tile = make_tile(get<0>(permutation_mnk), get<2>(permutation_mnk));
   auto t_tensor = logical_divide(sfatensor, t_tile);
-  auto a_tile = make_tile(make_layout(size<0>(AtomShape_MNK{})),
-                          make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tile =
+    make_tile(make_layout(size<0>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
   auto a_tensor = zipped_divide(t_tensor, a_tile);
   auto tv_tensor = a_tensor.compose(AtomLayoutSFA_TV{}, _);
-  auto thr_tile = make_tile(_, make_tile(make_layout(size<1>(thr_layout_vmnk)),
-                                        make_layout(size<3>(thr_layout_vmnk))));
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<1>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
   return zipped_divide(tv_tensor, thr_tile);
 }
 
@@ -184,12 +185,12 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor &&sfbtensor,
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
   auto t_tile = make_tile(get<1>(permutation_mnk), get<2>(permutation_mnk));
   auto t_tensor = logical_divide(sfbtensor, t_tile);
-  auto a_tile = make_tile(make_layout(size<1>(AtomShape_MNK{})),
-                          make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tile =
+    make_tile(make_layout(size<1>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
   auto a_tensor = zipped_divide(t_tensor, a_tile);
   auto tv_tensor = a_tensor.compose(AtomLayoutSFB_TV{}, _);
-  auto thr_tile = make_tile(_, make_tile(make_layout(size<2>(thr_layout_vmnk)),
-                                        make_layout(size<3>(thr_layout_vmnk))));
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<2>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
   return zipped_divide(tv_tensor, thr_tile);
 }
 
@@ -199,16 +200,14 @@ CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor &&sfbtensor,
 // thr_tensor still points at the original SF storage. Indexing it with thr_vmk selects the source
 // values; make_fragment_like then allocates the register fragment with the atom-required layout.
 // Per m16n8k64 atom this is one u32 containing four UE4M3 bytes for four consecutive K groups.
-// The actual smem -> register read happens later through the SF TiledCopy, not here.
+// The actual gmem/smem read happens later through G2R or a TiledCopy, not inside this function.
 template <class SFATensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor,
-                                                      ThrMma &thread_mma) {
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor, ThrMma &thread_mma) {
   using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
   auto thr_tensor = make_tensor(static_cast<SFATensor &&>(sfatensor).data(),
                                 thrfrg_sfa(sfatensor.layout(), thread_mma));
   auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vmk =
-    make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
+  auto thr_vmk = make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
   auto part = thr_tensor(thr_vmk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
   return make_fragment_like<ValTypeSF>(part);
 }
@@ -218,14 +217,12 @@ CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor,
 // reused across output rows. The returned u32 fragment is paired with tCrB by make_zip_tensor in
 // the NVFP4 mainloop; no scale values are fetched until the explicit copy is issued.
 template <class SFBTensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor &&sfbtensor,
-                                                      ThrMma &thread_mma) {
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor &&sfbtensor, ThrMma &thread_mma) {
   using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
   auto thr_tensor = make_tensor(static_cast<SFBTensor &&>(sfbtensor).data(),
                                 thrfrg_sfb(sfbtensor.layout(), thread_mma));
   auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vnk =
-    make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
+  auto thr_vnk = make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
   auto part = thr_tensor(thr_vnk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
   return make_fragment_like<ValTypeSF>(part);
 }
@@ -245,10 +242,10 @@ CUTE_HOST_DEVICE constexpr auto layout_sfa_tv(TiledMma &mma) {
   auto tile_shape_mnk = tile_shape(mma);
   auto ref_A = make_layout(make_shape(size<0>(tile_shape_mnk), size<2>(tile_shape_mnk)));
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto atile = make_tile(_, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk),
-                                                            size<2>(thr_layout_vmnk)),
-                                                  make_stride(Int<1>{}, Int<0>{})),
-                                      _));
+  auto atile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<1>{}, Int<0>{})),
+                 _));
   auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
   return thrfrg_sfa(ref_A, mma).compose(atile, _).compose(thridx_2_thrid, _);
 }
@@ -263,10 +260,10 @@ CUTE_HOST_DEVICE constexpr auto layout_sfb_tv(TiledMma &mma) {
   auto tile_shape_mnk = tile_shape(mma);
   auto ref_B = make_layout(make_shape(size<1>(tile_shape_mnk), size<2>(tile_shape_mnk)));
   auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto btile = make_tile(_, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk),
-                                                            size<2>(thr_layout_vmnk)),
-                                                  make_stride(Int<0>{}, Int<1>{})),
-                                      _));
+  auto btile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<0>{}, Int<1>{})),
+                 _));
   auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
   return thrfrg_sfb(ref_B, mma).compose(btile, _).compose(thridx_2_thrid, _);
 }
@@ -302,12 +299,9 @@ CUTE_DEVICE auto convert_layout_acc_rowcol(Layout acc_layout) {
 // into tCrC without retile, smem reduction, or a second accumulator. Executing both products on
 // the same consumer warps is intentional: separate BF16/NVFP4 warpgroups would need an expensive
 // cross-warpgroup FP32 reduction and would duplicate accumulator storage.
-// TODO(cute-gemm-performance): evaluate persistent CTA scheduling, stage-count/smem-overlay
-// tuning, and separate NVFP4 vs BF16-LoRA consumer WGs (one producer WG plus two consumer WGs).
-// The WG split must preserve the single FP32 accumulator contract or use a measured low-cost
-// reduction; it is not a drop-in scheduling change.
-template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64>
+template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true>
 struct W4A4CuteTraits {
+  static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -316,6 +310,7 @@ struct W4A4CuteTraits {
   static constexpr int kRankTile = kBK / 4;
   static constexpr int kNumThreads = kBM / 16 * 32;
 
+  static_assert(kBM == 128, "the G2R activation index mapping is specialized for kBM == 128");
   static_assert(kBN % kRowBlock == 0,
                 "kBN must be a multiple of 128: the scale-factor smem/TMA atom spans 128 rows");
   static_assert(kBK % 64 == 0, "kBK must contain whole 64-element block-scaled MMA atoms");
@@ -328,8 +323,8 @@ struct W4A4CuteTraits {
   using ElementO = cutlass::bfloat16_t;
   using ElementAcc = float;
 
-  using MmaAtom = SM120::BLOCKSCALED::SM120_16x8x64_TN_VS<Element, Element, ElementAcc,
-                                                         ElementSF, kSFVec>;
+  using MmaAtom =
+    SM120::BLOCKSCALED::SM120_16x8x64_TN_VS<Element, Element, ElementAcc, ElementSF, kSFVec>;
   using AtomLayoutMNK = Layout<Shape<_4, _2, _1>>;
   // The N permutation ((8,2,2):(1,16,8)) spans 32 output columns and is part of the atom's
   // thread/value mapping. It is a compile-time coordinate recipe, not a runtime N transpose.
@@ -346,11 +341,10 @@ struct W4A4CuteTraits {
 
   static_assert(size(LoraMma{}) == size(TiledMma{}),
                 "the LoRA MMA must use the same thread count as the NVFP4 MMA");
-  static_assert(is_same_v<decltype(partition_shape_C(TiledMma{}, make_shape(Int<kBM>{},
-                                                                          Int<kBN>{}))),
-                          decltype(partition_shape_C(LoraMma{}, make_shape(Int<kBM>{},
-                                                                         Int<kBN>{})))>,
-                "the LoRA MMA accumulator partition must match the NVFP4 MMA one");
+  static_assert(
+    is_same_v<decltype(partition_shape_C(TiledMma{}, make_shape(Int<kBM>{}, Int<kBN>{}))),
+              decltype(partition_shape_C(LoraMma{}, make_shape(Int<kBM>{}, Int<kBN>{})))>,
+    "the LoRA MMA accumulator partition must match the NVFP4 MMA one");
   static_assert(kRankTile % size<2>(typename LoraAtom::Shape_MNK{}) == 0,
                 "one rank tile must be a whole number of BF16 MMA atoms");
 
@@ -362,9 +356,9 @@ struct W4A4CuteTraits {
   using SmemLayoutAtomA = UMMA::Layout_K_SW32_Atom<SmemAlloc>;
   using SmemLayoutAtomB = UMMA::Layout_K_SW32_Atom<SmemAlloc>;
   // SmemLayoutA: logical (BM,BK,stages) address map for packed activation A. AtomA is one small
-  // repeating SW32 tile; SmemLayoutA is the full multi-stage tensor. tma.a writes this region
-  // during the K loop, and LDSM reads it into tCrA. D and output staging reuse the same bytes only
-  // after the empty-stage barrier proves the last consumer finished the A tile in that stage.
+  // repeating SW32 tile; SmemLayoutA is the full multi-stage tensor. It is needed to partition the
+  // A fragment and to compute the A-sized storage/overlay. In the current hybrid path no A TMA
+  // writes this region: A comes from G2R, so D and O can reuse the allocation.
   using SmemLayoutA =
     decltype(tile_to_shape(SmemLayoutAtomA{}, Shape<Int<kBM>, Int<kBK>, Int<kStages>>{}));
   // SmemLayoutB: logical (BN,BK,stages) map for packed weight B. This is the actual destination
@@ -378,21 +372,19 @@ struct W4A4CuteTraits {
   //
   //   BM * (BK/4) * 2 = BM * BK / 2  =>  kRankTile = BK/4
   //
-  // Once the K loop drains, D and output staging reuse the A/B bytes. The empty-stage barrier
-  // proves all consumer warps finished both A and B before D/L1 overwrite a stage. Reusing A's
-  // swizzled FP4 layout for BF16 would still be incorrect even though the byte count matches.
-  // SmemLayoutD: BF16 LoRA-down result D, logical (BM,kRankTile,stages), with strides
-  // (kRankTile,1,BM*kRankTile). Thus one stage is an ordinary row-major [BM,kRankTile] matrix;
-  // kRankTile=BK/4 is 32 for the default BK=128. tma.d writes it over the A byte allocation.
-  using SmemLayoutD = decltype(make_layout(
-    make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{}),
-    make_stride(Int<kRankTile>{}, _1{}, Int<kBM * kRankTile>{})));
-  // SmemLayoutL1: BF16 LoRA-up weight L1, logical (BN,kRankTile,stages), with analogous
-  // row-major strides. tma.l1 writes it over the B allocation after empty[stage] opens. Again,
-  // L1 names the second low-rank factor and has no relationship to the hardware L1 cache.
-  using SmemLayoutL1 = decltype(make_layout(
-    make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{}),
-    make_stride(Int<kRankTile>{}, _1{}, Int<kBN * kRankTile>{})));
+  // Main A is consumed through G2R, so the nominally-A allocation is available for D and later
+  // output staging. Main B really occupies its allocation, but the empty-stage barrier proves
+  // all consumer warps finished it before L1 overwrites that stage. Reusing A's swizzled FP4
+  // layout for BF16 would be incorrect even though the byte count matches.
+  // SmemLayoutD/L1: canonical K-major 64-byte swizzle used by SM75 LDSM. kRankTile=BK/4 is 32
+  // BF16 elements (64B) for BK=128, exactly one SW64 atom row. TMA writes these layouts over the
+  // A/B byte allocations; the swizzle only changes bank mapping inside each rank tile.
+  using LoraSmemAtom = std::conditional_t<(kRankTile >= 32), UMMA::Layout_K_SW64_Atom<ElementLora>,
+                                          UMMA::Layout_K_SW32_Atom<ElementLora>>;
+  using SmemLayoutD = decltype(tile_to_shape(
+    LoraSmemAtom{}, make_shape(Int<kBM>{}, Int<kRankTile>{}, Int<kStages>{})));
+  using SmemLayoutL1 = decltype(tile_to_shape(
+    LoraSmemAtom{}, make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kStages>{})));
 
   // Append the pipeline-stage mode to each SF atom. filter_zeros removes the logical broadcast
   // modes before computing the stage stride: 16 codes share one stored scale, so advancing to the
@@ -402,8 +394,8 @@ struct W4A4CuteTraits {
   using SmemLayoutAtomSFB =
     typename SfSmemAtom<TiledMma, (kBN > kRowBlock ? kBN : kRowBlock), kBK>::type;
   // SmemLayoutSFA: logical (BM,BK,stages) activation-SF view, including stride-0 K broadcasts.
-  // It is the destination of tma.sfa. The independent CuTe producer emits SFA in exactly this
-  // 128x4 atom order, so no v1 fragment repacking or G2R scale load remains in the main GEMM.
+  // It supplies fragment shapes and byte sizes, but current SFA values arrive through G2R just
+  // like A; no tma.sfa exists. This avoids repacking the v1 ascales into CUTLASS gmem atoms.
   using SmemLayoutSFA = decltype(make_layout(
     append(shape(SmemLayoutAtomSFA{}), Int<kStages>{}),
     append(stride(SmemLayoutAtomSFA{}), size(filter_zeros(SmemLayoutAtomSFA{})))));
@@ -427,16 +419,15 @@ struct W4A4CuteTraits {
   // size(layout) counts logical elements, while cosize(layout) measures the physical address
   // span. They differ for SF because stride-0 broadcasts expose many logical reads of one stored
   // byte. A/B cosize is divided by 2 because each E2M1 code is 4 bits; SF cosize is already bytes
-  // because each scale is FP8. All four regions are real TMA destinations during the K loop and
-  // are reused as D/L1/output only after the pipeline drains.
+  // because each scale is FP8. A/SFA storage is still reserved even though their main values use
+  // G2R: the A region backs D/O overlays, and the SF layouts keep stage sizing/uniformity simple.
   static constexpr int kAStageBytes = cosize_v<SmemLayoutA> / kStages / 2;
   static constexpr int kBStageBytes = cosize_v<SmemLayoutB> / kStages / 2;
   static constexpr int kSFAStageBytes = cosize_v<SmemLayoutSFA> / kStages;
   static constexpr int kSFBStageBytes = cosize_v<SmemLayoutSFB> / kStages;
   static constexpr int kDStageBytes = kBM * kRankTile * static_cast<int>(sizeof(ElementLora));
   static constexpr int kL1StageBytes = kBN * kRankTile * static_cast<int>(sizeof(ElementLora));
-  static constexpr int kStageBytes =
-    kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
+  static constexpr int kStageBytes = kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
   static constexpr int kSmemBytes = kStages * kStageBytes;
 
   static_assert(kDStageBytes == kAStageBytes, "a D rank tile must overlay one A stage");
@@ -448,19 +439,15 @@ struct W4A4CuteTraits {
   static_assert(kSmemBytes <= 99 * 1024, "pipeline storage exceeds the SM120 smem budget");
 
   // TMA transaction sizes feed mbarrier.expect_tx; they count bytes, not CuTe's 4-bit logical
-  // elements. Main stages transfer A+B+SFA+SFB; LoRA stages replace that transaction with exactly
-  // D+L1 bytes. Mixing these budgets would leave the full barrier waiting forever or release a
-  // stage before its writes complete.
-  static constexpr uint32_t kTxBytesMain =
-    kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
+  // elements. Main stages have no A/SFA TMA transaction because those operands use G2R. LoRA
+  // stages replace the transaction with exactly D+L1 bytes. Mixing these budgets would leave the
+  // full barrier waiting forever or release a stage before its writes complete.
+  static constexpr uint32_t kTxBytesMain = kBN * kBK / 2 + kSFBStageBytes;
   static constexpr uint32_t kTxBytesLora = kDStageBytes + kL1StageBytes;
 };
 
-template <class TmaA_, class TmaSFA_, class TmaB_, class TmaSFB_, class TmaD_,
-          class TmaL1_, class TmaC_>
+template <class TmaB_, class TmaSFB_, class TmaD_, class TmaL1_, class TmaC_>
 struct W4A4CuteTma {
-  TmaA_ a;
-  TmaSFA_ sfa;
   TmaB_ b;
   TmaSFB_ sfb;
   TmaD_ d;
@@ -469,7 +456,7 @@ struct W4A4CuteTma {
 };
 
 struct W4A4CuteCacheKey {
-  std::array<uint64_t, 11> data;
+  std::array<uint64_t, 9> data;
   bool operator==(const W4A4CuteCacheKey &) const = default;
 };
 
@@ -489,21 +476,414 @@ struct W4A4CuteCacheHash {
 // retain the warpgroup role and participate in setmaxnreg. Register budgets are 32 per producer
 // thread and 224 per consumer thread, keeping the 384-thread CTA inside the 64K-register SM.
 //
-// full[s] is a transaction barrier: producer arms the exact A+B+SFA+SFB or D+L1 byte count and
-// TMA completion releases consumers. empty[s] is a CTA barrier arrived at by each consumer warp
+// full[s] is a transaction barrier: producer arms the exact B+SFB or D+L1 byte count and TMA
+// completion releases consumers. empty[s] is a CTA barrier arrived at by each consumer warp
 // leader after its copy+MMA work, preventing the producer from overwriting a live stage.
 // phase=(g/kStages)&1 is the mbarrier parity for reuse of the same physical barrier.
 //
 // Producer and consumers share one global step g over [0,nKt+nRt), so stage index and parity
-// never reset at the LoRA boundary. Main g steps TMA A/B/SFA/SFB; trailing g steps TMA D/L1 into
-// the overlay. This lets LoRA loads enter the ring up to kStages steps before the main K loop ends
-// instead of exposing a serial LoRA load tail.
+// never reset at the LoRA boundary. Main g steps TMA B/SFB while consumers fetch A/SFA by G2R;
+// trailing g steps TMA D/L1 into the overlay. This lets LoRA loads enter the ring up to kStages
+// steps before the main K loop ends instead of exposing a serial LoRA load tail.
+// Device-side implementation of one BM x BN SVDQ output tile.
+//
+// The class deliberately stores no runtime state: all scalar arguments and CuTe views are passed
+// explicitly, while Traits supplies the compile-time tile/layout/MMA schedule. Every helper is
+// static, __device__ and __forceinline__, so this organization does not introduce a call boundary
+// in SASS. The two scheduling modes share the same helpers:
+//   kLoRAFirst=true : LoRA -> inverse residual scale -> FP4 mainloop -> residual scale/bias.
+//   kLoRAFirst=false: FP4 mainloop -> residual scale/bias -> LoRA.
+// TmaParams contains the B/SFB/D/L1/output TMA descriptors; A/SFA use direct global-to-register
+// loads and therefore have no TMA descriptor.
+template <class Traits, class TmaParams>
+class W4A4GemmKernel {
+  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
+  using CtaBarrier = cutlass::arch::ClusterBarrier;
+  static constexpr int kBM = Traits::kBM;
+  static constexpr int kBN = Traits::kBN;
+  static constexpr int kBK = Traits::kBK;
+  static constexpr int kStages = Traits::kStages;
+  static constexpr int kRankTile = Traits::kRankTile;
+  static constexpr bool kLoRAFirst = Traits::kLoRAFirst;
+
+ public:
+  /**
+   * Issue one main-K tile's asynchronous B and SFB TMA copies.
+   *
+   * Mathematical role: B is the packed FP4 weight tile [BN, BK] and SFB is its FP8 per-group scale
+   * tile. The later FP4 MMA consumes dequantized (B, SFB); this function only moves bytes and does
+   * not perform arithmetic. A/SFA are intentionally absent because they are loaded by G2R.
+   *
+   * Synchronization: arrive_and_expect_tx(full[stage], kTxBytesMain) accounts for B+SFB bytes. Both
+   * copies target the same transaction barrier. The caller must first wait empty[stage], and the
+   * consumer must wait full[stage] before reading the smem destination.
+   *
+   * @param tma        TMA descriptor bundle; only tma.b and tma.sfb are used.
+   * @param full       Transaction-barrier ring; full[stage] is armed by this call.
+   * @param kt         Logical K-tile index in units of BK elements.
+   * @param stage      Physical smem ring slot, normally g % kStages.
+   * @param mB/mSFB    CuTe coordinate tensors for the complete global weight/scale tensors.
+   * @param sB/sSFB    Multi-stage smem views; this call writes only (..., stage).
+   * @param b_slice/sfb_slice TMA thread slices connecting global source and smem destination.
+   * @return           void; completion is asynchronous and observed through full[stage].
+   */
+  template <class GmemB, class GmemSFB, class SmemB, class SmemSFB, class BSlice, class SFBSlice>
+  __device__ __forceinline__ static void tma_load_B_SFB(TmaParams const &tma, uint64_t *full,
+                                                        int kt, int stage, GmemB const &mB,
+                                                        GmemSFB const &mSFB, SmemB &sB,
+                                                        SmemSFB &sSFB, BSlice const &b_slice,
+                                                        SFBSlice const &sfb_slice) {
+    auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+    auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+    TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
+    copy(tma.b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB(_, _, stage)));
+    copy(tma.sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
+         sfb_slice.partition_D(sSFB(_, _, stage)));
+  }
+
+  /**
+   * Issue one rank tile of the BF16 LoRA operands through TMA.
+   *
+   * Mathematical role: D = (smoothed activation) @ L2^T has shape [BM, rankTile], and L1 is the
+   * LoRA-up projection tile [BN, rankTile]. gemm_bf16_lora later computes D @ L1^T. This helper
+   * only moves BF16 bytes; it does not apply alpha, wcscales or bias.
+   *
+   * Layout/lifetime: D reuses the A smem region and L1 reuses the B smem region because those
+   * mainloop operands are not live during LoRA. full[stage] tracks D+L1 bytes using kTxBytesLora.
+   * As with the main copies, the producer must have observed empty[stage] before calling this
+   * function.
+   *
+   * @param tma        TMA descriptor bundle; only tma.d and tma.l1 are used.
+   * @param full       Transaction-barrier ring; full[stage] is armed for this rank tile.
+   * @param rt         Logical LoRA rank-tile index in units of kRankTile.
+   * @param stage      Physical smem ring slot, normally g % kStages.
+   * @param mD/mL1     CuTe coordinate tensors for the full global D/L1 tensors.
+   * @param sD/sL1     Multi-stage smem views; only (..., stage) is written.
+   * @param d_slice/l1_slice TMA thread slices for the two copies.
+   * @return           void; data becomes consumable after full[stage] completes.
+   */
+  template <class GmemD, class GmemL1, class SmemD, class SmemL1, class DSlice, class L1Slice>
+  __device__ __forceinline__ static void tma_load_D_L1(TmaParams const &tma, uint64_t *full, int rt,
+                                                       int stage, GmemD const &mD,
+                                                       GmemL1 const &mL1, SmemD &sD, SmemL1 &sL1,
+                                                       DSlice const &d_slice,
+                                                       L1Slice const &l1_slice) {
+    auto gD = local_tile(mD, Shape<Int<kBM>, Int<kRankTile>>{}, make_coord(blockIdx.y, rt));
+    auto gL1 = local_tile(mL1, Shape<Int<kBN>, Int<kRankTile>>{}, make_coord(blockIdx.x, rt));
+    TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesLora);
+    copy(tma.d.with(full[stage]), d_slice.partition_S(gD), d_slice.partition_D(sD(_, _, stage)));
+    copy(tma.l1.with(full[stage]), l1_slice.partition_S(gL1),
+         l1_slice.partition_D(sL1(_, _, stage)));
+  }
+
+  /**
+   * Load one BK64 sub-block of packed activation and activation scales directly into registers.
+   *
+   * Mathematical role: supplies A and SFA for the FP4 main product P = dequant(A,SFA) @
+   * dequant(B,SFB). Each thread receives the exact A/SFA values required by its MMA fragment.
+   *
+   * Pack mapping: the producer emits v1 256-row panels. `g*(BK/64)+k_block` selects the original
+   * 64-element K block. The two CuTe M fragments are mapped to v1 warp panels with
+   *   new_m=(tid%128)/32*16, old_mt=(new_m%32)/16,
+   *   old_warp=(m0%256)/32+(new_m%64)/32+2*mt, old_block=m0/256.
+   * SFA additionally uses lane XOR (2*old_mt), matching the producer's interleaved scale ownership.
+   *
+   * Memory/synchronization: A and SFA are direct __ldg operations, with no smem, TMA or mbarrier.
+   * This function does not wait for B/SFB and can therefore be scheduled independently of
+   * full[stage].
+   *
+   * @param act/ascales Global v1 packed activation and activation-scale arrays.
+   * @param m0          Base row of this CTA's output tile.
+   * @param K           Total reduction length; used to compute the v1 panel stride.
+   * @param tid         Consumer thread index in [0, kNumThreads).
+   * @param g           Logical K-tile index, in units of BK.
+   * @param k_block     BK64 sub-block within the K tile.
+   * @param tCrA        Output register fragment for packed FP4 activation (in/out storage).
+   * @param tCrSFA      Output register fragment for four packed FP8 activation scales.
+   * @return            void; the two fragments are synchronously overwritten for this sub-block.
+   */
+  template <class FragA, class FragSFA>
+  __device__ __forceinline__ static void load_act_A_g2r(uint4 const *act, uint32_t const *ascales,
+                                                        int m0, int K, int tid, int g, int k_block,
+                                                        FragA &tCrA, FragSFA &tCrSFA) {
+    const int old_block = m0 / 256;
+    const int new_m = (tid % 128) / 32 * 16;
+    const int old_mt = (new_m % 32) / 16;
+    const int lane = tid % 32;
+    const int old_kt = g * (kBK / 64) + k_block;
+#pragma unroll
+    for (int mt = 0; mt < 2; ++mt) {
+      const int old_warp = (m0 % 256) / 32 + (new_m % 64) / 32 + mt * 2;
+      const int64_t block_base =
+        (static_cast<int64_t>(old_block) * (K / 64) + old_kt) * 8 + old_warp;
+      const int64_t index = (block_base * 2 + old_mt) * 32 + lane;
+      *reinterpret_cast<uint4 *>(raw_pointer_cast(tCrA(_, mt, k_block).data())) =
+        __ldg(act + index);
+      const int64_t scale_index = block_base * 32 + (lane ^ (old_mt * 2));
+      *reinterpret_cast<uint32_t *>(tCrSFA(_, mt, k_block).data()) = __ldg(ascales + scale_index);
+    }
+  }
+
+  /**
+   * Accumulate the BF16 LoRA-up correction into the shared FP32 output accumulator.
+   *
+   * Math per rank tile rt: tCrC += D_rt @ L1_rt^T, where D_rt is [BM, rankTile] and L1_rt is
+   * [BN, rankTile]. Inputs are BF16 and accumulation is FP32. Across all tiles this produces
+   * L = D @ proj_up^T. This helper does not apply alpha/wcscales/bias; the caller controls whether
+   * LoRA runs before or after the FP4 mainloop.
+   *
+   * Pipeline: g selects [0,nRt) in LoRA-first mode and [nKt,nKt+nRt) in main-first mode. For each
+   * stage it waits full[stage], copies D/L1 from canonical swizzled smem to MMA registers using
+   * LDSM, executes BF16 m16n8k16 MMA, then each warp leader arrives empty[stage] to release the
+   * overlay to the producer.
+   *
+   * @param full/empty Shared transaction/CTA barrier rings.
+   * @param tid        Consumer thread index; warp leaders perform the empty arrival.
+   * @param nKt        Number of main K tiles; fixes the LoRA range in main-first mode.
+   * @param nRt        Number of LoRA rank tiles; rank0 returns immediately.
+   * @param gTotal     nKt+nRt, the total number of shared-ring steps.
+   * @param sD/sL1     Multi-stage smem source views for BF16 D and L1.
+   * @param tCrC       Input/output FP32 accumulator; LoRA products are added in place.
+   * @return           void; all assigned LoRA rank tiles have been accumulated on return.
+   */
+  template <class SmemD, class SmemL1, class Acc>
+  __device__ __forceinline__ static void gemm_bf16_lora(uint64_t *full, uint64_t *empty, int tid,
+                                                        int nKt, int nRt, int gTotal, SmemD &sD,
+                                                        SmemL1 &sL1, Acc &tCrC) {
+    if (nRt == 0) return;
+    using ElementLora = typename Traits::ElementLora;
+    typename Traits::LoraMma lora_mma;
+    auto thr_lora = lora_mma.get_thread_slice(tid);
+    auto tCrD = thr_lora.partition_fragment_A(sD(_, _, Int<0>{}));
+    auto tCrL1 = thr_lora.partition_fragment_B(sL1(_, _, Int<0>{}));
+    using LoraCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, ElementLora>;
+    auto s2r_copy_d = make_tiled_copy_A(LoraCopyAtom{}, lora_mma);
+    auto s2r_copy_l1 = make_tiled_copy_B(LoraCopyAtom{}, lora_mma);
+    auto s2r_thr_d = s2r_copy_d.get_thread_slice(tid);
+    auto s2r_thr_l1 = s2r_copy_l1.get_thread_slice(tid);
+    auto tCsD = s2r_thr_d.partition_S(as_position_independent_swizzle_tensor(sD));
+    auto tCsL1 = s2r_thr_l1.partition_S(as_position_independent_swizzle_tensor(sL1));
+    auto tCrD_view = s2r_thr_d.retile_D(tCrD);
+    auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
+    const int g_begin = kLoRAFirst ? 0 : nKt;
+    const int g_end = kLoRAFirst ? nRt : gTotal;
+#pragma unroll 1
+    for (int g = g_begin; g < g_end; ++g) {
+      const int stage = g % kStages;
+      const int phase = (g / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
+      copy(s2r_copy_d, tCsD(_, _, _, stage), tCrD_view);
+      copy(s2r_copy_l1, tCsL1(_, _, _, stage), tCrL1_view);
+      cute::gemm(lora_mma, tCrD, tCrL1, tCrC);
+      __syncwarp();
+      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
+    }
+  }
+
+  /**
+   * Algebraically compensate the LoRA accumulator for LoRA-first scheduling.
+   *
+   * Let L = D @ proj_up^T and s[n] = alpha * wcscales[n]. Before the main FP4 product P is added,
+   * this function changes tCrC from L to L/s. After gemm_fp4_w4a4 the accumulator is P + L/s, so
+   * the final residual scaling by s produces s*P + L, exactly the desired residual+LoRA result.
+   * Bias is not involved here and is added only by apply_residual_scale.
+   *
+   * Numeric/layout details: all arithmetic is FP32. tScC_rc maps each accumulator fragment value to
+   * its logical output column; only the few columns owned by the thread are loaded. n0 is the CTA's
+   * global column offset. A null wcscales pointer means scale 1. rank0 returns without touching C.
+   *
+   * @param wcscales   Optional per-output-column residual scales [N].
+   * @param alpha      Scalar residual alpha from the packed weight normalization.
+   * @param n0         Global output-column offset of this CTA tile.
+   * @param nRt        Number of LoRA rank tiles; zero disables the compensation.
+   * @param tScC_rc    Row/column coordinate view of the accumulator partition.
+   * @param tCrC       Input/output FP32 accumulator containing the LoRA term before main FP4.
+   * @return           void; tCrC is divided by alpha*wcscales for each owned column.
+   */
+  template <class CoordC, class Acc>
+  __device__ __forceinline__ static void apply_inverse_scale(cutlass::bfloat16_t const *wcscales,
+                                                             float alpha, int n0, int nRt,
+                                                             CoordC const &tScC_rc, Acc &tCrC) {
+    if (nRt == 0) return;
+    constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
+    constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
+    float inv_scale[kCCols];
+#pragma unroll
+    for (int c = 0; c < kCCols; ++c) {
+      const int n = n0 + get<1>(tScC_rc(0, c));
+      const float scale = alpha * (wcscales != nullptr ? static_cast<float>(wcscales[n]) : 1.0f);
+      inv_scale[c] = 1.0f / scale;
+    }
+    auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r)
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c) tCrC_rc(r, c) *= inv_scale[c];
+  }
+
+  /**
+   * Execute the complete FP4 W4A4 main reduction and accumulate it into tCrC.
+   *
+   * Math: for each K tile, compute P += dequant(A,SFA) @ dequant(B,SFB), with BF16 tensor-core
+   * operands generated by the SM120 FP4 MMA and FP32 accumulation. The final caller applies
+   * residual alpha/wcscales and LoRA separately; this helper performs no epilogue scaling.
+   *
+   * Scheduling: in LoRA-first mode g covers [nRt,gTotal) and kt=g-nRt; in main-first mode g covers
+   * [0,nKt) and kt=g. Each stage waits full[stage] once, then interleaves BK64 sub-block A/SFA G2R,
+   * B/SFB smem-to-register copies and MMA. In LoRA-first mode K tile 0 skips A/SFA loads because
+   * the caller preloaded those fragments before the LoRA GEMM. After all sub-blocks, each warp
+   * leader arrives empty[stage] so the producer can reuse the B/SFB smem slot.
+   *
+   * @param full/empty Shared transaction/CTA barrier rings.
+   * @param tid        Consumer thread index; also determines A/SFA fragment ownership.
+   * @param nKt/nRt/gTotal Main K tiles, LoRA rank tiles, and their sum.
+   * @param act/ascales Global v1 activation and activation-scale packs used by load_act_A_g2r.
+   * @param m0/K       CTA row offset and total reduction length.
+   * @param tiled_mma  SM120 FP4 tiled MMA descriptor.
+   * @param s2r_copy_b LDSM copy descriptor for B fragments.
+   * @param tCsB/tCsSFB Swizzle-free smem source views for B/SFB.
+   * @param tCrB_view/tCrSFB_view Destination register views produced by the copy retiling.
+   * @param tCrA/tCrSFA Input/output A/SFA register fragments.
+   * @param tCrC       Input/output FP32 main-product accumulator.
+   * @return           void; all K tiles in the selected mode have been accumulated on return.
+   */
+  template <class TiledMma, class CopyB, class SrcB, class DstB, class SrcSFB, class DstSFB,
+            class FragB, class FragSFB, class FragA, class FragSFA, class Acc>
+  __device__ __forceinline__ static void gemm_fp4_w4a4(
+    uint64_t *full, uint64_t *empty, int tid, int nKt, int nRt, int gTotal, uint4 const *act,
+    uint32_t const *ascales, int m0, int K, TiledMma const &tiled_mma, CopyB const &s2r_copy_b,
+    SrcB const &tCsB, DstB &tCrB_view, SrcSFB const &tCsSFB, DstSFB &tCrSFB_view, FragB &tCrB,
+    FragSFB &tCrSFB, FragA &tCrA, FragSFA &tCrSFA, Acc &tCrC) {
+    const int g_begin = kLoRAFirst ? nRt : 0;
+    const int g_end = kLoRAFirst ? gTotal : nKt;
+#pragma unroll 1
+    for (int g = g_begin; g < g_end; ++g) {
+      const int kt = kLoRAFirst ? g - nRt : g;
+      const int stage = g % kStages;
+      const int phase = (g / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
+#pragma unroll
+      for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+        if (!kLoRAFirst || kt != 0) {
+          load_act_A_g2r(act, ascales, m0, K, tid, kt, k_block, tCrA, tCrSFA);
+        }
+        copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+        copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
+        cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
+                   make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
+      }
+      __syncwarp();
+      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
+    }
+  }
+
+  /**
+   * Apply residual alpha, per-column weight scales and bias to the FP32 accumulator.
+   *
+   * Math for an output column n: tCrC = fmaf(tCrC, alpha*wcscales[n], bias[n]). A null wcscales
+   * means 1 and a null bias means 0. In main-first mode tCrC initially contains P, producing
+   * alpha*wcscales*P+bias before LoRA is added. In LoRA-first mode tCrC contains
+   * P+L/(alpha*wcscales), so this same operation yields alpha*wcscales*P+L+bias.
+   *
+   * Numeric/layout details: this is the final FP32 epilogue arithmetic before the single BF16
+   * conversion. tScC_rc maps each register value to a logical column, so each thread loads only its
+   * owned scales/biases once and reuses them across all owned rows. The alpha multiplication
+   * remains a separate loop to preserve the established rounding behavior.
+   *
+   * @param bias       Optional BF16 output bias [N].
+   * @param wcscales   Optional BF16 per-output-column residual scales [N].
+   * @param alpha      Scalar residual alpha from the packed weight normalization.
+   * @param n0         Global output-column offset of this CTA tile.
+   * @param tScC_rc    Row/column coordinate view of the accumulator partition.
+   * @param tCrC       Input/output FP32 accumulator to be scaled and biased in place.
+   * @return           void; tCrC contains the fully scaled residual/LoRA value on return.
+   */
+  template <class CoordC, class Acc>
+  __device__ __forceinline__ static void apply_residual_scale(cutlass::bfloat16_t const *bias,
+                                                              cutlass::bfloat16_t const *wcscales,
+                                                              float alpha, int n0,
+                                                              CoordC const &tScC_rc, Acc &tCrC) {
+    constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
+    constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
+    float col_scale[kCCols];
+    float col_bias[kCCols];
+#pragma unroll
+    for (int c = 0; c < kCCols; ++c) {
+      const int n = n0 + get<1>(tScC_rc(0, c));
+      col_scale[c] = wcscales != nullptr ? static_cast<float>(wcscales[n]) : 1.0f;
+      col_bias[c] = bias != nullptr ? static_cast<float>(bias[n]) : 0.0f;
+    }
+    auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+    if (alpha != 1.0f) {
+#pragma unroll
+      for (int r = 0; r < kCRows; ++r)
+#pragma unroll
+        for (int c = 0; c < kCCols; ++c) tCrC_rc(r, c) *= alpha;
+    }
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r)
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c)
+        tCrC_rc(r, c) = fmaf(tCrC_rc(r, c), col_scale[c], col_bias[c]);
+  }
+
+  /**
+   * Convert the final FP32 accumulator once and publish the BM x BN output tile with TMA.
+   *
+   * Mathematical role: tCrC already contains the fully accumulated residual plus LoRA result. This
+   * helper performs the sole FP32->BF16 conversion; it does not change scaling or accumulation
+   * order.
+   *
+   * Memory protocol: STSM writes the register fragment into the swizzled SmemLayoutO overlay. The
+   * first __syncthreads proves that no mainloop stage still uses that smem. fence_view_async_shared
+   * makes generic smem stores visible to the TMA engine; the second __syncthreads proves all
+   * consumer STSM operations are complete before thread 0 issues the TMA store. tma_store_wait<0>
+   * drains the store before the CTA can exit or reuse the output overlay.
+   *
+   * @param tma        TMA descriptor bundle; only tma.c is used for the global output store.
+   * @param mC         CuTe coordinate tensor for the complete global output tensor [M,N].
+   * @param c_slice    TMA output thread slice connecting smem and global coordinates.
+   * @param shm        Base of dynamic shared memory, overlaid with SmemLayoutO for this epilogue.
+   * @param tid        Consumer thread index; only tid==0 issues the TMA store.
+   * @param tiled_mma  MMA layout used to retile the register fragment for STSM.
+   * @param tCrC       Final FP32 accumulator fragment, read-only.
+   * @return           void; the output tile is visible in global memory after the drain.
+   */
+  template <class GmemC, class CSlice, class TiledMma, class Acc>
+  __device__ __forceinline__ static void tma_store_C(TmaParams const &tma, GmemC const &mC,
+                                                     CSlice const &c_slice, void *shm, int tid,
+                                                     TiledMma const &tiled_mma, Acc const &tCrC) {
+    using ElementO = typename Traits::ElementO;
+    using SmemLayoutO = typename Traits::SmemLayoutO;
+    constexpr int kFrag = decltype(size(tCrC))::value;
+    cutlass::Array<ElementO, kFrag> acc_bf16;
+    cutlass::NumericArrayConverter<ElementO, float, kFrag> convert;
+    acc_bf16 = convert(*reinterpret_cast<cutlass::Array<float, kFrag> const *>(tCrC.data()));
+    auto tCrCh = make_tensor(make_rmem_ptr(acc_bf16.data()), tCrC.layout());
+
+    __syncthreads();
+    auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
+    auto r2s_thr = r2s_copy.get_thread_slice(tid);
+    auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO *>(shm)), SmemLayoutO{});
+    auto tCrCh_src = r2s_thr.retile_S(tCrCh);
+    auto tCsC_dst = r2s_thr.partition_D(sC);
+    copy(r2s_copy, tCrCh_src, tCsC_dst);
+    cutlass::arch::fence_view_async_shared();
+    __syncthreads();
+    auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
+    if (tid == 0) copy(tma.c, c_slice.partition_S(sC), c_slice.partition_D(gC));
+    cute::tma_store_arrive();
+    cute::tma_store_wait<0>();
+  }
+};
+
 template <class Traits, class TmaParams>
 __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
-gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
-                      cutlass::bfloat16_t const *__restrict__ bias,
-                      cutlass::bfloat16_t const *__restrict__ wcscales, float alpha, int M,
-                      int N, int K, int rank) {
+  gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma, uint4 const *__restrict__ act,
+                   uint32_t const *__restrict__ ascales,
+                   cutlass::bfloat16_t const *__restrict__ bias,
+                   cutlass::bfloat16_t const *__restrict__ wcscales, float alpha, int M, int N,
+                   int K, int rank) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -526,12 +906,14 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
   using SmemLayoutAtomSFB = typename Traits::SmemLayoutAtomSFB;
   using SmemLayoutO = typename Traits::SmemLayoutO;
   using SmemCopyAtom = typename Traits::SmemCopyAtom;
+  using Gemm = W4A4GemmKernel<Traits, TmaParams>;
 
   constexpr int kBM = Traits::kBM;
   constexpr int kBN = Traits::kBN;
   constexpr int kBK = Traits::kBK;
   constexpr int kStages = Traits::kStages;
   constexpr int kRankTile = Traits::kRankTile;
+  constexpr bool kLoRAFirst = Traits::kLoRAFirst;
   constexpr int kNumThreads = Traits::kNumThreads;
 
   const int raw_tid = threadIdx.x;
@@ -555,15 +937,11 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
   // unused D/L1 descriptors well-formed.
   const int rankTma = rank > 0 ? rank : kRankTile;
 
-  auto mA = tma.a.get_tma_tensor(make_shape(M, K));
-  auto mSFA = tma.sfa.get_tma_tensor(shape(sf_gmem_layout(M, K)));
   auto mB = tma.b.get_tma_tensor(make_shape(N, K));
   auto mC = tma.c.get_tma_tensor(make_shape(M, N));
   auto mSFB = tma.sfb.get_tma_tensor(shape(sf_gmem_layout(N, K)));
   auto mD = tma.d.get_tma_tensor(make_shape(M, rankTma));
   auto mL1 = tma.l1.get_tma_tensor(make_shape(N, rankTma));
-  auto a_slice = tma.a.get_slice(_0{});
-  auto sfa_slice = tma.sfa.get_slice(_0{});
   auto b_slice = tma.b.get_slice(_0{});
   auto c_slice = tma.c.get_slice(_0{});
   auto sfb_slice = tma.sfb.get_slice(_0{});
@@ -587,12 +965,13 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
 
   __shared__ uint64_t full[kStages];
   __shared__ uint64_t empty[kStages];
-  if (tid == 0) {
+  if (raw_tid == 0) {
     for (int s = 0; s < kStages; ++s) {
       TmaBarrier::init(&full[s], 1);
       CtaBarrier::init(&empty[s], kNumThreads / 32);
     }
   }
+  cutlass::arch::fence_barrier_init();
   __syncthreads();
 
   auto sA_full = make_tensor(make_smem_ptr(recast_ptr<uint4_t>(a_bytes)), SmemLayoutA{});
@@ -655,37 +1034,9 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
   // local_tile selects the gmem tile for this CTA and K/rank step. partition_S(gmem) and
   // partition_D(smem) then describe the two ends of the TMA copy. arrive_and_expect_tx says how
   // many bytes must arrive before full[stage] opens; each copy(...with(full)) contributes to that
-  // same transaction barrier. The main branch transfers A/B/SFA/SFB, while the LoRA branch uses
-  // different descriptors to put D/L1 into the overlay. All inputs now share the standard
-  // row-major/128x4 producer layout; no v1 fragment or G2R path remains.
-  auto issue_tma = [&](int g, int stage) {
-    cutlass::arch::fence_view_async_shared();
-    if (g < nKt) {
-      auto gA = local_tile(mA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, g));
-      auto gSFA = local_tile(mSFA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, g));
-      auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
-      auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
-      TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
-      copy(tma.a.with(full[stage]), a_slice.partition_S(gA),
-           a_slice.partition_D(sA_full(_, _, stage)));
-      copy(tma.sfa.with(full[stage]), sfa_slice.partition_S(gSFA),
-           sfa_slice.partition_D(sSFA_full(_, _, stage)));
-      copy(tma.b.with(full[stage]), b_slice.partition_S(gB),
-           b_slice.partition_D(sB_full(_, _, stage)));
-      copy(tma.sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
-           sfb_slice.partition_D(sSFB_full(_, _, stage)));
-    } else {
-      const int rt = g - nKt;
-      auto gD = local_tile(mD, Shape<Int<kBM>, Int<kRankTile>>{}, make_coord(blockIdx.y, rt));
-      auto gL1 = local_tile(mL1, Shape<Int<kBN>, Int<kRankTile>>{}, make_coord(blockIdx.x, rt));
-      TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesLora);
-      copy(tma.d.with(full[stage]), d_slice.partition_S(gD),
-           d_slice.partition_D(sD_full(_, _, stage)));
-      copy(tma.l1.with(full[stage]), l1_slice.partition_S(gL1),
-           l1_slice.partition_D(sL1_full(_, _, stage)));
-    }
-  };
-
+  // same transaction barrier. The main branch transfers B/SFB only, while the LoRA branch uses
+  // different descriptors to put D/L1 into the overlay. No A/SFA copy is hidden in these TMA
+  // helpers.
   // -----------------------------------------------------------------------------------------------
   // Stage 5: split producer and consumer roles.
   // -----------------------------------------------------------------------------------------------
@@ -701,7 +1052,15 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
         const int stage = g % kStages;
         const int phase = (g / kStages) & 1;
         CtaBarrier::wait(&empty[stage], phase);
-        issue_tma(g, stage);
+        const bool lora_stage = kLoRAFirst ? g < nRt : g >= nKt;
+        if (lora_stage) {
+          const int rt = kLoRAFirst ? g : g - nKt;
+          Gemm::tma_load_D_L1(tma, full, rt, stage, mD, mL1, sD_full, sL1_full, d_slice, l1_slice);
+        } else {
+          const int kt = kLoRAFirst ? g - nRt : g;
+          Gemm::tma_load_B_SFB(tma, full, kt, stage, mB, mSFB, sB_full, sSFB_full, b_slice,
+                               sfb_slice);
+        }
       }
     }
     return;
@@ -712,30 +1071,42 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
     for (int s = 0; s < kStages; ++s) CtaBarrier::arrive(&empty[s]);
   }
 
+  // Translate the v1 activation producer's fragment order directly into CuTe A/SFA registers.
+  // No TMA or smem tensor is involved on this path. A BK=128 stage calls the helper twice;
+  // old_kt=g*(BK/64)+k_block selects the original 64-element producer block.
+  //
+  // CuTe's two M fragments refer to m and m+64, whereas v1 stores eight 32-row warp panels in
+  // each 256-row block. The inverse mapping is
+  //   new_m    = (tid % 128)/32 * 16
+  //   old_mt   = (new_m % 32)/16
+  //   old_warp = (m0 % 256)/32 + (new_m % 64)/32 + 2*fragment_index
+  //   old_block = m0/256.
+  // block_base includes (old_block,K-tile,old_warp), and the final index adds old_mt and lane.
+  // Each A load writes one uint4 directly into tCrA; each scale load writes four FP8 bytes as a
+  // u32 into tCrSFA. The second m-tile needs lane XOR 2 because v1 interleaves scale ownership
+  // between its two 16-row m-tiles. Omitting that swap preserves shapes but produces wrong math.
   // -----------------------------------------------------------------------------------------------
-  // Stage 6: consume all NVFP4 K stages and accumulate P in FP32.
+  // Stage 6: accumulate the BF16 LoRA-up correction first.
   // -----------------------------------------------------------------------------------------------
-  // Waiting on full makes the A/B/SFA/SFB bytes visible; the async-shared fence orders subsequent
-  // smem reads after that wait. A/B use LDSM because their swizzled FP4 layouts match the copy
-  // atom; SFA/SFB use the special SF copy views described above. make_zip_tensor pairs data and
-  // scale fragments without combining their storage. cute::gemm expands the tiled atoms and
-  // updates tCrC in place. Only after the warp's copy/MMA work is done may its leader mark the
-  // stage empty for the producer's next reuse.
-#pragma unroll 1
-  for (int g = 0; g < nKt; ++g) {
-    const int stage = g % kStages;
-    const int phase = (g / kStages) & 1;
-    TmaBarrier::wait(&full[stage], phase);
-    cutlass::arch::fence_view_async_shared();
-    copy(s2r_copy_a, tCsA(_, _, _, stage), tCrA_view);
-    copy(s2r_copy_b, tCsB(_, _, _, stage), tCrB_view);
-    copy(tCsSFA(_, _, _, stage), tCrSFA_view);
-    copy(tCsSFB(_, _, _, stage), tCrSFB_view);
-    cute::gemm(tiled_mma, make_zip_tensor(tCrA, tCrSFA), make_zip_tensor(tCrB, tCrSFB), tCrC);
-    __syncwarp();
-    if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
+  // D/L1 already have row-major TMA-compatible layouts. The BF16 m16n8k16 atoms share the exact
+  // C partition of the NVFP4 MMA. LoRA runs first so the following A/SFA prefetch can overlap it.
+  // The residual scale is applied to the combined accumulator later, so divide the LoRA term by
+  // alpha*wcscales now; the final epilogue multiplication cancels it exactly.
+  if constexpr (kLoRAFirst) {
+#pragma unroll
+    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+      Gemm::load_act_A_g2r(act, ascales, m0, K, tid, 0, k_block, tCrA, tCrSFA);
+    }
   }
 
+  // -----------------------------------------------------------------------------------------------
+  // Stage 7: consume all NVFP4 K stages and accumulate P in FP32.
+  // -----------------------------------------------------------------------------------------------
+  // Waiting on full makes the B/SFB bytes visible; the transaction barrier already orders the
+  // subsequent smem reads. A/SFA are filled independently by load_act_A_g2r. Interleave each
+  // k-block's G2R activation load, B/SFB smem copy and MMA so the BK128 stage does not keep both
+  // activation fragments and both B fragment slots live at once. The K accumulation order remains
+  // k-block 0 then 1, matching the previous single BK128 cute::gemm.
   // -----------------------------------------------------------------------------------------------
   // Stage 7: apply residual-only scale and bias in FP32.
   // -----------------------------------------------------------------------------------------------
@@ -744,64 +1115,19 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
   // those column scales/biases once and reuse them across its rows. alpha is applied first, then
   // fmaf(P,wcscales,bias). We deliberately do this before the LoRA MMA so wcscales cannot leak
   // into D@L1^T. Everything remains FP32; converting here would add an unnecessary rounding.
-  {
-    float col_scale[kCCols];
-    float col_bias[kCCols];
-#pragma unroll
-    for (int c = 0; c < kCCols; ++c) {
-      const int n = n0 + get<1>(tScC_rc(0, c));
-      col_scale[c] = wcscales != nullptr ? static_cast<float>(wcscales[n]) : 1.0f;
-      col_bias[c] = bias != nullptr ? static_cast<float>(bias[n]) : 0.0f;
-    }
-    auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
-    if (alpha != 1.0f) {
-#pragma unroll
-      for (int r = 0; r < kCRows; ++r)
-#pragma unroll
-        for (int c = 0; c < kCCols; ++c) tCrC_rc(r, c) *= alpha;
-    }
-#pragma unroll
-    for (int r = 0; r < kCRows; ++r)
-#pragma unroll
-      for (int c = 0; c < kCCols; ++c)
-        tCrC_rc(r, c) = fmaf(tCrC_rc(r, c), col_scale[c], col_bias[c]);
-  }
-
-  // -----------------------------------------------------------------------------------------------
-  // Stage 8: accumulate the BF16 LoRA-up correction into the same C fragment.
-  // -----------------------------------------------------------------------------------------------
-  // D/L1 already have row-major TMA-compatible layouts. This second TiledMMA partitions them with
-  // BF16 m16n8k16 atoms, but its C partition is statically identical to the NVFP4 one (Stage 3).
-  // Therefore cute::gemm(lora_mma,...,tCrC) needs no accumulator remap. g continues from nKt, so
-  // full/empty phase and stage reuse follow the same rules as Stage 6. rank 0 skips the entire
-  // block and also skips every D/L1 TMA in the producer.
-  if (nRt > 0) {
-    LoraMma lora_mma;
-    auto thr_lora = lora_mma.get_thread_slice(tid);
-    auto tCrD = thr_lora.partition_fragment_A(sD_full(_, _, Int<0>{}));
-    auto tCrL1 = thr_lora.partition_fragment_B(sL1_full(_, _, Int<0>{}));
-    using LoraCopyAtom = Copy_Atom<AutoVectorizingCopyWithAssumedAlignment<32>, ElementLora>;
-    auto s2r_copy_d = make_tiled_copy_A(LoraCopyAtom{}, lora_mma);
-    auto s2r_copy_l1 = make_tiled_copy_B(LoraCopyAtom{}, lora_mma);
-    auto s2r_thr_d = s2r_copy_d.get_thread_slice(tid);
-    auto s2r_thr_l1 = s2r_copy_l1.get_thread_slice(tid);
-    auto tCsD = s2r_thr_d.partition_S(sD_full);
-    auto tCsL1 = s2r_thr_l1.partition_S(sL1_full);
-    auto tCrD_view = s2r_thr_d.retile_D(tCrD);
-    auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
-
-#pragma unroll 1
-    for (int g = nKt; g < gTotal; ++g) {
-      const int stage = g % kStages;
-      const int phase = (g / kStages) & 1;
-      TmaBarrier::wait(&full[stage], phase);
-      cutlass::arch::fence_view_async_shared();
-      copy(s2r_copy_d, tCsD(_, _, _, stage), tCrD_view);
-      copy(s2r_copy_l1, tCsL1(_, _, _, stage), tCrL1_view);
-      cute::gemm(lora_mma, tCrD, tCrL1, tCrC);
-      __syncwarp();
-      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
-    }
+  if constexpr (kLoRAFirst) {
+    Gemm::gemm_bf16_lora(full, empty, tid, nKt, nRt, gTotal, sD_full, sL1_full, tCrC);
+    Gemm::apply_inverse_scale(wcscales, alpha, n0, nRt, tScC_rc, tCrC);
+    Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, gTotal, act, ascales, m0, K, tiled_mma,
+                        s2r_copy_b, tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA,
+                        tCrSFA, tCrC);
+    Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
+  } else {
+    Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, gTotal, act, ascales, m0, K, tiled_mma,
+                        s2r_copy_b, tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA,
+                        tCrSFA, tCrC);
+    Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
+    Gemm::gemm_bf16_lora(full, empty, tid, nKt, nRt, gTotal, sD_full, sL1_full, tCrC);
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -813,27 +1139,7 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
   // generic smem stores visible to the asynchronous TMA engine, and the second barrier ensures
   // every consumer finished its STSM before thread 0 starts the store. tma_store_wait<0> drains
   // outstanding stores before this CTA can reuse the output smem or exit.
-  {
-    constexpr int kFrag = kCRows * kCCols;
-    cutlass::Array<ElementO, kFrag> acc_bf16;
-    cutlass::NumericArrayConverter<ElementO, float, kFrag> convert;
-    acc_bf16 = convert(*reinterpret_cast<cutlass::Array<float, kFrag> const *>(tCrC.data()));
-    auto tCrCh = make_tensor(make_rmem_ptr(acc_bf16.data()), tCrC.layout());
-
-    __syncthreads();
-    auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
-    auto r2s_thr = r2s_copy.get_thread_slice(tid);
-    auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO *>(shm)), SmemLayoutO{});
-    auto tCrCh_src = r2s_thr.retile_S(tCrCh);
-    auto tCsC_dst = r2s_thr.partition_D(sC);
-    copy(r2s_copy, tCrCh_src, tCsC_dst);
-    cutlass::arch::fence_view_async_shared();
-    __syncthreads();
-    auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
-    if (tid == 0) copy(tma.c, c_slice.partition_S(sC), c_slice.partition_D(gC));
-    tma_store_arrive();
-    tma_store_wait<0>();
-  }
+  Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);
 #else
   asm volatile("trap;");
 #endif  // __CUDA_ARCH__ >= 1200
@@ -848,16 +1154,14 @@ gemm_w4a4_kernel(CUTLASS_GRID_CONSTANT TmaParams const tma,
 //      change. The cache holds at most 32 entries and is cleared wholesale when full; it is not
 //      an LRU cache. Device-specific dynamic-smem opt-in is likewise performed only once.
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
-// The template is instantiated only from gemm_w4a4.cu, keeping SM120 atoms out of other TUs.
-template <int kBN = 128, int kStages = 4, int kBK_ = 64>
+// The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
+template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
-                           cutlass::float_ue4m3_t const *act_sf,
-                           cutlass::float_ue4m3_t const *wgt_sf,
-                           cutlass::bfloat16_t const *lora_act_in,
-                           cutlass::bfloat16_t const *lora_up, cutlass::bfloat16_t const *bias,
-                           cutlass::bfloat16_t const *wcscales, float alpha, int M, int N,
-                           int K, int rank, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_>;
+                      cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
+                      cutlass::bfloat16_t const *lora_act_in, cutlass::bfloat16_t const *lora_up,
+                      cutlass::bfloat16_t const *bias, cutlass::bfloat16_t const *wcscales,
+                      float alpha, int M, int N, int K, int rank, cudaStream_t stream) {
+  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;
@@ -866,11 +1170,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   constexpr int kBK = Traits::kBK;
   constexpr int kRankTile = Traits::kRankTile;
 
-  auto mA = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(act)),
-                        make_shape(M, K), make_stride(K, _1{}));
-  auto mSFA = make_tensor(recast_ptr<ElementSF>(act_sf), sf_gmem_layout(M, K));
-  auto mB = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(wgt)),
-                        make_shape(N, K), make_stride(K, _1{}));
+  auto mB = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(wgt)), make_shape(N, K),
+                        make_stride(K, _1{}));
   auto mC = make_tensor(make_gmem_ptr(static_cast<ElementO *>(out)), make_shape(M, N),
                         make_stride(N, _1{}));
   auto mSFB = make_tensor(recast_ptr<ElementSF>(wgt_sf), sf_gmem_layout(N, K));
@@ -881,22 +1182,15 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   const int rankTma = rank > 0 ? rank : kRankTile;
   auto const *d_ptr = rank > 0 ? lora_act_in : reinterpret_cast<ElementLora const *>(out);
   auto const *l1_ptr = rank > 0 ? lora_up : reinterpret_cast<ElementLora const *>(out);
-  auto mD = make_tensor(make_gmem_ptr(d_ptr), make_shape(M, rankTma),
-                        make_stride(rankTma, _1{}));
-  auto mL1 = make_tensor(make_gmem_ptr(l1_ptr), make_shape(N, rankTma),
-                         make_stride(rankTma, _1{}));
+  auto mD = make_tensor(make_gmem_ptr(d_ptr), make_shape(M, rankTma), make_stride(rankTma, _1{}));
+  auto mL1 = make_tensor(make_gmem_ptr(l1_ptr), make_shape(N, rankTma), make_stride(rankTma, _1{}));
 
   auto build_params = [&]() {
-    auto tma_a = make_tma_copy(SM90_TMA_LOAD{}, mA, typename Traits::SmemLayoutA{}(_, _, Int<0>{}),
-                               Shape<Int<kBM>, Int<kBK>>{}, _1{});
-    auto tma_sfa = make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFA,
-                                           typename Traits::SmemLayoutAtomSFA{},
-                                           Shape<Int<kBM>, Int<kBK>>{}, _1{});
     auto tma_b = make_tma_copy(SM90_TMA_LOAD{}, mB, typename Traits::SmemLayoutB{}(_, _, Int<0>{}),
                                Shape<Int<kBN>, Int<kBK>>{}, _1{});
-    auto tma_sfb = make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFB,
-                                          typename Traits::SmemLayoutAtomSFB{},
-                                          Shape<Int<kBN>, Int<kBK>>{}, _1{});
+    auto tma_sfb =
+      make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFB, typename Traits::SmemLayoutAtomSFB{},
+                              Shape<Int<kBN>, Int<kBK>>{}, _1{});
     auto tma_d = make_tma_copy(SM90_TMA_LOAD{}, mD, typename Traits::SmemLayoutD{}(_, _, Int<0>{}),
                                Shape<Int<kBM>, Int<kRankTile>>{}, _1{});
     auto tma_l1 =
@@ -904,18 +1198,16 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                     Shape<Int<kBN>, Int<kRankTile>>{}, _1{});
     auto tma_c = make_tma_copy(SM90_TMA_STORE{}, mC, typename Traits::SmemLayoutO{},
                                Shape<Int<kBM>, Int<kBN>>{}, _1{});
-    using Params = W4A4CuteTma<decltype(tma_a), decltype(tma_sfa), decltype(tma_b),
-                               decltype(tma_sfb), decltype(tma_d), decltype(tma_l1),
-                               decltype(tma_c)>;
-    return Params{tma_a, tma_sfa, tma_b, tma_sfb, tma_d, tma_l1, tma_c};
+    using Params = W4A4CuteTma<decltype(tma_b), decltype(tma_sfb), decltype(tma_d),
+                               decltype(tma_l1), decltype(tma_c)>;
+    return Params{tma_b, tma_sfb, tma_d, tma_l1, tma_c};
   };
   using TmaParams = decltype(build_params());
   auto address = [](const void *ptr) {
     return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr));
   };
-  W4A4CuteCacheKey key{{address(act), address(act_sf), address(wgt), address(out),
-                        address(wgt_sf), address(d_ptr), address(l1_ptr),
-                        static_cast<uint64_t>(M), static_cast<uint64_t>(N),
+  W4A4CuteCacheKey key{{address(wgt), address(out), address(wgt_sf), address(d_ptr),
+                        address(l1_ptr), static_cast<uint64_t>(M), static_cast<uint64_t>(N),
                         static_cast<uint64_t>(K), static_cast<uint64_t>(rank)}};
   thread_local std::unordered_map<W4A4CuteCacheKey, TmaParams, W4A4CuteCacheHash> cache;
   auto it = cache.find(key);
@@ -935,7 +1227,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                                    Traits::kSmemBytes));
   }
   kernel<<<dim3(N / kBN, M / kBM), Traits::kNumThreads + 128, Traits::kSmemBytes, stream>>>(
-    it->second, bias, wcscales, alpha, M, N, K, rank);
+    it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
+    bias, wcscales, alpha, M, N, K, rank);
 }
 
 }  // namespace svdq::cute_kernels

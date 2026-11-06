@@ -11,9 +11,9 @@ namespace svdq::cute_kernels {
 namespace {
 
 // Independent CuTe activation producer. One warp owns 32 rows and the whole K reduction:
-//   qact/ascales are written directly in the TMA-compatible NVFP4 layouts;
+//   qact/ascales are written directly in the v1 256-row MMA-fragment pack consumed by G2R;
 //   D = input @ lora_down is accumulated in registers and written once as row-major BF16.
-// There is no v1 activation fragment, FP32 LoRA scratch, atomic, or post-processing kernel.
+// There is no FP32 LoRA scratch, atomic, finalize kernel, or extra activation repack.
 struct PackedBF16 {
   __nv_bfloat162 data[4];
 };
@@ -66,7 +66,8 @@ __device__ __forceinline__ __nv_bfloat162 div_bf16x2(__nv_bfloat162 a, __nv_bflo
 }
 
 // Load a 16x16 BF16 fragment from the warp-private row-major staging tile. The tile is padded by
-// eight BF16 columns, matching the native ldmatrix layout and avoiding shared-memory bank conflicts.
+// eight BF16 columns, matching the native ldmatrix layout and avoiding shared-memory bank
+// conflicts.
 __device__ __forceinline__ void ldmatrix_x4(const void *ptr, uint4 &out) {
   asm volatile("ldmatrix.sync.aligned.x4.m8n8.shared.b16 {%0, %1, %2, %3}, [%4];\n"
                : "=r"(out.x), "=r"(out.y), "=r"(out.z), "=r"(out.w)
@@ -79,7 +80,7 @@ __device__ __forceinline__ void ldmatrix_x4(const void *ptr, uint4 &out) {
 // by R elements, not adjacent in memory. Reading ptr[0],ptr[1] would silently select two adjacent
 // rank columns and produce the observed even/odd-column permutation.
 __device__ __forceinline__ __nv_bfloat162 load_lora_pair(const __nv_bfloat16 *lora, int R, int k,
-                                                          int r) {
+                                                         int r) {
   __nv_bfloat162 out;
   out.x = lora[size_t(k) * R + r];
   out.y = lora[size_t(k + 1) * R + r];
@@ -90,7 +91,7 @@ __device__ __forceinline__ __nv_bfloat162 load_lora_pair(const __nv_bfloat16 *lo
 // K and K+8 pairs for rank columns 0..7; data[2]/[3] are the same pairs for rank columns 8..15.
 // Scalar loads also avoid the 4-byte alignment assumption on odd rank columns.
 __device__ __forceinline__ PackedBF16 load_lora_fragment(const __nv_bfloat16 *lora, int R, int row,
-                                                          int col, int lane) {
+                                                         int col, int lane) {
   const int k = row + (lane % 4) * 2;
   const int r = col + lane / 4;
   PackedBF16 out;
@@ -103,11 +104,12 @@ __device__ __forceinline__ PackedBF16 load_lora_fragment(const __nv_bfloat16 *lo
 
 __device__ __forceinline__ uint4 mma_bf16(uint4 a, uint2 b, uint4 c) {
   uint4 d;
-  asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 "
-               "{%0,%1,%2,%3},{%4,%5,%6,%7},{%8,%9},{%10,%11,%12,%13};"
-               : "=r"(d.x), "=r"(d.y), "=r"(d.z), "=r"(d.w)
-               : "r"(a.x), "r"(a.y), "r"(a.z), "r"(a.w), "r"(b.x), "r"(b.y), "r"(c.x), "r"(c.y),
-                 "r"(c.z), "r"(c.w));
+  asm volatile(
+    "mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 "
+    "{%0,%1,%2,%3},{%4,%5,%6,%7},{%8,%9},{%10,%11,%12,%13};"
+    : "=r"(d.x), "=r"(d.y), "=r"(d.z), "=r"(d.w)
+    : "r"(a.x), "r"(a.y), "r"(a.z), "r"(a.w), "r"(b.x), "r"(b.y), "r"(c.x), "r"(c.y), "r"(c.z),
+      "r"(c.w));
   return d;
 }
 
@@ -132,18 +134,13 @@ __device__ __forceinline__ PackedF32 mma_lora(PackedBF16 a, PackedBF16 b, Packed
   return acc;
 }
 
-__device__ __forceinline__ size_t sf_offset(int row, int group, int groups) {
-  return size_t(row / 128) * (groups * 128) + size_t(group / 4) * 512 + 16 * (row % 32) +
-         4 * ((row / 32) % 4) + group % 4;
-}
-
-// Quantize four K16 groups and write standard row-major qact plus CUTLASS 128x4 SFA.
-// The max/shuffle/rounding sequence matches the native producer, but the stores bypass its v1
-// fragment layout completely. Each lane writes two u32 per row half, so the result is linear TMA
-// input rather than an MMA register image in gmem.
+// Quantize four K16 groups and write the v1 activation qact/scale pack consumed by G2R.
+// The max/shuffle/rounding sequence matches the native producer. Each lane owns four u32 words
+// per K32 half; the stores place those words at their MMA-fragment positions in the 256-row v1
+// block, so the GEMM can load A/SFA directly into registers without TMA or shared memory.
 __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qact,
-                                                uint8_t *ascales, int M, int K, int row0, int k0,
-                                                int lane) {
+                                               uint8_t *ascales, int M, int K, int row0, int k0,
+                                               int lane) {
   __nv_bfloat162 input[2][8];
 #pragma unroll
   for (int i = 0; i < 4; ++i) {
@@ -209,47 +206,52 @@ __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qa
     }
   }
 
-  // Two lanes per row emit the full 32-byte K64 qact slice as adjacent 16-byte stores. The old
-  // four-lane/4-byte form produced half-used sectors; this keeps the same standard row-major
-  // bytes while letting the coalescer fill complete 32-byte sectors.
+  // Redistribute each K32 word into the v1 256-row interleaved activation pack. Each lane still
+  // owns four u32 words per K half, but the destination word interleaves rows and K halves for
+  // the SM120 MMA fragment. The mapping was reverse-engineered from the native producer's v1
+  // output and verified word-for-word for both qact and ascales.
   const int i = lane % 4;
   if (i < 2) {
 #pragma unroll
     for (int j = 0; j < 2; ++j) {
       const int row = row0 + lane / 4 + j * 8;
-      const uint4 packed = make_uint4(qpacks[j][i * 4 + 0], qpacks[j][i * 4 + 1],
-                                      qpacks[j][i * 4 + 2], qpacks[j][i * 4 + 3]);
-      *reinterpret_cast<uint4 *>(qact + size_t(row) * (K / 2) + k0 / 2 + i * 16) = packed;
+      const int local = 16 * (row % 8) + ((row % 16) / 8) + 128 * ((row % 32) / 16);
+      const int64_t base =
+        ((static_cast<int64_t>(row / 256) * (K / 64) + k0 / 64) * 8 + (row % 256) / 32) * 256;
+      uint32_t *dst = reinterpret_cast<uint32_t *>(qact) + base + local + i * 2;
+      dst[0] = qpacks[j][i * 4 + 0];
+      dst[4] = qpacks[j][i * 4 + 1];
+      dst[8] = qpacks[j][i * 4 + 2];
+      dst[12] = qpacks[j][i * 4 + 3];
     }
   }
 
-  // All four lanes in a row group own the same four scales. Let lane%4==0 write the packed u32.
+  // The v1 scale word is one row's four FP8 factors. Its lane is 4*(row%8) + row/8 within the
+  // 32-row producer warp panel; the block/K/warp base matches the qact base above.
   if (lane % 4 == 0) {
-    const int group = k0 / 16;
-    const int groups = K / 16;
 #pragma unroll
     for (int j = 0; j < 2; ++j) {
       const int row = row0 + lane / 4 + j * 8;
-      *reinterpret_cast<uint32_t *>(ascales + sf_offset(row, group, groups)) = fp8scale[j];
+      const int64_t base =
+        (static_cast<int64_t>(row / 256) * (K / 64) + k0 / 64) * 8 + (row % 256) / 32;
+      const int scale_lane = 4 * (row % 8) + ((row % 32) / 8);
+      reinterpret_cast<uint32_t *>(ascales)[base * 32 + scale_lane] = fp8scale[j];
     }
   }
 }
 
 // TODO(cute-producer-migration): This fused activation-quant + LoRA-down producer currently uses
 // manual mma.sync/ldmatrix and explicit shared-memory staging. Once the native-matching schedule
-// is locked, re-express the same tile/reduction/coalesced-output plan with CuTe TiledMMA/TiledCopy
-// atoms. Keep the standard row-major A/SFA and row-major BF16 D contract unchanged.
+// is locked, re-express the same tile/reduction/output plan with CuTe TiledMMA/TiledCopy atoms.
+// Keep the v1 A/SFA and row-major BF16 D contract unchanged.
 template <int kRankTiles, int kWarps>
-__global__ void quantize_w4a4_fused_lora_kernel(
-  const __nv_bfloat16 *__restrict__ input,
-  const __nv_bfloat16 *__restrict__ smooth,
-  const __nv_bfloat16 *__restrict__ lora_down,
-  uint8_t *__restrict__ qact,
-  uint8_t *__restrict__ ascales,
-  __nv_bfloat16 *__restrict__ lora_act,
-  LoraScaleParams scales,
-  int M,
-  int K) {
+__global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict__ input,
+                                                const __nv_bfloat16 *__restrict__ smooth,
+                                                const __nv_bfloat16 *__restrict__ lora_down,
+                                                uint8_t *__restrict__ qact,
+                                                uint8_t *__restrict__ ascales,
+                                                __nv_bfloat16 *__restrict__ lora_act,
+                                                LoraScaleParams scales, int M, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   constexpr int kAccTiles = kRankTiles > 0 ? kRankTiles : 1;
   constexpr int kRank = kRankTiles * 16;
@@ -388,9 +390,9 @@ __global__ void quantize_w4a4_fused_lora_kernel(
 
 template <int kRankTiles, int kWarps>
 void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smooth,
-                               const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
-                               __nv_bfloat16 *lora_act, LoraScaleParams scales, int M, int K,
-                               cudaStream_t stream) {
+                          const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
+                          __nv_bfloat16 *lora_act, LoraScaleParams scales, int M, int K,
+                          cudaStream_t stream) {
   constexpr int kRank = kRankTiles * 16;
   constexpr int kRankStride = kRankTiles == 2 ? kRank + 4 : kRank + 1;
   constexpr int kDStageFloats = kRankTiles > 0 ? 32 * kRankStride : 0;
@@ -398,16 +400,17 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
   constexpr size_t kSmemBytes = static_cast<size_t>(kWarps) * kSharedFloats * sizeof(float);
   auto kernel = quantize_w4a4_fused_lora_kernel<kRankTiles, kWarps>;
   if constexpr (kSmemBytes > 48 * 1024) {
-    checkCUDA(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
+    checkCUDA(
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
   }
-  kernel<<<dim3(M / 32), dim3(kWarps * 32), kSmemBytes, stream>>>(
-    input, smooth, lora_down, qact, ascales, lora_act, scales, M, K);
+  kernel<<<dim3(M / 32), dim3(kWarps * 32), kSmemBytes, stream>>>(input, smooth, lora_down, qact,
+                                                                  ascales, lora_act, scales, M, K);
 }
 
 }  // namespace
 
 void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
-                        ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales) {
+                   ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales) {
   require(input.valid() && output.valid() && ascales.valid() && smooth.valid(),
           "quantize_w4a4 requires input/output/ascales/smooth");
   require(input.dtype() == ::Tensor::BF16 && smooth.dtype() == ::Tensor::BF16,
@@ -418,7 +421,8 @@ void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor l
   const int K = input.shape[-1];
   const int M = input.numel() / K;
   const int rank = lora_down.valid() ? lora_down.shape[-1] : 0;
-  require(M % 32 == 0 && K % 64 == 0, "quantize_w4a4 requires M%32==0 and K%64==0");
+  require(M % 256 == 0 && K % 64 == 0,
+          "quantize_w4a4 requires M%256==0 for the v1 activation pack and K%64==0");
   require(rank == 0 || (rank % 16 == 0 && rank <= 128),
           "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
   require(static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),
@@ -442,31 +446,31 @@ void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor l
 
   if (rank == 0) {
     launch_quantize_w4a4<0, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 16) {
     launch_quantize_w4a4<1, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 32) {
     launch_quantize_w4a4<2, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 48) {
     launch_quantize_w4a4<3, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 64) {
     launch_quantize_w4a4<4, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 80) {
     launch_quantize_w4a4<5, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 96) {
     launch_quantize_w4a4<6, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else if (rank == 112) {
     launch_quantize_w4a4<7, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   } else {
     launch_quantize_w4a4<8, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                    lora_act_ptr, scales, M, K, stream);
+                               lora_act_ptr, scales, M, K, stream);
   }
   checkCUDA(cudaGetLastError());
 }

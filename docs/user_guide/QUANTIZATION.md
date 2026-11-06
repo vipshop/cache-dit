@@ -1017,7 +1017,7 @@ python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --co
 
 Historical INT4 measurements may still label the two implementation variants as v1/v2. Those labels describe kernel implementations used for comparison, not accepted `runtime_kernel` configuration values.
 
-The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes standard row-major E2M1 codes, CUTLASS 128x4 activation scales and row-major BF16 LoRA activations directly. The GEMM loads A/B/SFA/SFB through TMA and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer, read v1 FP32 LoRA scratch, or run a separate BF16 finalize kernel. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
+The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes a v1 256-row interleaved E2M1 activation pack, matching activation scales and row-major BF16 LoRA activations directly. The GEMM loads activation A/SFA gmem-to-register (G2R), while weight B/SFB and BF16 D/L1 use TMA over shared memory, and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer, read v1 FP32 LoRA scratch, or run a separate BF16 finalize kernel. The padded batch must be a multiple of 256. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
 
 
 ## SVDQ with Fused MLP

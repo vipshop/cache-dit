@@ -45,12 +45,10 @@ static int get_v2_logical_block_m(int M, int N) {
   char *end = nullptr;
   const long parsed = std::strtol(value, &end, 10);
   if (end == value || *end != '\0') {
-    throw std::runtime_error(
-      "CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
+    throw std::runtime_error("CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
   }
   if (parsed != 64 && parsed != 128 && parsed != 256) {
-    throw std::runtime_error(
-      "CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
+    throw std::runtime_error("CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
   }
   return static_cast<int>(parsed);
 }
@@ -62,8 +60,7 @@ static int get_v2_num_stages(int stage) {
   return stage;
 }
 
-static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype,
-                                               int stage) {
+static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype, int stage) {
   switch (stage) {
     case 1:
       if (dtype == Tensor::FP16) {
@@ -96,9 +93,9 @@ static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype,
 
 }  // namespace
 
-void gemm_w4a4_native_v2(
-  Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales, Tensor lora_act_in,
-  Tensor lora_up, Tensor bias, bool act_unsigned, float alpha, Tensor wcscales, int stage) {
+void gemm_w4a4_native_v2(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales,
+                         Tensor lora_act_in, Tensor lora_up, Tensor bias, bool act_unsigned,
+                         float alpha, Tensor wcscales, int stage) {
   if (!act.valid() || !wgt.valid() || !out.valid() || !ascales.valid() || !wscales.valid()) {
     throw std::runtime_error(
       "svdq_gemm_w4a4_native_v2 requires act, wgt, out, ascales, and wscales tensors.");
@@ -114,8 +111,8 @@ void gemm_w4a4_native_v2(
   const int logical_block_m = get_v2_logical_block_m(M, N);
   const int num_stages = get_v2_num_stages(stage);
   const auto launch = get_v2_launch_fn(dtype, num_stages);
-  launch(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, act_unsigned, alpha,
-         wcscales, logical_block_m);
+  launch(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, act_unsigned, alpha, wcscales,
+         logical_block_m);
 }
 
 }  // namespace svdq::native_kernels

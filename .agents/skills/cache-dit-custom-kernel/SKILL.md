@@ -168,11 +168,21 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
-- producer 已基本追平 native，但最终稳态 median 仍略慢约 0.8%；继续保留优化项。
-- CuTe GEMM 比 native 慢约 16%，尚未达到“快至少 5%”目标。
-- stages/tile 扫描已完成：最佳 `128x256/BK128/S2` 仍慢 15.89%；**除非有新 NCU 证据，否则不要再次盲目扫描 stages/smem**。
-- direct g2r 原型已回退：native pack 按 MMA fragment 直接排布，CuTe standard row-major pack 不匹配；继续该路线前必须先做 fragment-aligned pack。
-- NVFP4 默认 runtime 因而保持 native；不能将 producer 进展描述成完整工作流已达标。
+- 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，无 finalize。
+- 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。
+- **rank32 大 shape 仍落后 native**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` 的 cute/native 为1.026/1.020/1.047/1.064。rank128 在所有大 shape 略优于 native（0.32%–1.43%）；rank64 在 `8192x6144`/16K 退化。下一条主矛盾是 rank32/64 大 shape。
+- hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
+- 当前 hybrid 重测逐 k-block `A load -> B/SFB copy -> MMA`：168 regs、零 spill；12格净变化约0，2K rank32 +0.61%，8K/16K 小优0.2%–0.5%，在1%门槛内，已保留。旧“0.12%不保留”是旧 hybrid/nsys 口径。
+- stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
+- 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
+- FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
+- 16K NCU 排除 wave 尾部和 L2（两边37.24 waves、cute L2 95.3%）；剩余差距在 shared 装载（16.4×指令）和 TMA/mbarrier sleeping/barrier。删除3条 load-side `fence_view_async_shared` 仅±0.2%，已保留为等价简化，但没有缩小大 shape 差距。
+- 三条新主循环方案均失败并回退：A/SFA前移±0.4%噪声；A/SFA双缓冲SASS过闸（R221/224、零spill）但全矩阵慢2.4%–6.1%；BK64 S5/S6/S7在16K慢26%–27%。不要再重复这三条。
+- G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
+- persistent 在当前 hybrid 上按 ffpa grid-stride + epilogue_done 重测：94 tests通过，但12格慢3.0%–6.7%；light producer 288T 与 warpgroup 协议不兼容（setmaxnreg死锁/去后STACK264、慢150%–198%）；Non-WS 256T 慢1.6%–4.3%。均已回退。
+- LoRA-first + 首K tile A/SFA 预取已保留：≤4K rank32/64/128 受益1%–2.6%，8K rank128/64 受益，16K rank32/64 回退约1.4%；长序列建议 native。wait 内移和 BK64/S3 无收益，未保留。
+- 16K 已增加 `kLoRAFirst=false` 的 main-first 专用实例：local load/store sectors 归零，16K 相对 LoRA-first 快1.5%，2/4/8K在±0.5%内。剩余差距仍是 long_scoreboard/sleeping；下一步全 G2R 专用 kernel 或更大 tile/more-warp 结构，统一数据见 §17/§19/§21/§22。
+- FLUX e2e（GPU4、1024²、28 steps、`--compile`、单次）native 6.06s / cute 6.19s / BF16 base 16.99s，即 2.80x/2.74x 于 base，cute/native=1.021。**SVDQ 路径出图不可复现**：同配置两次运行仅 34–36dB，与 native↔cute 的 33.9dB 同量级，故 e2e PSNR 不能判别 native/cute 数值差异，只能判别量化与否；kernel 等价性看 parity 用例。见 §24。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
