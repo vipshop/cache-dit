@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Compare SVDQuant kernels on identical shapes and rank settings.
 
-The benchmark reports three timings per runtime. `quantize` is the activation quantizer plus
-LoRA-down reduction (shared by both runtimes), `native`/`cute` are *kernel-only* GEMM timings
-(each backend's pack is prepared once and only the GEMM is timed), and `native+e2e`/`cute+e2e`
-measure one full `SVDQW4A4Linear.forward`, i.e. quantize + GEMM. `speedup_vs_native` compares
-against the matching native baseline, so kernel rows use the kernel-only baseline and e2e rows use
-the e2e baseline. FlashInfer activation quantization uses its own standard 128x4 pack; native/cute
-use cache-dit's v1 activation pack.
+The benchmark reports three timings per runtime. `quantize` is the native activation quantizer plus
+LoRA-down reduction (shared by both runtimes), `quantize-row-major` is the CuTe producer that emits
+row-major BF16 D instead, `native`/`cute`/`cute-row-major` are *kernel-only* GEMM timings (each
+pack is prepared once and only the GEMM is timed), and the `*+e2e` rows measure quantize + GEMM.
+`speedup_vs_native` compares against the matching native baseline, so kernel rows use the
+kernel-only baseline and e2e rows use the e2e baseline. FlashInfer activation quantization uses its
+own standard 128x4 pack; native/cute use cache-dit's v1 activation pack.
 
 Examples:
 
@@ -42,6 +42,8 @@ from dataclasses import dataclass
 
 import torch
 
+from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.packing import convert_svdq_nvfp4_pack_to_cute
 from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
@@ -55,10 +57,13 @@ DEFAULT_SHAPES = (
 )
 DEFAULT_IMPLS = (
   "quantize",
+  "quantize-row-major",
   "native",
   "cute",
+  "cute-row-major",
   "native+e2e",
   "cute+e2e",
+  "cute-row-major+e2e",
   "flashinfer+cute-dsl",
   "flashinfer+cutlass-sm120",
 )
@@ -79,6 +84,9 @@ class Case:
   qact_cute: torch.Tensor
   a_sf_cute: torch.Tensor
   lora_act_cute: torch.Tensor
+  qact_rm: torch.Tensor
+  a_sf_rm: torch.Tensor
+  lora_act_rm: torch.Tensor
   qweight_std: torch.Tensor
   wscales_std: torch.Tensor
   wscales_flash: torch.Tensor
@@ -172,6 +180,7 @@ def prepare_case(m: int,
 
   qact_native, a_sf_native, lora_act_native = native_module.quantize(x)
   qact_cute, a_sf_cute, lora_act_cute = cute_module.quantize(x)
+  qact_rm, a_sf_rm, lora_act_rm = _row_major_quantize(x, cute_module)
   qweight_std_u8 = qweight_std.view(torch.uint8).contiguous()
   wscales_std = wscales_std.contiguous()
   wscales_std_u8 = wscales_std.view(torch.uint8).flatten().contiguous()
@@ -204,6 +213,9 @@ def prepare_case(m: int,
     qact_cute=qact_cute,
     a_sf_cute=a_sf_cute,
     lora_act_cute=lora_act_cute,
+    qact_rm=qact_rm,
+    a_sf_rm=a_sf_rm,
+    lora_act_rm=lora_act_rm,
     qweight_std=qweight_std_u8,
     wscales_std=wscales_std,
     wscales_flash=wscales_std_u8,
@@ -226,6 +238,58 @@ def _native_call(case: Case):
 
 def _cute_call(case: Case):
   return case.cute_module.forward_quant(case.qact_cute, case.a_sf_cute, case.lora_act_cute)
+
+
+def _row_major_quantize(x: torch.Tensor, module: SVDQW4A4Linear):
+  """Run the CuTe activation producer that emits row-major BF16 D."""
+  return svdq_quantize_w4a4(
+    input=x,
+    lora_down=module.proj_down,
+    smooth=module.smooth_factor,
+    lora_layout="row_major",
+    fp4=True,
+    pad_size=256,
+  )
+
+
+def _cute_row_major_call(case: Case):
+  """Run the CuTe GEMM on the row-major BF16 D produced by the CuTe producer."""
+  module = case.cute_module
+  return svdq_gemm_w4a4(
+    act=case.qact_rm,
+    wgt=module._cute_qweight,
+    ascales=case.a_sf_rm,
+    wscales=module._cute_wscales,
+    lora_act_in=case.lora_act_rm,
+    lora_up=module._cute_proj_up,
+    bias=module._cute_bias,
+    wcscales=module._cute_wcscales,
+    runtime="cute",
+    lora_layout="row_major",
+    fp4=True,
+    alpha=module.wtscale,
+  )
+
+
+def _cute_row_major_e2e(case: Case):
+  """Row-major pipeline: CuTe producer plus the matching CuTe GEMM."""
+  module = case.cute_module
+  qact, a_sf, lora_act = _row_major_quantize(case.x, module)
+  out = svdq_gemm_w4a4(
+    act=qact,
+    wgt=module._cute_qweight,
+    ascales=a_sf,
+    wscales=module._cute_wscales,
+    lora_act_in=lora_act,
+    lora_up=module._cute_proj_up,
+    bias=module._cute_bias,
+    wcscales=module._cute_wcscales,
+    runtime="cute",
+    lora_layout="row_major",
+    fp4=True,
+    alpha=module.wtscale,
+  )
+  return out[:case.x.shape[0]]
 
 
 def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
@@ -323,6 +387,22 @@ def run_case(m: int,
         "skipped": None,
       })
       continue
+    if impl == "quantize-row-major":
+      # The CuTe producer emits row-major BF16 D instead of the native FP32 fragment.
+      elapsed = bench(lambda: _row_major_quantize(case.x, case.cute_module), warmup, iterations)
+      rows.append({
+        "m": m,
+        "n": n,
+        "k": k,
+        "rank": rank,
+        "impl": impl,
+        "median_us": elapsed,
+        "speedup_vs_native": None,
+        "rel_l2_vs_native": None,
+        "finite": None,
+        "skipped": None,
+      })
+      continue
     if impl == "native":
       call = lambda: _native_call(case)
       out = native_out
@@ -340,6 +420,16 @@ def run_case(m: int,
       baseline_us = native_e2e_us
     elif impl == "cute+e2e":
       call = lambda: case.cute_module(case.x)
+      out = call()
+      rel = ((out.float() - native_e2e_out.float()).norm() / native_e2e_out.float().norm()).item()
+      baseline_us = native_e2e_us
+    elif impl == "cute-row-major":
+      call = lambda: _cute_row_major_call(case)
+      out = call()
+      rel = ((out.float() - native_out.float()).norm() / native_out.float().norm()).item()
+      baseline_us = native_us
+    elif impl == "cute-row-major+e2e":
+      call = lambda: _cute_row_major_e2e(case)
       out = call()
       rel = ((out.float() - native_e2e_out.float()).norm() / native_e2e_out.float().norm()).item()
       baseline_us = native_e2e_us
