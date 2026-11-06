@@ -1,3 +1,21 @@
+"""Python-facing SVDQ operator entry points.
+
+Next-stage runtime routing (design note, not implemented yet)
+-------------------------------------------------------------
+The current CuTe kernel is faster than native for short/medium sequences but still loses on
+long sequences. The planned automatic policy is:
+
+* ``M <= 4096``: ``cute`` for all ranks (2K/4K measured 3%-7% faster than native).
+* ``M == 8192``: ``native`` for rank32 (cute is ~0.7% slower); ``cute`` for rank64/128
+  (measured 0.9%-2.9% faster).
+* ``M >= 16384``: ``native`` (cute is 1.3%-7.3% slower, worst at rank32).
+
+The thresholds are kernel-only measurements at ``N=K=3072`` and must be revalidated with the
+complete ``SVDQW4A4Linear`` path before becoming the default. Until then, callers select
+``runtime_kernel`` explicitly. Do not put this policy in the CUDA host launcher: it belongs in
+``SVDQW4A4Linear``/config, where the full token count and rank are known.
+"""
+
 import importlib
 from types import ModuleType
 
