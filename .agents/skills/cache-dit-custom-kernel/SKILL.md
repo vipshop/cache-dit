@@ -182,6 +182,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - persistent 在当前 hybrid 上按 ffpa grid-stride + epilogue_done 重测：94 tests通过，但12格慢3.0%–6.7%；light producer 288T 与 warpgroup 协议不兼容（setmaxnreg死锁/去后STACK264、慢150%–198%）；Non-WS 256T 慢1.6%–4.3%。均已回退。
 - LoRA-first + 首K tile A/SFA 预取已保留：≤4K rank32/64/128 受益1%–2.6%，8K rank128/64 受益，16K rank32/64 回退约1.4%；长序列建议 native。wait 内移和 BK64/S3 无收益，未保留。
 - 16K 已增加 `kLoRAFirst=false` 的 main-first 专用实例：local load/store sectors 归零，16K 相对 LoRA-first 快1.5%，2/4/8K在±0.5%内。剩余差距仍是 long_scoreboard/sleeping；下一步全 G2R 专用 kernel 或更大 tile/more-warp 结构，统一数据见 §17/§19/§21/§22。
+- FLUX e2e（GPU4、1024²、28 steps、`--compile`、单次）native 6.06s / cute 6.19s / BF16 base 16.99s，即 2.80x/2.74x 于 base，cute/native=1.021。**SVDQ 路径出图不可复现**：同配置两次运行仅 34–36dB，与 native↔cute 的 33.9dB 同量级，故 e2e PSNR 不能判别 native/cute 数值差异，只能判别量化与否；kernel 等价性看 parity 用例。见 §24。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。

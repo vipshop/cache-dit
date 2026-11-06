@@ -618,3 +618,46 @@ class 重构后按“scale 融合 -> 地址复用”顺序验证，均保持 94 
 4. smem FP32 accumulator：BM128×BN256 的 C 为 32768 floats=128KB，超过 SM120 约99KB可用 smem；且每个 K stage 读写 C 会放大 shared 压力，数学与容量上均不可行。
 
 结论：TMA/LDSM/STSM 已提供硬件向量化；helper 级数组融合和地址复用没有收益。保留 76d9071 的 class 重构与 5040fe7 的长序列 main-first 分支，后续优化应回到流水结构而非这些微改写。
+
+## 24. FLUX e2e：native/cute 出图与计时（2026-11-06）
+
+口径：GPU4、`torch 2.11.0+cu130`、`FLUX.1-dev`、1024x1024、28 steps、seed 0、`--compile`，`python -m cache_dit.generate flux`，每个配置单次运行。命令：
+
+```bash
+export FLUX_DIR="<flux-dir>"
+python -m cache_dit.generate flux --compile --svdq-nvfp4-r32-dq --save-path native.png
+python -m cache_dit.generate flux --compile --svdq-nvfp4-r32-dq --svdq-runtime cute --save-path cute.png
+python -m cache_dit.generate flux --save-path base.png
+```
+
+计时（同日两次独立跑，取第二次，rebase 到 origin/main 之后）：
+
+| 配置 | Warmup | Inference | 相对 base |
+| --- | --- | --- | --- |
+| base（BF16, C0） | 17.5s | 16.99s | 1.00x |
+| SVDQ native（r32-dq） | 26.0s | 6.06s | **2.80x** |
+| SVDQ cute（r32-dq） | 59.2s | 6.19s | **2.74x** |
+
+first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6.20s、base 16.96s。cute/native = 1.021，e2e 层面的差距与 kernel-only 的 2/4K 结果一致。
+
+图像（`cache-dit-metrics psnr ssim`）：
+
+| 图像对 | PSNR | SSIM |
+| --- | --- | --- |
+| native vs cute | 33.88 | 0.9303 |
+| native vs base | 28.09 | 0.8081 |
+| cute vs base | 29.07 | 0.8144 |
+
+**同配置 run-to-run 抖动**（两个独立进程，相同参数、相同 seed）：
+
+| 图像对 | PSNR | SSIM |
+| --- | --- | --- |
+| native vs native | 34.08 | 0.9191 |
+| cute vs cute | 36.26 | 0.9687 |
+
+结论：
+
+- SVDQ 路径（native 与 cute 都是）**出图不可复现**：同配置两次运行的 PSNR 已在 34–36 dB / SSIM 0.92–0.97，与 native↔cute 的 33.9 dB 同量级。因此**单次 e2e 的 PSNR 不能用来判别 native 与 cute 的数值差异**，只能判别“量化 vs 不量化”。BF16 base 本身可复现（两次 md5 相同），抖动只出现在 SVDQ 路径。
+- 抖动来源未定位。已排除 `svd_lowrank` 的随机初始化（`lowrank.py` 用 `fork_rng` + 固定 `_SVD_LOWRANK_SEED`）。剩余候选：量化阶段其他随机源、以及 GEMM 归约顺序。要复现须先用固定 latent/固定权重做 bit-exact A/B。
+- kernel 级数值等价性仍由 `tests/kernels/test_svdquant_cute.py` 的 parity 用例保证（rank32/64/128，完整层 relative L2 ~2e-3），不依赖图像 PSNR。
+- 视觉上三图同构图、`Hello world` 文案完整可读、无结构伪影；量化版与 BF16 的差异集中在毛色饱和度与条纹对比度（mean |diff| ≈ 18.3/255，SVDQ 版平均亮度高约 8），属 NVFP4 量化的色调偏差，不是 kernel 缺陷。
