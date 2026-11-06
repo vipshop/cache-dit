@@ -16,6 +16,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
          py::arg("lora_up"), py::arg("bias"), py::arg("fp4"), py::arg("alpha"), py::arg("wcscales"),
          py::arg("act_unsigned"), py::arg("stage") = 1)
     .def("gemm_w4a4", &svdq::ops::gemm_w4a4)
+    .def("gemm_w4a4_f32d", &svdq::ops::gemm_w4a4_f32d)
     .def("quantize_w4a4", &svdq::ops::quantize_w4a4)
     .def("quantize_w4a4_act_fuse_lora", &svdq::ops::quantize_w4a4_act_fuse_lora)
     .def("quantize_w4a4_wgt", &svdq::ops::quantize_w4a4_wgt);

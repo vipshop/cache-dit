@@ -21,6 +21,7 @@ import cache_dit.kernels._svdquant as svdq_ops
     ("svdq_extension_is_available", svdq_ops),
     ("svdq_gemm_w4a4_native", svdq_ops),
     ("svdq_gemm_w4a4_cute", svdq_ops),
+    ("svdq_gemm_w4a4_f32d", svdq_ops),
     ("svdq_gemm_w4a4_native_v2", svdq_ops),
     ("svdq_gemm_w4a4_ext", svdq_ops),
     ("svdq_quantize_w4a4_act_fuse_lora", svdq_ops),

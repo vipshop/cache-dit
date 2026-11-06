@@ -4,6 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
+from cache_dit.kernels import svdq_gemm_w4a4_f32d
 from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
 from cache_dit.kernels import svdq_quantize_w4a4_cute
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
@@ -124,6 +125,69 @@ def test_cute_gemm_matches_native_runtime(rank: int) -> None:
   assert _relative_l2(y_cute, y_native) < 5e-3
 
 
+def test_f32d_gemm_reads_native_fragment_and_applies_rank_scales() -> None:
+  _require_sm120()
+  torch.manual_seed(20261113)
+  in_features, out_features, rank = 256, 384, 32
+  linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
+  calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
+  state_dict = quantize_linear_svdq_w4a4(
+    linear,
+    [calibration],
+    rank=rank,
+    precision="nvfp4",
+    device="cuda:0",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+  )
+  native = SVDQW4A4Linear(in_features,
+                          out_features,
+                          rank=rank,
+                          precision="nvfp4",
+                          runtime_kernel="native",
+                          torch_dtype=torch.bfloat16).cuda().eval()
+  cute = SVDQW4A4Linear(in_features,
+                        out_features,
+                        rank=rank,
+                        precision="nvfp4",
+                        runtime_kernel="cute",
+                        torch_dtype=torch.bfloat16).cuda().eval()
+  for module in (native, cute):
+    module.load_state_dict(state_dict)
+
+  # N=384 selects BN128/BK64 and M=384 is padded to 512. The expected value below applies the
+  # rank16 scales directly to the decoded native D, independently of the kernel's gather.
+  scales = [0.5, 2.0]
+  cute._prepare_cute_pack()
+  x = torch.randn(384, in_features, dtype=torch.bfloat16, device="cuda:0")
+  with torch.inference_mode():
+    qact, ascales, fragment_d = native.quantize(x)
+    baseline_actual = svdq_gemm_w4a4_f32d(qact, cute._cute_qweight, ascales, cute._cute_wscales,
+                                          fragment_d, cute._cute_proj_up, cute._cute_bias,
+                                          cute._cute_wcscales, [1.0, 1.0], cute.wtscale)
+    baseline_expected = native(x)
+    assert _relative_l2(baseline_actual[:x.shape[0]], baseline_expected) < 5e-3
+    actual = svdq_gemm_w4a4_f32d(qact, cute._cute_qweight, ascales, cute._cute_wscales, fragment_d,
+                                 cute._cute_proj_up, cute._cute_bias, cute._cute_wcscales, scales,
+                                 cute.wtscale)
+  rows = torch.arange(fragment_d.shape[0], device="cuda:0")[:, None]
+  cols = torch.arange(rank, device="cuda:0")[None, :]
+  rr = rows % 256
+  cc = cols % 16
+  warp = rr // 32
+  mt = (rr % 32) // 16
+  lane = (rr % 8) * 4 + (cc % 8) // 2
+  j = (cc // 8) * 4 + ((rr % 16) // 8) * 2 + cc % 2
+  indices = ((rows // 256 * (rank // 16) + cols // 16) * 4096 + warp * 512 + mt * 256 + j * 32 +
+             lane)
+  logical_d = fragment_d.flatten()[indices]
+  delta_d = logical_d * torch.tensor([-0.5, 1.0], device="cuda:0").repeat_interleave(16)
+  expected = baseline_expected.float() + (delta_d @ cute._cute_proj_up.float().T)[:x.shape[0]]
+  assert fragment_d.dtype == torch.float32 and actual.shape == (512, out_features)
+  assert torch.isfinite(actual).all()
+  assert _relative_l2(actual[:x.shape[0]], expected) < 5e-3
+
+
 def test_cute_pack_cache_preserves_v1_state_dict() -> None:
   module = SVDQW4A4Linear(
     128,
@@ -211,3 +275,7 @@ def test_cute_fake_registration() -> None:
   assert scales.dtype == torch.float8_e4m3fn
   assert lora_act.shape == (256, 32)
   assert lora_act.dtype == torch.bfloat16
+  f32d_output = torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_f32d(act, wgt, ascales, wscales, None,
+                                                                 None, None, None, [1.0], 1.0)
+  assert f32d_output.shape == (256, 128)
+  assert f32d_output.dtype == torch.bfloat16

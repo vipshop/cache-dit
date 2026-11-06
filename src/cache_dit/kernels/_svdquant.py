@@ -434,6 +434,25 @@ def _call_svdq_gemm_w4a4_cute(
   ops.gemm_w4a4(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales, float(alpha))
 
 
+def _call_svdq_gemm_w4a4_f32d(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  out: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  lora_scales: list[float],
+  alpha: float,
+) -> None:
+  """Bridge the native-FP32-fragment-D CuTe GEMM ABI."""
+  ops = _get_required_ops_module()
+  ops.gemm_w4a4_f32d(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales,
+                     lora_scales, float(alpha))
+
+
 def _call_svdq_quantize_w4a4_cute(
   input: torch.Tensor,
   output: torch.Tensor,
@@ -721,6 +740,47 @@ def _fake_svdq_gemm_w4a4_cute(
   lora_up: torch.Tensor | None,
   bias: torch.Tensor | None,
   wcscales: torch.Tensor | None,
+  alpha: float,
+) -> torch.Tensor:
+  return torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::svdq_gemm_w4a4_f32d",
+  "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? lora_act_in, Tensor? lora_up, Tensor? bias, Tensor? wcscales, float[] lora_scales, float alpha) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::svdq_gemm_w4a4_f32d", "CUDA")
+def _svdq_gemm_w4a4_f32d(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  lora_scales: list[float],
+  alpha: float,
+) -> torch.Tensor:
+  output = torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
+  _call_svdq_gemm_w4a4_f32d(act, wgt, output, ascales, wscales, lora_act_in, lora_up, bias,
+                            wcscales, lora_scales, alpha)
+  return output
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_gemm_w4a4_f32d")
+def _fake_svdq_gemm_w4a4_f32d(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None,
+  lora_up: torch.Tensor | None,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  lora_scales: list[float],
   alpha: float,
 ) -> torch.Tensor:
   return torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
@@ -1057,6 +1117,40 @@ def svdq_gemm_w4a4_cute(
                                                           lora_up, bias, wcscales, float(alpha))
 
 
+def svdq_gemm_w4a4_f32d(
+  act: torch.Tensor,
+  wgt: torch.Tensor,
+  ascales: torch.Tensor,
+  wscales: torch.Tensor,
+  lora_act_in: torch.Tensor | None = None,
+  lora_up: torch.Tensor | None = None,
+  bias: torch.Tensor | None = None,
+  wcscales: torch.Tensor | None = None,
+  lora_scales: list[float] | None = None,
+  alpha: float = 1.0,
+) -> torch.Tensor:
+  """Run the cloned CuTe GEMM directly on the native producer's FP32 fragment D.
+
+  :param act: v1-packed E2M1 activation `[M, K / 2]`.
+  :param wgt: Row-major packed E2M1 weight `[N, K / 2]`.
+  :param ascales: v1 activation scale pack.
+  :param wscales: CUTLASS 128x4 weight scale pack.
+  :param lora_act_in: Native FP32 fragment D with logical shape `[M, R]`.
+  :param lora_up: Row-major BF16 LoRA-up weight `[N, R]`.
+  :param bias: Optional BF16 bias `[N]`.
+  :param wcscales: Optional BF16 residual scales `[N]`.
+  :param lora_scales: Optional FP32 scale per 16-rank tile; defaults to ones.
+  :param alpha: Scale applied only to the NVFP4 product.
+  :returns: BF16 output `[M, N]`.
+  """
+  rank = 0 if lora_up is None else lora_up.shape[1]
+  if lora_scales is None:
+    lora_scales = [1.0] * max(1, rank // 16)
+  return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4_f32d(act, wgt, ascales, wscales, lora_act_in,
+                                                          lora_up, bias, wcscales, lora_scales,
+                                                          float(alpha))
+
+
 def svdq_gemm_w4a4_native_v2(
   act: torch.Tensor,
   wgt: torch.Tensor,
@@ -1194,6 +1288,7 @@ def svdq_set_faster_i2f_mode(mode: str) -> None:
 __all__ = [
   "_call_svdq_gemm_w4a4_native",
   "_call_svdq_gemm_w4a4_native_v2",
+  "_call_svdq_gemm_w4a4_f32d",
   "_call_svdq_quantize_w4a4_act_fuse_lora",
   "_call_svdq_quantize_w4a4_wgt",
   "_decode_svdq_output_dtype",
@@ -1207,6 +1302,7 @@ __all__ = [
   "svdq_extension_is_available",
   "svdq_gemm_w4a4_native",
   "svdq_gemm_w4a4_native_v2",
+  "svdq_gemm_w4a4_f32d",
   "svdq_gemm_w4a4_ext",
   "svdq_quantize_w4a4_act_fuse_lora",
   "svdq_quantize_w4a4_wgt",

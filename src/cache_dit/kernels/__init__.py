@@ -8,6 +8,7 @@ from ._comm import fp8_comm_qkv_permute_quant
 from ._svdquant import svdq_extension_is_available
 from ._svdquant import svdq_gemm_w4a4_native
 from ._svdquant import svdq_gemm_w4a4_cute
+from ._svdquant import svdq_gemm_w4a4_f32d
 from ._svdquant import svdq_gemm_w4a4_ext
 from ._svdquant import svdq_gemm_w4a4_native_v2
 from ._svdquant import svdq_get_load_error
@@ -28,6 +29,7 @@ __all__ = [
   "svdq_quantize_w4a4_cute",
   "svdq_gemm_w4a4_native",
   "svdq_gemm_w4a4_cute",
+  "svdq_gemm_w4a4_f32d",
   "svdq_gemm_w4a4_native_v2",
   "svdq_gemm_w4a4_ext",
   "svdq_quantize_w4a4_act_fuse_lora",
