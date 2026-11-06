@@ -1,4 +1,9 @@
-"""Lazy, optional adapter for FlashInfer's complete SVDQuant linear path."""
+"""Lazy, optional adapter for FlashInfer's complete SVDQuant linear path.
+
+This module currently exposes only an operator-level adapter. The full `SVDQW4A4Linear`
+backend integration is intentionally deferred; see the future-contract note below before
+wiring it back into the runtime.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,69 @@ _INSTALL_HINT = (
   "FlashInfer is optional. Install it with `pip install flashinfer-python` (or the matching "
   "source tree) before selecting runtime_kernel='flashinfer+cute-dsl' or "
   "'flashinfer+cutlass-sm120'.")
+
+# -------------------------------------------------------------------------------------------------
+# Future SVDQuant backend contract (design note, not implemented yet)
+# -------------------------------------------------------------------------------------------------
+# `runtime_kernel` must be selected at quantisation/export time, not only at inference dispatch.
+# The checkpoint stores exactly one weight pack and a lightweight format tag; never store both a
+# cache-dit native/cute pack and a FlashInfer pack, and never store the original BF16/FP32 weight.
+#
+# pseudocode:
+#
+#   def quantize_linear_for_runtime(linear, calibration, runtime_kernel):
+#       shared = {
+#           "pack_format": runtime_kernel,
+#           "proj_up": ...,          # [N, R] BF16
+#           "proj_down": ...,        # [K, R] BF16
+#           "smooth_factor": ...,    # [K] BF16
+#           "bias": ...,             # [N] BF16 or None
+#           "rank": R,
+#       }
+#       if runtime_kernel in {"native", "cute"}:
+#           pack = cache_dit_native_nvfp4_pack(linear.weight)
+#           return shared | {
+#               "qweight": pack.qweight,
+#               "wscales": pack.wscales,
+#               "wcscales": pack.per_output_channel_subscale,
+#           }
+#       if runtime_kernel in FLASHINFER_BACKENDS:
+#           gw = (448 * 6) / linear.weight.abs().amax()
+#           wq, w_sf = flashinfer.nvfp4_quantize(
+#               linear.weight, gw, sfLayout=layout_128x4, do_shuffle=False)
+#           return shared | {
+#               "flashinfer_qweight": wq,       # [N, K/2] uint8
+#               "flashinfer_wscales": w_sf,     # 128x4 FP8
+#               "flashinfer_weight_scale": gw,  # scalar, needed by alpha
+#           }
+#       raise ValueError(runtime_kernel)
+#
+#   def forward(x, state, runtime_kernel):
+#       assert state["pack_format"] == runtime_kernel
+#       if runtime_kernel in {"native", "cute"}:
+#           return cache_dit_pack_forward(x, state)
+#       if runtime_kernel in FLASHINFER_BACKENDS:
+#           gs = (448 * 6) / (x * state.smooth).abs().amax()
+#           alpha = 1 / (gs * state.flashinfer_weight_scale)
+#           return flashinfer.svdquant_linear(
+#               x, state.flashinfer_qweight, state.flashinfer_wscales, alpha,
+#               state.smooth, state.smooth[:, None] * state.proj_down,
+#               state.proj_up / alpha, gs, state.bias,
+#               backend=FLASHINFER_BACKENDS[runtime_kernel])
+#
+#   def load_checkpoint(state, requested_runtime):
+#       if state["pack_format"] != requested_runtime:
+#           raise ValueError(
+#               "checkpoint pack does not match runtime_kernel; re-quantize from the "
+#               "original BF16 model with the requested backend")
+#
+# Consequences:
+#   * `wcscales` belongs only to the native/cute pack. A FlashInfer pack quantises the BF16
+#     weight directly, so per-output-channel magnitude is already absorbed into `gw`/`w_sf`.
+#   * Switching an existing cache-dit checkpoint to FlashInfer is not supported; re-quantize
+#     from the source BF16 model instead. No lossy native-pack -> FlashInfer conversion.
+#   * FlashInfer remains an optional dependency and is imported only when its pack/runtime is
+#     actually requested.
 
 
 def flashinfer_available() -> bool:
