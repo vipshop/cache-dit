@@ -516,3 +516,18 @@ S5 与 S3 in-flight 字节相同、barrier 翻倍，符合预期；S6/S7 增加�
 ### 19.5 结论
 
 三个方案均未达到收益门槛，全部不保留；kernel 保持 `A/SFA G2R + B/SFB/D/L1 TMA + canonical SW64/SW32 + S3/BK128`。后续不要再重复“单缓冲前移、A/SFA 双缓冲、BK64 深 stage”这三条；若继续，需要改 output/store 生命周期或 shared 装载结构。
+
+## 20. 当前 hybrid 的 K-block 交错重测（2026-11-06）
+
+历史 K-block 结论来自旧 hybrid；在 canonical SW64 + fence 清理后的当前 hybrid 上重新测试 `A load -> B/SFB copy -> MMA` 的逐 k-block 交错。数值 94 tests 通过，BN256 仍 168 regs、零 spill，memcheck 无 Invalid 访问。
+
+12 格三轮均值相对 baseline（cute）：
+
+| M | rank32 | rank64 | rank128 |
+|---:|---:|---:|---:|
+| 2048 | +0.61% | +0.14% | +0.44% |
+| 4096 | +0.01% | +0.01% | -0.15% |
+| 8192 | -0.33% | +0.08% | -0.01% |
+| 16384 | -0.23% | -0.46% | -0.25% |
+
+结论：12 格加权净变化约 0，2K 的 +0.6% 是唯一超过基线噪声的回退，但仍在既定 1% 验收阈值内；8K/16K 稳定小优。按“无实质性能退化且逻辑更直接”保留 K-block 交错。之前 §12 的“平均0.12%、不保留”是旧 hybrid/nsys 口径，不再适用于当前版本。

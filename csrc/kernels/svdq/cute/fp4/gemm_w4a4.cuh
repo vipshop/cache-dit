@@ -725,11 +725,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // Stage 6: consume all NVFP4 K stages and accumulate P in FP32.
   // -----------------------------------------------------------------------------------------------
   // Waiting on full makes the B/SFB bytes visible; the transaction barrier already orders the
-  // subsequent smem reads. A/SFA are filled independently by load_act_g2r. B uses LDSM because its
-  // swizzled FP4 layout matches the copy atom; SFB uses the special SF copy described above.
-  // make_zip_tensor pairs data and scale fragments without combining their storage. cute::gemm
-  // expands the tiled atoms and updates tCrC in place. Only after the warp's copy/MMA work is done
-  // may its leader mark the stage empty for the producer's next reuse.
+  // subsequent smem reads. A/SFA are filled independently by load_act_g2r. Interleave each
+  // k-block's G2R activation load, B/SFB smem copy and MMA so the BK128 stage does not keep both
+  // activation fragments and both B fragment slots live at once. The K accumulation order remains
+  // k-block 0 then 1, matching the previous single BK128 cute::gemm.
 #pragma unroll 1
   for (int g = 0; g < nKt; ++g) {
     const int stage = g % kStages;
@@ -738,10 +737,11 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 #pragma unroll
     for (int k_block = 0; k_block < kBK / 64; ++k_block) {
       load_act_g2r(g, k_block);
+      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
+      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
+                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
     }
-    copy(s2r_copy_b, tCsB(_, _, _, stage), tCrB_view);
-    copy(tCsSFB(_, _, _, stage), tCrSFB_view);
-    cute::gemm(tiled_mma, make_zip_tensor(tCrA, tCrSFA), make_zip_tensor(tCrB, tCrSFB), tCrC);
     __syncwarp();
     if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
   }

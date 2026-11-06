@@ -172,7 +172,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。
 - **rank32 大 shape 仍落后 native**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` 的 cute/native 为1.026/1.020/1.047/1.064。rank128 在所有大 shape 略优于 native（0.32%–1.43%）；rank64 在 `8192x6144`/16K 退化。下一条主矛盾是 rank32/64 大 shape。
 - hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
-- K-block 在 hybrid 上已无 spill，wait/math/sleeping 降约5%，但四个大 shape 平均仅0.12%（一个 shape 还 -0.23%），无明确 wall-clock 收益，不保留。
+- 当前 hybrid 重测逐 k-block `A load -> B/SFB copy -> MMA`：168 regs、零 spill；12格净变化约0，2K rank32 +0.61%，8K/16K 小优0.2%–0.5%，在1%门槛内，已保留。旧“0.12%不保留”是旧 hybrid/nsys 口径。
 - stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
 - 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
 - FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
