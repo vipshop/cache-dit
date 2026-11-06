@@ -13,7 +13,7 @@ from .register import (
   AutoEncoderDataParallelismPlanner,
   AutoEncoderDataParallelismPlannerRegister,
 )
-from .utils import TileBatchedP2PComm
+from .utils import TileSafeP2PComm
 
 logger = init_logger(__name__)
 
@@ -48,7 +48,9 @@ class AutoencoderKLWanDataParallelismPlanner(AutoEncoderDataParallelismPlanner):
 
     auto_encoder.enable_tiling()
 
-    comm = TileBatchedP2PComm()
+    # The Wan decode splits into several tiles and relays them between ranks, so it needs the
+    # order-safe transport; the batched one consumes a deferred payload as the next shape there.
+    comm = TileSafeP2PComm()
     comm.set_dims(5)  # [1, 3, T, H, W]
 
     @functools.wraps(auto_encoder.__class__.tiled_encode)
