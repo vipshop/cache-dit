@@ -105,6 +105,9 @@ __all__ = [
   "magi2_t2va_example",
   "magi2_i2va_example",
   "mova_360p_example",
+  "pika_h3_flex_example",
+  "pika_h3_flex_fl2va_example",
+  "pika_h3_flex_ref2va_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -5339,3 +5342,379 @@ def hy_nomas_example(args: argparse.Namespace, **kwargs) -> Example:
       num_inference_steps=steps,
     ),
   )
+
+
+# Pika H3 Flex is the post-trained six-step MiniMax-H3: the base repository holds the same two
+# checkpoint partitions (`transformer/` for `t2va` / `fl2va`, `transformer_ref/` for `ref2va`) and
+# ships one rank-128 PEFT adapter per partition. The adapter is part of the model contract, not an
+# optional accelerator — the bare trunk is a different model — so the examples load it through
+# `lora_weights_path` / `lora_weights_name` and let the CLI fuse it before cache, parallelism or
+# quantization touch the block stack.
+_PIKA_H3_FLEX_DEFAULT = "Pika-Labs/Pika-H3-Flex"
+
+_PIKA_H3_FLEX_ADAPTERS = {
+  "t2va": "fl2va/adapter.safetensors",
+  "fl2va": "fl2va/adapter.safetensors",
+  "ref2va": "ref2va/adapter.safetensors",
+}
+
+# The released adapters were distilled on a fixed six-step ladder: `denoising_step_list` is
+# `[1000, 750, 500, 250, 100, 40, 0]`, the terminal 0 has no model evaluation, so there is no
+# `num_inference_steps` to choose.
+_PIKA_H3_FLEX_STEPS = 6
+
+# DBCache warmup is `--max-warmup-steps` / `--ws` (default 8), not `--warmup` (that one only warms the
+# perf timer). Five of the six forwards are skippable in the best case, so the preset spends one of
+# them on the warmup and leaves four.
+_PIKA_H3_FLEX_MAX_WARMUP = 1
+
+# Starting point of the residual threshold per workflow. Every step draws fresh Gaussian noise from
+# the re-noising update, so consecutive steps are far apart and the cache can only hold at all when
+# the residual drop is measured, not assumed; these are the MiniMax-H3 values, kept as the sweep's
+# origin. See the PR description for the measured table.
+_PIKA_H3_FLEX_CACHE_THRESHOLDS = {
+  "t2va": _MINIMAX_H3_DEFAULT_THRESHOLD,
+  "fl2va": 0.022,
+  "ref2va": 0.02,
+}
+
+
+def _pika_h3_flex_blocks():
+  """Build the vendored Pika H3 Flex block tree.
+
+  :returns: A fresh `PikaH3FlexBlocks` instance.
+  """
+  from ..models.pipelines.pika_h3_flex import PikaH3FlexBlocks
+
+  return PikaH3FlexBlocks()
+
+
+def _pika_h3_flex_drop_lm_head(pipe) -> None:
+  """Drop the LM head of the Qwen3-VL conditioner.
+
+  The transformer conditions on the residual stream read after the 50th decoder layer, so the
+  `lm_head` projection of the 66 GiB conditioner is never executed.
+
+  :param pipe: Pika H3 Flex modular pipeline.
+  """
+  text_encoder = getattr(pipe, "text_encoder", None)
+  if text_encoder is not None and getattr(text_encoder, "lm_head", None) is not None:
+    text_encoder.lm_head = None
+
+
+def _pika_h3_flex_init_hook(model_path: str, weight_name: str, workflow: str, fuse: bool = True):
+  """Build the `post_init_hook` that applies the released adapter to its trunk partition.
+
+  `ExampleInitConfig.get_pipe` returns from the modular branch **before** the shared LoRA block
+  (`registers.py:706-707` vs `:719-745`), so `lora_weights_path` / `lora_weights_name` never load
+  anything for a modular pipeline: the run would silently sample the bare MiniMax-H3 trunk. The hook
+  is the injection point that exists for modular pipelines, and it runs after `load_components` and
+  before caching, tensor parallelism or quantization touch the block stack.
+
+  Fusing here is not an optimization. With `peft.tuners.lora.Linear` still in place, every
+  `ColwiseParallel` / `RowwiseParallel` shard of the six target linears misses its key, and
+  `--quantize-exclude-layers` substring matching sees the PEFT wrapper names instead of the diffusers
+  ones. Both fail without an exception, so the hook asserts the end state instead of trusting it.
+
+  :param model_path: Checkpoint root the adapter lives under.
+  :param weight_name: Adapter file name, relative to `model_path`.
+  :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the trunk partition.
+  :param fuse: Fuse and unload the adapter; `--disable-fuse-lora` keeps the PEFT layers instead.
+  :returns: The hook, with the `(pipe, **kwargs)` signature `get_pipe` calls it with.
+  """
+  trunk_name = "transformer_ref" if workflow == "ref2va" else "transformer"
+
+  def hook(pipe, **kwargs) -> None:
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    _pika_h3_flex_drop_lm_head(pipe)
+    trunk = getattr(pipe, trunk_name, None)
+    if trunk is None:
+      raise ValueError(
+        f"The `{workflow}` workflow expects a `{trunk_name}` component, but the loaded pipeline has "
+        f"none. Components: {sorted(pipe._component_specs)}.")
+    # `MiniMaxH3LoraLoaderMixin.load_lora_weights` routes to `transformer_ref` when the pipeline has no
+    # `transformer` attribute, so `ref2va` needs no extra flag; the check below catches a mis-route.
+    pipe.load_lora_weights(model_path, weight_name=weight_name)
+    if not any(isinstance(module, BaseTunerLayer) for module in trunk.modules()):
+      raise RuntimeError(
+        f"The released adapter {os.path.join(model_path, weight_name)} did not land on "
+        f"`{trunk_name}`: the run would sample the bare MiniMax-H3 trunk.")
+
+    if not fuse:
+      logger.warning(
+        "Keeping the Pika H3 Flex adapter as PEFT layers (`--disable-fuse-lora`). This is a "
+        "diagnostic configuration only: tensor parallelism shards the `lora_A` rank axis and "
+        "rowwise sharding registers a shadow `weight`, both silently.")
+      return
+
+    # Explicit component list: `fuse_lora` skips a component the pipeline does not have without
+    # raising, which is exactly the silent no-op this hook has to rule out.
+    # `safe_fusing` merges in float32 and rounds back once; the released adapters are float32 PEFT
+    # factors (rank = alpha = 128) and the reference recipe merges them in float32, so a bf16 merge
+    # would add a rounding the trained weights never saw.
+    pipe.fuse_lora(components=[trunk_name], safe_fusing=True)
+    pipe.unload_lora_weights()
+    if any(isinstance(module, BaseTunerLayer) for module in trunk.modules()):
+      raise RuntimeError(
+        f"`fuse_lora(components=['{trunk_name}'])` left PEFT layers behind; the target linears are "
+        "still wrapped, so parallelism and regional quantization would silently miss them.")
+    logger.info(f"Fused and unloaded the Pika H3 Flex adapter into `{trunk_name}`.")
+
+  return hook
+
+
+def _pika_h3_flex_adapter_name(model_path: str, workflow: str) -> str:
+  """Resolve a workflow's released adapter and fail fast when a local copy is incomplete.
+
+  The adapter is part of the model contract, not an optional accelerator, so a missing file has to be
+  reported instead of silently sampling the bare MiniMax-H3 trunk. The check only applies to a local
+  directory: for a Hub id the file is fetched through the cache by `load_lora_weights`, and testing
+  `os.path.exists` on a repo id would reject every download that has not run yet.
+
+  :param model_path: Checkpoint root directory or Hub repo id.
+  :param workflow: One of `t2va`, `fl2va`, `ref2va`.
+  :returns: The adapter file name, relative to the checkpoint root.
+  :raises FileNotFoundError: When a local checkpoint directory lacks the adapter.
+  """
+  weight_name = _PIKA_H3_FLEX_ADAPTERS[workflow]
+  if not os.path.isdir(model_path):
+    logger.info(
+      f"`{model_path}` is not a local directory, so the `{workflow}` adapter is resolved through the "
+      "Hugging Face cache when it is loaded.")
+    return weight_name
+  adapter_path = os.path.join(model_path, weight_name)
+  if not os.path.exists(adapter_path):
+    raise FileNotFoundError(
+      f"Pika H3 Flex needs the released adapter of the `{workflow}` workflow at {adapter_path}. The "
+      "adapter is part of the model contract: without it the pipeline would sample the bare "
+      "MiniMax-H3 trunk, which is a different model. Download the full checkpoint first.")
+  return weight_name
+
+
+_PIKA_H3_FLEX_REFERENCE_PACKAGE = "cache_dit.models.pipelines.pika_h3_flex"
+
+# The three reference classes `--reference-*-path` instantiates. Pika's classes are unrelated to the
+# MiniMax-H3 ones, and the vendored blocks reject a foreign class with an `isinstance` check that only
+# runs after the 200 GiB checkpoint is resident, so the flags have to build the right type.
+_PIKA_H3_FLEX_REFERENCE_CLASSES = {
+  "reference_image_path": "PikaH3FlexImageReference",
+  "reference_video_path": "PikaH3FlexVideoReference",
+  "reference_audio_path": "PikaH3FlexAudioReference",
+}
+
+
+def _pika_h3_flex_input_data(**kwargs) -> ExampleInputData:
+  """Build an input holder whose reference flags decode into this model's classes.
+
+  :param kwargs: Forwarded to `ExampleInputData`.
+  :returns: The input holder, pointed at the vendored reference classes.
+  """
+  input_data = ExampleInputData(**kwargs)
+  input_data.reference_package = _PIKA_H3_FLEX_REFERENCE_PACKAGE
+  input_data.reference_class_names = dict(_PIKA_H3_FLEX_REFERENCE_CLASSES)
+  return input_data
+
+
+def _pika_h3_flex_cache_config(
+  args: argparse.Namespace,
+  workflow: str,
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the six-step re-noising ladder.
+
+  Six forwards per request bound the reachable speedup: with `--ws 1` and one consecutive cached step
+  allowed, the most optimistic ladder is `compute, cache, compute, cache, compute, cache` — three
+  forwards, i.e. 2x. Anything above four forwards (1.5x) already means the threshold is not being met.
+  The CLI default warmup (`--max-warmup-steps`, default 8) instead covers the whole ladder, leaves
+  nothing to skip and reports a PSNR of `inf` — a false green — so the preset clamps it to
+  `_PIKA_H3_FLEX_MAX_WARMUP`, warns when the caller asked for a warmer start, and never raises.
+
+  `--Fn` / `--Bn` pass through: they are real CLI knobs, and hardcoding them would make the preset
+  silently ignore the flag during a threshold sweep.
+
+  :param args: CLI arguments.
+  :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  if workflow not in _PIKA_H3_FLEX_CACHE_THRESHOLDS:
+    raise ValueError(f"No Pika H3 Flex cache preset for workflow '{workflow}'; expected one of "
+                     f"{sorted(_PIKA_H3_FLEX_CACHE_THRESHOLDS)}.")
+  threshold = args.residual_diff_threshold
+  if threshold == _MINIMAX_H3_DEFAULT_THRESHOLD:
+    threshold = _PIKA_H3_FLEX_CACHE_THRESHOLDS[workflow]
+  requested_warmup = args.max_warmup_steps
+  max_warmup_steps = min(requested_warmup, _PIKA_H3_FLEX_MAX_WARMUP)
+  if requested_warmup >= _PIKA_H3_FLEX_STEPS:
+    logger.warning(
+      f"`--max-warmup-steps {requested_warmup}` covers all {_PIKA_H3_FLEX_STEPS} forwards of the Pika "
+      f"H3 Flex ladder, so DBCache would never skip a step and the accuracy delta would read as "
+      f"perfect by construction. Clamped to {max_warmup_steps}; pass `--ws {max_warmup_steps}` "
+      "explicitly to silence this.")
+  # Every step re-noises onto a new sigma with fresh Gaussian noise, so a step's blocks cannot be
+  # reused back to back; cap the consecutive run at one even when the CLI default (3) allows more.
+  max_continuous = min(args.max_continuous_cached_steps, 1)
+  if max_continuous != args.max_continuous_cached_steps:
+    logger.info(
+      f"Clamping `--max-continuous-cached-steps {args.max_continuous_cached_steps}` to "
+      f"{max_continuous}: the re-noising update draws new noise every step, so consecutive cached "
+      "steps accumulate error faster than a residual threshold can bound.")
+  return DBCacheConfig(
+    # `--Fn` / `--Bn` are *not* owned by this preset: they pass straight through from the CLI, and the
+    # measured sweep only varies `--rdt`. A preset that pinned them would make `--Fn` a silent no-op,
+    # which is worse than leaving them at the CLI defaults (Fn 1 / Bn 0).
+    Fn_compute_blocks=args.Fn_compute_blocks,
+    Bn_compute_blocks=args.Bn_compute_blocks,
+    max_warmup_steps=max_warmup_steps,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+    # guidance is distilled into the adapters: one forward pass per step, no uncond branch
+    enable_separate_cfg=False,
+    residual_diff_threshold=threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=max_continuous,
+  )
+
+
+def _pika_h3_flex_example(
+  args: argparse.Namespace,
+  workflow: str,
+  task_type: ExampleType,
+) -> Example:
+  """Assemble a Pika H3 Flex example: components, workflow and fused adapter.
+
+  The vendored pipeline resolves its own blocks, so `modular_blocks_factory` is set instead of
+  relying on `modular_model_index.json` to name a class the installed diffusers exports.
+
+  :param args: CLI arguments.
+  :param workflow: One of `t2va`, `fl2va`, `ref2va`.
+  :param task_type: The matching `ExampleType`.
+  :returns: The example, without its conditioning media.
+  """
+  from ..models.pipelines.pika_h3_flex import PikaH3FlexModularPipeline
+
+  _minimax_h3_quantize_exclusions(args)
+  model_path = _path(_PIKA_H3_FLEX_DEFAULT, args=args)
+  weight_name = _pika_h3_flex_adapter_name(model_path, workflow)
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=task_type,
+      model_name_or_path=model_path,
+      pipeline_class=PikaH3FlexModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      modular_blocks_factory=_pika_h3_flex_blocks,
+      modular_workflow=workflow,
+      # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
+      modular_component_dtypes={
+        "transformer": torch.bfloat16,
+        "transformer_ref": torch.bfloat16,
+        "text_encoder": torch.bfloat16,
+        "default": torch.float32,
+      },
+      # Not `lora_weights_path`: `get_pipe` returns from the modular branch before the shared LoRA
+      # block, so those fields would be dead config and the run would sample the bare trunk. The hook
+      # loads the adapter, fuses it, unloads the PEFT layers and asserts that state, all before
+      # caching / TP / quantization see the block stack.
+      post_init_hook=_pika_h3_flex_init_hook(
+        model_path,
+        weight_name,
+        workflow,
+        fuse=not getattr(args, "disable_fuse_lora", False),
+      ),
+      extra_optimize_kwargs={"cache_config": _pika_h3_flex_cache_config(args, workflow)},
+    ),
+  )
+
+
+@ExampleRegister.register("pika_h3_flex", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA (text to video + synchronized stereo audio) with Pika H3 Flex.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex t2va example.
+  """
+  example = _pika_h3_flex_example(args, workflow="t2va", task_type=ExampleType.T2VA)
+  example.input_data = _pika_h3_flex_input_data(
+    prompt=(
+      "A red fox trotting through a snowy pine forest at dawn, soft rim light, shallow depth of "
+      "field, the crunch of snow underfoot, cinematic."),
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+  )
+  return example
+
+
+@ExampleRegister.register("pika_h3_flex_fl2va", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """FL2VA (first and/or last keyframe + text to video + audio) with Pika H3 Flex.
+
+  Both conditioning frames become extra video rows of the packed sequence and are held at
+  `keyframe_noise_aug = 0.999` for every step, so the cache / context / tensor parallel plans of the
+  `t2va` entry point apply unchanged.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex fl2va example.
+  """
+  example = _pika_h3_flex_example(args, workflow="fl2va", task_type=ExampleType.FL2VA)
+
+  def _load(name: str, override):
+    return None if override is not None else load_image(_minimax_h3_demo_asset(name)).convert("RGB")
+
+  example.input_data = ExampleInputData(
+    prompt=(
+      "The astronaut crosses the lunar surface as the camera pushes in towards the crater rim, dust "
+      "drifting in the low gravity, earthrise on the horizon, cinematic."),
+    image=_load("first_frame.png", args.image_path),
+    last_image=_load("last_frame.png", getattr(args, "last_image_path", None)),
+    # The pipeline center-crops each keyframe onto the canvas itself.
+    skip_image_resize=True,
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+  )
+  return example
+
+
+@ExampleRegister.register("pika_h3_flex_ref2va", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
+  """REF2VA (ordered image / video / audio references to video + audio) with Pika H3 Flex.
+
+  This workflow loads the `transformer_ref/` partition, so it is never in memory at the same time as
+  the `t2va` / `fl2va` weights. References are consumed in the order they are given; the generated
+  geometry still comes from `height` / `width`.
+
+  Every video reference has to run 2 to 15 seconds (the video durations and the standalone audio
+  durations each sum to at most 15 seconds as well), so pass a clip that long through
+  `--reference-video-path`. The bundled MiniMax-H3 demo clip is 1.5 s and would be rejected.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex ref2va example.
+  """
+  from ..models.pipelines.pika_h3_flex import PikaH3FlexImageReference
+
+  example = _pika_h3_flex_example(args, workflow="ref2va", task_type=ExampleType.REF2VA)
+  input_data = _pika_h3_flex_input_data(
+    prompt=(
+      "The astronaut from the reference image steps out of the lander and follows the hiker's trail "
+      "across the lunar surface, dust drifting in the low gravity, earthrise on the horizon, "
+      "cinematic."),
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+  )
+  if not any(
+      getattr(args, attr, None)
+      for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
+    # Image only: the bundled MiniMax-H3 demo clip is 1.5 s, below this model's 2 s floor, so using it
+    # by default would fail the reference validation only after the 62 GiB `transformer_ref` load.
+    input_data.set_references([
+      PikaH3FlexImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
+    ])
+  example.input_data = input_data
+  return example
