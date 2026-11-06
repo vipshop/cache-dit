@@ -469,10 +469,13 @@ def run_case(m: int,
       if mm_nvfp4_svdquant is None:
         try:
           mm_nvfp4_svdquant, quantize_smooth = _load_flashinfer(flashinfer_path)
+          flash_backend = _prepare_flash_case(case, quantize_smooth, impl.split("+", 1)[1])
         except Exception as exc:
           # FlashInfer is optional: report the impl as skipped so the cache-dit kernels still run
-          # on hosts without it instead of aborting the whole sweep.
-          flashinfer_skip = "flashinfer unavailable"
+          # on hosts without a working FlashInfer instead of aborting the whole sweep. This also
+          # covers imports that succeed while every backend rejects the device or fails to load.
+          flashinfer_skip = f"flashinfer unavailable ({type(exc).__name__})"
+          mm_nvfp4_svdquant = None
           print(f"[bench] skipping {impl}: {exc}", file=sys.stderr)
           rows.append({
             "m": m,
@@ -487,7 +490,6 @@ def run_case(m: int,
             "skipped": flashinfer_skip,
           })
           continue
-        flash_backend = _prepare_flash_case(case, quantize_smooth, impl.split("+", 1)[1])
       backend = flash_backend or impl.split("+", 1)[1]
       call = lambda: _flashinfer_call(case, mm_nvfp4_svdquant, backend)
       out = call()
