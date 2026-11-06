@@ -177,9 +177,10 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
 - FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
 - 16K NCU 排除 wave 尾部和 L2（两边37.24 waves、cute L2 95.3%）；剩余差距在 shared 装载（16.4×指令）和 TMA/mbarrier sleeping/barrier。删除3条 load-side `fence_view_async_shared` 仅±0.2%，已保留为等价简化，但没有缩小大 shape 差距。
+- 三条新主循环方案均失败并回退：A/SFA前移±0.4%噪声；A/SFA双缓冲SASS过闸（R221/224、零spill）但全矩阵慢2.4%–6.1%；BK64 S5/S6/S7在16K慢26%–27%。不要再重复这三条。
 - G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent CTA 慢4.4% 的旧结论来自全 TMA；hybrid 下 store_done 串行化机制仍在，未重测。旧 persistent/K-block/BN128 数据不能直接外推到 hybrid。
-- 下一步优先级：先对 `16Kx8Kx8K` rank32 做 native/cute NCU 归因；canonical SW64 已完成，A-only TMA/producer coalesced 已证伪。FlashInfer 可选 backend 和 cutlass-sm120 对比为当前进行项。统一数据见 §17，历史负结果见 §14/§16。
+- 下一步优先级：`16Kx8Kx8K` 的 shared/TMA 固定成本仍未解；A/SFA 前移、A/SFA 双缓冲、BK64 深 stage 已证伪，FlashInfer e2e 接入暂停。若继续，只能转向 output/store 生命周期或 shared 装载结构。统一数据见 §17/§19，历史负结果见 §14/§16。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
