@@ -299,8 +299,9 @@ CUTE_DEVICE auto convert_layout_acc_rowcol(Layout acc_layout) {
 // into tCrC without retile, smem reduction, or a second accumulator. Executing both products on
 // the same consumer warps is intentional: separate BF16/NVFP4 warpgroups would need an expensive
 // cross-warpgroup FP32 reduction and would duplicate accumulator storage.
-template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64>
+template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true>
 struct W4A4CuteTraits {
+  static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -519,6 +520,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   constexpr int kBK = Traits::kBK;
   constexpr int kStages = Traits::kStages;
   constexpr int kRankTile = Traits::kRankTile;
+  constexpr bool kLoRAFirst = Traits::kLoRAFirst;
   constexpr int kNumThreads = Traits::kNumThreads;
 
   const int raw_tid = threadIdx.x;
@@ -642,8 +644,9 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // same transaction barrier. The main branch transfers B/SFB only, while the LoRA branch uses
   // different descriptors to put D/L1 into the overlay. No A/SFA copy is hidden in this lambda.
   auto issue_tma = [&](int g, int stage) {
-    if (g < nRt) {
-      const int rt = g;
+    const bool lora_stage = kLoRAFirst ? g < nRt : g >= nKt;
+    if (lora_stage) {
+      const int rt = kLoRAFirst ? g : g - nKt;
       auto gD = local_tile(mD, Shape<Int<kBM>, Int<kRankTile>>{}, make_coord(blockIdx.y, rt));
       auto gL1 = local_tile(mL1, Shape<Int<kBN>, Int<kRankTile>>{}, make_coord(blockIdx.x, rt));
       TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesLora);
@@ -652,7 +655,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
       copy(tma.l1.with(full[stage]), l1_slice.partition_S(gL1),
            l1_slice.partition_D(sL1_full(_, _, stage)));
     } else {
-      const int kt = g - nRt;
+      const int kt = kLoRAFirst ? g - nRt : g;
       auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
       auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
       TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
@@ -729,12 +732,15 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // C partition of the NVFP4 MMA. LoRA runs first so the following A/SFA prefetch can overlap it.
   // The residual scale is applied to the combined accumulator later, so divide the LoRA term by
   // alpha*wcscales now; the final epilogue multiplication cancels it exactly.
+  if constexpr (kLoRAFirst) {
 #pragma unroll
-  for (int k_block = 0; k_block < kBK / 64; ++k_block) {
-    load_act_g2r(0, k_block);
+    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+      load_act_g2r(0, k_block);
+    }
   }
 
-  if (nRt > 0) {
+  auto run_lora = [&]() {
+    if (nRt == 0) return;
     LoraMma lora_mma;
     auto thr_lora = lora_mma.get_thread_slice(tid);
     auto tCrD = thr_lora.partition_fragment_A(sD_full(_, _, Int<0>{}));
@@ -749,8 +755,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     auto tCrD_view = s2r_thr_d.retile_D(tCrD);
     auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
 
+    const int g_begin = kLoRAFirst ? 0 : nKt;
+    const int g_end = kLoRAFirst ? nRt : gTotal;
 #pragma unroll 1
-    for (int g = 0; g < nRt; ++g) {
+    for (int g = g_begin; g < g_end; ++g) {
       const int stage = g % kStages;
       const int phase = (g / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
@@ -760,7 +768,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
       __syncwarp();
       if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
     }
+  };
 
+  auto apply_inverse = [&]() {
+    if (nRt == 0) return;
     float inv_scale[kCCols];
 #pragma unroll
     for (int c = 0; c < kCCols; ++c) {
@@ -773,7 +784,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     for (int r = 0; r < kCRows; ++r)
 #pragma unroll
       for (int c = 0; c < kCCols; ++c) tCrC_rc(r, c) *= inv_scale[c];
-  }
+  };
 
   // -----------------------------------------------------------------------------------------------
   // Stage 7: consume all NVFP4 K stages and accumulate P in FP32.
@@ -783,25 +794,29 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // k-block's G2R activation load, B/SFB smem copy and MMA so the BK128 stage does not keep both
   // activation fragments and both B fragment slots live at once. The K accumulation order remains
   // k-block 0 then 1, matching the previous single BK128 cute::gemm.
+  auto run_main = [&]() {
+    const int g_begin = kLoRAFirst ? nRt : 0;
+    const int g_end = kLoRAFirst ? gTotal : nKt;
 #pragma unroll 1
-  for (int g = nRt; g < gTotal; ++g) {
-    const int kt = g - nRt;
-    const int stage = g % kStages;
-    const int phase = (g / kStages) & 1;
-    TmaBarrier::wait(&full[stage], phase);
+    for (int g = g_begin; g < g_end; ++g) {
+      const int kt = kLoRAFirst ? g - nRt : g;
+      const int stage = g % kStages;
+      const int phase = (g / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
 #pragma unroll
-    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
-      if (kt != 0) {
-        load_act_g2r(kt, k_block);
+      for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+        if (!kLoRAFirst || kt != 0) {
+          load_act_g2r(kt, k_block);
+        }
+        copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+        copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
+        cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
+                   make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
       }
-      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
-      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
-      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
-                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
+      __syncwarp();
+      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
     }
-    __syncwarp();
-    if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
-  }
+  };
 
   // -----------------------------------------------------------------------------------------------
   // Stage 7: apply residual-only scale and bias in FP32.
@@ -811,7 +826,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // those column scales/biases once and reuse them across its rows. alpha is applied first, then
   // fmaf(P,wcscales,bias). We deliberately do this before the LoRA MMA so wcscales cannot leak
   // into D@L1^T. Everything remains FP32; converting here would add an unnecessary rounding.
-  {
+  auto apply_scale = [&]() {
     float col_scale[kCCols];
     float col_bias[kCCols];
 #pragma unroll
@@ -832,6 +847,17 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 #pragma unroll
       for (int c = 0; c < kCCols; ++c)
         tCrC_rc(r, c) = fmaf(tCrC_rc(r, c), col_scale[c], col_bias[c]);
+  };
+
+  if constexpr (kLoRAFirst) {
+    run_lora();
+    apply_inverse();
+    run_main();
+    apply_scale();
+  } else {
+    run_main();
+    apply_scale();
+    run_lora();
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -879,13 +905,13 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 //      an LRU cache. Device-specific dynamic-smem opt-in is likewise performed only once.
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
 // The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
-template <int kBN = 128, int kStages = 4, int kBK_ = 64>
+template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
                       cutlass::bfloat16_t const *lora_act_in, cutlass::bfloat16_t const *lora_up,
                       cutlass::bfloat16_t const *bias, cutlass::bfloat16_t const *wcscales,
                       float alpha, int M, int N, int K, int rank, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_>;
+  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;

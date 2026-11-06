@@ -1,6 +1,7 @@
 #include "gemm_w4a4.h"
 
 #include <stdexcept>
+#include <type_traits>
 
 #include "common.h"
 #include "gemm_w4a4.cuh"
@@ -89,25 +90,39 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
 
   if (N % 256 == 0 && K % 128 == 0) {
     require(rank % 32 == 0, "rank must be a multiple of 32 when BN=256 and BK=128");
-    launch_gemm_w4a4<256, 3, 128>(
-      act.data_ptr(), wgt.data_ptr(), out.data_ptr(),
-      static_cast<ElementSF const *>(ascales.data_ptr()),
-      static_cast<ElementSF const *>(wscales.data_ptr()),
-      rank > 0 ? static_cast<ElementLora const *>(lora_act_in.data_ptr()) : nullptr,
-      rank > 0 ? static_cast<ElementLora const *>(lora_up.data_ptr()) : nullptr,
-      bias.valid() ? static_cast<ElementLora const *>(bias.data_ptr()) : nullptr,
-      wcscales.valid() ? static_cast<ElementLora const *>(wcscales.data_ptr()) : nullptr, alpha, M,
-      N, K, rank, getCurrentCUDAStream());
+    auto launch = [&](auto lora_first) {
+      launch_gemm_w4a4<256, 3, 128, decltype(lora_first)::value>(
+        act.data_ptr(), wgt.data_ptr(), out.data_ptr(),
+        static_cast<ElementSF const *>(ascales.data_ptr()),
+        static_cast<ElementSF const *>(wscales.data_ptr()),
+        rank > 0 ? static_cast<ElementLora const *>(lora_act_in.data_ptr()) : nullptr,
+        rank > 0 ? static_cast<ElementLora const *>(lora_up.data_ptr()) : nullptr,
+        bias.valid() ? static_cast<ElementLora const *>(bias.data_ptr()) : nullptr,
+        wcscales.valid() ? static_cast<ElementLora const *>(wcscales.data_ptr()) : nullptr, alpha,
+        M, N, K, rank, getCurrentCUDAStream());
+    };
+    if (M >= 16384) {
+      launch(std::false_type{});
+    } else {
+      launch(std::true_type{});
+    }
   } else {
-    launch_gemm_w4a4<128, 4>(
-      act.data_ptr(), wgt.data_ptr(), out.data_ptr(),
-      static_cast<ElementSF const *>(ascales.data_ptr()),
-      static_cast<ElementSF const *>(wscales.data_ptr()),
-      rank > 0 ? static_cast<ElementLora const *>(lora_act_in.data_ptr()) : nullptr,
-      rank > 0 ? static_cast<ElementLora const *>(lora_up.data_ptr()) : nullptr,
-      bias.valid() ? static_cast<ElementLora const *>(bias.data_ptr()) : nullptr,
-      wcscales.valid() ? static_cast<ElementLora const *>(wcscales.data_ptr()) : nullptr, alpha, M,
-      N, K, rank, getCurrentCUDAStream());
+    auto launch = [&](auto lora_first) {
+      launch_gemm_w4a4<128, 4, 64, decltype(lora_first)::value>(
+        act.data_ptr(), wgt.data_ptr(), out.data_ptr(),
+        static_cast<ElementSF const *>(ascales.data_ptr()),
+        static_cast<ElementSF const *>(wscales.data_ptr()),
+        rank > 0 ? static_cast<ElementLora const *>(lora_act_in.data_ptr()) : nullptr,
+        rank > 0 ? static_cast<ElementLora const *>(lora_up.data_ptr()) : nullptr,
+        bias.valid() ? static_cast<ElementLora const *>(bias.data_ptr()) : nullptr,
+        wcscales.valid() ? static_cast<ElementLora const *>(wcscales.data_ptr()) : nullptr, alpha,
+        M, N, K, rank, getCurrentCUDAStream());
+    };
+    if (M >= 16384) {
+      launch(std::false_type{});
+    } else {
+      launch(std::true_type{});
+    }
   }
   checkCUDA(cudaGetLastError());
 }

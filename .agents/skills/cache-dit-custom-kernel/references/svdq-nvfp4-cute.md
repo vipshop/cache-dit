@@ -576,3 +576,32 @@ S5 与 S3 in-flight 字节相同、barrier 翻倍，符合预期；S6/S7 增加�
 
 - `full` wait 移入 `k_block==0`：3 轮 2K/4K/8K 稳定 +0.2%–1.0%，16K 仅 -0.1%–-0.3%，无收益，回退。
 - BK64/S3：`kSmemBytes` 下界改为 max(stage ring, 64KB output) 后合法，但 BK64 仍 `STACK=8`（spill 来自 LoRA-first 的逆缩放数组，不是 k_block fragment）；2K 76.9µs、16K 555µs，显著慢于 BK128 的 73.5/443µs，回退。
+
+## 22. 16K 长序列 NCU 复核与 main-first 专用分支（2026-11-06）
+
+对象：`16384x8192x8192 rank32`，native/cute 同轮 NCU full，launch-skip 3。NCU duration 受 replay 影响，不用于 wall-clock；Event 单独记录。
+
+| 指标 | native | LoRA-first cute | main-first cute |
+|---|---:|---:|---:|
+| Event median | 2409.92us | 2580.64us | 2570.46us |
+| regs/thread | 252 | 168 | 168 |
+| smem/block | 18.4KB | 85.0KB | 85.0KB |
+| tensor active | 86.18% | 87.97% | 88.49% |
+| L2 hit | 86.71% | 95.05% | 95.18% |
+| DRAM throughput | 35.29% | 11.26% | 11.33% |
+| long_scoreboard /issue | 0.945 | 2.629 | 3.011 |
+| sleeping /issue | 0 | 1.361 | 1.466 |
+| barrier /issue | 0 | 0.108 | 0.145 |
+| wait /issue | 4.713 | 4.618 | 4.630 |
+| local load sectors | 0.262M | 8.389M | 0 |
+| local store sectors | 11.010M | 0.197M | 0 |
+
+结论：
+
+- 当前 16K 不是 wave/L2/DRAM 上限；tensor active 已接近 native。
+- native 的 2-stage G2R 流水用更多 global 流量换更低 long_scoreboard；cute 的 TMA/shared 路径仍有同步与延迟隐藏缺口。
+- LoRA-first 的逆缩放在长序列产生额外 local sectors；main-first 长序列实例消除了这些 local 访问。
+
+实现：Traits 增加 `kLoRAFirst`；producer/consumer 的 main/LoRA 顺序由编译期开关控制。host 在 `M>=16384` 选择 main-first，M<=8192 保持 LoRA-first。
+
+12 格三轮：2/4/8K 全部在 ±0.5% 内；16K rank32/64/128 相对 LoRA-first 分别 **-1.52%/-1.55%/-0.47%**。94 tests 通过。该分支为后续 16K 专用全 G2R/其他结构保留独立入口。

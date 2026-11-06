@@ -181,7 +181,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent 在当前 hybrid 上按 ffpa grid-stride + epilogue_done 重测：94 tests通过，但12格慢3.0%–6.7%；light producer 288T 与 warpgroup 协议不兼容（setmaxnreg死锁/去后STACK264、慢150%–198%）；Non-WS 256T 慢1.6%–4.3%。均已回退。
 - LoRA-first + 首K tile A/SFA 预取已保留：≤4K rank32/64/128 受益1%–2.6%，8K rank128/64 受益，16K rank32/64 回退约1.4%；长序列建议 native。wait 内移和 BK64/S3 无收益，未保留。
-- 下一步优先级：`16Kx8Kx8K` 的 shared/TMA 固定成本仍未解；A/SFA 前移、双缓冲、BK64、persistent、light、non-WS、LoRA-first 长序列均已证伪。若继续，只能转向 output/store 生命周期、shared 装载结构或按 M 分流。统一数据见 §17/§19/§21。
+- 16K 已增加 `kLoRAFirst=false` 的 main-first 专用实例：local load/store sectors 归零，16K 相对 LoRA-first 快1.5%，2/4/8K在±0.5%内。剩余差距仍是 long_scoreboard/sleeping；下一步全 G2R 专用 kernel 或更大 tile/more-warp 结构，统一数据见 §17/§19/§21/§22。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
