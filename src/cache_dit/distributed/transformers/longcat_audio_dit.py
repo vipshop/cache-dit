@@ -38,7 +38,7 @@ from ...distributed.core import (
 )
 from ...logger import init_logger
 from ..config import ParallelismConfig
-from ..utils import shard_div_attr
+from ..utils import _DistributedRMSNorm, shard_div_attr
 from .register import (
   ContextParallelismPlanner,
   ContextParallelismPlannerRegister,
@@ -310,69 +310,9 @@ class LongCatAudioDiTContextParallelismPlanner(ContextParallelismPlanner):
     }
 
 
-class _DistributedRMSNorm(nn.Module):
-  """TP-aware RMSNorm: the global mean square is all-reduced before normalizing the local shard.
-
-  Diffusers' `RMSNorm` normalizes over `dim` (`normalized_shape`) and `AudioDiTAttention` applies it
-  to the full `inner_dim` projection, so after a column-wise shard each rank only sees part of the
-  vector. Averaging the partial mean squares (all shards have the same size) restores the exact
-  global statistic; the weight itself is sharded along the same axis.
-
-  :param tp_mesh: Tensor parallel mesh.
-  :param dim: Normalized shape of the original norm.
-  :param eps: Epsilon of the original norm.
-  :param weight: Sharded weight (a slice of the original parameter).
-  """
-
-  def __init__(
-    self,
-    tp_mesh: DeviceMesh,
-    dim: torch.Size,
-    eps: float,
-    weight: Optional[nn.Parameter],
-  ):
-    super().__init__()
-    self.tp_mesh = tp_mesh
-    self.dim = dim
-    self.eps = eps
-    self.weight = weight
-
-  @classmethod
-  def from_rmsnorm(cls, tp_mesh: DeviceMesh, rmsnorm: nn.Module) -> "_DistributedRMSNorm":
-    """Build the distributed norm from a diffusers `RMSNorm`.
-
-    :param tp_mesh: Tensor parallel mesh.
-    :param rmsnorm: Original `RMSNorm` module.
-    :returns: The TP-aware replacement.
-    """
-
-    tp_size = tp_mesh.get_group().size()
-    tp_rank = tp_mesh.get_group().rank()
-    assert getattr(rmsnorm, "bias", None) is None, (
-      "The distributed LongCat-AudioDiT RMSNorm only implements the bias-free diffusers RMSNorm.")
-    weight = rmsnorm.weight
-    if weight is not None:
-      weight = nn.Parameter(weight.detach().chunk(tp_size, dim=0)[tp_rank].clone())
-    return cls(tp_mesh=tp_mesh, dim=rmsnorm.dim, eps=rmsnorm.eps, weight=weight)
-
-  def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-    """Normalize with the globally reduced mean square.
-
-    :param hidden_states: Sharded activation.
-    :returns: Normalized activation of the same shape.
-    """
-
-    input_dtype = hidden_states.dtype
-    if self.weight is not None:
-      assert hidden_states.shape[-1] == self.weight.shape[0], (
-        f"Expected the local feature width to match the sharded weight "
-        f"({hidden_states.shape[-1]} vs {self.weight.shape[0]}).")
-    variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
-    dist.all_reduce(variance, op=dist.ReduceOp.AVG, group=self.tp_mesh.get_group())
-    hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
-    if self.weight is not None:
-      hidden_states = self.weight.to(hidden_states.dtype) * hidden_states
-    return hidden_states.to(input_dtype)
+# `_DistributedRMSNorm` lives in `distributed/utils.py` so every planner can share it (the MOVA
+# planners need the same norm for `torch.nn.RMSNorm`, which exposes `normalized_shape` instead of
+# `dim`).
 
 
 def _shard_attention(attn: nn.Module, tp_mesh: DeviceMesh) -> None:

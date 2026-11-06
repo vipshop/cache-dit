@@ -2189,3 +2189,59 @@ def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
     has_separate_cfg=True,
     **kwargs,
   )
+
+
+@BlockAdapterRegister.register("MOVA")
+def mova_adapter(pipe, **kwargs) -> BlockAdapter:
+  """BlockAdapter for MOVA (`MOVAPipeline`, text/image to video + audio).
+
+  The transformer is cache-dit's vendored copy (`cache_dit.models.pipelines.mova.MOVAStack`), which
+  owns the fused denoising loop: the released pipeline drives the two towers layer by layer, so the
+  loop had to move into the block list for caching to see anything. Every fused block takes
+  `(hidden_states, encoder_hidden_states, *loop_invariant)` and returns both streams, which is
+  `Pattern_0` with `hidden_states` = video and `encoder_hidden_states` = audio.
+
+  Model specifics:
+
+  * `has_separate_cfg=True`: the pipeline runs one forward for the conditional branch and one for the
+    unconditional one, and both towers' velocities come out of the same forward.
+  * `check_forward_pattern=True`: the fused block's first two parameters are named `hidden_states` /
+    `encoder_hidden_states` and the built-in block is ours, so the contract is verifiable.
+  * `check_num_outputs=False`: the block returns a tuple of two tensors, and the annotation is read by
+    counting `torch.Tensor` occurrences, which is easy to break by editing a docstring.
+  * The type check is an explicit `isinstance` on the vendored stack: `_relaxed_assert` only warns for
+    non-diffusers modules, so without it a mis-wired pipeline would silently cache the wrong stack.
+  * No PatchFunctor: the timestep / text embeddings, the patchification and both rotary tables are
+    computed before the loop and passed in as arguments.
+
+  :param pipe: `MOVAPipeline` instance, or a wrapper exposing only `transformer`.
+  :param kwargs: Additional keyword arguments forwarded to the `BlockAdapter`.
+  :returns: The BlockAdapter covering the fused `blocks` stack.
+  """
+  from ...models.pipelines.mova.stack import MOVAFusedBlock, MOVAStack
+
+  transformer = getattr(pipe, "transformer", None)
+  if not isinstance(transformer, MOVAStack):
+    raise TypeError("MOVA caching needs a `MOVAStack` on `pipe.transformer`, got "
+                    f"{type(transformer).__name__} on {type(pipe).__name__}.")
+  assert isinstance(transformer.blocks, torch.nn.ModuleList), (
+    f"MOVA expects `transformer.blocks` to be an nn.ModuleList, got {type(transformer.blocks).__name__}."
+  )
+  assert len(transformer.blocks) == transformer.config.num_blocks, (
+    f"MOVA block stack holds {len(transformer.blocks)} blocks but the config declares "
+    f"{transformer.config.num_blocks}.")
+  assert isinstance(
+    transformer.blocks[0],
+    MOVAFusedBlock), (f"MOVA expects `transformer.blocks[0]` to be a MOVAFusedBlock, got "
+                      f"{type(transformer.blocks[0]).__name__}.")
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=transformer.blocks,
+    blocks_name="blocks",
+    forward_pattern=ForwardPattern.Pattern_0,
+    check_forward_pattern=True,
+    check_num_outputs=False,
+    has_separate_cfg=True,
+    **kwargs,
+  )
