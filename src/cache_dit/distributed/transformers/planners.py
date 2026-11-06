@@ -170,13 +170,13 @@ def _activate_cp_planners():
     ".longlive2", "LongLive2ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Magi2PreviewContextParallelismPlanner = _safe_import(  # noqa: F841
     ".magi2", "Magi2PreviewContextParallelismPlanner", ImportErrorContextParallelismPlanner)
-  NomasContextParallelismPlanner = _safe_import(  # noqa: F841
-    ".hy_nomas", "NomasContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   LongCatVideoAvatarContextParallelismPlanner = _safe_import(  # noqa: F841
     ".longcat_video_avatar",
     "LongCatVideoAvatarContextParallelismPlanner",
     ImportErrorContextParallelismPlanner,
   )
+  MOVAContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".mova", "MOVAContextParallelismPlanner", ImportErrorContextParallelismPlanner)
 
   try:
     import nunchaku  # noqa: F401
@@ -301,5 +301,7 @@ def _activate_tp_planners():
   )
   Magi2PreviewTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".magi2", "Magi2PreviewTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  MOVATensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".mova", "MOVATensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   NomasTensorParallelismPlanner = _safe_import(  # noqa: F841
     ".hy_nomas", "NomasTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

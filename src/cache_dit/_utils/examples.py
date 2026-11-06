@@ -23,7 +23,6 @@ from .utils import DEFAULT_RESIDUAL_DIFF_THRESHOLD
 logger = init_logger(__name__)
 
 __all__ = [
-  "hy_nomas_example",
   "flux_example",
   "flux_fill_example",
   "flux2_example",
@@ -105,6 +104,7 @@ __all__ = [
   "longlive2_example",
   "magi2_t2va_example",
   "magi2_i2va_example",
+  "mova_360p_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -196,6 +196,7 @@ _env_path_mapping = {
   "LONGCAT_VIDEO_AVATAR_DIR": "meituan-longcat/LongCat-Video-Avatar-1.5",
   "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
   "MAGI2_DIR": "sand-ai/MAGI-2-preview",
+  "MOVA_DIR": "OpenMOSS-Team/MOVA-360p",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -5137,6 +5138,116 @@ def magi2_i2va_example(args: argparse.Namespace, **kwargs) -> Example:
   """
 
   return _magi2_example(args, with_image=True)
+
+
+_MOVA_PROMPT = ("A close-up of a street musician playing a violin in the rain, water dripping from "
+                "the brim of his hat, the low rumble of traffic behind him")
+# Development geometry: 192x320 keeps the latent grid at 24x40, i.e. 720 video tokens for 9 frames.
+# The released setting is 720x1280 (`/tmp/ref/MOVA/scripts/inference_single.py:38-40`), i.e. 176k
+# tokens at 193 frames; the 360p-class 352x640 variant is ~43k. Both need offload or 2 cards, so they
+# stay opt-in via `--height/--width/--num-frames`.
+_MOVA_DEFAULT_HEIGHT = 192
+_MOVA_DEFAULT_WIDTH = 320
+
+
+def _mova_cache_config(args: argparse.Namespace, steps: int) -> Optional[DBCacheConfig]:
+  """DBCache config for MOVA.
+
+  `Bn_compute_blocks=1` is not optional: the context-parallel planner gathers the video stream on
+  the last fused block, and cache-dit only runs the tail blocks inside the Bn group.
+
+  :param args: CLI arguments.
+  :param steps: Denoising steps the pipeline will actually run.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+
+  if not args.cache:
+    return None
+  warmup_steps = args.max_warmup_steps
+  if warmup_steps >= steps:
+    # `--max-warmup-steps` (not `--warmup`, which only pre-warms the timer) defaults to 8; a run
+    # with fewer steps than that would never leave the warmup phase and report a bit-identical,
+    # zero-hit "cached" run.
+    clamped = max(steps - 1, 1)
+    logger.warning(
+      f"MOVA caches {steps} steps but `--max-warmup-steps={warmup_steps}` covers all of "
+      f"them; clamping to {clamped} so at least one step can hit the cache.")
+    warmup_steps = clamped
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=1,
+    max_warmup_steps=warmup_steps,
+    num_inference_steps=steps,
+    # One conditional and one unconditional forward per step, each returning both towers.
+    enable_separate_cfg=True,
+    residual_diff_threshold=args.residual_diff_threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=args.max_continuous_cached_steps,
+  )
+
+
+def _mova_post_init_hook(pipe: Any) -> None:
+  """Report MOVA's frame rate and audio rate to the writers.
+
+  :param pipe: The loaded pipeline.
+  """
+
+  pipe.fps = 24.0
+
+
+@ExampleRegister.register("mova_360p", default="openmoss/MOVA-360p")
+def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
+  """MOVA 360p image+text to video with audio example.
+
+  `MOVA_DIR` points at the checkpoint root (the directory holding `video_dit/`, `video_dit_2/`,
+  `audio_dit/`, `dual_tower_bridge/`, `video_vae/`, `audio_vae/`, `text_encoder/`, `tokenizer/` and
+  `scheduler/`). MOVA always conditions on a first frame, so `--image-path` is required.
+
+  The released script (`scripts/inference_single.py`) defaults to **720x1280 / 193 frames / 50 steps
+  / guidance 5.0**: the two video experts alone are ~52 GB in bf16, so it needs `--layerwise-offload`
+  or `--parallel tp` on two cards. Note that neither the 360p geometry the checkpoint name suggests
+  (640x360) nor any other odd-latent size is admissible: `check_inputs` requires both sides divisible
+  by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640** for a 360p-class run (an
+  8-pixel height crop, ~43k video tokens at 49 latent frames). The defaults below stay at the
+  development geometry; override with `--height/--width/--num-frames/--steps`.
+
+  :param args: CLI arguments.
+  :returns: The MOVA 360p t2va example.
+  """
+
+  from ..models.pipelines.mova import MOVAPipeline
+
+  height = _MOVA_DEFAULT_HEIGHT if args.height is None else args.height
+  width = _MOVA_DEFAULT_WIDTH if args.width is None else args.width
+  num_frames = 9 if args.num_frames is None else args.num_frames
+  steps = 4 if args.num_inference_steps is None else args.num_inference_steps
+  if args.image_path is None:
+    raise ValueError("mova_360p conditions on a first frame: pass `--image-path <file>`.")
+  if (num_frames - 1) % 4 != 0:
+    raise ValueError(f"mova_360p needs `num_frames - 1` divisible by 4, got {num_frames}.")
+
+  input_data = ExampleInputData(
+    prompt=_MOVA_PROMPT,
+    height=height,
+    width=width,
+    num_frames=num_frames,
+    num_inference_steps=steps,
+    guidance_scale=5.0,
+    extra_input_kwargs={"video_fps": 24.0},
+  )
+  input_data.image = load_image(args.image_path).convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2VA,
+      model_name_or_path=_path("OpenMOSS-Team/MOVA-360p", args),
+      pipeline_class=MOVAPipeline,
+      post_init_hook=_mova_post_init_hook,
+      extra_optimize_kwargs={"cache_config": _mova_cache_config(args, steps)},
+    ),
+    input_data=input_data,
+  )
 
 
 _HY_NOMAS_PROMPT = (
