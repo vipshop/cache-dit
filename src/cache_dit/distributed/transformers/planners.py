@@ -303,3 +303,5 @@ def _activate_tp_planners():
     ".magi2", "Magi2PreviewTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   MOVATensorParallelismPlanner = _safe_import(  # noqa: F841
     ".mova", "MOVATensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  NomasTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".hy_nomas", "NomasTensorParallelismPlanner", ImportErrorTensorParallelismPlanner)

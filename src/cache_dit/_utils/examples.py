@@ -5248,3 +5248,94 @@ def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
     ),
     input_data=input_data,
   )
+
+
+_HY_NOMAS_PROMPT = (
+  '{"Style": "Cinematic", "segments": [{"visual_description_long": "A red fox trots through fresh '
+  'snow at dusk, powder lifting around its paws.", "camera_description": "The camera tracks '
+  'alongside at eye level.", "lighting_description": "Cold blue light fades to warm lamplight.", '
+  '"aesthetic_description": "Crisp, quiet, cinematic realism.", "motion_description": "Short, '
+  'careful steps with the tail held low.", "background_description": "Snow-covered pines and a '
+  'distant cabin."}]}')
+# The released checkpoint is an 8-forward distilled student.
+_HY_NOMAS_FORWARDS = 8
+_HY_NOMAS_DEFAULT_THRESHOLD = 0.10
+
+
+def _hy_nomas_cache_config(args: argparse.Namespace) -> Optional[DBCacheConfig]:
+  """DBCache config for HY-Nomas' segment-autoregressive loop.
+
+  Two defaults differ from the shared CLI one:
+
+  * `max_warmup_steps` is capped at 1.  The distilled student runs eight forwards per segment, so
+    the shared default of eight would put every forward in the warmup window and leave nothing to
+    cache; every segment start is a forced full compute anyway (`NomasPipeline` arms
+    `force_refresh_step_hint`), so a single warmup step is enough.
+  * `num_inference_steps` counts **transformer forwards per segment**, not sigma grid points, which
+    is what the cache step counter tracks.
+
+  :param args: CLI arguments.
+  :returns: The cache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  steps = _HY_NOMAS_FORWARDS if args.num_inference_steps is None else args.num_inference_steps
+  if args.max_warmup_steps >= steps:
+    logger.warning(
+      "HY-Nomas: max_warmup_steps(%d) >= forwards per segment(%d), so caching can "
+      "never engage; lower `--ws`.", args.max_warmup_steps, steps)
+  threshold = args.residual_diff_threshold
+  if threshold == DEFAULT_RESIDUAL_DIFF_THRESHOLD:
+    threshold = _HY_NOMAS_DEFAULT_THRESHOLD
+  return DBCacheConfig(
+    Fn_compute_blocks=2,
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, 1),
+    num_inference_steps=steps,
+    max_continuous_cached_steps=2,
+    enable_separate_cfg=False,
+    residual_diff_threshold=threshold,
+  )
+
+
+@ExampleRegister.register("hy_nomas", default="tencent/Hy-Nomas")
+def hy_nomas_example(args: argparse.Namespace, **kwargs) -> Example:
+  """HY-Nomas segment-autoregressive text-to-video example.
+
+  The CLI defaults to the development geometry (352x640, ten latent frames per event) because the
+  released clip is 720x1280 with many events, i.e. a multi-minute run per configuration. Pass
+  `--num-frames 80` to exercise two events, which is the smallest run that reads back cached K/V.
+
+  :param args: CLI arguments.
+  :returns: The configured example.
+  """
+  from ..models.pipelines.hy_nomas import NomasPipeline
+
+  if getattr(args, "parallel_vae", False):
+    raise NotImplementedError(
+      "HY-Nomas decodes with the vendored PixelUMM expert, which is not a diffusers autoencoder and "
+      "therefore has no VAE parallelism planner; `--parallel-vae` is not applicable.")
+  if getattr(args, "attn", None) is not None:
+    raise NotImplementedError(
+      "HY-Nomas owns its attention plan (varlen log-sum-exp merge / FlexAttention block mask) and "
+      "bypasses cache-dit's dispatcher in exactly one place; `--attn` cannot be applied.")
+  height = 352 if args.height is None else args.height
+  width = 640 if args.width is None else args.width
+  steps = _HY_NOMAS_FORWARDS if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2V,
+      model_name_or_path=_path("tencent/Hy-Nomas", args),
+      pipeline_class=NomasPipeline,
+      extra_optimize_kwargs={
+        "cache_config": _hy_nomas_cache_config(args),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_HY_NOMAS_PROMPT,
+      height=height,
+      width=width,
+      num_inference_steps=steps,
+    ),
+  )
