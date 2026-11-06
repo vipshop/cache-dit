@@ -252,6 +252,67 @@ def test_cute_gemm_native_layout_applies_rank_scales() -> None:
   assert _relative_l2(bf16_actual, actual) < 2e-3
 
 
+@pytest.mark.parametrize("rank", [32, 64, 128])
+def test_row_major_pipeline_matches_native_runtime(rank: int) -> None:
+  """The CuTe producer plus the row-major GEMM must match the native runtime end to end."""
+
+  _require_sm120()
+  torch.manual_seed(20261115)
+  in_features = out_features = 512
+  linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
+  calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
+  state_dict = quantize_linear_svdq_w4a4(
+    linear,
+    [calibration],
+    rank=rank,
+    precision="nvfp4",
+    device="cuda:0",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+  )
+  native = SVDQW4A4Linear(in_features,
+                          out_features,
+                          rank=rank,
+                          precision="nvfp4",
+                          runtime_kernel="native",
+                          torch_dtype=torch.bfloat16).cuda().eval()
+  cute = SVDQW4A4Linear(in_features,
+                        out_features,
+                        rank=rank,
+                        precision="nvfp4",
+                        runtime_kernel="cute",
+                        torch_dtype=torch.bfloat16).cuda().eval()
+  for module in (native, cute):
+    module.load_state_dict(state_dict)
+  x = torch.randn(512, in_features, dtype=torch.bfloat16, device="cuda:0")
+  with torch.inference_mode():
+    expected = native(x)
+    # The producer consumes the converted pack: `_cute_proj_down` is row-major and `_cute_smooth`
+    # is the plain per-channel vector, unlike the fragment-packed native checkpoint tensors.
+    qact, ascales, lora_act = svdq_quantize_w4a4(input=x,
+                                                 lora_down=cute._cute_proj_down,
+                                                 smooth=cute._cute_smooth,
+                                                 lora_layout="row_major",
+                                                 fp4=True,
+                                                 pad_size=256)
+    actual = svdq_gemm_w4a4(qact,
+                            cute._cute_qweight,
+                            ascales,
+                            cute._cute_wscales,
+                            lora_act,
+                            cute._cute_proj_up,
+                            cute._cute_bias,
+                            cute._cute_wcscales,
+                            runtime="cute",
+                            lora_layout="row_major",
+                            fp4=True,
+                            alpha=cute.wtscale)
+  assert lora_act.dtype == torch.bfloat16
+  assert actual.shape[0] >= x.shape[0]
+  assert torch.isfinite(actual).all()
+  assert _relative_l2(actual[:x.shape[0]], expected) < 5e-3
+
+
 @pytest.mark.parametrize("lora_layout", ["native", "row_major"])
 def test_cute_gemm_large_m_dispatch(lora_layout: str) -> None:
   """Cover the M >= 16384 main-first schedule for both LoRA-D layouts."""

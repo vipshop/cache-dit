@@ -241,11 +241,15 @@ def _cute_call(case: Case):
 
 
 def _row_major_quantize(x: torch.Tensor, module: SVDQW4A4Linear):
-  """Run the CuTe activation producer that emits row-major BF16 D."""
+  """Run the CuTe activation producer that emits row-major BF16 D.
+
+  The producer consumes the converted CuTe pack (`_cute_proj_down` is row-major and `_cute_smooth`
+  is the plain vector), not the fragment-packed native checkpoint tensors.
+  """
   return svdq_quantize_w4a4(
     input=x,
-    lora_down=module.proj_down,
-    smooth=module.smooth_factor,
+    lora_down=module._cute_proj_down,
+    smooth=module._cute_smooth,
     lora_layout="row_major",
     fp4=True,
     pad_size=256,
