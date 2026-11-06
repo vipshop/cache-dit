@@ -607,3 +607,14 @@ S5 与 S3 in-flight 字节相同、barrier 翻倍，符合预期；S6/S7 增加�
 12 格三轮：2/4/8K 全部在 ±0.5% 内；16K rank32/64/128 相对 LoRA-first 分别 **-1.52%/-1.55%/-0.47%**。94 tests 通过。该分支为后续 16K 专用全 G2R/其他结构保留独立入口。
 
 后续零寄存器实验：main-first 16K 分支对下一 K tile 的 A/SFA 发 `prefetch.global.L1`。三轮结果 rank32/64/128 分别 **+16.18%/+15.98%/+14.99%**，地址计算与预取指令开销远大于收益，已回退；不要重复。
+
+## 23. Helper 微优化逐项实验（2026-11-06）
+
+class 重构后按“scale 融合 -> 地址复用”顺序验证，均保持 94 tests：
+
+1. `apply_inverse_scale` 列主序融合：删除 `inv_scale[]`，逐列计算倒数并立即应用。STACK 仍为 8，说明该数组不是 stack 根因；12 格最大 +0.26%，无收益，回退。
+2. `apply_residual_scale` 列主序融合：删除 `col_scale[]/col_bias[]`，保持 alpha 后 fmaf 的舍入顺序。2/4/8K 明显退化，最大 +1.50%（4K rank64）；回退。
+3. `load_act_A_g2r` 地址上下文：16K main-first SASS 已用 uniform-register 基址与立即数偏移表达 A/SFA LDG；线程不变量已被 ptxas 复用，没有证据支持手工地址上下文，因此不引入新结构。
+4. smem FP32 accumulator：BM128×BN256 的 C 为 32768 floats=128KB，超过 SM120 约99KB可用 smem；且每个 K stage 读写 C 会放大 shared 压力，数学与容量上均不可行。
+
+结论：TMA/LDSM/STSM 已提供硬件向量化；helper 级数组融合和地址复用没有收益。保留 76d9071 的 class 重构与 5040fe7 的长序列 main-first 分支，后续优化应回到流水结构而非这些微改写。
