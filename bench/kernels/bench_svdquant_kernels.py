@@ -243,10 +243,36 @@ def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
   )
 
 
-def _prepare_flash_case(case: Case, quantize_smooth) -> None:
+def _prepare_flash_case(case: Case, quantize_smooth, requested_backend: str) -> str:
+  """Prepare the FlashInfer activation pack and return the backend actually in use.
+
+  FlashInfer renamed its SVDQuant backends between releases (`cutlass` in 0.6.x,
+  `cute-dsl` / `cutlass-sm120` in 0.7.x), so the requested label is only a probe order.
+
+  :param case: Benchmark case whose FlashInfer tensors are filled in place.
+  :param quantize_smooth: FlashInfer smooth-quantize entry point.
+  :param requested_backend: Backend encoded in the impl label.
+  :returns: The backend name accepted by the installed FlashInfer.
+  :raises RuntimeError: If no probeable backend works.
+  """
+
   global_scale = ((448.0 * 6.0) /
                   (case.x.float() * case.smooth.float().unsqueeze(0)).abs().max()).to(torch.float32)
-  qact, a_sf = quantize_smooth(case.x, case.smooth, global_scale, backend="cute-dsl")
+  candidates = [requested_backend, "cutlass", "cute-dsl"]
+  resolved = None
+  for name in dict.fromkeys(candidates):
+    try:
+      qact, a_sf = quantize_smooth(case.x, case.smooth, global_scale, backend=name)
+    except Exception as exc:
+      print(f"[bench] FlashInfer backend {name!r} unavailable: {exc}", file=sys.stderr)
+      continue
+    resolved = name
+    break
+  if resolved is None:
+    raise RuntimeError("no FlashInfer SVDQuant backend works on this host")
+  if resolved != requested_backend:
+    print(f"[bench] using FlashInfer backend {resolved!r} instead of {requested_backend!r}",
+          file=sys.stderr)
   alpha_scalar = 1.0 / float(global_scale.item())
   case.qact_flash = qact.view(torch.uint8).contiguous()
   case.a_sf_flash = a_sf.view(torch.uint8).flatten().contiguous()
@@ -269,6 +295,7 @@ def run_case(m: int,
   mm_nvfp4_svdquant = None
   quantize_smooth = None
   flashinfer_skip: str | None = None
+  flash_backend: str | None = None
   case = prepare_case(m, n, k, rank, seed, device, quantize_smooth=None)
   native_out = _native_call(case)
   native_us = bench(lambda: _native_call(case), warmup, iterations)
@@ -366,8 +393,8 @@ def run_case(m: int,
             "skipped": flashinfer_skip,
           })
           continue
-        _prepare_flash_case(case, quantize_smooth)
-      backend = impl.split("+", 1)[1]
+        flash_backend = _prepare_flash_case(case, quantize_smooth, impl.split("+", 1)[1])
+      backend = flash_backend or impl.split("+", 1)[1]
       call = lambda: _flashinfer_call(case, mm_nvfp4_svdquant, backend)
       out = call()
       rel = None
