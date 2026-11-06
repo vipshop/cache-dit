@@ -605,3 +605,5 @@ S5 与 S3 in-flight 字节相同、barrier 翻倍，符合预期；S6/S7 增加�
 实现：Traits 增加 `kLoRAFirst`；producer/consumer 的 main/LoRA 顺序由编译期开关控制。host 在 `M>=16384` 选择 main-first，M<=8192 保持 LoRA-first。
 
 12 格三轮：2/4/8K 全部在 ±0.5% 内；16K rank32/64/128 相对 LoRA-first 分别 **-1.52%/-1.55%/-0.47%**。94 tests 通过。该分支为后续 16K 专用全 G2R/其他结构保留独立入口。
+
+后续零寄存器实验：main-first 16K 分支对下一 K tile 的 A/SFA 发 `prefetch.global.L1`。三轮结果 rank32/64/128 分别 **+16.18%/+15.98%/+14.99%**，地址计算与预取指令开销远大于收益，已回退；不要重复。
