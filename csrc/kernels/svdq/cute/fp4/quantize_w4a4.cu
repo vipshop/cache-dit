@@ -409,8 +409,8 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
 
 }  // namespace
 
-void quantize_w4a4(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
-                   ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales) {
+void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
+                             ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales) {
   require(input.valid() && output.valid() && ascales.valid() && smooth.valid(),
           "quantize_w4a4 requires input/output/ascales/smooth");
   require(input.dtype() == ::Tensor::BF16 && smooth.dtype() == ::Tensor::BF16,

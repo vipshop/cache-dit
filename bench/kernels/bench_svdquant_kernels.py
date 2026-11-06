@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Compare SVDQuant kernels on identical shapes and rank settings.
 
-The benchmark intentionally measures *kernel-only* paths. It prepares each backend's required
-activation/weight pack once, then times one GEMM call with CUDA events. FlashInfer activation
-quantization uses its own standard 128x4 pack; native/cute use cache-dit's v1 activation pack.
+The benchmark reports three timings per runtime. `quantize` is the native activation quantizer plus
+LoRA-down reduction (shared by both runtimes), `quantize-row-major` is the CuTe producer that emits
+row-major BF16 D instead, `native`/`cute`/`cute-row-major` are *kernel-only* GEMM timings (each
+pack is prepared once and only the GEMM is timed), and the `*+e2e` rows measure quantize + GEMM.
+`speedup_vs_native` compares against the matching native baseline, so kernel rows use the
+kernel-only baseline and e2e rows use the e2e baseline. FlashInfer activation quantization uses its
+own standard 128x4 pack; native/cute use cache-dit's v1 activation pack.
 
 Examples:
 
@@ -23,6 +27,9 @@ Examples:
 The FlashInfer kernel-only timings use its standard weight/activation pack. They are not
 numerically interchangeable with cache-dit's v1 activation pack; `finite` is reported for
 FlashInfer, while `rel_l2_vs_native` is only meaningful for cache-dit's cute kernel.
+
+The FlashInfer implementations are optional. When FlashInfer cannot be imported, those rows are
+reported as skipped and the cache-dit native/cute measurements still run to completion.
 """
 
 from __future__ import annotations
@@ -35,6 +42,8 @@ from dataclasses import dataclass
 
 import torch
 
+from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.packing import convert_svdq_nvfp4_pack_to_cute
 from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
@@ -46,7 +55,18 @@ DEFAULT_SHAPES = (
   (8192, 6144, 3072),
   (16384, 8192, 8192),
 )
-DEFAULT_IMPLS = ("native", "cute", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120")
+DEFAULT_IMPLS = (
+  "quantize",
+  "quantize-row-major",
+  "native",
+  "cute",
+  "cute-row-major",
+  "native+e2e",
+  "cute+e2e",
+  "cute-row-major+e2e",
+  "flashinfer+cute-dsl",
+  "flashinfer+cutlass-sm120",
+)
 FLASHINFER_RANKS = {
   "flashinfer+cute-dsl": {32, 64, 128},
   "flashinfer+cutlass-sm120": {32, 64},
@@ -64,6 +84,9 @@ class Case:
   qact_cute: torch.Tensor
   a_sf_cute: torch.Tensor
   lora_act_cute: torch.Tensor
+  qact_rm: torch.Tensor
+  a_sf_rm: torch.Tensor
+  lora_act_rm: torch.Tensor
   qweight_std: torch.Tensor
   wscales_std: torch.Tensor
   wscales_flash: torch.Tensor
@@ -157,6 +180,7 @@ def prepare_case(m: int,
 
   qact_native, a_sf_native, lora_act_native = native_module.quantize(x)
   qact_cute, a_sf_cute, lora_act_cute = cute_module.quantize(x)
+  qact_rm, a_sf_rm, lora_act_rm = _row_major_quantize(x, cute_module)
   qweight_std_u8 = qweight_std.view(torch.uint8).contiguous()
   wscales_std = wscales_std.contiguous()
   wscales_std_u8 = wscales_std.view(torch.uint8).flatten().contiguous()
@@ -189,6 +213,9 @@ def prepare_case(m: int,
     qact_cute=qact_cute,
     a_sf_cute=a_sf_cute,
     lora_act_cute=lora_act_cute,
+    qact_rm=qact_rm,
+    a_sf_rm=a_sf_rm,
+    lora_act_rm=lora_act_rm,
     qweight_std=qweight_std_u8,
     wscales_std=wscales_std,
     wscales_flash=wscales_std_u8,
@@ -213,6 +240,62 @@ def _cute_call(case: Case):
   return case.cute_module.forward_quant(case.qact_cute, case.a_sf_cute, case.lora_act_cute)
 
 
+def _row_major_quantize(x: torch.Tensor, module: SVDQW4A4Linear):
+  """Run the CuTe activation producer that emits row-major BF16 D.
+
+  The producer consumes the converted CuTe pack (`_cute_proj_down` is row-major and `_cute_smooth`
+  is the plain vector), not the fragment-packed native checkpoint tensors.
+  """
+  return svdq_quantize_w4a4(
+    input=x,
+    lora_down=module._cute_proj_down,
+    smooth=module._cute_smooth,
+    lora_layout="row_major",
+    fp4=True,
+    pad_size=256,
+  )
+
+
+def _cute_row_major_call(case: Case):
+  """Run the CuTe GEMM on the row-major BF16 D produced by the CuTe producer."""
+  module = case.cute_module
+  return svdq_gemm_w4a4(
+    act=case.qact_rm,
+    wgt=module._cute_qweight,
+    ascales=case.a_sf_rm,
+    wscales=module._cute_wscales,
+    lora_act_in=case.lora_act_rm,
+    lora_up=module._cute_proj_up,
+    bias=module._cute_bias,
+    wcscales=module._cute_wcscales,
+    runtime="cute",
+    lora_layout="row_major",
+    fp4=True,
+    alpha=module.wtscale,
+  )
+
+
+def _cute_row_major_e2e(case: Case):
+  """Row-major pipeline: CuTe producer plus the matching CuTe GEMM."""
+  module = case.cute_module
+  qact, a_sf, lora_act = _row_major_quantize(case.x, module)
+  out = svdq_gemm_w4a4(
+    act=qact,
+    wgt=module._cute_qweight,
+    ascales=a_sf,
+    wscales=module._cute_wscales,
+    lora_act_in=lora_act,
+    lora_up=module._cute_proj_up,
+    bias=module._cute_bias,
+    wcscales=module._cute_wcscales,
+    runtime="cute",
+    lora_layout="row_major",
+    fp4=True,
+    alpha=module.wtscale,
+  )
+  return out[:case.x.shape[0]]
+
+
 def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
   return mm_nvfp4_svdquant(
     case.qact_flash,
@@ -228,10 +311,36 @@ def _flashinfer_call(case: Case, mm_nvfp4_svdquant, backend: str):
   )
 
 
-def _prepare_flash_case(case: Case, quantize_smooth) -> None:
+def _prepare_flash_case(case: Case, quantize_smooth, requested_backend: str) -> str:
+  """Prepare the FlashInfer activation pack and return the backend actually in use.
+
+  FlashInfer renamed its SVDQuant backends between releases (`cutlass` in 0.6.x,
+  `cute-dsl` / `cutlass-sm120` in 0.7.x), so the requested label is only a probe order.
+
+  :param case: Benchmark case whose FlashInfer tensors are filled in place.
+  :param quantize_smooth: FlashInfer smooth-quantize entry point.
+  :param requested_backend: Backend encoded in the impl label.
+  :returns: The backend name accepted by the installed FlashInfer.
+  :raises RuntimeError: If no probeable backend works.
+  """
+
   global_scale = ((448.0 * 6.0) /
                   (case.x.float() * case.smooth.float().unsqueeze(0)).abs().max()).to(torch.float32)
-  qact, a_sf = quantize_smooth(case.x, case.smooth, global_scale, backend="cute-dsl")
+  candidates = [requested_backend, "cutlass", "cute-dsl"]
+  resolved = None
+  for name in dict.fromkeys(candidates):
+    try:
+      qact, a_sf = quantize_smooth(case.x, case.smooth, global_scale, backend=name)
+    except Exception as exc:
+      print(f"[bench] FlashInfer backend {name!r} unavailable: {exc}", file=sys.stderr)
+      continue
+    resolved = name
+    break
+  if resolved is None:
+    raise RuntimeError("no FlashInfer SVDQuant backend works on this host")
+  if resolved != requested_backend:
+    print(f"[bench] using FlashInfer backend {resolved!r} instead of {requested_backend!r}",
+          file=sys.stderr)
   alpha_scalar = 1.0 / float(global_scale.item())
   case.qact_flash = qact.view(torch.uint8).contiguous()
   case.a_sf_flash = a_sf.view(torch.uint8).flatten().contiguous()
@@ -253,20 +362,81 @@ def run_case(m: int,
   # FlashInfer impl, after cache-dit's kernels have already been measured.
   mm_nvfp4_svdquant = None
   quantize_smooth = None
+  flashinfer_skip: str | None = None
+  flash_backend: str | None = None
   case = prepare_case(m, n, k, rank, seed, device, quantize_smooth=None)
   native_out = _native_call(case)
   native_us = bench(lambda: _native_call(case), warmup, iterations)
+  # End-to-end rows additionally include the activation quantization and LoRA-down reduction,
+  # which is what a real SVDQW4A4Linear forward pays on top of the GEMM.
+  native_e2e_out = case.native_module(case.x)
+  native_e2e_us = bench(lambda: case.native_module(case.x), warmup, iterations)
   rows = []
 
   for impl in impls:
+    if impl == "quantize":
+      # The activation quantizer plus LoRA-down reduction, shared by both runtimes. e2e rows are
+      # this step followed by the GEMM.
+      elapsed = bench(lambda: case.native_module.quantize(case.x), warmup, iterations)
+      rows.append({
+        "m": m,
+        "n": n,
+        "k": k,
+        "rank": rank,
+        "impl": impl,
+        "median_us": elapsed,
+        "speedup_vs_native": None,
+        "rel_l2_vs_native": None,
+        "finite": None,
+        "skipped": None,
+      })
+      continue
+    if impl == "quantize-row-major":
+      # The CuTe producer emits row-major BF16 D instead of the native FP32 fragment.
+      elapsed = bench(lambda: _row_major_quantize(case.x, case.cute_module), warmup, iterations)
+      rows.append({
+        "m": m,
+        "n": n,
+        "k": k,
+        "rank": rank,
+        "impl": impl,
+        "median_us": elapsed,
+        "speedup_vs_native": None,
+        "rel_l2_vs_native": None,
+        "finite": None,
+        "skipped": None,
+      })
+      continue
     if impl == "native":
       call = lambda: _native_call(case)
       out = native_out
       rel = 0.0
+      baseline_us = native_us
     elif impl == "cute":
       call = lambda: _cute_call(case)
       out = _cute_call(case)
       rel = ((out.float() - native_out.float()).norm() / native_out.float().norm()).item()
+      baseline_us = native_us
+    elif impl == "native+e2e":
+      call = lambda: case.native_module(case.x)
+      out = native_e2e_out
+      rel = 0.0
+      baseline_us = native_e2e_us
+    elif impl == "cute+e2e":
+      call = lambda: case.cute_module(case.x)
+      out = call()
+      rel = ((out.float() - native_e2e_out.float()).norm() / native_e2e_out.float().norm()).item()
+      baseline_us = native_e2e_us
+    elif impl == "cute-row-major":
+      call = lambda: _cute_row_major_call(case)
+      out = call()
+      rel = ((out.float() - native_out.float()).norm() / native_out.float().norm()).item()
+      baseline_us = native_us
+    elif impl == "cute-row-major+e2e":
+      call = lambda: _cute_row_major_e2e(case)
+      out = call()
+      rel = ((out.float() - native_e2e_out.float()).norm() / native_e2e_out.float().norm()).item()
+      baseline_us = native_e2e_us
     elif impl in FLASHINFER_RANKS:
       if rank not in FLASHINFER_RANKS[impl]:
         rows.append({
@@ -282,13 +452,49 @@ def run_case(m: int,
           "skipped": f"unsupported rank {rank}",
         })
         continue
+      if flashinfer_skip is not None:
+        rows.append({
+          "m": m,
+          "n": n,
+          "k": k,
+          "rank": rank,
+          "impl": impl,
+          "median_us": None,
+          "speedup_vs_native": None,
+          "rel_l2_vs_native": None,
+          "finite": None,
+          "skipped": flashinfer_skip,
+        })
+        continue
       if mm_nvfp4_svdquant is None:
-        mm_nvfp4_svdquant, quantize_smooth = _load_flashinfer(flashinfer_path)
-        _prepare_flash_case(case, quantize_smooth)
-      backend = impl.split("+", 1)[1]
+        try:
+          mm_nvfp4_svdquant, quantize_smooth = _load_flashinfer(flashinfer_path)
+          flash_backend = _prepare_flash_case(case, quantize_smooth, impl.split("+", 1)[1])
+        except Exception as exc:
+          # FlashInfer is optional: report the impl as skipped so the cache-dit kernels still run
+          # on hosts without a working FlashInfer instead of aborting the whole sweep. This also
+          # covers imports that succeed while every backend rejects the device or fails to load.
+          flashinfer_skip = f"flashinfer unavailable ({type(exc).__name__})"
+          mm_nvfp4_svdquant = None
+          print(f"[bench] skipping {impl}: {exc}", file=sys.stderr)
+          rows.append({
+            "m": m,
+            "n": n,
+            "k": k,
+            "rank": rank,
+            "impl": impl,
+            "median_us": None,
+            "speedup_vs_native": None,
+            "rel_l2_vs_native": None,
+            "finite": None,
+            "skipped": flashinfer_skip,
+          })
+          continue
+      backend = flash_backend or impl.split("+", 1)[1]
       call = lambda: _flashinfer_call(case, mm_nvfp4_svdquant, backend)
       out = call()
       rel = None
+      baseline_us = native_us
     else:
       raise ValueError(f"unknown implementation {impl!r}")
 
@@ -300,7 +506,7 @@ def run_case(m: int,
       "rank": rank,
       "impl": impl,
       "median_us": elapsed,
-      "speedup_vs_native": native_us / elapsed,
+      "speedup_vs_native": baseline_us / elapsed,
       "rel_l2_vs_native": rel,
       "finite": bool(torch.isfinite(out).all()),
       "skipped": None,

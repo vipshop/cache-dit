@@ -15,10 +15,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
          py::arg("out"), py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"),
          py::arg("lora_up"), py::arg("bias"), py::arg("fp4"), py::arg("alpha"), py::arg("wcscales"),
          py::arg("act_unsigned"), py::arg("stage") = 1)
-    .def("gemm_w4a4", &svdq::ops::gemm_w4a4)
-    .def("gemm_w4a4_f32d", &svdq::ops::gemm_w4a4_f32d)
-    .def("quantize_w4a4", &svdq::ops::quantize_w4a4)
-    .def("quantize_w4a4_act_fuse_lora", &svdq::ops::quantize_w4a4_act_fuse_lora)
+    .def("gemm_w4a4_cute", &svdq::ops::gemm_w4a4_cute, py::arg("act"), py::arg("wgt"),
+         py::arg("out"), py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"),
+         py::arg("lora_up"), py::arg("bias"), py::arg("wcscales"), py::arg("lora_scales"),
+         py::arg("alpha"), py::arg("lora_layout") = "native")
+    .def("quantize_w4a4_row_major", &svdq::ops::quantize_w4a4_row_major)
+    .def("quantize_w4a4_native", &svdq::ops::quantize_w4a4_native)
     .def("quantize_w4a4_wgt", &svdq::ops::quantize_w4a4_wgt);
 
   module.def_submodule("utils")

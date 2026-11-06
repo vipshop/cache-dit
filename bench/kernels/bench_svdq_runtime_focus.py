@@ -7,10 +7,10 @@ from pathlib import Path
 
 import torch
 
-from cache_dit.kernels import svdq_gemm_w4a4_native
-from cache_dit.kernels import svdq_gemm_w4a4_native_v2
-from cache_dit.kernels import svdq_quantize_w4a4_act_fuse_lora
-from cache_dit.kernels import svdq_quantize_w4a4_wgt
+from cache_dit.kernels import svdq_gemm_w4a4
+from cache_dit.kernels import svdq_gemm_w4a4_ext
+from cache_dit.kernels import svdq_quantize_w4a4
+from cache_dit.quantization.svdquant.packing import pack_svdq_w4a4_linear_tensors
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -80,6 +80,21 @@ def benchmark(op, kwargs: dict[str, object], *, warmup: int, iters: int) -> dict
   }
 
 
+def pack_int4_weight(weight, group_size: int = 64):
+  """Pack a dense weight into the native INT4 W4A4 layout with per-group scales.
+
+  :param weight: Dense weight with shape `[out_features, in_features]`.
+  :param group_size: Scale group size used by the INT4 runtime.
+  :returns:`(qweight, wscales)` in the runtime layout.
+  """
+
+  out_features, in_features = weight.shape
+  scale = weight.abs().view(out_features, in_features // group_size, group_size).amax(-1)
+  scale = (scale / 7.0).clamp_min(1e-8).view(out_features, 1, -1, 1)
+  qweight, wscales, *_ = pack_svdq_w4a4_linear_tensors(weight, scale)
+  return qweight, wscales.to(weight.dtype)
+
+
 def select_kernel(native_impl: str):
   """Return the requested runtime kernel wrapper.
 
@@ -88,8 +103,22 @@ def select_kernel(native_impl: str):
   """
 
   if native_impl == "v1":
-    return svdq_gemm_w4a4_native
-  return svdq_gemm_w4a4_native_v2
+    return native_v1_kernel
+  return svdq_gemm_w4a4
+
+
+def native_v1_kernel(**kwargs):
+  """Route the legacy INT4 native v1 kernel through the full-ABI escape hatch.
+
+  `svdq_gemm_w4a4` maps the native runtime to the v2 INT4 kernel, so benchmarks that still compare
+  against v1 have to use `svdq_gemm_w4a4_ext`, which allocates its own output buffer.
+
+  :param kwargs: Keyword arguments shared with `svdq_gemm_w4a4`.
+  :returns: Dense output tensor.
+  """
+
+  kwargs.pop("output_dtype", None)
+  return svdq_gemm_w4a4_ext(**kwargs)
 
 
 def maybe_set_block_env(native_impl: str, block_m: int) -> tuple[str, str | None]:
@@ -145,14 +174,15 @@ def main() -> None:
   lora_up = torch.randn(args.embed_dim, args.rank, device=device, dtype=dtype) * 0.01
   bias = torch.randn(args.embed_dim, device=device, dtype=dtype) * 0.01
 
-  qact, ascales, lora_act = svdq_quantize_w4a4_act_fuse_lora(
+  qact, ascales, lora_act = svdq_quantize_w4a4(
     input=activations,
     lora_down=lora_down,
     smooth=smooth,
+    lora_layout="native",
     fp4=False,
     pad_size=256,
   )
-  qweight, wscales = svdq_quantize_w4a4_wgt(
+  qweight, wscales = pack_int4_weight(
     torch.randn(args.embed_dim, args.embed_dim, device=device, dtype=dtype))
 
   kernel = select_kernel(args.native_impl)

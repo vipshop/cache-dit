@@ -80,7 +80,7 @@ SVDQW4A4Linear.quantize / forward_quant
 
 - `csrc/kernels/svdq/native/`：旧 native 实现，使用 `svdq::native_kernels`。
 - `csrc/kernels/svdq/cute/fp4/`：独立 CuTe 实现，使用 `svdq::cute_kernels`。
-- cute 文件和 C++ kernel/host/launch 名不重复携带 `_cute`；Python 的 `svdq_*_cute` 公开包装名可保留以区分公开 runtime。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`；但 `ops.h`/pybind 的**对外**入口按后端显式命名（`gemm_w4a4_cute`、`quantize_w4a4_native`、`quantize_w4a4_row_major`），Python 侧只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，用 `runtime`（`native`/`cute`）× `lora_layout`（`native`/`row_major`）两个正交维度选择，不再有 `svdq_*_cute` / `_native_v2` 这类平行包装（PR #1259）。
 - `gemm_w4a4.cu/.cuh/.h`：NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
 - `quantize_w4a4.cu`：`quantize_w4a4_fused_lora_kernel`，SVDQ 上半段 activation quant + LoRA-down 融合。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
@@ -183,6 +183,8 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - LoRA-first + 首K tile A/SFA 预取已保留：≤4K rank32/64/128 受益1%–2.6%，8K rank128/64 受益，16K rank32/64 回退约1.4%；长序列建议 native。wait 内移和 BK64/S3 无收益，未保留。
 - 16K 已增加 `kLoRAFirst=false` 的 main-first 专用实例：local load/store sectors 归零，16K 相对 LoRA-first 快1.5%，2/4/8K在±0.5%内。剩余差距仍是 long_scoreboard/sleeping；下一步全 G2R 专用 kernel 或更大 tile/more-warp 结构，统一数据见 §17/§19/§21/§22。
 - FLUX e2e（GPU4、1024²、28 steps、`--compile`、单次）native 6.06s / cute 6.19s / BF16 base 16.99s，即 2.80x/2.74x 于 base，cute/native=1.021。**SVDQ 路径出图不可复现**：同配置两次运行仅 34–36dB，与 native↔cute 的 33.9dB 同量级，故 e2e PSNR 不能判别 native/cute 数值差异，只能判别量化与否；kernel 等价性看 parity 用例。见 §24。
+- **PRO 6000（SM120）四方对比**（native / cute+native D / cute+row_major D / FlashInfer cute-dsl）：`cute`+`row_major` D 在 kernel-only 15 格里 14 格最快（相对 native −0.5%~−10.3%），e2e 在 rank≤64 的 8/8 格最优（−3.7%~−12.6%）；rank128 时 CuTe producer 退化 22%–45%，e2e 应回退 `cute`+native D 或 native；FlashInfer cute-dsl 在 ≤8K 慢 5%–33%，只在 16K rank32 快 1.9%。数据与 dispatch 规则见 §25，未经 PRO 5000/H800 复测前不要写成默认。
+- `quantize` 占 e2e 的 14%–31%，且随 rank 上升；只用 kernel-only 的数字会高估收益。两套 producer 只能吃各自的权重/平滑张量（`row_major` 用 `_cute_proj_down`/`_cute_smooth`，`native` 用 fragment-packed 的 `proj_down`/`smooth_factor`），混用是静默数值损坏。
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。

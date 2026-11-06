@@ -661,3 +661,79 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 - 抖动来源未定位。已排除 `svd_lowrank` 的随机初始化（`lowrank.py` 用 `fork_rng` + 固定 `_SVD_LOWRANK_SEED`）。剩余候选：量化阶段其他随机源、以及 GEMM 归约顺序。要复现须先用固定 latent/固定权重做 bit-exact A/B。
 - kernel 级数值等价性仍由 `tests/kernels/test_svdquant_cute.py` 的 parity 用例保证（rank32/64/128，完整层 relative L2 ~2e-3），不依赖图像 PSNR。
 - 视觉上三图同构图、`Hello world` 文案完整可读、无结构伪影；量化版与 BF16 的差异集中在毛色饱和度与条纹对比度（mean |diff| ≈ 18.3/255，SVDQ 版平均亮度高约 8），属 NVFP4 量化的色调偏差，不是 kernel 缺陷。
+
+## 25. PRO 6000 四方对比与 `lora_layout` dispatch（2026-11-07）
+
+口径：RTX PRO 6000 Blackwell（SM120）、`CUDA 13.0.88`、`torch 2.10.0+cu130`、`bench/kernels/bench_svdquant_kernels.py`、CUDA Event median、warmup 10 / iters 50、单轮内比较。第四节为 FlashInfer `0.7.3.dev20261106` 的 `cute-dsl` kernel（用它自己的 128x4 pack，只报 `finite`）。kernel-only 与 producer/e2e 来自同一台机器的两轮运行，跨轮单格漂移可达 30%，不要跨轮拼接。
+
+### 25.1 接口现状（PR #1259 之后）
+
+`gemm_w4a4` 与 `gemm_w4a4_f32d` 已合并为一个入口，`bool f32d` 换成 `enum class LoraLayout { kNative, kRowMajor }`；C++ 对外名字是 `gemm_w4a4_cute` / `quantize_w4a4_native` / `quantize_w4a4_row_major`。Python 只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，用两个正交维度选择：
+
+| runtime | lora_layout | LoRA-down 项 D |
+|---|---|---|
+| `native` | `native` | packed FP32 fragment（native producer） |
+| `cute` | `native` | packed FP32 fragment（native producer） |
+| `cute` | `row_major` | 行主序 BF16，rank scale 已折叠（CuTe producer） |
+
+`runtime='native'` 不接受 `row_major`（wrapper + op impl 双层校验）。
+
+**producer 必须与 layout 配对**（混用是静默数值损坏，不报错、结果错 30–54%，曾把 bench 结果误判成 kernel bug）：
+
+- `row_major` → `quantize_w4a4_row_major`，输入必须 `convert_svdq_nvfp4_pack_to_cute()` 产出的 `_cute_proj_down`（行主序）与 `_cute_smooth`（普通向量）。
+- `native` → native producer，输入是 checkpoint 里 fragment-packed 的 `proj_down` / `smooth_factor`。
+
+单测因此必须覆盖「producer + GEMM 对 native 的端到端 parity」：只测 GEMM（用解码出来的 native fragment D）或只测 producer（对 `x @ W_down`）都守不住这个洞，`test_row_major_pipeline_matches_native_runtime`（rank 32/64/128）就是补这一层。
+
+### 25.2 GEMM kernel-only（us）
+
+| Shape M×N×K | rank | native | cute (native D) | cute (row_major D) | FlashInfer cute-dsl |
+|---|---:|---:|---:|---:|---:|
+| 4096×3072×3072 | 32 | 117.81 | 115.10 | **112.19** | 148.78 |
+| 4096×3072×3072 | 64 | 121.50 | 118.19 | **114.00** | 149.58 |
+| 4096×3072×3072 | 128 | 128.40 | 127.90 | **119.12** | 157.49 |
+| 8192×3072×3072 | 32 | 183.38 | 176.11 | **174.62** | 205.39 |
+| 8192×3072×3072 | 64 | 188.64 | 183.38 | **178.10** | 207.14 |
+| 8192×3072×3072 | 128 | 200.03 | 198.72 | **185.57** | 215.65 |
+| 4096×6144×3072 | 32 | 182.75 | 175.98 | **173.49** | 201.49 |
+| 4096×6144×3072 | 64 | 189.30 | 184.26 | **177.23** | 207.90 |
+| 4096×6144×3072 | 128 | 200.50 | 197.26 | **185.62** | 218.14 |
+| 8192×6144×3072 | 32 | 343.41 | 326.91 | **310.40** | 361.18 |
+| 8192×6144×3072 | 64 | 337.57 | 321.63 | **305.90** | 327.41 |
+| 8192×6144×3072 | 128 | 364.38 | 346.16 | **328.29** | 345.47 |
+| 16384×8192×8192 | 32 | 1590.74 | 1634.34 | 1600.50 | **1571.23** |
+| 16384×8192×8192 | 64 | 1621.04 | 1654.27 | **1620.72** | 1658.22 |
+| 16384×8192×8192 | 128 | 1682.77 | 1715.42 | **1660.46** | 1690.32 |
+
+`row_major` D 在 15 格里 14 格最快（相对 native −0.5%~−10.3%），原因是 D 走 TMA 而不需要 gather FP32 fragment；唯一例外是 16K rank32，FlashInfer 快 1.9%（在噪声内，且其无 e2e 数据）。
+
+### 25.3 producer 与 e2e（us）
+
+| Shape M×N×K | rank | quantize (native D) | quantize-row-major | e2e native | e2e cute | e2e cute+row_major |
+|---|---:|---:|---:|---:|---:|---:|
+| 4096×3072×3072 | 32 | 41.79 | **36.96** | 143.46 | 140.37 | **129.17** |
+| 4096×3072×3072 | 64 | 46.62 | 46.82 | 150.82 | 149.58 | **141.18** |
+| 4096×3072×3072 | 128 | **56.51** | 68.80 | **167.25** | 167.54 | 168.62 |
+| 8192×3072×3072 | 32 | 58.21 | **53.44** | 229.20 | 219.70 | **208.93** |
+| 8192×6144×3072 | 32 | 58.06 | **54.11** | 400.64 | 367.82 | **350.27** |
+| 8192×6144×3072 | 64 | **66.62** | 76.59 | 418.24 | 392.32 | **375.44** |
+| 8192×6144×3072 | 128 | **82.83** | 119.82 | 459.30 | **437.76** | 450.94 |
+| 16384×8192×8192 | 32 | 297.09 | **269.12** | 1895.12 | 1906.40 | **1849.30** |
+| 16384×8192×8192 | 64 | 374.62 | **295.87** | 1991.04 | 1993.25 | **1917.74** |
+| 16384×8192×8192 | 128 | **411.66** | 535.68 | **2102.94** | 2107.34 | 2196.14 |
+
+规律：CuTe producer 在 rank32 快 7%–12%、rank64 打平到略慢、rank128 明显退化（+22%~+45%）；quantize 占 e2e 的 14%–31%，所以 kernel-only 会高估收益；实测 e2e 略小于 `quantize + gemm` 之和（packs 在 GEMM 期间存活，分配器复用同一批 block）。
+
+### 25.4 dispatch 结论（仅 PRO 6000 数据）
+
+- `rank <= 64` → `cute` + `row_major`：e2e 8/8 格最优（−3.7%~−12.6% vs native），kernel 10 格里 9 格第一。
+- `rank == 128` → **不要** row_major：改用 `cute` + native D（8K，437.76us）或 native（16K，2102.94us）。
+- **没有做成默认**：PRO 5000 上的实测标定与 PRO 6000 有差异，crossover 不能写成全局常量；`SVDQW4A4Linear` 仍全程 `lora_layout='native'`。接线需要单独 PR + 每 SKU（PRO 5000 / PRO 6000 / H800）复测，并加一条钉住 producer/layout 配对的回归测试。
+
+### 25.5 FlashInfer 在 SM120 上跑通的前提
+
+1. nightly whl 需**两个**包：`flashinfer-python==0.7.3.dev20261106` + 通用 `flashinfer-jit-cache`（提供 `__version__`）+ `flashinfer-jit-cache-sm120f`（SM120f cubins）。0.6.x 的 SVDQuant 只支持 SM100，`cutlass`/`trtllm` backend 对 capability 120 直接拒绝。
+2. 需要 `cutlass.cute.FastDivmodDivisorV2` 别名（已发布的 `nvidia-cutlass-dsl` 都没有该符号），只在 bench harness 里打，不进库。
+3. `nvidia-cutlass-dsl` 必须**带 deps** 升级：`--no-deps` 只抬 python 包，`nvidia-cutlass-dsl-libs-base` 停在 4.4.0.dev1 时所有 CuTe-DSL kernel 都会 `Loader for '.o' files is not registered`；python 包与 `libs-*` 全部对齐 4.8.1 才正常。
+
+FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K rank32 略胜 1.9%，与本文件 §15 的旧结论（CuTeDSL 慢 9%–15%）方向一致。
