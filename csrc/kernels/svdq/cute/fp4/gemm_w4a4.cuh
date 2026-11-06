@@ -642,16 +642,8 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // same transaction barrier. The main branch transfers B/SFB only, while the LoRA branch uses
   // different descriptors to put D/L1 into the overlay. No A/SFA copy is hidden in this lambda.
   auto issue_tma = [&](int g, int stage) {
-    if (g < nKt) {
-      auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
-      auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, g));
-      TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
-      copy(tma.b.with(full[stage]), b_slice.partition_S(gB),
-           b_slice.partition_D(sB_full(_, _, stage)));
-      copy(tma.sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
-           sfb_slice.partition_D(sSFB_full(_, _, stage)));
-    } else {
-      const int rt = g - nKt;
+    if (g < nRt) {
+      const int rt = g;
       auto gD = local_tile(mD, Shape<Int<kBM>, Int<kRankTile>>{}, make_coord(blockIdx.y, rt));
       auto gL1 = local_tile(mL1, Shape<Int<kBN>, Int<kRankTile>>{}, make_coord(blockIdx.x, rt));
       TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesLora);
@@ -659,6 +651,15 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
            d_slice.partition_D(sD_full(_, _, stage)));
       copy(tma.l1.with(full[stage]), l1_slice.partition_S(gL1),
            l1_slice.partition_D(sL1_full(_, _, stage)));
+    } else {
+      const int kt = g - nRt;
+      auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+      auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+      TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
+      copy(tma.b.with(full[stage]), b_slice.partition_S(gB),
+           b_slice.partition_D(sB_full(_, _, stage)));
+      copy(tma.sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
+           sfb_slice.partition_D(sSFB_full(_, _, stage)));
     }
   };
 
@@ -722,7 +723,60 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   };
 
   // -----------------------------------------------------------------------------------------------
-  // Stage 6: consume all NVFP4 K stages and accumulate P in FP32.
+  // Stage 6: accumulate the BF16 LoRA-up correction first.
+  // -----------------------------------------------------------------------------------------------
+  // D/L1 already have row-major TMA-compatible layouts. The BF16 m16n8k16 atoms share the exact
+  // C partition of the NVFP4 MMA. LoRA runs first so the following A/SFA prefetch can overlap it.
+  // The residual scale is applied to the combined accumulator later, so divide the LoRA term by
+  // alpha*wcscales now; the final epilogue multiplication cancels it exactly.
+#pragma unroll
+  for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+    load_act_g2r(0, k_block);
+  }
+
+  if (nRt > 0) {
+    LoraMma lora_mma;
+    auto thr_lora = lora_mma.get_thread_slice(tid);
+    auto tCrD = thr_lora.partition_fragment_A(sD_full(_, _, Int<0>{}));
+    auto tCrL1 = thr_lora.partition_fragment_B(sL1_full(_, _, Int<0>{}));
+    using LoraCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, ElementLora>;
+    auto s2r_copy_d = make_tiled_copy_A(LoraCopyAtom{}, lora_mma);
+    auto s2r_copy_l1 = make_tiled_copy_B(LoraCopyAtom{}, lora_mma);
+    auto s2r_thr_d = s2r_copy_d.get_thread_slice(tid);
+    auto s2r_thr_l1 = s2r_copy_l1.get_thread_slice(tid);
+    auto tCsD = s2r_thr_d.partition_S(as_position_independent_swizzle_tensor(sD_full));
+    auto tCsL1 = s2r_thr_l1.partition_S(as_position_independent_swizzle_tensor(sL1_full));
+    auto tCrD_view = s2r_thr_d.retile_D(tCrD);
+    auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
+
+#pragma unroll 1
+    for (int g = 0; g < nRt; ++g) {
+      const int stage = g % kStages;
+      const int phase = (g / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
+      copy(s2r_copy_d, tCsD(_, _, _, stage), tCrD_view);
+      copy(s2r_copy_l1, tCsL1(_, _, _, stage), tCrL1_view);
+      cute::gemm(lora_mma, tCrD, tCrL1, tCrC);
+      __syncwarp();
+      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
+    }
+
+    float inv_scale[kCCols];
+#pragma unroll
+    for (int c = 0; c < kCCols; ++c) {
+      const int n = n0 + get<1>(tScC_rc(0, c));
+      const float scale = alpha * (wcscales != nullptr ? static_cast<float>(wcscales[n]) : 1.0f);
+      inv_scale[c] = 1.0f / scale;
+    }
+    auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r)
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c) tCrC_rc(r, c) *= inv_scale[c];
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Stage 7: consume all NVFP4 K stages and accumulate P in FP32.
   // -----------------------------------------------------------------------------------------------
   // Waiting on full makes the B/SFB bytes visible; the transaction barrier already orders the
   // subsequent smem reads. A/SFA are filled independently by load_act_g2r. Interleave each
@@ -730,13 +784,16 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // activation fragments and both B fragment slots live at once. The K accumulation order remains
   // k-block 0 then 1, matching the previous single BK128 cute::gemm.
 #pragma unroll 1
-  for (int g = 0; g < nKt; ++g) {
+  for (int g = nRt; g < gTotal; ++g) {
+    const int kt = g - nRt;
     const int stage = g % kStages;
     const int phase = (g / kStages) & 1;
     TmaBarrier::wait(&full[stage], phase);
 #pragma unroll
     for (int k_block = 0; k_block < kBK / 64; ++k_block) {
-      load_act_g2r(g, k_block);
+      if (kt != 0) {
+        load_act_g2r(kt, k_block);
+      }
       copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
       copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
       cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
@@ -775,42 +832,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 #pragma unroll
       for (int c = 0; c < kCCols; ++c)
         tCrC_rc(r, c) = fmaf(tCrC_rc(r, c), col_scale[c], col_bias[c]);
-  }
-
-  // -----------------------------------------------------------------------------------------------
-  // Stage 8: accumulate the BF16 LoRA-up correction into the same C fragment.
-  // -----------------------------------------------------------------------------------------------
-  // D/L1 already have row-major TMA-compatible layouts. This second TiledMMA partitions them with
-  // BF16 m16n8k16 atoms, but its C partition is statically identical to the NVFP4 one (Stage 3).
-  // Therefore cute::gemm(lora_mma,...,tCrC) needs no accumulator remap. g continues from nKt, so
-  // full/empty phase and stage reuse follow the same rules as Stage 6. rank 0 skips the entire
-  // block and also skips every D/L1 TMA in the producer.
-  if (nRt > 0) {
-    LoraMma lora_mma;
-    auto thr_lora = lora_mma.get_thread_slice(tid);
-    auto tCrD = thr_lora.partition_fragment_A(sD_full(_, _, Int<0>{}));
-    auto tCrL1 = thr_lora.partition_fragment_B(sL1_full(_, _, Int<0>{}));
-    using LoraCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, ElementLora>;
-    auto s2r_copy_d = make_tiled_copy_A(LoraCopyAtom{}, lora_mma);
-    auto s2r_copy_l1 = make_tiled_copy_B(LoraCopyAtom{}, lora_mma);
-    auto s2r_thr_d = s2r_copy_d.get_thread_slice(tid);
-    auto s2r_thr_l1 = s2r_copy_l1.get_thread_slice(tid);
-    auto tCsD = s2r_thr_d.partition_S(as_position_independent_swizzle_tensor(sD_full));
-    auto tCsL1 = s2r_thr_l1.partition_S(as_position_independent_swizzle_tensor(sL1_full));
-    auto tCrD_view = s2r_thr_d.retile_D(tCrD);
-    auto tCrL1_view = s2r_thr_l1.retile_D(tCrL1);
-
-#pragma unroll 1
-    for (int g = nKt; g < gTotal; ++g) {
-      const int stage = g % kStages;
-      const int phase = (g / kStages) & 1;
-      TmaBarrier::wait(&full[stage], phase);
-      copy(s2r_copy_d, tCsD(_, _, _, stage), tCrD_view);
-      copy(s2r_copy_l1, tCsL1(_, _, _, stage), tCrL1_view);
-      cute::gemm(lora_mma, tCrD, tCrL1, tCrC);
-      __syncwarp();
-      if (tid % 32 == 0) CtaBarrier::arrive(&empty[stage]);
-    }
   }
 
   // -----------------------------------------------------------------------------------------------

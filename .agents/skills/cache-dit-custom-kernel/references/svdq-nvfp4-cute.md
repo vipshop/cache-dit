@@ -531,3 +531,48 @@ S5 与 S3 in-flight 字节相同、barrier 翻倍，符合预期；S6/S7 增加�
 | 16384 | -0.23% | -0.46% | -0.25% |
 
 结论：12 格加权净变化约 0，2K 的 +0.6% 是唯一超过基线噪声的回退，但仍在既定 1% 验收阈值内；8K/16K 稳定小优。按“无实质性能退化且逻辑更直接”保留 K-block 交错。之前 §12 的“平均0.12%、不保留”是旧 hybrid/nsys 口径，不再适用于当前版本。
+
+## 21. 调度结构实验：persistent/light/non-WS/LoRA-first（2026-11-06）
+
+统一条件：GPU4，Event 50 次 median，warmup 10，3 轮；12 格 = M2048/4096/8192/16384 × rank32/64/128，N=K=3072。baseline 为 §20 的 K-block 版本。
+
+### 21.1 persistent CTA（按 ffpa fp4 persist-D 写法）
+
+实现：grid = min(total_tiles, SM count)，grid-stride work loop，全局 seq 驱动 full/empty phase，consumer-only named barrier，`tile_done`（count=256）保证 output store 完成后 producer 才能复用 output alias。
+
+结果：94 tests 通过，168 regs/零 spill；12 格全部退化 **+3.0%–6.7%**，16K rank32 +4.27%。output alias 串行化成本超过 per-work 启动节省，回退。
+
+### 21.2 light producer：288T（256 consumer + 32 producer）
+
+两个变体：
+
+- consumer 调 `warpgroup_reg_alloc<224>`：288T 不是 128 的整数倍，GEMM parity 测试直接死锁；
+- 去掉 `setmaxnreg`：能跑，但 BN256 `STACK=264`，12 格慢 **150%–198%**。
+
+结论：288T 与 warpgroup 寄存器协议不兼容；light producer 回退。
+
+### 21.3 Non-WS：256T 全部 MMA，tid0 内联 TMA
+
+实现：去掉 producer warpgroup，empty count=256，tid0 在 ring 中提前 `kStages-1` 发 TMA，所有线程消费后 arrival。
+
+结果：94 tests 通过，224 regs/零 spill；12 格慢 **1.6%–4.3%**，16K 最差 +4.33%。tid0 的 TMA 发射串行成本大于省掉的 producer warp，回退。
+
+### 21.4 LoRA-first + 首个 FP4 K tile 预取（保留）
+
+实现：D/L1 TMA 先发；LoRA MMA 先累加；LoRA 结果先除以 `alpha*wcscales`，主 FP4 累加后再统一乘回并加 bias；首个 K tile 的 A/SFA 在 LoRA 前预取，主循环 kt=0 跳过重复 load。
+
+12 格相对 K-block baseline：
+
+| M | rank32 | rank64 | rank128 |
+|---:|---:|---:|---:|
+| 2048 | -0.71% | -1.38% | -2.58% |
+| 4096 | -0.48% | -1.37% | -1.96% |
+| 8192 | +0.39% | -0.15% | -1.28% |
+| 16384 | +1.41% | +1.37% | +0.19% |
+
+结论：≤4K 全部受益，8K rank128/64 受益，16K rank32/64 回退约1.4%。图像模型 token 主要集中在 4K/8K，保留 LoRA-first；长序列（>8K）建议走 native。验证：94 tests，168 regs，STACK=8。
+
+### 21.5 两个后续微调未保留
+
+- `full` wait 移入 `k_block==0`：3 轮 2K/4K/8K 稳定 +0.2%–1.0%，16K 仅 -0.1%–-0.3%，无收益，回退。
+- BK64/S3：`kSmemBytes` 下界改为 max(stage ring, 64KB output) 后合法，但 BK64 仍 `STACK=8`（spill 来自 LoRA-first 的逆缩放数组，不是 k_block fragment）；2K 76.9µs、16K 555µs，显著慢于 BK128 的 73.5/443µs，回退。
