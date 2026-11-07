@@ -28,6 +28,7 @@ class SVDQW4A4Linear(nn.Module):
     precision: str = "int4",
     act_unsigned: bool = False,
     runtime_kernel: str | None = None,
+    lora_layout: str | None = None,
     torch_dtype: torch.dtype = torch.bfloat16,
     device: str | torch.device | None = None,
   ) -> None:
@@ -51,6 +52,11 @@ class SVDQW4A4Linear(nn.Module):
       opt-in; it is not enabled by default until its GEMM and end-to-end
       performance meet the release gate. The old `v1`/`v2` selectors are
       deprecated.
+    :param lora_layout: Layout of the LoRA-down term produced by the
+      activation quantizer and consumed by the GEMM. `None`/`native` keeps the
+      packed FP32 MMA-fragment `D`; `row_major` selects the row-major BF16
+      `D` emitted by the CuTe producer and therefore requires
+      `runtime_kernel="cute"`.
     :param torch_dtype: Floating-point dtype used for scales, smoothing
       factors, bias, and low-rank tensors.
     :param device: Device where the packed parameters are allocated. Defaults
@@ -72,6 +78,15 @@ class SVDQW4A4Linear(nn.Module):
       raise ValueError("runtime_kernel='cute' is only supported for precision='nvfp4'.")
     if resolved_runtime_kernel == "cute" and torch_dtype != torch.bfloat16:
       raise ValueError("runtime_kernel='cute' currently requires torch_dtype=torch.bfloat16.")
+    if lora_layout is not None and lora_layout not in {"native", "row_major"}:
+      raise ValueError("lora_layout must be 'native', 'row_major', or None; "
+                       f"got {lora_layout!r}.")
+    resolved_lora_layout = lora_layout
+    if resolved_lora_layout is None:
+      resolved_lora_layout = "native"
+    if resolved_lora_layout == "row_major" and resolved_runtime_kernel != "cute":
+      raise ValueError("lora_layout='row_major' is only supported with runtime_kernel='cute'; "
+                       "it selects the CuTe producer's row-major BF16 D.")
 
     if precision == "nvfp4":
       self.group_size = 16
@@ -86,6 +101,7 @@ class SVDQW4A4Linear(nn.Module):
     self.precision = precision
     self.torch_dtype = torch_dtype
     self.runtime_kernel = resolved_runtime_kernel
+    self.lora_layout = resolved_lora_layout
     self._cute_pack_ready = False
     self._cute_pack_version = 1
     self._cute_qweight = None
@@ -242,6 +258,22 @@ class SVDQW4A4Linear(nn.Module):
       `forward_quant`.
     """
 
+    if self.lora_layout == "row_major":
+      # The CuTe row-major producer consumes the converted pack (`_cute_proj_down` in row-major
+      # layout and the unpacked `_cute_smooth` vector) and folds the per-rank scales into the
+      # emitted BF16 D. The pack is prepared once at load time, but defensive rebuild keeps direct
+      # constructor use working.
+      if not self._cute_pack_ready:
+        self._prepare_cute_pack()
+      return svdq_quantize_w4a4(
+        input=x,
+        lora_down=self._cute_proj_down if self.rank > 0 else None,
+        smooth=self._cute_smooth,
+        lora_layout="row_major",
+        fp4=True,
+        pad_size=pad_size,
+      )
+
     # The native producer owns the fast K-split LoRA-down reduction. Its packed FP32 fragment D is
     # consumed in place by both runtimes, so no BF16 row-major D conversion is needed. Weight
     # packing for the CuTe runtime is prepared separately in forward_quant().
@@ -331,7 +363,7 @@ class SVDQW4A4Linear(nn.Module):
         bias=self._cute_bias,
         wcscales=self._cute_wcscales,
         runtime="cute",
-        lora_layout="native",
+        lora_layout=self.lora_layout,
         fp4=True,
         alpha=self.wtscale,
       )
@@ -339,6 +371,10 @@ class SVDQW4A4Linear(nn.Module):
         output.copy_(result)
         return output
       return result
+
+    if self.lora_layout != "native":
+      raise RuntimeError("runtime_kernel='native' only supports lora_layout='native', got "
+                         f"{self.lora_layout!r}; use runtime_kernel='cute' for row-major D.")
 
     gemm_kwargs = dict(
       act=quantized_x,
@@ -370,7 +406,7 @@ class SVDQW4A4Linear(nn.Module):
                f", padded_out={self._padded_out_features}")
     return (f"SVDQW4A4Linear(in_features={self.in_features}, out_features={self.out_features}, "
             f"rank={self.rank}, precision={self.precision}, act_unsigned={self.act_unsigned}, "
-            f"runtime_kernel={self.runtime_kernel}{extra})")
+            f"runtime_kernel={self.runtime_kernel}, lora_layout={self.lora_layout}{extra})")
 
 
 __all__ = ["SVDQW4A4Linear"]

@@ -1383,6 +1383,7 @@ def _quantize_context_layers(
         device=quantize_device,
         calibrate_precision=context.svdq_kwargs["calibrate_precision"],
         runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+        lora_layout=context.svdq_kwargs["lora_layout"],
         svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
       )
     else:
@@ -1397,6 +1398,7 @@ def _quantize_context_layers(
         device=quantize_device,
         calibrate_precision=context.svdq_kwargs["calibrate_precision"],
         runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+        lora_layout=context.svdq_kwargs["lora_layout"],
         svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
       )
 
@@ -1686,6 +1688,18 @@ def load_svdq(
     if quantize_config_or_path.quant_type != quant_type:
       raise ValueError("The SVDQ checkpoint quant_type does not match QuantizeConfig: "
                        f"{quant_type} vs {quantize_config_or_path.quant_type}.")
+    # `runtime_kernel` and `lora_layout` are pure runtime dispatch choices that do not change the
+    # checkpoint tensors, so an explicit value in the user config wins over the serialized one.
+    requested_svdq_kwargs = quantize_config_or_path.get_svdq_kwargs()
+    for runtime_key in ("runtime_kernel", "lora_layout"):
+      requested_value = requested_svdq_kwargs.get(runtime_key)
+      if requested_value is None:
+        continue
+      serialized_value = svdq_kwargs.get(runtime_key)
+      if serialized_value != requested_value:
+        logger.info("Overriding the serialized SVDQ %s=%r with the requested %r.", runtime_key,
+                    serialized_value, requested_value)
+      svdq_kwargs[runtime_key] = requested_value
 
   load_device = _infer_module_execution_device(module)
   was_training = module.training
@@ -1714,6 +1728,7 @@ def load_svdq(
         rank=rank,
         precision=precision,
         runtime_kernel=svdq_kwargs["runtime_kernel"],
+        lora_layout=svdq_kwargs.get("lora_layout"),
         torch_dtype=torch_dtype,
         device=load_device,
       )
@@ -1725,6 +1740,7 @@ def load_svdq(
         bias=float_module.bias is not None,
         precision=precision,
         runtime_kernel=svdq_kwargs["runtime_kernel"],
+        lora_layout=svdq_kwargs.get("lora_layout"),
         torch_dtype=torch_dtype,
         device=load_device,
         tp_spec=tp_spec,

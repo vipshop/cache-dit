@@ -532,6 +532,137 @@ def test_native_int4_dispatches_native_v2(monkeypatch, runtime_kernel: str | Non
   assert seen == ["v2"]
 
 
+def test_lora_layout_validation() -> None:
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute").lora_layout == "native"
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute",
+                        lora_layout="row_major").lora_layout == "row_major"
+  with pytest.raises(ValueError, match="only supported with runtime_kernel='cute'"):
+    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="native", lora_layout="row_major")
+  with pytest.raises(ValueError, match="lora_layout must be"):
+    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute", lora_layout="v1")
+
+
+def test_row_major_quantize_uses_cute_pack(monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.linear as svdq_linear
+
+  module = SVDQW4A4Linear(128,
+                          128,
+                          rank=32,
+                          precision="nvfp4",
+                          runtime_kernel="cute",
+                          lora_layout="row_major")
+  seen: dict[str, object] = {}
+
+  def fake_quantize(**kwargs):
+    seen.update(kwargs)
+    return (torch.empty(256, 64,
+                        dtype=torch.uint8), torch.empty(256 * 128 // 16, dtype=torch.float8_e4m3fn),
+            torch.empty(256, 32, dtype=torch.bfloat16))
+
+  monkeypatch.setattr(svdq_linear, "svdq_quantize_w4a4", fake_quantize)
+  module.quantize(torch.empty(256, 128, dtype=torch.bfloat16))
+
+  assert seen["lora_layout"] == "row_major"
+  assert seen["fp4"] is True
+  assert seen["lora_down"] is module._cute_proj_down
+  assert seen["smooth"] is module._cute_smooth
+
+
+def test_row_major_rank_zero_quantize_passes_none_lora_down(monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.linear as svdq_linear
+
+  module = SVDQW4A4Linear(128,
+                          128,
+                          rank=0,
+                          precision="nvfp4",
+                          runtime_kernel="cute",
+                          lora_layout="row_major")
+  seen: dict[str, object] = {}
+
+  def fake_quantize(**kwargs):
+    seen.update(kwargs)
+    return (torch.empty(256, 64,
+                        dtype=torch.uint8), torch.empty(256 * 128 // 16, dtype=torch.float8_e4m3fn),
+            torch.empty(256, 0, dtype=torch.bfloat16))
+
+  monkeypatch.setattr(svdq_linear, "svdq_quantize_w4a4", fake_quantize)
+  module.quantize(torch.empty(256, 128, dtype=torch.bfloat16))
+
+  # The rank-0 CuTe pack stores proj_down as a [0, k] placeholder, so the producer must see None.
+  assert seen["lora_down"] is None
+  assert seen["smooth"] is module._cute_smooth
+
+
+def test_row_major_forward_quant_passes_layout(monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.linear as svdq_linear
+
+  module = SVDQW4A4Linear(128,
+                          128,
+                          rank=32,
+                          precision="nvfp4",
+                          runtime_kernel="cute",
+                          lora_layout="row_major")
+  module.load_state_dict(module.state_dict())
+  seen: dict[str, object] = {}
+
+  def fake_gemm(**kwargs):
+    seen.update(kwargs)
+    return torch.empty(256, 128, dtype=torch.bfloat16)
+
+  monkeypatch.setattr(svdq_linear, "svdq_gemm_w4a4", fake_gemm)
+  module.forward_quant(torch.empty(256, 64, dtype=torch.uint8),
+                       torch.empty(256 * 128 // 16, dtype=torch.float8_e4m3fn),
+                       torch.empty(256, 32, dtype=torch.bfloat16))
+
+  assert seen["runtime"] == "cute"
+  assert seen["lora_layout"] == "row_major"
+  # Row-major D already carries the per-rank scales, so the GEMM call must not pass them.
+  assert "lora_scales" not in seen
+
+
+def test_native_layout_keeps_native_d_contract(monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.linear as svdq_linear
+
+  module = SVDQW4A4Linear(128, 128, rank=32, precision="int4")
+  assert module.lora_layout == "native"
+  quantize_seen: dict[str, object] = {}
+  gemm_seen: dict[str, object] = {}
+
+  def fake_quantize(**kwargs):
+    quantize_seen.update(kwargs)
+    return (torch.empty(256, 64, dtype=torch.uint8), torch.empty(2, 256),
+            torch.empty(256, 32, dtype=torch.float32))
+
+  def fake_gemm(**kwargs):
+    gemm_seen.update(kwargs)
+    return torch.empty(256, 128, dtype=torch.bfloat16)
+
+  monkeypatch.setattr(svdq_linear, "svdq_quantize_w4a4", fake_quantize)
+  monkeypatch.setattr(svdq_linear, "svdq_gemm_w4a4", fake_gemm)
+  module.quantize(torch.empty(256, 128, dtype=torch.bfloat16))
+  module.forward_quant(torch.empty(256, 64, dtype=torch.uint8), torch.empty(2, 256),
+                       torch.empty(256, 32, dtype=torch.float32))
+
+  assert quantize_seen["lora_layout"] == "native"
+  assert quantize_seen["lora_down"] is module.proj_down
+  assert quantize_seen["smooth"] is module.smooth_factor
+  assert gemm_seen["runtime"] == "native"
+  assert gemm_seen["lora_layout"] == "native"
+
+
+def test_fused_passes_reject_row_major() -> None:
+  from cache_dit.quantization.svdquant.fused import fused_gelu_proj
+
+  fc1 = SVDQW4A4Linear(128,
+                       256,
+                       rank=32,
+                       precision="nvfp4",
+                       runtime_kernel="cute",
+                       lora_layout="row_major")
+  with pytest.raises(RuntimeError, match="only support lora_layout='native'"):
+    fused_gelu_proj(torch.empty(256, 128, dtype=torch.bfloat16), fc1)
+
+
 def test_gemm_w4a4_fake_registration() -> None:
   act = torch.empty(256, 64, dtype=torch.int8, device="meta")
   wgt = torch.empty(128, 64, dtype=torch.int8, device="meta")
