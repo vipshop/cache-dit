@@ -14,6 +14,25 @@ from ...kernels import svdq_gemm_w4a4_ext
 from .linear import SVDQW4A4Linear
 
 
+def _require_native_lora_layout(*modules: nn.Module) -> None:
+  """Reject non-native LoRA-down layouts, which the fused passes cannot consume.
+
+  The fused passes feed `quantize()`'s D straight into the native v1 GEMM, which
+  reinterprets it as packed FP32 MMA fragments. A row-major BF16 D would be read
+  out of bounds there, so fail fast instead.
+
+  :param modules: Quantized linear layers involved in the fused pass.
+  :raises RuntimeError: If any module uses a non-native `lora_layout`.
+  """
+
+  for module in modules:
+    layout = getattr(module, "lora_layout", "native")
+    if layout != "native":
+      raise RuntimeError(
+        f"The fused MLP passes only support lora_layout='native', got {layout!r} on "
+        f"{type(module).__name__}; disable svdq_kwargs['fused_mlp'] when using row-major D.")
+
+
 @torch.compiler.disable
 def fused_gelu_mlp(
   x: torch.Tensor,
@@ -41,6 +60,7 @@ def fused_gelu_mlp(
   :returns: Output tensor with shape ``[..., fc2.out_features]`` and the
       same dtype as ``x``.
   """
+  _require_native_lora_layout(fc1, fc2)
   if x.ndim < 2:
     raise ValueError(f"input must have shape [..., in_features], got {tuple(x.shape)}.")
 
@@ -140,6 +160,7 @@ def fused_gelu_proj(
   :returns: GELU-activated fp16 output with shape
       ``[..., fc1.out_features]``.
   """
+  _require_native_lora_layout(fc1)
   if x.ndim < 2:
     raise ValueError(f"input must have shape [..., in_features], got {tuple(x.shape)}.")
 

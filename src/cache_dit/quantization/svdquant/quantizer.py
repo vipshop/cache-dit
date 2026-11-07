@@ -62,6 +62,15 @@ def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str | None) ->
     raise ValueError("runtime_kernel='cute' is only supported for SVDQ NVFP4.")
 
 
+def _validate_svdq_lora_layout(runtime_kernel: str | None, lora_layout: str | None) -> None:
+  if lora_layout is not None and lora_layout not in {"native", "row_major"}:
+    raise ValueError("lora_layout must be 'native', 'row_major', or None; "
+                     f"got {lora_layout!r}.")
+  if lora_layout == "row_major" and runtime_kernel != "cute":
+    raise ValueError("lora_layout='row_major' is only supported with runtime_kernel='cute'; "
+                     "it selects the CuTe producer's row-major BF16 D.")
+
+
 def _resolve_svdq_quant_mode(quant_type: str | None) -> str:
   if quant_type is None:
     return "ptq"
@@ -1062,6 +1071,7 @@ def _quantize_from_smooth_scale(
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
   runtime_kernel: str | None = None,
+  lora_layout: str | None = None,
   svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from an explicitly resolved runtime smooth vector."""
@@ -1074,6 +1084,7 @@ def _quantize_from_smooth_scale(
   calibrate_precision = _normalize_calibrate_precision(calibrate_precision)
   math_dtype = _resolve_math_dtype(torch_dtype, calibrate_precision)
   _validate_svdq_runtime_kernel(precision, runtime_kernel)
+  _validate_svdq_lora_layout(runtime_kernel, lora_layout)
   local_weight, resolved_tp_info = SVDQW4A4ShardLinear.resolve_local(linear.weight)
   if tp_info is None:
     tp_info = resolved_tp_info
@@ -1203,6 +1214,7 @@ def _quantize_from_smooth_scale(
     "precision": precision,
     "act_unsigned": act_unsigned,
     "runtime_kernel": runtime_kernel,
+    "lora_layout": lora_layout,
     "torch_dtype": torch_dtype,
     "device": device,
   }
@@ -1236,6 +1248,7 @@ def _quantize_from_activation_span(
   return_state_dict: bool = False,
   calibrate_precision: str = "low",
   runtime_kernel: str | None = None,
+  lora_layout: str | None = None,
   svd_refine_iters: int = 0,
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from either PTQ activation spans or DQ mode.
@@ -1272,6 +1285,8 @@ def _quantize_from_activation_span(
     uses float64 SVD with CUDA `gesvd` for maximum precision.
   :param runtime_kernel: Packed runtime GEMM implementation to bind into the
     instantiated `SVDQW4A4Linear` module.
+  :param lora_layout: LoRA-down layout to bind into the instantiated
+    `SVDQW4A4Linear` module; `row_major` requires `runtime_kernel="cute"`.
   :returns: Either a ready-to-load SVDQ module state dict or an instantiated
     `SVDQW4A4Linear`.
   """
@@ -1318,6 +1333,7 @@ def _quantize_from_activation_span(
     return_state_dict=return_state_dict,
     calibrate_precision=calibrate_precision,
     runtime_kernel=runtime_kernel,
+    lora_layout=lora_layout,
     svd_refine_iters=svd_refine_iters,
     tp_info=tp_info,
   )

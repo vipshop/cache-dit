@@ -35,6 +35,12 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - cute: SM120 CuTe NVFP4 path with fused BF16 LoRA-up; invalid for INT4.
   # The old v1/v2 selectors are deprecated and intentionally not accepted here.
   "runtime_kernel": None,
+  # Layout of the LoRA-down term D produced by the activation quantizer and
+  # consumed by the packed GEMM.
+  # - None/native: packed FP32 MMA-fragment D (works with both runtimes).
+  # - row_major: row-major BF16 D with per-rank scales folded in; emitted by
+  #   the CuTe producer only, so it requires runtime_kernel="cute".
+  "lora_layout": None,
   # Device used for the SVDQ decomposition and packing math.
   # - auto: preserve the module's current execution device.
   # - cpu: force CPU-side decomposition and packing.
@@ -187,6 +193,19 @@ def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str | None:
   return normalized
 
 
+def _resolve_svdq_lora_layout(key: str, value: Any) -> str | None:
+  if value is None:
+    return None
+  if not isinstance(value, str):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be 'native', 'row_major', or None, "
+                    f"got {type(value)}.")
+  normalized = value.lower()
+  if normalized not in ("native", "row_major"):
+    raise ValueError(f"svdq_kwargs[{key!r}] must be 'native', 'row_major', or None; "
+                     f"got {value!r}.")
+  return normalized
+
+
 def _resolve_svdq_quantize_device(key: str, value: Any) -> str:
   if not isinstance(value, str):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a str, got {type(value)}.")
@@ -304,6 +323,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "streaming": _resolve_svdq_bool_kwarg,
     "calibrate_precision": _resolve_svdq_calibrate_precision,
     "runtime_kernel": _resolve_svdq_runtime_kernel,
+    "lora_layout": _resolve_svdq_lora_layout,
     "quantize_device": _resolve_svdq_quantize_device,
     "offload_quantized_layers_to_cpu": _resolve_svdq_bool_kwarg,
     "layerwise_offload": _resolve_svdq_bool_kwarg,
@@ -515,6 +535,17 @@ class QuantizeConfig:
       if (_get_svdq_precision(self.quant_type) == "int4"
           and self.svdq_kwargs["runtime_kernel"] == "cute"):
         raise ValueError("svdq_kwargs['runtime_kernel'] = 'cute' is only supported for NVFP4.")
+      if (self.svdq_kwargs["lora_layout"] == "row_major"
+          and self.svdq_kwargs["runtime_kernel"] != "cute"):
+        raise ValueError(
+          "svdq_kwargs['lora_layout'] = 'row_major' requires "
+          "svdq_kwargs['runtime_kernel'] = 'cute'; it selects the CuTe producer's row-major "
+          "BF16 D.")
+      if self.svdq_kwargs["lora_layout"] == "row_major" and self.svdq_kwargs["fused_mlp"]:
+        raise ValueError(
+          "svdq_kwargs['lora_layout'] = 'row_major' is not supported with "
+          "svdq_kwargs['fused_mlp'] = True; the fused MLP passes consume the native FP32 "
+          "fragment D.")
       if self.is_svdq_dq():
         if self.calibrate_fn is not None:
           raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")
