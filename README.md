@@ -248,7 +248,7 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 
 ## 🌐Community Integration
 
-- 🎉[MindIE-SD x Cache-DiT](https://github.com/vipshop/cache-dit/pull/1004)
+- 🎉[MindIE-SD x Cache-DiT](https://mindie-sd.readthedocs.io/en/latest/zh/features/supported_matrix.html)
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
 - 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
@@ -259,7 +259,6 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 - 🎉[Nunchaku x Cache-DiT](https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit)
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/src/runtime/cache_dit.hpp)
-- 🎉[jetson-containers x Cache-DiT](https://github.com/dusty-nv/jetson-containers/tree/master/packages/cv/diffusion/cache_edit)
 - 🎉[RH-MinMax-H3 x Cache-DiT](https://github.com/HM-RunningHub/ComfyUI_RH_MinMaxH3)
 
 
