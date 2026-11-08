@@ -259,7 +259,7 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 - 🎉[Nunchaku x Cache-DiT](https://nunchaku.tech/docs/nunchaku/usage/cache.html#cache-dit)
 - 🎉[SD.Next x Cache-DiT](https://github.com/vladmandic/sdnext/blob/master/modules/cachedit.py)
 - 🎉[stable-diffusion.cpp x Cache-DiT](https://github.com/leejet/stable-diffusion.cpp/blob/master/src/runtime/cache_dit.hpp)
-- 🎉 ...
+- ...
 
 
 ## ©️Acknowledgements
