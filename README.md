@@ -248,10 +248,10 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 
 ## 🌐Community Integration
 
-- 🎉[MindIE-SD x Cache-DiT](https://mindie-sd.readthedocs.io/en/latest/zh/features/supported_matrix.html)
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit)
 - 🎉[ComfyUI x Cache-DiT](https://github.com/Jasonzzt/ComfyUI-CacheDiT)
 - 🎉[Diffusers x Cache-DiT](https://huggingface.co/docs/diffusers/main/en/optimization/cache_dit)
+- 🎉[MindIE-SD x Cache-DiT](https://mindie-sd.readthedocs.io/en/latest/zh/features/supported_matrix.html)
 - 🎉[TensorRT-LLM x Cache-DiT](https://github.com/NVIDIA/TensorRT-LLM/pull/12548)
 - 🎉[SGLang Omni x Cache-DiT](https://github.com/sgl-project/sglang-omni/blob/abc7640446629a837d043355ff7a756eb2a0190a/sglang_omni/models/minimax_music3/dit.py#L329)
 - 🎉[SGLang Diffusion x Cache-DiT](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html)
