@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/interop/torch.cpp
+// Adapted from nunchaku/src/interop/torch.cpp
 #include "torch.h"
 
 #include <ATen/cuda/CUDAContext.h>

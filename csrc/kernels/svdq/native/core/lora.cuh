@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/lora.cuh
+// Adapted from nunchaku/src/kernels/zgemm/lora.cuh
 #pragma once
 
 #include "gemm_base.cuh"

@@ -1,4 +1,4 @@
-// Copied from nunchaku/nunchaku/csrc/ops.h
+// Adapted from nunchaku/nunchaku/csrc/ops.h
 #pragma once
 
 // SVDQ source map
@@ -57,6 +57,7 @@
 //   cute + FP4 -> cute gemm_w4a4 with LoraLayout kNative/kRowMajor
 //   native producer -> native quantize_w4a4; row_major producer -> cute quantize_w4a4
 
+#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -204,9 +205,23 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     if (!fp4) {
       throw std::runtime_error("lora_layout='row_major' implements the NVFP4 producer only.");
     }
+    torch::Tensor lora_scratch_t;
+    if (std::getenv("CACHE_DIT_SVDQ_PRODUCER_SPLIT_K") != nullptr && input && lora_down &&
+        input->dim() > 0 && lora_down->dim() > 0) {
+      const int64_t K = input->size(-1);
+      const int64_t M = input->numel() / K;
+      const int64_t rank = lora_down->size(-1);
+      if (rank == 32 || rank == 64 || rank == 128) {
+        lora_scratch_t = at::empty({M, rank}, input->options().dtype(at::kFloat));
+      }
+    }
+    svdq::Tensor lora_scratch;
+    if (lora_scratch_t.defined()) {
+      lora_scratch = from_torch(lora_scratch_t);
+    }
     cute_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),
                                 get_tensor(lora_down), get_tensor(lora_act), get_tensor(smooth),
-                                std::move(lora_scales));
+                                std::move(lora_scales), lora_scratch);
     return;
   }
   native_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),

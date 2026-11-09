@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/gemm_utils.cuh
+// Adapted from nunchaku/src/kernels/zgemm/gemm_utils.cuh
 #pragma once
 
 #include <cstdint>

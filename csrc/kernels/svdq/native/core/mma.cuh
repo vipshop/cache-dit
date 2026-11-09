@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/mma_earlycuda.cuh
+// Adapted from nunchaku/src/kernels/zgemm/mma_earlycuda.cuh
 #pragma once
 
 #include <cstdint>
