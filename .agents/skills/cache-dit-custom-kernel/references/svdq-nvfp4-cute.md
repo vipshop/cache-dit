@@ -782,3 +782,32 @@ FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K 
 - 修改前后小尺寸 golden：rank0/32/64/128 的 qact/ascales 与 D 逐字节一致（`qact_exact`, `ascales_exact`, `D_exact`）。
 - `tests/kernels/test_svdquant_cute.py -k row_major` 当前13 passed（统一类重构前）；统一类重构后重新编译并跑 golden，全部 PASS。提交前仍需跑完整 producer+GEMM parity、pre-commit 和 diff 检查。
 - 未完成项：rank128 2K/4K/8K/长K与 rank64 2K/4K仍高于native；下一步应优先解释小M的输入重复读取与D归约开销，而不是继续扫 warp 数或重复已证伪的16-row/K-split-scratch路线。
+
+## 27. split-K rank chunk=1 调参与适用区间（2026-11-09，RTX PRO 5000）
+
+### 27.1 改动
+
+split-K producer 的 rank 流式累加从 `kChunkTiles=2` 改为 `1`：每线程只保留一个 R16 tile 的 FP32 D，降低寄存器压力；K128 CTA 仍覆盖两个 K64 slice。D scratch 使用 fragment-major 连续 lane 布局，`red.add` 按 sector 合并；finalize 合并相邻 j atom，一次 `uint4` 写 8 个 BF16。
+
+### 27.2 chunk=1 vs chunk=2（split-K，µs）
+
+同一口径 GPU4、warmup10/iters50、Event median；比值越小越好。
+
+| Shape | rank64 chunk2 | rank64 chunk1 | rank64 c1/c2 | rank128 chunk2 | rank128 chunk1 | rank128 c1/c2 |
+|---|---:|---:|---:|---:|---:|---:|
+| 2048×3072×3072 | 41.98 | 41.23 | 0.982 | 52.32 | 50.82 | 0.971 |
+| 4096×3072×3072 | 62.54 | 60.80 | 0.972 | 82.69 | 79.42 | 0.960 |
+| 8192×3072×3072 | 99.31 | 95.76 | 0.964 | 131.84 | 127.34 | 0.966 |
+| 16384×8192×8192 | 578.83 | 577.62 | 0.998 | 591.25 | 617.62 | 1.045 |
+| 4608×3072×15360 | 329.92 | 322.48 | 0.977 | 343.28 | 361.89 | 1.054 |
+
+结论：
+
+- rank64：chunk=1 在全部测试格都略优，但 2K/4K/8K 相对 native 仍为 1.06/1.07/1.04 左右，尚未达标。
+- rank128：chunk=1 对 2K/4K/8K 有 3%–4% 收益；长K/16K 应保留 chunk=2。
+- chunk=1 的适用区间暂定为 **rank64/rank128 的序列长度 ≤8K**；长K/16K 不切换。
+- 最终 dispatch 暂不落地，等 fused/split-K 的 cp.async/GEMM 优化收敛后统一按 `rank + M + K` 决定。
+
+### 27.3 状态
+
+当前 split-K 仍由 `CACHE_DIT_SVDQ_PRODUCER_SPLIT_K` 控制，默认生产路径仍是 fused；本节只记录调参结论，不代表已改默认分派。
