@@ -303,20 +303,20 @@ def _parse_arch_list(raw_arch_list: str) -> list[str]:
   return arch_list
 
 
-def _svdquant_v2_launch_sources() -> list[str]:
-  return [f"csrc/kernels/svdq/native/int4/gemm_w4a4_v2_i4_s{stage}.cu" for stage in (1, 2, 3)]
+def _svdquant_stage_sources() -> list[str]:
+  return [f"csrc/kernels/svdq/native/int4/gemm_w4a4_i4_s{stage}.cu" for stage in (1, 2, 3)]
 
 
 def _required_svdquant_sources() -> list[str]:
   return [
     "csrc/kernels/svdq/pybind.cpp",
     "csrc/kernels/svdq/torch.cpp",
-    "csrc/kernels/svdq/native/int4/gemm_w4a4_v2.cu",
-    *_svdquant_v2_launch_sources(),
-    # Build both INT4 and NVFP4 kernels
-    "csrc/kernels/svdq/native/core/gemm_w4a4.cu",
-    "csrc/kernels/svdq/native/int4/gemm_w4a4_i4.cu",
-    "csrc/kernels/svdq/native/fp4/gemm_w4a4_f4.cu",
+    "csrc/kernels/svdq/native/int4/gemm_w4a4.cu",
+    *_svdquant_stage_sources(),
+    # Build both the plain INT4 runtime and the full ext INT4/NVFP4 kernels.
+    "csrc/kernels/svdq/native/core/gemm_w4a4_ext.cu",
+    "csrc/kernels/svdq/native/int4/gemm_w4a4_ext_i4.cu",
+    "csrc/kernels/svdq/native/fp4/gemm_w4a4_ext_f4.cu",
     "csrc/kernels/svdq/cute/fp4/gemm_w4a4.cu",
     "csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu",
   ]

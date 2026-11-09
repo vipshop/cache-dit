@@ -7,7 +7,6 @@ from ._comm import fp8_comm_qkv_permute_dequant
 from ._comm import fp8_comm_qkv_permute_quant
 from ._svdquant import svdq_extension_is_available
 from ._svdquant import svdq_gemm_w4a4
-from ._svdquant import svdq_gemm_w4a4_ext
 from ._svdquant import svdq_get_load_error
 from ._svdquant import svdq_quantize_w4a4
 
@@ -21,5 +20,4 @@ __all__ = [
   "svdq_extension_is_available",
   "svdq_quantize_w4a4",
   "svdq_gemm_w4a4",
-  "svdq_gemm_w4a4_ext",
 ]

@@ -1,6 +1,6 @@
 # SVDQ NVFP4 CuTe GEMM：TMA、warp/block 同步与 FlashInfer SM120 对照
 
-> 实施回写（2026-11-05）：P0 的唯一物理线程初始化和 `fence_barrier_init()` 已完成。当前 GEMM 已恢复为 **A/SFA G2R + B/SFB/D/L1 TMA**：TMA producer 只跟踪 B+SFB 或 D+L1，A/SFA 不进入 full barrier；consumer 用 v1 fragment 直接 gmem load。本文关于 B/SFB stage 环、empty arrive、D/L1 overlay 和 output store 的同步约束仍然成立，但“A/B/SFA/SFB 四路 TMA”的段落已过时。提前 release、K-block、persistent（慢约 4.4%）和 light producer 均不采用。实测见 `svdq-nvfp4-cute.md` §8–§10。
+> 实施回写（2026-11-05）：P0 的唯一物理线程初始化和 `fence_barrier_init()` 已完成。当前 GEMM 已恢复为 **A/SFA G2R + B/SFB/D/L1 TMA**：TMA producer 只跟踪 B+SFB 或 D+L1，A/SFA 不进入 full barrier；consumer 用 native fragment 直接 gmem load。本文关于 B/SFB stage 环、empty arrive、D/L1 overlay 和 output store 的同步约束仍然成立，但“A/B/SFA/SFB 四路 TMA”的段落已过时。提前 release、K-block、persistent（慢约 4.4%）和 light producer 均不采用。实测见 `svdq-nvfp4-cute.md` §8–§10。
 
 ## 1. 范围与结论
 

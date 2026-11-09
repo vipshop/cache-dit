@@ -27,9 +27,9 @@ enum class LoraLayout {
 // the result is rounded to BF16 exactly once.
 //
 // Physical tensor contract (all tensors are contiguous CUDA tensors):
-//   act            [M, K/2] v1 256-row interleaved E2M1 activation pack, low nibble is even K
+//   act            [M, K/2] native 256-row interleaved E2M1 activation pack, low nibble is even K
 //   wgt            [N, K/2] row-major packed E2M1 bytes, same nibble order
-//   ascales        FP8_E4M3 activation scales in the matching v1 interleaved pack
+//   ascales        FP8_E4M3 activation scales in the matching native interleaved pack
 //   wscales        FP8_E4M3 flat buffer of CUTLASS 128x4 512B atoms for wgt (N rows)
 //   out            [M, N] row-major BF16
 //   lora_act_in    [M, R] LoRA-down output D, layout selected by `lora_layout`
@@ -44,7 +44,7 @@ enum class LoraLayout {
 //   kRowMajor: D is BF16 and reuses the A stage storage through TMA, so the LoRA term can also run
 //              before the mainloop on short and medium sequences.
 //
-// M must be a multiple of 256 for the v1 activation pack; N must be a multiple of 128 for the
+// M must be a multiple of 256 for the native activation pack; N must be a multiple of 128 for the
 // CUTLASS weight SF atom; K must be a multiple of 64. R is zero or a multiple of 16, and the
 // default BN=256/BK=128 configuration additionally requires R to be a multiple of 32. The native
 // layout folds per-group scales from a fixed `float[8]` table, so it accepts R <= 128 only, while
@@ -56,16 +56,17 @@ enum class LoraLayout {
 //
 // BF16 is the only LoRA/output dtype implemented by this CuTe path. FP16 LoRA remains on the
 // old native path and is rejected by the public module rather than silently converted.
-void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Tensor wscales,
-               ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
-               std::vector<float> lora_scales, float alpha,
-               LoraLayout lora_layout = LoraLayout::kNative);
+void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tensor ascales,
+               svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
+               svdq::Tensor bias, svdq::Tensor wcscales, std::vector<float> lora_scales,
+               float alpha, LoraLayout lora_layout = LoraLayout::kNative);
 
-// Produce v1 interleaved E2M1 activation, matching v1 SFA and row-major BF16 LoRA-down D
+// Produce native interleaved E2M1 activation, matching native SFA and row-major BF16 LoRA-down D
 // directly, which pairs with `gemm_w4a4(..., LoraLayout::kRowMajor)`. No FP32 LoRA scratch,
 // finalize kernel or activation repack is involved. The producer completes its full K reduction in
 // warp registers and emits the GEMM's D TMA input in one launch.
-void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
-                             ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales);
+void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
+                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
+                   std::vector<float> lora_scales);
 
 }  // namespace svdq::cute_kernels

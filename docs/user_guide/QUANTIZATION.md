@@ -1084,7 +1084,7 @@ All three cache-dit paths agree numerically: `rel_l2` against native is 3.1–3.
 
 ## SVDQ with Fused MLP
 
-When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via ``svdq_gemm_w4a4_ext``, eliminating one kernel launch per block.
+When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via the internal full-ABI SVDQ GEMM (``gemm_w4a4_ext`` in C++), eliminating one kernel launch per block.
 
 The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automatically with most diffusers transformer families — no per-model configuration is needed.
 

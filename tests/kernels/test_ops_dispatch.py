@@ -20,7 +20,6 @@ import cache_dit.kernels._svdquant as svdq_ops
     ("svdq_quantize_w4a4", svdq_ops),
     ("svdq_extension_is_available", svdq_ops),
     ("svdq_gemm_w4a4", svdq_ops),
-    ("svdq_gemm_w4a4_ext", svdq_ops),
   ],
 )
 def test_public_api_is_reexported_from_domain_module(op_name: str, source_module) -> None:
@@ -31,6 +30,11 @@ def test_public_api_matches_all() -> None:
   assert sorted(kernels.__all__) == sorted(name for name in vars(kernels)
                                            if not name.startswith("_") and name != "kernels")
   assert all(getattr(kernels, name) is not None for name in kernels.__all__)
+
+
+def test_svdq_ext_is_private() -> None:
+  assert not hasattr(kernels, "svdq_gemm_w4a4_ext")
+  assert hasattr(svdq_ops, "_svdq_gemm_w4a4_ext")
 
 
 @pytest.mark.parametrize(

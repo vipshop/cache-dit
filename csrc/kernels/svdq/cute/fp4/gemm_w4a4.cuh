@@ -68,10 +68,10 @@ using namespace cute;
 //
 // The implementation deliberately mixes two input paths:
 //   B/SFB: packed gmem -> TMA -> smem -> register fragment (shared by all consumer warps)
-//   A/SFA: v1 packed gmem -> direct G2R loads -> register fragment (no activation repack)
+//   A/SFA: native packed gmem -> direct G2R loads -> register fragment (no activation repack)
 //   D/L1:  row-major BF16 gmem -> TMA -> A/B smem overlay -> BF16 register fragments
 //
-// Keeping A/SFA in the producer's native v1 layout avoids a runtime transpose/repack. Moving B
+// Keeping A/SFA in the producer's native layout avoids a runtime transpose/repack. Moving B
 // through smem removes the old kernel's repeated per-warp weight reads. The two CuTe TiledMMAs
 // have different input types and K extents, but statically identical C partitions.
 //
@@ -95,7 +95,7 @@ constexpr int kRowBlock = 128;
 // The K mode has shape 16 with stride zero inside a group: all 16 codes logically reference the
 // same scale, but the allocation contains only one byte, not 16 copies. Step<_2,_1> tiles the
 // atom K-first and then advances to the next 128-row block. This layout is used for SFB TMA;
-// ascales has the same byte count but intentionally retains the different v1 producer ordering.
+// ascales has the same byte count but intentionally retains the different native producer ordering.
 CUTE_HOST_DEVICE constexpr auto sf_gmem_layout(int mn, int K) {
   using Config = cutlass::detail::Sm1xxBlockScaledConfig<kSFVec>;
   return tile_to_shape(typename Config::SfAtom{}, make_shape(mn, K), Step<_2, _1>{});
@@ -401,7 +401,7 @@ struct W4A4CuteTraits {
     typename SfSmemAtom<TiledMma, (kBN > kRowBlock ? kBN : kRowBlock), kBK>::type;
   // SmemLayoutSFA: logical (BM,BK,stages) activation-SF view, including stride-0 K broadcasts.
   // It supplies fragment shapes and byte sizes, but current SFA values arrive through G2R just
-  // like A; no tma.sfa exists. This avoids repacking the v1 ascales into CUTLASS gmem atoms.
+  // like A; no tma.sfa exists. This avoids repacking the native ascales into CUTLASS gmem atoms.
   using SmemLayoutSFA = decltype(make_layout(
     append(shape(SmemLayoutAtomSFA{}), Int<kStages>{}),
     append(stride(SmemLayoutAtomSFA{}), size(filter_zeros(SmemLayoutAtomSFA{})))));
@@ -602,8 +602,8 @@ class W4A4GemmKernel {
    * Mathematical role: supplies A and SFA for the FP4 main product P = dequant(A,SFA) @
    * dequant(B,SFB). Each thread receives the exact A/SFA values required by its MMA fragment.
    *
-   * Pack mapping: the producer emits v1 256-row panels. `g*(BK/64)+k_block` selects the original
-   * 64-element K block. The two CuTe M fragments are mapped to v1 warp panels with
+   * Pack mapping: the producer emits native 256-row panels. `g*(BK/64)+k_block` selects the
+   * original 64-element K block. The two CuTe M fragments are mapped to native warp panels with
    *   new_m=(tid%128)/32*16, old_mt=(new_m%32)/16,
    *   old_warp=(m0%256)/32+(new_m%64)/32+2*mt, old_block=m0/256.
    * SFA additionally uses lane XOR (2*old_mt), matching the producer's interleaved scale ownership.
@@ -612,9 +612,9 @@ class W4A4GemmKernel {
    * This function does not wait for B/SFB and can therefore be scheduled independently of
    * full[stage].
    *
-   * @param act/ascales Global v1 packed activation and activation-scale arrays.
+   * @param act/ascales Global native packed activation and activation-scale arrays.
    * @param m0          Base row of this CTA's output tile.
-   * @param K           Total reduction length; used to compute the v1 panel stride.
+   * @param K           Total reduction length; used to compute the native panel stride.
    * @param tid         Consumer thread index in [0, kNumThreads).
    * @param g           Logical K-tile index, in units of BK.
    * @param k_block     BK64 sub-block within the K tile.
@@ -817,7 +817,7 @@ class W4A4GemmKernel {
    * @param full/empty Shared transaction/CTA barrier rings.
    * @param tid        Consumer thread index; also determines A/SFA fragment ownership.
    * @param nKt/nRt/gTotal Main K tiles, LoRA rank tiles, and their sum.
-   * @param act/ascales Global v1 activation and activation-scale packs used by load_act_A_g2r.
+   * @param act/ascales Global native activation and activation-scale packs used by load_act_A_g2r.
    * @param m0/K       CTA row offset and total reduction length.
    * @param tiled_mma  SM120 FP4 tiled MMA descriptor.
    * @param s2r_copy_b LDSM copy descriptor for B fragments.
@@ -1157,11 +1157,11 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     for (int s = 0; s < kStages; ++s) CtaBarrier::arrive(&empty[s]);
   }
 
-  // Translate the v1 activation producer's fragment order directly into CuTe A/SFA registers.
+  // Translate the native activation producer's fragment order directly into CuTe A/SFA registers.
   // No TMA or smem tensor is involved on this path. A BK=128 stage calls the helper twice;
   // old_kt=g*(BK/64)+k_block selects the original 64-element producer block.
   //
-  // CuTe's two M fragments refer to m and m+64, whereas v1 stores eight 32-row warp panels in
+  // CuTe's two M fragments refer to m and m+64, whereas native stores eight 32-row warp panels in
   // each 256-row block. The inverse mapping is
   //   new_m    = (tid % 128)/32 * 16
   //   old_mt   = (new_m % 32)/16
@@ -1169,7 +1169,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   //   old_block = m0/256.
   // block_base includes (old_block,K-tile,old_warp), and the final index adds old_mt and lane.
   // Each A load writes one uint4 directly into tCrA; each scale load writes four FP8 bytes as a
-  // u32 into tCrSFA. The second m-tile needs lane XOR 2 because v1 interleaves scale ownership
+  // u32 into tCrSFA. The second m-tile needs lane XOR 2 because native interleaves scale ownership
   // between its two 16-row m-tiles. Omitting that swap preserves shapes but produces wrong math.
   // -----------------------------------------------------------------------------------------------
   // Stage 6: accumulate the BF16 LoRA-up correction first.

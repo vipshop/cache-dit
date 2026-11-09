@@ -18,9 +18,9 @@
 
 | 编号 | 项目 | 状态 | 验收标准 |
 |---|---|---|---|
-| CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 直接输出 v1 A/SFA + BF16 D，无 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
-| CDK-2 | Producer kernel 性能追平/略优 | 进行中 | M=4096 v1 producer 约 46.8us vs native 46.6us；仍需扩大 shape 复测 |
-| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前 v1 A/SFA 与 BF16 D 性能 |
+| CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 直接输出 native A/SFA + BF16 D，无 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
+| CDK-2 | Producer kernel 性能追平/略优 | 进行中 | PRO 5000 7×3 矩阵：rank32 多数快2%–16%；rank64 16K快14%/8K持平/2K–4K慢5%–6%；rank128 16K 0.998、2K/4K/8K慢10%–14.5%、长K慢16%；未达全格≤1.00 |
+| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前 native A/SFA 与 BF16 D 性能 |
 | CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | M=4096 约117.2us vs native117.5us（约0.3%）；大 shape native 反超2.6%–6.6%，未达5% |
 | CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 待开始 | 多次 FLUX native/CuTe 对照 |
 | CDK-6 | 可重复 ccache 构建链路 | 已完成 | `build_fast.sh` editable + nvcc shim 验证通过 |
@@ -29,8 +29,8 @@
 
 ## 3. 完成状态清单
 
-- [x] CDK-1：独立 CuTe producer + hybrid A/SFA G2R、B/SFB/D/L1 TMA GEMM；producer 直接输出 v1 A/SFA + BF16 D，无 FP32 scratch/finalize。
-- [ ] CDK-2：producer 稳态性能追平/略优。M=4096 v1 producer 46.8us vs native 46.6us；M=1024 仍需复测。
+- [x] CDK-1：独立 CuTe producer + hybrid A/SFA G2R、B/SFB/D/L1 TMA GEMM；producer 直接输出 native A/SFA + BF16 D，无 FP32 scratch/finalize。
+- [ ] CDK-2：producer 稳态性能追平/略优。PRO 5000 当前矩阵见 `svdq-nvfp4-cute.md` §26：rank128 16K 已持平，小 M/长 K 仍慢10%–16%，rank64 小 M仍慢5%–6%；继续降低输入重复读取与 D 归约开销，未达全格≤1.00。
 - [ ] CDK-3：将手写 `mma.sync/ldmatrix` producer 迁移为 CuTe atoms；不得恢复旧 pack 或降低当前性能。
 - [ ] CDK-4：GEMM 快于 native 至少 5%。M=4096 hybrid nsys 约117.2µs vs native117.536µs（约0.3%）；`16Kx8Kx8K` native 反而快6.58%，尚未达到 5%。下一步先解释大 shape 退化。
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。达标前 NVFP4 默认 runtime 保持 native。

@@ -1,11 +1,11 @@
 // Copied from nunchaku/src/kernels/zgemm/gemm_w4a4_launch.cuh
-#include "gemm_w4a4.cuh"
+#include "gemm_w4a4_ext.cuh"
 #include "epilogues.cuh"
 
 namespace svdq::native_kernels {
 
 template <typename Config, bool USE_FP4>
-class GEMM_W4A4_Launch {
+class GEMM_W4A4_Ext_Launch {
   using GEMM = GEMM_W4A4<Config>;
   using Epilogues = Epilogues<Config>;
   using Lora = Lora<Config>;
@@ -47,11 +47,10 @@ class GEMM_W4A4_Launch {
                         Tensor out_k,     // packed attention [B, H, M, D]
                         Tensor out_v,     // packed attention [B, H, M, D]
                         int attn_tokens);
-  static void quantize_w4a4_act_fuse_lora(Tensor input, Tensor output, Tensor oscales,
-                                          Tensor lora_down, Tensor lora_act_out, Tensor smooth,
-                                          bool fuse_glu, bool fp4);
+  static void quantize_w4a4(Tensor input, Tensor output, Tensor oscales, Tensor lora_down,
+                            Tensor lora_act_out, Tensor smooth, bool fuse_glu, bool fp4);
   static void quantize_w4a4_act(Tensor input, Tensor output, Tensor oscales);
-  static void quantize_w4a4_wgt(Tensor input, Tensor output, Tensor oscales);
+  static void quantize_w4a4_wo(Tensor input, Tensor output, Tensor oscales);
 
   static void linearattn_vk_mul_q(Tensor q, Tensor vk);
 };

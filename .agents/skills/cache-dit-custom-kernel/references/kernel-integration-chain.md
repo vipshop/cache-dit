@@ -83,8 +83,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 ```
 
 - 模块名由 `CUDAExtension(name="cache_dit._C_<族>")` 决定，`TORCH_EXTENSION_NAME` 自动匹配。
-- 不返回 Tensor 的辅助接口另开 `utils` 子模块（现状只有 SVDQ：`set_log_level`、`set_faster_i2f_mode`）。
-- `py::arg("...")` 可选。SVDQ 的 `gemm_w4a4_native_v2` 给了命名参数，comm/attn 没给；Python 侧 `_call_*` 建议全位置传参，避免与 `py::arg` 名字耦合。
+- 不返回 Tensor 的辅助接口另开 `utils` 子模块（现状只有 SVDQ 的 `set_log_level`）。
+- `py::arg("...")` 可选。SVDQ 的统一 `gemm_w4a4` 给了命名参数，comm/attn 没给；Python 侧 `_call_*` 建议全位置传参，避免与 `py::arg` 名字耦合。
 
 ### 3.3 kernel TU 与校验分层
 
@@ -101,12 +101,12 @@ C++ 入口**一律 `void` + out-param**（三族 100%）。
 
 C++ 侧已是 out-param，真正要定的是 schema 形状：
 
-- **单输出还是多输出**：comm 全单输出；attn 双输出（`-> (Tensor out, Tensor lse)`）；svdq 至少两个 tuple 多输出（`quantize_w4a4_act_fuse_lora` 三输出、`quantize_w4a4_wgt` 双输出）。
+- **单输出还是多输出**：comm 全单输出；attn 双输出（`-> (Tensor out, Tensor lse)`）；svdq 的 `quantize_w4a4` 是三输出。
 - **输出 dtype/形状由谁决定**：FP8 输出必须由 Python 建 `torch.empty(..., dtype=torch.float8_e4m3fn)`；svdq 的 `oscales` dtype 与形状随 `fp4` 开关变化（fp4 → `float8_e4m3fn` + `channels/16`，否则 `input.dtype` + `channels/64`）。凡是输出 dtype/形状依赖 Python 侧参数的算子，out-param 就是唯一可行解。
 
 **默认把 out-param 藏在 `_call_*` 里，schema 只暴露函数式返回**——这样 functionalization 看到的是普通"返回新张量"的算子，不需要 `mutates_args`。
 
-例外是 `svdq_gemm_w4a4_ext`：它的 schema 直接把 `out` / `qout` / `oscales` / `lora_act_out` 等一堆输出张量列为参数，因此**不能进图**，调用它的上层（`quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj`）必须标 `@torch.compiler.disable`。新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
+例外是内部私有 `_svdq_gemm_w4a4_ext`：它的 schema 直接把 `out` / `qout` / `oscales` / `lora_act_out` 等一堆输出张量列为参数，因此**不能进图**，调用它的上层（`quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj`）必须标 `@torch.compiler.disable`。它不再从 `cache_dit.kernels` 公共导出，只允许 fused 内部从 `_svdquant` 私有导入；新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
 
 ## 4. Python 层
 
@@ -142,7 +142,7 @@ __all__ = ["<族>_extension_is_available", "<族>_get_load_error", "<op>", ...]
 | 维度 | comm | attn | svdq |
 |---|---|---|---|
 | required getter | 1 个（`ops`） | 1 个（`ops`） | 3 个（extension / `ops` / `utils`） |
-| 非 Tensor 算子 | 无 | 无 | `set_log_level`、`set_faster_i2f_mode` 完全绕过 `torch.library` |
+| 非 Tensor 算子 | 无 | 无 | `set_log_level` 完全绕过 `torch.library` |
 | impl 内输入 dtype 校验 | 有（`ValueError`） | 无 | 无（只校验形状/通道与输出 dtype） |
 | C++ `TORCH_CHECK` | 有 | 有 | 无 |
 | fake 写法 | 直接 `new_empty(最终形状)` | 复刻 impl 的 flatten/view 链 | 视算子而定 |
@@ -228,7 +228,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 |---|---|---|
 | 包内 re-export、`__all__` 自洽 | `tests/kernels/test_ops_dispatch.py` | 参数表**手工维护**，新算子不加条目等于没测；断言只保证 `kernels.__all__` 与 `vars(kernels)` 自洽（`!= "kernels"` 豁免），import 与 `__all__` 两边都漏时依然全绿 |
 | fake 注册 | `test_cuda_fp8_comm_ops.py::test_fp8_comm_fake_registration_shapes`、`test_cuda_merge_attn_states.py::test_fused_merge_attn_states_fake_registration` | `FakeTensorMode` 构图即可，CPU 能跑 |
-| 数值正确 | `test_cuda_fp8_comm_ops.py`（packing 参考）、`test_cuda_merge_attn_states.py`（float32 参考实现逐元素比）、`test_svdquant_runtime.py`（INT4 v1/v2 等价） | 需 CUDA + 扩展 |
+| 数值正确 | `test_cuda_fp8_comm_ops.py`（packing 参考）、`test_cuda_merge_attn_states.py`（float32 参考实现逐元素比）、`test_svdquant_runtime.py`（INT4 plain/ext 等价） | 需 CUDA + 扩展 |
 | 边界与空输入 | `test_cuda_fp8_comm_ops.py`（未定义布局拒绝、empty input） | 需 CUDA + 扩展 |
 | 无扩展时的行为 | 各测试文件里的 `_require_*()` 守卫（现状 2 个文件有） | 只 `pytest.skip`，不断言错误文案 |
 | 源清单与磁盘一致 | `tests/kernels/test_svdquant_source_manifest.py` | **仅 svdq**，且是双向比对；comm/attn 只有构建期"清单有、磁盘缺"这一向 |

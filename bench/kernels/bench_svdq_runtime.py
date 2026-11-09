@@ -242,11 +242,11 @@ def main() -> None:
           "output_dtype": dtype,
         }
 
-        os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
+        os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
         v1 = benchmark(native_v1_kernel, common_kwargs, warmup=warmup, iters=iters)
 
         for block_m in BLOCK_MS:
-          os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = str(block_m)
+          os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = str(block_m)
           v2_results: dict[str, dict[str, object]] = {}
 
           default_v2 = benchmark(svdq_gemm_w4a4, common_kwargs, warmup=warmup, iters=iters)
@@ -362,7 +362,7 @@ def main() -> None:
     },
   }
   json_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
-  os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
+  os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
   print(json.dumps(summary, indent=2, sort_keys=True))
 
 

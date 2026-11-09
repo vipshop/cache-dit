@@ -132,7 +132,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   "few_shot_auto_compile": False,
   # When enabled, SVDQ fuses the first quantized linear layer, GELU activation,
   # and second quantized linear layer in standard diffusers ``FeedForward`` GELU
-  # MLP blocks into a single kernel chain via ``svdq_gemm_w4a4_ext``.  The
+  # MLP blocks into a single kernel chain via private ``_svdq_gemm_w4a4_ext``.  The
   # intermediate fp16 activation is never written to HBM — the first GEMM
   # directly produces 4-bit quantized output consumed by the second GEMM.
   # Requires the ``fused_gelu_mlp`` and ``fused_gelu_proj`` passes to be

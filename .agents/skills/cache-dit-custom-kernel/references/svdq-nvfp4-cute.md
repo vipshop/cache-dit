@@ -5,19 +5,19 @@
 
 ## 1. 最终工作流结构
 
-2026-11-05 晚已从 IDE 历史快照恢复并落地**混合 G2R 工作流**。早期曾复用 native producer 并通过 `lora_act_to_bf16` 转 BF16；现在当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，finalize 仍然不存在。
+2026-11-05 晚已从 IDE 历史快照恢复并落地**混合 G2R 工作流**。早期曾复用 native producer 并通过 `lora_act_to_bf16` 转 BF16；现在当前 CuTe producer 直接输出 native A/SFA 与 BF16 D，finalize 仍然不存在。
 
 当前 CuTe 路径：
 
 1. `csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu` 直接生成：
-   - v1 256-row MMA-fragment interleaved `qact[M,K/2]` E2M1；
-   - 与 v1 qact 匹配的 `ascales`；
+   - native 256-row MMA-fragment interleaved `qact[M,K/2]` E2M1；
+   - 与 native qact 匹配的 `ascales`；
    - 完成全 K 归约、折入 LoRA scale 的 row-major BF16 `D[M,R]`。
 2. `gemm_w4a4.cuh` 中 A/SFA 从 gmem 直接装入 CuTe fragment（G2R）；B/SFB 与 D/L1 走 TMA+smem。
 3. NVFP4 主积和 BF16 LoRA-up 积共享同一 FP32 accumulator，最后只舍入一次。
 4. 旧 checkpoint 在 `_prepare_cute_pack()` 中做一次加载时转换；forward 不经过旧 pack producer、FP32 scratch 或 finalize。
 
-数值验收已覆盖 rank 0/32/64/128、独立 producer（identity smooth 下 v1 qact 与 native 逐字节一致，ascales 值集合一致）、真实量化 Linear 在 rank32/64/128 的 native/hybrid parity、INT4 隔离和 FLUX 出图。随机有限量化状态下高层 hybrid/native relative L2 约 0.00215；94 个 SVDQ kernel/runtime 测试通过。
+数值验收已覆盖 rank 0/32/64/128、独立 producer（identity smooth 下 native qact 与 native 逐字节一致，ascales 值集合一致）、真实量化 Linear 在 rank32/64/128 的 native/hybrid parity、INT4 隔离和 FLUX 出图。随机有限量化状态下高层 hybrid/native relative L2 约 0.00215；94 个 SVDQ kernel/runtime 测试通过。
 
 ## 2. 性能测量条件
 
@@ -207,7 +207,7 @@
 - mbarrier init 改为唯一 `raw_tid == 0` 并补 `fence_barrier_init()`；
 - A/SFA 保持 G2R，B/SFB/D/L1 保持 TMA，单 FP32 accumulator、LoRA overlay 和 output store 不变。
 
-当前 CuTe producer 不再写 standard row-major activation，而是在原量化与 BF16 D 计算不变的前提下，把每个 u32 直接写到 native v1 pack 的 MMA-fragment 位置：
+当前 CuTe producer 不再写 standard row-major activation，而是在原量化与 BF16 D 计算不变的前提下，把每个 u32 直接写到 native native pack 的 MMA-fragment 位置：
 
 ```text
 qact word base = ((row/256)*(K/64) + kt)*8 + (row%256)/32
@@ -216,7 +216,7 @@ dest_word      = base*256 + local + half*2 + w*4
 scale word     = base*32 + 4*(row%8) + (row%32)/8
 ```
 
-identity smooth 下，当前 producer 的 v1 qact 与 native quantize 逐字节一致；ascales 在 native 中按 `[K/16,M]` 存储，当前 v1 pack 为扁平顺序，但两者的 scale 值集合完全一致。随机 smooth 的差异来自既有的 BF16 smooth 舍入，不是布局错位。仍然没有 `lora_act_to_bf16` 或任何 finalize。
+identity smooth 下，当前 producer 的 native qact 与 native quantize 逐字节一致；ascales 在 native 中按 `[K/16,M]` 存储，当前 native pack 为扁平顺序，但两者的 scale 值集合完全一致。随机 smooth 的差异来自既有的 BF16 smooth 舍入，不是布局错位。仍然没有 `lora_act_to_bf16` 或任何 finalize。
 
 性能（同输入、同 shape）：
 
@@ -244,9 +244,9 @@ identity smooth 下，当前 producer 的 v1 qact 与 native quantize 逐字节�
 
 rank128 在大 shape 均略优于 native；rank64 在 `8192x6144`/16K 明显落后，rank 对 LoRA stage 数和流水行为的影响仍需单独归因。
 
-验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 94 passed。producer 测试覆盖 rank32/64/128，并包含 native v1 pack parity、非 256 padded batch 负向用例和 0.12 去量化精度门槛；真实量化 Linear 的 native/hybrid 端到端 parity 覆盖 rank32/64/128。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
+验证：`tests/kernels/test_ops_dispatch.py`、`test_svdquant_cute.py`、`test_svdquant_runtime.py`、`test_svdquant_source_manifest.py`、`test_quantize_config.py` 共 94 passed。producer 测试覆盖 rank32/64/128，并包含 native native pack parity、非 256 padded batch 负向用例和 0.12 去量化精度门槛；真实量化 Linear 的 native/hybrid 端到端 parity 覆盖 rank32/64/128。恢复依据与 standalone 证据在 `.tmp/svdq-nvfp4-cute/g2r-recovered/`。
 
-**边界**：M 必须是 256 倍数（v1 以 256 行为块）；N 必须为 128 倍数。M4096/N3072 下 hybrid kernel-only 只比 native 快约0.3%，完整层约1.3%–1.5%；但大 shape 下 native 反超（16Kx8Kx8K 快6.58%，见 §12），不能宣称 hybrid 普遍快于 native。下一步应优先解释大 shape 退化，而不是继续微调调度。
+**边界**：M 必须是 256 倍数（native pack 以 256 行为块）；N 必须为 128 倍数。M4096/N3072 下 hybrid kernel-only 只比 native 快约0.3%，完整层约1.3%–1.5%；但大 shape 下 native 反超（16Kx8Kx8K 快6.58%，见 §12），不能宣称 hybrid 普遍快于 native。下一步应优先解释大 shape 退化，而不是继续微调调度。
 
 ## 11. 为什么 hybrid G2R 更快，以及旧结论的失效边界（2026-11-05）
 
@@ -274,7 +274,7 @@ rank128 在大 shape 均略优于 native；rank64 在 `8192x6144`/16K 明显落�
 机制结论：
 
 1. **hybrid 的收益主要来自拆掉 activation 的 smem 中转，而不是减少总指令数。** 相对全 TMA，shared 指令/wavefront/bank conflict 分别下降约22%/18%/29%，`math_pipe_throttle` 从6.00降到4.61；静态 SASS 的 `FENCE` 从9条降到2条。A/SFA 不再进入 TMA full barrier，也没有每 stage 的 A LDSM 与 SFA 逐字节 shared copy。
-2. **代价是 A 的重复 global load。** 每个 CTA、每个 MMA 线程都直接从 v1 pack 取 A/SFA，跨 N tile 和 ThrN 广播产生重复请求：global 请求/ sectors 相对全 TMA 升4倍/31倍，L1 hit 从94.5%降到55.1%，`long_scoreboard` 从0.67升到2.92。但这些额外流量有87%在 L2 命中，DRAM 吞吐不变，而且总量仍远小于 native（请求41%、sectors22%）。
+2. **代价是 A 的重复 global load。** 每个 CTA、每个 MMA 线程都直接从 native pack 取 A/SFA，跨 N tile 和 ThrN 广播产生重复请求：global 请求/ sectors 相对全 TMA 升4倍/31倍，L1 hit 从94.5%降到55.1%，`long_scoreboard` 从0.67升到2.92。但这些额外流量有87%在 L2 命中，DRAM 吞吐不变，而且总量仍远小于 native（请求41%、sectors22%）。
 3. **hybrid 优于 native 的原因不同：它保留了 weight 的 CTA 内共享。** native 每个 warp 直接从 gmem 取 fragment，global 请求是 hybrid 的2.45倍、sectors是4.56倍，并带约103万 local-store sectors 的 spill；hybrid 把 B/SFB 一次 TMA 进 smem 给8个 consumer warp 复用，regs 168 vs 252，tensor active 79.8% vs 74.3%。所以 hybrid 同时避免了“全 TMA 的 smem 税”和“native 的重复 weight load/spill”。
 4. 尚未隔离 A 与 SFA 各自的贡献。SFA 是逐字节 shared copy，A 是 LDSM；从指标看 SFA scalar copy 很可能是主要节省项，但需要“A TMA + SFA G2R”的 A/B 才能定论，不能把全部收益归给 A G2R。
 
@@ -286,14 +286,14 @@ rank128 在大 shape 均略优于 native；rank64 在 `8192x6144`/16K 明显落�
 | stages 调优已完成、S3 最优 | **部分仍成立**：S2 被输出 overlay 的64KiB > pipeline55.3KiB 静态拒绝；S4 的110.6KiB超过99KiB。G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 per-stage overlay 占用 | 要增加 stages，必须先解耦 D/L1/output overlay，不能只靠 G2R 释放的 smem |
 | persistent CTA 慢4.4% | **未重测，旧机制仍在**：`store_done` 让同一 CTA 下一 tile 等上一 tile 的 output TMA store，丢失 CTA 间 epilogue/mainloop overlap；该串行化与 A 走 G2R 无关 | 只有改成不串行 store 的 persistent 设计才值得重测 |
 | BN128 小 tile 慢23% | **需在 hybrid 下重测**：旧数据来自全 TMA；hybrid 的 shared 结构已变，且 BN128 可用 S4 | 未做，不能直接沿用旧结论 |
-| direct G2R 因 pack 不匹配不可行 | **对 native pack 仍成立，对 v1 pack 已失效**：v1 producer + G2R 已落地 | 当前 hybrid 即该路线 |
+| direct G2R 因 pack 不匹配不可行 | **对 native pack 仍成立，对 native pack 已失效**：native producer + G2R 已落地 | 当前 hybrid 即该路线 |
 
 下一步优先级：
 
 1. A TMA + SFA G2R 的隔离实验，确认收益来自 A 还是 SFA copy；若 SFA 为主，可只针对 SF 设计更低成本的装载。
 2. 降低 A G2R 重复 load：跨 N tile 复用、cache hint、或在 cluster 内共享 A。
 3. 解耦 D/L1/output overlay，让 S4 或专用 LoRA buffer 成为可能；这是 stages 继续优化的前提。
-4. 优化 producer v1 的分散 u32 写回（当前为保持零 finalize 的代价）。
+4. 优化 producer native 的分散 u32 写回（当前为保持零 finalize 的代价）。
 5. persistent 只有在设计出去串行 store 的版本后再测。
 
 ## 12. 大 shape 标定：K-block 不放大收益，native 随规模反超（2026-11-05）
@@ -356,7 +356,7 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 
 1. **解释大 shape 下 native 反超（未完成）。** 在 `16384x8192x8192` 上做 native/hybrid 的 NCU 对比，定位是 CTA 波次、L2 复用、A/SFA 重复 G2R load 还是 per-CTA TMA/barrier 固定成本导致 native 快 6.58%。产出必须给出具体 counter（shared/global/L2/stall/occupancy）和可验证假设。
 2. **canonical SW64 bank conflict（已完成）。** canonical `tile_to_shape(SW64 atom,...)` + LDSM 将 conflict 降到483并保留；BK64 fallback 用 SW32。不要重做 conflict 消除。
-3. **降低 hybrid 重复流量（部分完成，主路线受阻）。** A-only TMA 与 v1 pack 不兼容（rel_l2=1.30），producer coalesced 写回无收益（46.81→47.01us）。只有设计“v1 bytes 经 TMA/共享广播”的新方案才值得继续。
+3. **降低 hybrid 重复流量（部分完成，主路线受阻）。** A-only TMA 与 native pack 不兼容（rel_l2=1.30），producer coalesced 写回无收益（46.81→47.01us）。只有设计“native bytes 经 TMA/共享广播”的新方案才值得继续。
 4. **persistent 只在重新设计 output 生命周期后重测。** 当前 `store_done` 让同一 CTA 的下一 tile 等上一 tile 的 TMA store，和 A 走 G2R 无关；没有去串行化设计就不要重复 110-CTA 版本。
 5. **FlashInfer CuTeDSL benchmark（已完成，慢）。** 四 shape 比 native 慢9%–15%，不移植；只保留为外部参照。
 
@@ -364,7 +364,7 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 
 ## 16. A-only TMA 与 producer coalesced 写回（2026-11-05）
 
-- **A-only TMA 不可行**：TMA 只能搬 standard row-major，当前 producer 输出 v1 fragment pack；TMA 后直接 LDSM 得到 rel_l2=1.30。除非 producer 额外输出一份 standard A（增加写带宽/内存），否则不能用 TMA 去掉 A 的重复 G2R load。
+- **A-only TMA 不可行**：TMA 只能搬 standard row-major，当前 producer 输出 native fragment pack；TMA 后直接 LDSM 得到 rel_l2=1.30。除非 producer 额外输出一份 standard A（增加写带宽/内存），否则不能用 TMA 去掉 A 的重复 G2R load。
 - **producer coalesced 写回无收益**：把每 warp 的 32 行×K64 qact/SFA 先在 smem 重组，再每 lane 写连续32B/4B。M4096 producer op：baseline 三次 median46.81us，候选47.01us；M1024 候选约慢1%。分散4B store 不是瓶颈，未保留。候选在 `.tmp/svdq-nvfp4-cute/g2r-recovered/quantize_w4a4_coalesced_candidate.cu`。
 
 
@@ -394,7 +394,7 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 - 同一 `gemm_harness.py` 的 native/cute 路径；CUDA Event 50 次 median，warmup 10。
 - 每配置至少 3 轮；rank32 的 `8192x6144`/`16K` 另做正反序各 3 轮，消除预热顺序偏差。
 - `cute/native < 1` 表示 cute 更快；`> 1` 表示 cute 更慢。绝对值不要与 nsys 表比较。
-- 当前 CuTe：A/SFA G2R + B/SFB/D/L1 TMA + canonical SW64/SW32 LoRA，producer 输出 v1 pack + BF16 D。
+- 当前 CuTe：A/SFA G2R + B/SFB/D/L1 TMA + canonical SW64/SW32 LoRA，producer 输出 native pack + BF16 D。
 
 ### 17.1 GEMM kernel-only，rank32
 
@@ -668,7 +668,7 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 
 ### 25.1 接口现状（PR #1259 之后）
 
-`gemm_w4a4` 与 `gemm_w4a4_f32d` 已合并为一个入口，`bool f32d` 换成 `enum class LoraLayout { kNative, kRowMajor }`；C++ 对外名字是 `gemm_w4a4_cute` / `quantize_w4a4_native` / `quantize_w4a4_row_major`。Python 只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，用两个正交维度选择：
+`bool f32d` 已换成 `enum class LoraLayout { kNative, kRowMajor }`。API 统一后，namespace 内叶子名字均为 `gemm_w4a4` / `quantize_w4a4`：`C++` 由 `RuntimeParams` + `LoraLayout` 分派到 `svdq::native_kernels` 或 `svdq::cute_kernels`。Python 只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，用两个正交维度选择：
 
 | runtime | lora_layout | LoRA-down 项 D |
 |---|---|---|
@@ -680,8 +680,8 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 
 **producer 必须与 layout 配对**（混用是静默数值损坏，不报错、结果错 30–54%，曾把 bench 结果误判成 kernel bug）：
 
-- `row_major` → `quantize_w4a4_row_major`，输入必须 `convert_svdq_nvfp4_pack_to_cute()` 产出的 `_cute_proj_down`（行主序）与 `_cute_smooth`（普通向量）。
-- `native` → native producer，输入是 checkpoint 里 fragment-packed 的 `proj_down` / `smooth_factor`。
+- `row_major` → `svdq::cute_kernels::quantize_w4a4`，输入必须 `convert_svdq_nvfp4_pack_to_cute()` 产出的 `_cute_proj_down`（行主序）与 `_cute_smooth`（普通向量）。
+- `native` → `svdq::native_kernels::quantize_w4a4`，输入是 checkpoint 里 fragment-packed 的 `proj_down` / `smooth_factor`。
 
 单测因此必须覆盖「producer + GEMM 对 native 的端到端 parity」：只测 GEMM（用解码出来的 native fragment D）或只测 producer（对 `x @ W_down`）都守不住这个洞，`test_row_major_pipeline_matches_native_runtime`（rank 32/64/128）就是补这一层。
 
@@ -737,3 +737,48 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 3. `nvidia-cutlass-dsl` 必须**带 deps** 升级：`--no-deps` 只抬 python 包，`nvidia-cutlass-dsl-libs-base` 停在 4.4.0.dev1 时所有 CuTe-DSL kernel 都会 `Loader for '.o' files is not registered`；python 包与 `libs-*` 全部对齐 4.8.1 才正常。
 
 FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K rank32 略胜 1.9%，与本文件 §15 的旧结论（CuTeDSL 慢 9%–15%）方向一致。
+
+## 26. row_major producer rank128 专项优化（2026-11-09，RTX PRO 5000）
+
+### 26.1 范围与代码状态
+
+只修改 `csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu`，不改变 native qact/ascales、row-major BF16 D、公开接口或 GEMM。全部 producer 类型外的 device 辅助函数、量化、主循环、D 归约和 launcher 已收进统一 `W4A4QuantizeKernel`；主 kernel 入口为 `W4A4QuantizeKernel::quantize_w4a4_fused_lora`，外部只保留薄的 `__global__` 启动壳。launcher 使用 `QuantizeLaunchArgs` 参数包，分派处只写 rank/warp/buffer/split 配置。
+
+### 26.2 当前完整矩阵（GPU4，Event median，warmup10/iters50，1 轮复测）
+
+命令口径：`bench/kernels/bench_svdquant_kernels.py --rank 32/64/128 --impl quantize,quantize-row-major`。下表左为 native µs，右为 row_major µs，括号为 row/native；<1 表示 CuTe 更快。
+
+| Shape M×N×K | rank32 | rank64 | rank128 |
+|---|---:|---:|---:|
+| 2048×3072×3072 | 34.38 / 32.43 (0.943) | 38.46 / 40.62 (1.056) | 47.15 / 54.00 (1.145) |
+| 4096×3072×3072 | 48.66 / 46.88 (0.964) | 56.62 / 59.82 (1.057) | 73.15 / 80.59 (1.102) |
+| 4096×6144×3072 | 48.70 / 47.57 (0.977) | 56.42 / 59.07 (1.047) | 73.28 / 80.86 (1.104) |
+| 8192×3072×3072 | 76.45 / 64.11 (0.839) | 91.74 / 92.98 (1.013) | 123.63 / 135.84 (1.099) |
+| 8192×6144×3072 | 76.42 / 65.38 (0.856) | 93.10 / 92.96 (0.999) | 123.89 / 137.23 (1.108) |
+| 16384×8192×8192 | 380.54 / 347.57 (0.913) | 426.45 / 365.70 (0.858) | 565.94 / 564.64 (0.998) |
+| 4608×3072×15360 | 221.70 / 222.75 (1.005) | 252.77 / 258.40 (1.022) | 316.66 / 366.93 (1.159) |
+
+结论：rank32 除长 K 持平外全部更快；rank64 16K 快14%、8K 持平、2K/4K 慢5%–6%；rank128 16K 已持平，2K/4K/8K 仍慢10%–14.5%，长 K 慢约16%。rank128 相比优化前的 1.5×–2.13× 已明显收敛，但“全格≤1.00”目标尚未完成。
+
+### 26.3 保留的优化
+
+1. **D partial shared 归约缓冲可配**：rank128 用 2 个 buffer 分阶段确定性累加，替换每 warp 一份完整 32×R partial，shared 从约67KB降到约34KB；A staging 与 D buffer 显式 phase barrier overlay，所有 warp（包括无 K slice）走同一 barrier。D 仍 FP32 归约、一次 BF16 rounding。
+2. **小 M rank split**：`blockIdx.y` 把 rank 分给两个 CTA，grid 翻倍、局部累加器减半；qact/ascales 只由 `blockIdx.y==0` 写，D 各写不重叠列，不引入 scratch/finalize。rank128 在 M≤8192、rank64 在 M≤4096 启用。
+3. **rank128 B 装载 `movmatrix.trans`**：四个对齐32-bit load + 寄存器转置，替代八个标量 BF16 fragment load；global load request 约减半，4K/长K/16K有实测收益，qact/ascales/D 保持位级一致。
+4. **按 M 的 warp/buffer 分派**：rank128 2K用 `8w/2buf/split2`、4K用 `4w/2buf/split2`、8K用 `8w/2buf/split2`、16K用 `8w/2buf/split1`；rank64 2K用 `8w/8buf/split2`、4K用 `4w/4buf/split2`、8K+用 `8w`。这些阈值是在 RTX PRO 5000 上逐格实测的 crossover，不能直接外推到 PRO 6000/H800。
+
+### 26.4 已证伪并移除的尝试
+
+- **16-row CTA**：累加器减半但两个 M16 half 的 B 复用消失，global load requests/sectors 约翻倍；4K NCU duration 约149µs，明显差于32-row基线，移除。
+- **4K×4 rank-group 的16-warp CTA**：512线程触发128-reg上限，local spill约1.2M/2.3M sectors，命名 barrier stall 13.2，4K约138µs，移除。
+- **rank64 强制2 CTA/SM + 2归约缓冲**：仍受 shared/寄存器组合限制，引入spill，2K/4K/长K明显回退，移除。
+- **B shared staging + XOR swizzle**：请求数下降但 bank conflict不降，延迟无净收益；movmatrix路径更简单，移除staging/swizzle。
+- **A staging 128B XOR swizzle**：bank conflict从约0.69M升到1.38M，三档rank均回退，移除。
+- **B vector-load + shuffle 伪路径**：早期版本按目标 lane 预选 word，但 `__shfl` 取的是源 lane 的寄存器，映射错误，golden 失败；未保留。
+- **rank128 split4**：2K与split2几乎同速；rank64 split4出现全列数值错误且无收益，模板支持已删除。
+
+### 26.5 验证状态
+
+- 修改前后小尺寸 golden：rank0/32/64/128 的 qact/ascales 与 D 逐字节一致（`qact_exact`, `ascales_exact`, `D_exact`）。
+- `tests/kernels/test_svdquant_cute.py -k row_major` 当前13 passed（统一类重构前）；统一类重构后重新编译并跑 golden，全部 PASS。提交前仍需跑完整 producer+GEMM parity、pre-commit 和 diff 检查。
+- 未完成项：rank128 2K/4K/8K/长K与 rank64 2K/4K仍高于native；下一步应优先解释小M的输入重复读取与D归约开销，而不是继续扫 warp 数或重复已证伪的16-row/K-split-scratch路线。

@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETUP_PY = REPO_ROOT / "setup.py"
 SVDQ_SOURCE_ROOT = REPO_ROOT / "csrc" / "kernels" / "svdq"
-MANIFEST_HELPERS = frozenset({"_svdquant_v2_launch_sources", "_required_svdquant_sources"})
+MANIFEST_HELPERS = frozenset({"_svdquant_stage_sources", "_required_svdquant_sources"})
 
 
 def _load_manifest_helpers() -> dict:

@@ -7,8 +7,8 @@ import torch
 
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.kernels import svdq_gemm_w4a4
-from cache_dit.kernels import svdq_gemm_w4a4_ext
 from cache_dit.kernels import svdq_quantize_w4a4
+from cache_dit.kernels._svdquant import _svdq_gemm_w4a4_ext as svdq_gemm_w4a4_ext
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
@@ -89,7 +89,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
   assert output.float().abs().sum().item() > 0.0
 
 
-def test_svdquant_int4_runtime_v2_smoke() -> None:
+def test_svdquant_int4_runtime_plain_smoke() -> None:
   _require_svdquant_runtime()
 
   device = "cuda"
@@ -207,7 +207,7 @@ def test_svdquant_int4_ext_runtime_smoke() -> None:
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
-def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
+def test_svdquant_int4_plain_matches_ext(stage: int) -> None:
   _require_svdquant_runtime()
 
   device = "cuda"
@@ -236,7 +236,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = pack_int4_weight(weights)
 
-    output_v1 = svdq_gemm_w4a4_ext(
+    output_ext = svdq_gemm_w4a4_ext(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -249,7 +249,7 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
       fp4=False,
       alpha=1.0,
     )
-    output_v2 = svdq_gemm_w4a4(
+    output_plain = svdq_gemm_w4a4(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -265,12 +265,12 @@ def test_svdquant_int4_v2_matches_v1(stage: int) -> None:
     )
     torch.cuda.synchronize()
 
-  torch.testing.assert_close(output_v2, output_v1, rtol=0.0, atol=0.0)
+  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
 @pytest.mark.parametrize("logical_block_m", [64, 128, 256])
-def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage: int) -> None:
+def test_svdquant_int4_plain_block_m_variants_match_ext(logical_block_m: int, stage: int) -> None:
   _require_svdquant_runtime()
 
   device = "cuda"
@@ -279,8 +279,8 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
   in_features = 128
   out_features = 128
 
-  previous = os.environ.get("CACHE_DIT_SVDQ_V2_BLOCK_M")
-  os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = str(logical_block_m)
+  previous = os.environ.get("CACHE_DIT_SVDQ_BLOCK_M")
+  os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = str(logical_block_m)
 
   try:
     with torch.inference_mode():
@@ -300,7 +300,7 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
       qweight, wscales = pack_int4_weight(weights)
 
-      output_v1 = svdq_gemm_w4a4_ext(
+      output_ext = svdq_gemm_w4a4_ext(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -313,7 +313,7 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4(
+      output_plain = svdq_gemm_w4a4(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -330,16 +330,17 @@ def test_svdquant_int4_v2_block_m_variants_match_v1(logical_block_m: int, stage:
       torch.cuda.synchronize()
   finally:
     if previous is None:
-      os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
+      os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
     else:
-      os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = previous
+      os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = previous
 
-  torch.testing.assert_close(output_v2, output_v1, rtol=0.0, atol=0.0)
+  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
 @pytest.mark.parametrize("logical_block_m", [64, 128, 256])
-def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, stage: int) -> None:
+def test_svdquant_int4_plain_block_m_lora_variants_match_ext(logical_block_m: int,
+                                                             stage: int) -> None:
   _require_svdquant_runtime()
 
   device = "cuda"
@@ -349,8 +350,8 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
   out_features = 128
   rank = 32
 
-  previous = os.environ.get("CACHE_DIT_SVDQ_V2_BLOCK_M")
-  os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = str(logical_block_m)
+  previous = os.environ.get("CACHE_DIT_SVDQ_BLOCK_M")
+  os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = str(logical_block_m)
 
   try:
     with torch.inference_mode():
@@ -372,7 +373,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
       weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
       qweight, wscales = pack_int4_weight(weights)
 
-      output_v1 = svdq_gemm_w4a4_ext(
+      output_ext = svdq_gemm_w4a4_ext(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -385,7 +386,7 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
         fp4=False,
         alpha=1.0,
       )
-      output_v2 = svdq_gemm_w4a4(
+      output_plain = svdq_gemm_w4a4(
         act=quantized_activations,
         wgt=qweight,
         ascales=ascales,
@@ -402,15 +403,15 @@ def test_svdquant_int4_v2_block_m_lora_variants_match_v1(logical_block_m: int, s
       torch.cuda.synchronize()
   finally:
     if previous is None:
-      os.environ.pop("CACHE_DIT_SVDQ_V2_BLOCK_M", None)
+      os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
     else:
-      os.environ["CACHE_DIT_SVDQ_V2_BLOCK_M"] = previous
+      os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = previous
 
-  torch.testing.assert_close(output_v2, output_v1, rtol=0.0, atol=0.0)
+  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
 
 
 @pytest.mark.parametrize("stage", [0, 4, 5])
-def test_svdquant_int4_v2_rejects_invalid_stage(stage: int) -> None:
+def test_svdquant_int4_plain_rejects_invalid_stage(stage: int) -> None:
   _require_svdquant_runtime()
 
   device = "cuda"

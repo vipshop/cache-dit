@@ -44,9 +44,9 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
 
 // Host entry for the SM120 CuTe path. Validation happens before any launch so unsupported dtypes
 // or layouts fail instead of being misinterpreted by a TMA descriptor. Activation A/SFA keep the
-// v1 256-row MMA-fragment pack and are loaded G2R; weights use standard row-major E2M1 codes plus
-// CUTLASS 128x4 SF atoms and are loaded by TMA. The independent CuTe activation producer emits the
-// v1 pack plus BF16 D directly, while the native producer emits FP32 fragment D that
+// native 256-row MMA-fragment pack and are loaded G2R; weights use standard row-major E2M1 codes
+// plus CUTLASS 128x4 SF atoms and are loaded by TMA. The independent CuTe activation producer emits
+// the native pack plus BF16 D directly, while the native producer emits FP32 fragment D that
 // `LoraLayout::kNative` lets the GEMM consume in place, so neither workflow needs a LoRA finalize
 // or extra repack step.
 //
@@ -55,9 +55,10 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
 //   BN=128, stages=4, BK=64:  fallback for narrower geometry; rank tiles have 16 columns.
 // BK controls both the number of NVFP4 atoms per stage and the LoRA overlay width (BK/4), which
 // is why rank divisibility is part of configuration selection. No runtime repack is performed.
-void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Tensor wscales,
-               ::Tensor lora_act_in, ::Tensor lora_up, ::Tensor bias, ::Tensor wcscales,
-               std::vector<float> lora_scales, float alpha, LoraLayout lora_layout) {
+void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tensor ascales,
+               svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
+               svdq::Tensor bias, svdq::Tensor wcscales, std::vector<float> lora_scales,
+               float alpha, LoraLayout lora_layout) {
   auto require = [](bool condition, const char *message) {
     if (!condition) {
       throw std::runtime_error(spdlog::fmt_lib::format("gemm_w4a4: {}", message));
@@ -74,11 +75,12 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
   const int N = wgt.size(0);
   const int rank = lora_up.valid() ? lora_up.size(1) : 0;
 
-  require(act.dtype() == ::Tensor::INT8 && wgt.dtype() == ::Tensor::INT8,
+  require(act.dtype() == svdq::Tensor::INT8 && wgt.dtype() == svdq::Tensor::INT8,
           "act/wgt must be packed int8/uint8 bytes");
-  require(ascales.dtype() == ::Tensor::FP8_E4M3 && wscales.dtype() == ::Tensor::FP8_E4M3,
+  require(ascales.dtype() == svdq::Tensor::FP8_E4M3 && wscales.dtype() == svdq::Tensor::FP8_E4M3,
           "ascales/wscales must be FP8_E4M3");
-  require(out.dtype() == ::Tensor::BF16, "out must be BF16; only the BF16 epilogue is wired up");
+  require(out.dtype() == svdq::Tensor::BF16,
+          "out must be BF16; only the BF16 epilogue is wired up");
   require(act.is_cuda() && wgt.is_cuda() && out.is_cuda() && ascales.is_cuda() && wscales.is_cuda(),
           "act/wgt/out/ascales/wscales must be CUDA tensors");
   require(act.is_contiguous() && wgt.is_contiguous() && out.is_contiguous() &&
@@ -87,11 +89,12 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
 
   require(wgt.size(1) == act.size(1), "wgt must have the same packed K extent as act");
   require(out.size(0) == M && out.size(1) == N, "out must be [M, N]");
-  require(M % 256 == 0 && N % 128 == 0,
-          "M must be a multiple of 256 for the v1 activation pack; N must be a multiple of 128");
+  require(
+    M % 256 == 0 && N % 128 == 0,
+    "M must be a multiple of 256 for the native activation pack; N must be a multiple of 128");
   require(K % 64 == 0, "K must be a multiple of 64");
   require(ascales.numel() == sf_buffer_bytes(M, K),
-          "ascales must be the v1 interleaved activation scale pack for [M, K]");
+          "ascales must be the native interleaved activation scale pack for [M, K]");
   require(wscales.numel() == sf_buffer_bytes(N, K),
           "wscales must be a flat 128x4 512B atom buffer for [N, K]");
 
@@ -101,23 +104,23 @@ void gemm_w4a4(::Tensor act, ::Tensor wgt, ::Tensor out, ::Tensor ascales, ::Ten
     require(lora_up.ndims() == 2 && lora_up.size(0) == N && lora_act_in.ndims() == 2 &&
               lora_act_in.size(0) == M,
             "LoRA tensors must be [N, R] and [M, R]");
-    require(lora_up.dtype() == ::Tensor::BF16, "lora_up must be BF16");
-    require(
-      lora_act_in.dtype() == (lora_layout == LoraLayout::kNative ? ::Tensor::FP32 : ::Tensor::BF16),
-      lora_layout == LoraLayout::kNative
-        ? "lora_act_in must be the packed FP32 fragment D for LoraLayout::kNative"
-        : "lora_act_in must be BF16 for LoraLayout::kRowMajor");
+    require(lora_up.dtype() == svdq::Tensor::BF16, "lora_up must be BF16");
+    require(lora_act_in.dtype() ==
+              (lora_layout == LoraLayout::kNative ? svdq::Tensor::FP32 : svdq::Tensor::BF16),
+            lora_layout == LoraLayout::kNative
+              ? "lora_act_in must be the packed FP32 fragment D for LoraLayout::kNative"
+              : "lora_act_in must be BF16 for LoraLayout::kRowMajor");
     require(lora_up.is_cuda() && lora_act_in.is_cuda() && lora_up.is_contiguous() &&
               lora_act_in.is_contiguous(),
             "LoRA tensors must be contiguous CUDA tensors");
   }
   if (bias.valid()) {
-    require(bias.numel() == static_cast<size_t>(N) && bias.dtype() == ::Tensor::BF16 &&
+    require(bias.numel() == static_cast<size_t>(N) && bias.dtype() == svdq::Tensor::BF16 &&
               bias.is_cuda() && bias.is_contiguous(),
             "bias must be a contiguous BF16 [N] tensor");
   }
   if (wcscales.valid()) {
-    require(wcscales.numel() == static_cast<size_t>(N) && wcscales.dtype() == ::Tensor::BF16 &&
+    require(wcscales.numel() == static_cast<size_t>(N) && wcscales.dtype() == svdq::Tensor::BF16 &&
               wcscales.is_cuda() && wcscales.is_contiguous(),
             "wcscales must be a contiguous BF16 [N] tensor");
   }

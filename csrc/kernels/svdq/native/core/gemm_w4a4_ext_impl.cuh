@@ -1,14 +1,14 @@
 // Copied from nunchaku/src/kernels/zgemm/gemm_w4a4_launch_impl.cuh
-#include "gemm_w4a4_launch.cuh"
+#include "gemm_w4a4_ext_launch.cuh"
 
 namespace svdq::native_kernels {
 
 #ifndef __INTELLISENSE__
 template <typename Config, bool USE_FP4>
-void GEMM_W4A4_Launch<Config, USE_FP4>::gemm_w4a4(
+void GEMM_W4A4_Ext_Launch<Config, USE_FP4>::gemm_w4a4(
 #else
 template <>
-void GEMM_W4A4_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
+void GEMM_W4A4_Ext_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
 #endif
   Tensor act,             // packed act [M, K / 2]
   Tensor wgt,             // packed act [N, K / 2]
@@ -396,7 +396,7 @@ void GEMM_W4A4_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
 }
 
 template <typename Config, bool USE_FP4>
-void GEMM_W4A4_Launch<Config, USE_FP4>::linearattn_vk_mul_q(Tensor q, Tensor vk) {
+void GEMM_W4A4_Ext_Launch<Config, USE_FP4>::linearattn_vk_mul_q(Tensor q, Tensor vk) {
   using Epilogue = typename Epilogues::EpilogueLiteLA;
 
   int batch_size = vk.shape[0];
@@ -420,9 +420,10 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::linearattn_vk_mul_q(Tensor q, Tensor vk)
 }
 
 template <typename Config, bool USE_FP4>
-void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_act_fuse_lora(
-  Tensor input, Tensor output, Tensor oscales, Tensor lora_down, Tensor lora_act_out, Tensor smooth,
-  bool fuse_glu, bool fp4) {
+void GEMM_W4A4_Ext_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor output,
+                                                          Tensor oscales, Tensor lora_down,
+                                                          Tensor lora_act_out, Tensor smooth,
+                                                          bool fuse_glu, bool fp4) {
   const int actualM = input.numel() / input.shape[-1];
   const int actualN = input.shape[-1];
 
@@ -465,7 +466,7 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_act_fuse_lora(
     checkCUDA(
       cudaFuncSetAttribute(func, cudaFuncAttributeMaxDynamicSharedMemorySize, kernel::SHMEM_SIZE));
 
-    // log(std::format("quantize_w4a4_act_fuse_lora M={} N={} input={} output={} (size={}
+    // log(std::format("quantize_w4a4 M={} N={} input={} output={} (size={}
     // numel={})", M, N, input.data_ptr(), output.data_ptr(), output.buffer->getSize(),
     // output.numel()));
 
@@ -490,8 +491,8 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_act_fuse_lora(
 }
 
 template <typename Config, bool USE_FP4>
-void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_act(Tensor input, Tensor output,
-                                                          Tensor oscales) {
+void GEMM_W4A4_Ext_Launch<Config, USE_FP4>::quantize_w4a4_act(Tensor input, Tensor output,
+                                                              Tensor oscales) {
   if constexpr (USE_FP4) {
     assert(false);  // not implemented
     return;
@@ -517,8 +518,8 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_act(Tensor input, Tensor o
 }
 
 template <typename Config, bool USE_FP4>
-void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_wgt(Tensor input, Tensor output,
-                                                          Tensor oscales) {
+void GEMM_W4A4_Ext_Launch<Config, USE_FP4>::quantize_w4a4_wo(Tensor input, Tensor output,
+                                                             Tensor oscales) {
   if constexpr (USE_FP4) {
     assert(false);
     return;
@@ -537,7 +538,7 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4_wgt(Tensor input, Tensor o
   assert(oscales.numel() == N * K / GEMM::WARP_K);
 
   dim3 grid(N / GEMM::WARP_N, K / GEMM::WARP_K);
-  invoke_kernel<typename GEMM::quantize_w4a4_wgt_kernel>
+  invoke_kernel<typename GEMM::quantize_w4a4_wo_kernel>
     <<<grid, GEMM::WARP_SIZE, 0, getCurrentCUDAStream()>>>(input.data_ptr<half_t>(),
                                                            output.data_ptr<packed_wgt_t>(),
                                                            oscales.data_ptr<packed_wscale_t>(), K);

@@ -620,7 +620,7 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   };
 
   // each thread block (1 warp) quantize WARP_N * WARP_K tile (128 * 64)
-  struct quantize_w4a4_wgt_kernel {
+  struct quantize_w4a4_wo_kernel {
     static constexpr int MIN_ARCH = std::is_same_v<half_t, __nv_bfloat16> ? 800 : 750;
     __device__ void operator()(const half_t *input, packed_wgt_t *output, packed_wscale_t *oscales,
                                int K) {
