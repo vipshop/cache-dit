@@ -143,7 +143,7 @@ class FusedGeluMlpPass(BasePass):
   After quantization the linear layers become ``SVDQW4A4Linear``
   instances.  This pass patches the ``FeedForward.forward`` method to
   call ``fused_gelu_mlp(fc1, fc2)``, which uses the
-  ``svdq_gemm_w4a4_ext`` qout path to eliminate the intermediate fp16
+  private ``_svdq_gemm_w4a4_ext`` qout path to eliminate the intermediate fp16
   HBM write between the two GEMMs.
 
   .. note::

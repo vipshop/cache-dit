@@ -47,11 +47,10 @@ class SVDQW4A4Linear(nn.Module):
       16-element groups and an additional coarse scale hierarchy.
     :param act_unsigned: Whether the runtime activation quantizer should emit
       unsigned 4-bit activations for the kernel path.
-    :param runtime_kernel: Packed GEMM family. `None` selects native v2 for
-      INT4 and the native NVFP4 kernel. `cute` is an NVFP4-only validation
-      opt-in; it is not enabled by default until its GEMM and end-to-end
-      performance meet the release gate. The old `v1`/`v2` selectors are
-      deprecated.
+    :param runtime_kernel: Packed GEMM family. `None` selects the plain native
+      INT4 kernel for INT4 and the native ext kernel for NVFP4. `cute` is an
+      NVFP4-only validation opt-in; it is not enabled by default until its GEMM
+      and end-to-end performance meet the release gate.
     :param lora_layout: Layout of the LoRA-down term produced by the
       activation quantizer and consumed by the GEMM. `None`/`native` keeps the
       packed FP32 MMA-fragment `D`; `row_major` selects the row-major BF16
@@ -70,7 +69,7 @@ class SVDQW4A4Linear(nn.Module):
       raise ValueError(f"rank must be non-negative, got {rank}.")
     if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
       raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
-                       f"got {runtime_kernel!r}. The v1/v2 selectors are deprecated.")
+                       f"got {runtime_kernel!r}.")
     resolved_runtime_kernel = runtime_kernel
     if resolved_runtime_kernel is None:
       resolved_runtime_kernel = "native"

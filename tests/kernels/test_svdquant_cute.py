@@ -84,7 +84,7 @@ def test_row_major_quantize_producer(rank: int, scales: list[float]) -> None:
   assert _relative_l2(dequant, x.float() / smooth.float()) < 0.12
 
 
-def test_row_major_producer_matches_native_v1_pack() -> None:
+def test_row_major_producer_matches_native_pack() -> None:
   _require_sm120()
   torch.manual_seed(20261110)
   m, k = 256, 128
@@ -98,7 +98,7 @@ def test_row_major_producer_matches_native_v1_pack() -> None:
                                                     lora_scales=[1.0],
                                                     pad_size=256)
   assert torch.equal(q_row_major, q_native)
-  # native stores scales as [K/16, M], while the v1 pack is flat; the values must match.
+  # native stores scales as [K/16, M], while the CuTe native pack is flat; values must match.
   assert torch.equal(
     sf_row_major.view(torch.uint8).flatten().sort().values,
     sf_native.view(torch.uint8).flatten().sort().values)
@@ -380,7 +380,7 @@ def test_gemm_w4a4_validates_lora_arguments() -> None:
   fp32_d = torch.empty(256, 32, dtype=torch.float32, device="cuda:0")
   lora_up = torch.empty(128, 32, dtype=torch.bfloat16, device="cuda:0")
   with pytest.raises(ValueError, match="unknown runtime|runtime must be"):
-    svdq_gemm_w4a4(act, wgt, ascales, wscales, bf16_d, lora_up, runtime="v1")
+    svdq_gemm_w4a4(act, wgt, ascales, wscales, bf16_d, lora_up, runtime="legacy")
   with pytest.raises(ValueError, match="only supports lora_layout='native'"):
     svdq_gemm_w4a4(act,
                    wgt,
@@ -450,7 +450,7 @@ def test_gemm_w4a4_validates_lora_arguments() -> None:
                    lora_scales=[1.0] * 16)
 
 
-def test_cute_pack_cache_preserves_v1_state_dict() -> None:
+def test_cute_pack_cache_preserves_legacy_state_dict() -> None:
   module = SVDQW4A4Linear(
     128,
     128,
@@ -506,30 +506,29 @@ def test_cute_runtime_validation() -> None:
     SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute", torch_dtype=torch.float16)
 
 
-def test_runtime_kernel_auto_selection_and_deprecated_values() -> None:
+def test_runtime_kernel_auto_selection_and_invalid_values() -> None:
   assert SVDQW4A4Linear(128, 128, precision="int4").runtime_kernel == "native"
   assert SVDQW4A4Linear(128, 128, precision="nvfp4").runtime_kernel == "native"
   assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute").runtime_kernel == "cute"
-  for deprecated in ("v1", "v2"):
-    with pytest.raises(ValueError, match="deprecated"):
-      SVDQW4A4Linear(128, 128, runtime_kernel=deprecated)
+  with pytest.raises(ValueError, match="runtime_kernel must be"):
+    SVDQW4A4Linear(128, 128, runtime_kernel="legacy")
 
 
 @pytest.mark.parametrize("runtime_kernel", [None, "native"])
-def test_native_int4_dispatches_native_v2(monkeypatch, runtime_kernel: str | None) -> None:
+def test_native_int4_dispatches_plain_runtime(monkeypatch, runtime_kernel: str | None) -> None:
   if not torch.cuda.is_available():
     pytest.skip("CUDA is required")
   import cache_dit.kernels._svdquant as svdq_ops
 
   module = SVDQW4A4Linear(128, 128, rank=0, precision="int4", runtime_kernel=runtime_kernel)
   seen: list[str] = []
+  monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4_ext",
+                      lambda *args, **kwargs: seen.append("ext"))
   monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4_native",
-                      lambda *args, **kwargs: seen.append("v1"))
-  monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4_native_v2",
-                      lambda *args, **kwargs: seen.append("v2"))
+                      lambda *args, **kwargs: seen.append("plain"))
   module.forward_quant(torch.empty(0, 128, device="cuda:0"), torch.empty(0, device="cuda:0"),
                        torch.empty(0, device="cuda:0"))
-  assert seen == ["v2"]
+  assert seen == ["plain"]
 
 
 def test_lora_layout_validation() -> None:
@@ -539,7 +538,7 @@ def test_lora_layout_validation() -> None:
   with pytest.raises(ValueError, match="only supported with runtime_kernel='cute'"):
     SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="native", lora_layout="row_major")
   with pytest.raises(ValueError, match="lora_layout must be"):
-    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute", lora_layout="v1")
+    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute", lora_layout="legacy")
 
 
 def test_row_major_quantize_uses_cute_pack(monkeypatch) -> None:
@@ -685,7 +684,7 @@ def test_gemm_w4a4_fake_registration() -> None:
     assert scales.dtype == torch.float8_e4m3fn
     assert lora_act.shape == (256, 32)
     if lora_layout == "row_major":
-      # The CuTe producer emits the flat v1 scale pack and row-major BF16 D.
+      # The CuTe producer emits the flat native scale pack and row-major BF16 D.
       assert scales.shape == (256 * 8, )
       assert lora_act.dtype == torch.bfloat16
     else:

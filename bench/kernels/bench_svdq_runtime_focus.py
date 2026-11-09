@@ -131,7 +131,7 @@ def maybe_set_block_env(native_impl: str, block_m: int) -> tuple[str, str | None
 
   if native_impl != "v2":
     return "", None
-  env_name = "CACHE_DIT_SVDQ_V2_BLOCK_M"
+  env_name = "CACHE_DIT_SVDQ_BLOCK_M"
 
   previous = os.environ.get(env_name)
   os.environ[env_name] = str(block_m)

@@ -1,16 +1,16 @@
 #pragma once
 
-#include "../core/gemm_w4a4.cuh"
+#include "../core/gemm_w4a4_ext.cuh"
 
 namespace svdq::native_kernels {
 
-// v2 keeps the original packed tensor contract and the same per-warp MMA decomposition as v1.
-// The dedicated launch wrapper is retained so the v2 path can evolve independently. The packed
-// tensors are still produced with the original 256-row activation layout, while the v2 runtime can
-// reinterpret that contiguous warp-group sequence as smaller logical row blocks on Ada.
+// This is the single plain native INT4 runtime. It keeps the packed tensor contract and the same
+// per-warp MMA decomposition as the ext implementation. The packed tensors still use the 256-row
+// activation layout, while this runtime may reinterpret the contiguous warp-group sequence as
+// smaller logical row blocks on Ada-class GPUs.
 
 template <typename PackedConfig, int LogicalBlockM>
-class GEMMConfig_W4A4_V2_Block {
+class GEMMConfig_W4A4_Plain_Block {
  public:
   static_assert(LogicalBlockM > 0);
 
@@ -54,13 +54,13 @@ __global__ static void invoke_kernel_v2(T... args) {
 }
 
 template <typename Config, int NumPipelineStages>
-class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
+class GEMM_W4A4_Plain : public GEMM_W4A4<Config> {
  public:
   using Parent = GEMM_W4A4<Config>;
   using Base = GEMMBase<Config>;
   using LoraKernel = Lora<Config>;
   static_assert(NumPipelineStages >= 1 && NumPipelineStages <= 3,
-                "svdq_gemm_w4a4_native_v2 supports pipeline stages in [1, 3].");
+                "svdq_gemm_w4a4 supports pipeline stages in [1, 3].");
   // More stages can hide additional load latency, but each extra stage keeps more packed tiles
   // live per thread and therefore raises register pressure. Keep the kernel body stage-agnostic so
   // the runtime wrapper can dispatch among multiple compiled stage variants.
@@ -329,7 +329,7 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
   }
 
   template <typename Epilogue, bool ACT_UNSIGNED>
-  __device__ __forceinline__ static void gemm_w4a4_v2_block_compat(
+  __device__ __forceinline__ static void gemm_w4a4_plain_block_compat(
     const BlockInfo binfo, const packed_act_t *act, const packed_wgt_t *wgt,
     const packed_ascale_t *ascales, const packed_wscale_t *wscales, int M, int N, int K,
     const typename Epilogue::Arguments &epilogueArgs, bool alwaysfalse) {
@@ -379,12 +379,12 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     }
 
     unused_var(dummy, alwaysfalse);
-    CHECK_NAN(fpsum, "fpsum_v2_compat");
+    CHECK_NAN(fpsum, "fpsum_plain_compat");
     Epilogue()(binfo, fpsum, M, N, K, epilogueArgs);
   }
 
   template <typename Epilogue, bool ACT_UNSIGNED>
-  __device__ __forceinline__ static void gemm_w4a4_v2_block_compat_smem(
+  __device__ __forceinline__ static void gemm_w4a4_plain_block_compat_smem(
     SharedStorage &shared, const BlockInfo binfo, const packed_act_t *act, const packed_wgt_t *wgt,
     const packed_ascale_t *ascales, const packed_wscale_t *wscales, int M, int N, int K,
     const typename Epilogue::Arguments &epilogueArgs, bool alwaysfalse) {
@@ -446,14 +446,14 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     }
 
     unused_var(alwaysfalse, alwaysfalse);
-    CHECK_NAN(fpsum, "fpsum_v2_compat_smem");
+    CHECK_NAN(fpsum, "fpsum_plain_compat_smem");
     Epilogue()(binfo, fpsum, M, N, K, epilogueArgs);
   }
 
   template <typename Epilogue, bool ACT_UNSIGNED>
-  struct gemm_w4a4_v2_kernel {
+  struct gemm_w4a4_plain_kernel {
     static constexpr int MIN_ARCH = 750;
-    using SharedStorage = typename GEMM_W4A4_V2<Config, NumPipelineStages>::SharedStorage;
+    using SharedStorage = typename GEMM_W4A4_Plain<Config, NumPipelineStages>::SharedStorage;
     static constexpr bool USE_COMPAT_SMEM_OPT = false;
 
     __device__ void operator()(SharedStorage &shared, const packed_act_t *act,
@@ -479,14 +479,14 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
       (void)shared;
       if constexpr (USE_PACKED_LAYOUT_COMPAT) {
         if constexpr (USE_COMPAT_SMEM_OPT && NumPipelineStages >= 2) {
-          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat_smem<
+          GEMM_W4A4_Plain<Config, NumPipelineStages>::template gemm_w4a4_plain_block_compat_smem<
             Epilogue, ACT_UNSIGNED>(
             shared, binfo, act, wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE, ascales,
             wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES, M, N, K,
             epilogueArgs, alwaysfalse);
         } else {
-          GEMM_W4A4_V2<Config, NumPipelineStages>::template gemm_w4a4_v2_block_compat<Epilogue,
-                                                                                      ACT_UNSIGNED>(
+          GEMM_W4A4_Plain<Config, NumPipelineStages>::template gemm_w4a4_plain_block_compat<
+            Epilogue, ACT_UNSIGNED>(
             binfo, act, wgt + bn * (K / WARP_K) * WARP_N_TILES * WARP_SIZE, ascales,
             wscales + bn * (K / WARP_K) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES, M, N, K,
             epilogueArgs, alwaysfalse);
@@ -628,8 +628,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
     using Arguments = typename LoraKernel::EpilogueLoraUp::Arguments;
 
     // The LoRA up path reuses the original packed lora_act tensor layout from the quantizer.
-    // When v2 shrinks the logical row block on Ada, only the base GEMM block shape changes; the
-    // LoRA activations must still be read with the original packed warp-group stride.
+    // When the plain runtime shrinks the logical row block on Ada, only the base GEMM block shape
+    // changes; the LoRA activations must still be read with the original packed warp-group stride.
     __device__ __forceinline__ static void apply_lora_up(fpsum_warp &fpsum, const float *act,
                                                          const packed_fpsum_t *wgt,
                                                          const typename LoraKernel::scale_t &scales,
@@ -748,8 +748,8 @@ class GEMM_W4A4_V2 : public GEMM_W4A4<Config> {
 };
 
 template <typename Config, int NumPipelineStages>
-class GEMM_W4A4_V2_Launch {
-  using GEMM = GEMM_W4A4_V2<Config, NumPipelineStages>;
+class GEMM_W4A4_Plain_Launch {
+  using GEMM = GEMM_W4A4_Plain<Config, NumPipelineStages>;
   using LoraKernel = Lora<Config>;
 
   using packed_act_t = typename GEMM::packed_act_t;
@@ -785,7 +785,7 @@ class GEMM_W4A4_V2_Launch {
       }
 
       dispatchBool(act_unsigned, [&]<bool ACT_UNSIGNED>() {
-        using kernel_t = typename GEMM::template gemm_w4a4_v2_kernel<Epilogue, ACT_UNSIGNED>;
+        using kernel_t = typename GEMM::template gemm_w4a4_plain_kernel<Epilogue, ACT_UNSIGNED>;
         auto func = invoke_kernel_v2<kernel_t, const packed_act_t *, const packed_wgt_t *,
                                      const packed_ascale_t *, const packed_wscale_t *, int, int,
                                      int, typename Epilogue::Arguments, bool, bool>;

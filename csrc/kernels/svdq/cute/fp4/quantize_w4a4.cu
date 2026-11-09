@@ -11,7 +11,7 @@ namespace svdq::cute_kernels {
 namespace {
 
 // Independent CuTe activation producer. One warp owns 32 rows and the whole K reduction:
-//   qact/ascales are written directly in the v1 256-row MMA-fragment pack consumed by G2R;
+//   qact/ascales are written directly in the native 256-row MMA-fragment pack consumed by G2R;
 //   D = input @ lora_down is accumulated in registers and written once as row-major BF16.
 // There is no FP32 LoRA scratch, atomic, finalize kernel, or extra activation repack.
 struct PackedBF16 {
@@ -27,7 +27,7 @@ struct LoraScaleParams {
 };
 
 // Unified activation producer for the CuTe NVFP4 path. It owns the packed types required at the
-// kernel boundary and every helper used to produce v1 qact/ascales plus row-major BF16 D.
+// kernel boundary and every helper used to produce native qact/ascales plus row-major BF16 D.
 struct W4A4QuantizeKernel {
   // A 16x64 BF16 staging tile is stored as BF16; this is its size in float words.
   static constexpr int kAStageFloats = 16 * (64 + 8) / 2;
@@ -68,7 +68,7 @@ struct W4A4QuantizeKernel {
     return *reinterpret_cast<const __nv_bfloat162 *>(ptr);
   }
 
-  /// Divide BF16x2 pairs through FP32, matching the smoothing math of the v1 producer.
+  /// Divide BF16x2 pairs through FP32, matching the smoothing math of the native producer.
   static __device__ __forceinline__ __nv_bfloat162 div_bf16x2(__nv_bfloat162 a, __nv_bfloat162 b) {
     float2 af = __bfloat1622float2(a);
     float2 bf = __bfloat1622float2(b);
@@ -175,10 +175,10 @@ struct W4A4QuantizeKernel {
     return acc;
   }
 
-  // Quantize four K16 groups and write the v1 activation qact/scale pack consumed by G2R.
+  // Quantize four K16 groups and write the native activation qact/scale pack consumed by G2R.
   // The max/shuffle/rounding sequence matches the native producer. Each lane owns four u32 words
-  // per K32 half; the stores place those words at their MMA-fragment positions in the 256-row v1
-  // block, so the GEMM can load A/SFA directly into registers without TMA or shared memory.
+  // per K32 half; the stores place those words at their MMA-fragment positions in the 256-row
+  // native block, so the GEMM can load A/SFA directly into registers without TMA or shared memory.
   static __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qact,
                                                         uint8_t *ascales, int M, int K, int row0,
                                                         int k0, int lane) {
@@ -266,14 +266,14 @@ struct W4A4QuantizeKernel {
       }
     }
 
-    // Redistribute the packed K32 words into the v1 256-row interleaved activation pack. Lanes
+    // Redistribute the packed K32 words into the native 256-row interleaved activation pack. Lanes
     // 0/1 of each four-lane rank group own all eight words after the shuffle; the other two lanes
     // intentionally skip the global store. The qact index is the sum of three independent terms:
     //   base  = 256-row block, K64 step, and 32-row warp panel;
     //   local = row-within-8, the 8/16 half selector, and the 16/32 half selector;
     //   i * 2 = the two words owned by this writer lane.
     // Each dst[0/4/8/12] advances by four u32 words, i.e. the next K16 group in the same panel.
-    // This mapping was verified word-for-word against the native v1 qact output.
+    // This mapping was verified word-for-word against the native native qact output.
     const int i = lane % 4;
     if (i < 2) {
 #pragma unroll
@@ -290,9 +290,9 @@ struct W4A4QuantizeKernel {
       }
     }
 
-    // Only lane 0 of each rank group writes ascales. The v1 scale tile has one u32 word per row,
-    // containing the four FP8 scale factors above. Its lane coordinate is
-    // 4*(row mod 8) + (row mod 32)/8; bitwise it is the qact panel lane before the u32 widening.
+    // Only lane 0 of each rank group writes ascales. The native scale tile has one u32 word per
+    // row, containing the four FP8 scale factors above. Its lane coordinate is 4*(row mod 8) + (row
+    // mod 32)/8; bitwise it is the qact panel lane before the u32 widening.
     if (lane % 4 == 0) {
 #pragma unroll
       for (int j = 0; j < 2; ++j) {
@@ -307,7 +307,8 @@ struct W4A4QuantizeKernel {
 
   // Main producer body. A CTA owns 32 rows; kRankSplits CTAs may split the rank dimension,
   // kWarps warps split K, and each warp emits one A/SFA K64 slice before accumulating LoRA-D.
-  // qact/ascales always follow the v1 pack, while D is reduced in FP32 and rounded once to BF16.
+  // qact/ascales always follow the native pack, while D is reduced in FP32 and rounded once to
+  // BF16.
   template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
   static __device__ void quantize_w4a4_fused_lora(const __nv_bfloat16 *__restrict__ input,
                                                   const __nv_bfloat16 *__restrict__ smooth,
@@ -421,7 +422,7 @@ struct W4A4QuantizeKernel {
 
         // Quantize the two M16 halves separately. quant is a register-only copy, so applying the
         // smoothing division here cannot perturb the BF16 A values consumed by the LoRA MMA.
-        // quantize_group then derives per-K32 FP4 scales and writes the v1 qact/ascales pack.
+        // quantize_group then derives per-K32 FP4 scales and writes the native qact/ascales pack.
 #pragma unroll
         for (int mt = 0; mt < 2; ++mt) {
           PackedBF16 quant[4];
@@ -627,14 +628,16 @@ void launch_quantize_w4a4(const QuantizeLaunchArgs &args) {
 
 }  // namespace
 
-void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, ::Tensor lora_down,
-                             ::Tensor lora_act, ::Tensor smooth, std::vector<float> lora_scales) {
+void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
+                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
+                   std::vector<float> lora_scales) {
   W4A4QuantizeKernel::require(input.valid() && output.valid() && ascales.valid() && smooth.valid(),
                               "quantize_w4a4 requires input/output/ascales/smooth");
-  W4A4QuantizeKernel::require(input.dtype() == ::Tensor::BF16 && smooth.dtype() == ::Tensor::BF16,
-                              "quantize_w4a4 currently requires BF16 input and smooth");
   W4A4QuantizeKernel::require(
-    output.dtype() == ::Tensor::INT8 && ascales.dtype() == ::Tensor::FP8_E4M3,
+    input.dtype() == svdq::Tensor::BF16 && smooth.dtype() == svdq::Tensor::BF16,
+    "quantize_w4a4 currently requires BF16 input and smooth");
+  W4A4QuantizeKernel::require(
+    output.dtype() == svdq::Tensor::INT8 && ascales.dtype() == svdq::Tensor::FP8_E4M3,
     "quantize_w4a4 output must be INT8 and ascales FP8_E4M3");
   W4A4QuantizeKernel::require(input.is_contiguous() && smooth.is_contiguous(),
                               "input and smooth must be contiguous");
@@ -643,14 +646,14 @@ void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, 
   const int rank = lora_down.valid() ? lora_down.shape[-1] : 0;
   W4A4QuantizeKernel::require(
     M % 256 == 0 && K % 64 == 0,
-    "quantize_w4a4 requires M%256==0 for the v1 activation pack and K%64==0");
+    "quantize_w4a4 requires M%256==0 for the native activation pack and K%64==0");
   W4A4QuantizeKernel::require(rank == 0 || (rank % 16 == 0 && rank <= 128),
                               "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
   W4A4QuantizeKernel::require(static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),
                               "lora_scales must have one value per 16-rank tile");
   if (rank > 0) {
     W4A4QuantizeKernel::require(
-      lora_down.is_contiguous() && lora_act.valid() && lora_act.dtype() == ::Tensor::BF16,
+      lora_down.is_contiguous() && lora_act.valid() && lora_act.dtype() == svdq::Tensor::BF16,
       "CuTe LoRA-down must be row-major BF16 and lora_act must be BF16");
   }
 

@@ -219,7 +219,7 @@ from ._comm import fp8_comm_per_token_quant
 - `tests/kernels/test_ops_dispatch.py` —— re-export 身份、`__all__`、已删 dispatch 的回归守卫
 - `tests/kernels/test_cuda_fp8_comm_ops.py` —— FP8 comm 正确性、fake 路径、空输入、compile smoke
 - `tests/kernels/test_cuda_merge_attn_states.py` —— attention 状态合并正确性与 compile
-- `tests/kernels/test_svdquant_runtime.py` —— SVDQ 运行期行为与 INT4 v1/v2 等价
+- `tests/kernels/test_svdquant_runtime.py` —— SVDQ 运行期行为与 INT4 plain/ext 等价
 - `tests/quantization/` —— 模块层与量化器行为
 
 范围被刻意限制时要写明，例如：

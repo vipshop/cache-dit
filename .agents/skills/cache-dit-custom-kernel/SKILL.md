@@ -80,12 +80,12 @@ SVDQW4A4Linear.quantize / forward_quant
 
 - `csrc/kernels/svdq/native/`：旧 native 实现，使用 `svdq::native_kernels`。
 - `csrc/kernels/svdq/cute/fp4/`：独立 CuTe 实现，使用 `svdq::cute_kernels`。
-- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`；但 `ops.h`/pybind 的**对外**入口按后端显式命名（`gemm_w4a4_cute`、`quantize_w4a4_native`、`quantize_w4a4_row_major`），Python 侧只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，用 `runtime`（`native`/`cute`）× `lora_layout`（`native`/`row_major`）两个正交维度选择，不再有 `svdq_*_cute` / `_native_v2` 这类平行包装（PR #1259）。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。API 统一后，`ops.h`/pybind 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher，由 C++ `RuntimeParams`（runtime/fp4/stage/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 完整 ext ABI 仅作内部 `gemm_w4a4_ext` 服务 fused/ext。Python 侧只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，`svdq_gemm_w4a4_ext` 已转私有 `_svdq_gemm_w4a4_ext`。
 - `gemm_w4a4.cu/.cuh/.h`：NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
 - `quantize_w4a4.cu`：`quantize_w4a4_fused_lora_kernel`，SVDQ 上半段 activation quant + LoRA-down 融合。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
 
-公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 使用 native v2；NVFP4 当前默认 native，`cute` 为显式 opt-in，直到 GEMM 和 e2e 性能达标。deprecated `v1/v2` 配置字符串不作为公开 selector。
+公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 使用 plain native；NVFP4 当前默认 native ext，`cute` 为显式 opt-in，直到 GEMM 和 e2e 性能达标。
 
 SVDQ 在通用模板之外的偏离（3 个 required getter、`utils` 子模块、无 `TORCH_CHECK`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
 
@@ -100,7 +100,7 @@ quantize_w4a4_fused_lora_kernel
   -> A/B/SFA/SFB TMA + NVFP4 MMA + BF16 LoRA-up MMA
 ```
 
-禁止在 CuTe forward 中调用 native activation quantizer、读取 v1 FP32 LoRA scratch、执行 G2R 旧布局反解或增加 `lora_act_to_bf16`。旧 checkpoint 只能在加载时一次性转换 `qweight/wscales/proj_up/proj_down/smooth_factor`；state dict 保持原 native pack 格式。
+禁止在 CuTe forward 中调用 native activation quantizer、读取 native FP32 LoRA scratch、执行 G2R 旧布局反解或增加 `lora_act_to_bf16`。旧 checkpoint 只能在加载时一次性转换 `qweight/wscales/proj_up/proj_down/smooth_factor`；state dict 保持原 native pack 格式。
 
 当前 producer 使用手写 `mma.sync/ldmatrix` 和 shared staging。未来迁移到 CuTe `TiledMMA/TiledCopy` 时，必须保留现有数学、输出布局和 CTA 内归约契约。
 
@@ -168,17 +168,17 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
 
-- 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 v1 A/SFA 与 BF16 D，无 finalize。
+- 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 native A/SFA 与 BF16 D，无 finalize。
 - 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。
 - **rank32 大 shape 仍落后 native**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` 的 cute/native 为1.026/1.020/1.047/1.064。rank128 在所有大 shape 略优于 native（0.32%–1.43%）；rank64 在 `8192x6144`/16K 退化。下一条主矛盾是 rank32/64 大 shape。
 - hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
 - 当前 hybrid 重测逐 k-block `A load -> B/SFB copy -> MMA`：168 regs、零 spill；12格净变化约0，2K rank32 +0.61%，8K/16K 小优0.2%–0.5%，在1%门槛内，已保留。旧“0.12%不保留”是旧 hybrid/nsys 口径。
 - stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
 - 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
-- FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 v1 pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
+- FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 native pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
 - 16K NCU 排除 wave 尾部和 L2（两边37.24 waves、cute L2 95.3%）；剩余差距在 shared 装载（16.4×指令）和 TMA/mbarrier sleeping/barrier。删除3条 load-side `fence_view_async_shared` 仅±0.2%，已保留为等价简化，但没有缩小大 shape 差距。
 - 三条新主循环方案均失败并回退：A/SFA前移±0.4%噪声；A/SFA双缓冲SASS过闸（R221/224、零spill）但全矩阵慢2.4%–6.1%；BK64 S5/S6/S7在16K慢26%–27%。不要再重复这三条。
-- G2R 的 v1 pack 映射已实证：identity smooth 下 producer 的 v1 qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
+- G2R 的 native pack 映射已实证：identity smooth 下 producer 的 native qact 与 native 逐字节一致，ascales 值集合一致；不要让 producer 再写 standard row-major A/SFA。
 - persistent 在当前 hybrid 上按 ffpa grid-stride + epilogue_done 重测：94 tests通过，但12格慢3.0%–6.7%；light producer 288T 与 warpgroup 协议不兼容（setmaxnreg死锁/去后STACK264、慢150%–198%）；Non-WS 256T 慢1.6%–4.3%。均已回退。
 - LoRA-first + 首K tile A/SFA 预取已保留：≤4K rank32/64/128 受益1%–2.6%，8K rank128/64 受益，16K rank32/64 回退约1.4%；长序列建议 native。wait 内移和 BK64/S3 无收益，未保留。
 - 16K 已增加 `kLoRAFirst=false` 的 main-first 专用实例：local load/store sectors 归零，16K 相对 LoRA-first 快1.5%，2/4/8K在±0.5%内。剩余差距仍是 long_scoreboard/sleeping；下一步全 G2R 专用 kernel 或更大 tile/more-warp 结构，统一数据见 §17/§19/§21/§22。

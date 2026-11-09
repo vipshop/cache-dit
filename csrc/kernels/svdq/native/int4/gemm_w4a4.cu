@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#include "gemm_w4a4_v2_launch.cuh"
+#include "gemm_w4a4_launch.cuh"
 
 namespace svdq::native_kernels {
 
@@ -18,10 +18,9 @@ namespace {
 // the pipeline depth yields no speed-up for NVFP4 GEMM: the register savings from fewer
 // stages never translate into higher occupancy (the CTA is already register-bound at 256
 // threads × 172+ regs), and the compiler schedules the hard-coded 2-stage compat path
-// more efficiently than the direct path with variable stages.  Therefore we do NOT expose
-// an NVFP4 v2 kernel variant — the v1 FP4 path (which is the same fused GEMM) is used
-// for all NVFP4 workloads on Blackwell, keeping the codebase simpler.
-static int get_v2_auto_block_m(int M, int N) {
+// more efficiently than the direct path with variable stages. Therefore NVFP4 always uses the
+// full ext fused GEMM on Blackwell, keeping the codebase simpler.
+static int get_plain_auto_block_m(int M, int N) {
   auto *prop = getCurrentDeviceProperties();
   if (prop->major != 8 || prop->minor != 9) {
     return 256;
@@ -36,81 +35,80 @@ static int get_v2_auto_block_m(int M, int N) {
   return N <= 12288 ? 256 : 128;
 }
 
-static int get_v2_logical_block_m(int M, int N) {
-  const char *value = std::getenv("CACHE_DIT_SVDQ_V2_BLOCK_M");
+static int get_plain_logical_block_m(int M, int N) {
+  const char *value = std::getenv("CACHE_DIT_SVDQ_BLOCK_M");
   if (value == nullptr || value[0] == '\0') {
-    return get_v2_auto_block_m(M, N);
+    return get_plain_auto_block_m(M, N);
   }
 
   char *end = nullptr;
   const long parsed = std::strtol(value, &end, 10);
   if (end == value || *end != '\0') {
-    throw std::runtime_error("CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
+    throw std::runtime_error("CACHE_DIT_SVDQ_BLOCK_M must be one of 64, 128, or 256.");
   }
   if (parsed != 64 && parsed != 128 && parsed != 256) {
-    throw std::runtime_error("CACHE_DIT_SVDQ_V2_BLOCK_M must be one of 64, 128, or 256.");
+    throw std::runtime_error("CACHE_DIT_SVDQ_BLOCK_M must be one of 64, 128, or 256.");
   }
   return static_cast<int>(parsed);
 }
 
-static int get_v2_num_stages(int stage) {
+static int get_plain_num_stages(int stage) {
   if (stage < 1 || stage > 3) {
-    throw std::runtime_error("svdq_gemm_w4a4_native_v2 stage must be one of 1, 2, or 3.");
+    throw std::runtime_error("svdq_gemm_w4a4 stage must be one of 1, 2, or 3.");
   }
   return stage;
 }
 
-static gemm_w4a4_v2_launch_fn get_v2_launch_fn(Tensor::ScalarType dtype, int stage) {
+static gemm_w4a4_launch_fn get_plain_launch_fn(Tensor::ScalarType dtype, int stage) {
   switch (stage) {
     case 1:
       if (dtype == Tensor::FP16) {
-        return &launch_gemm_w4a4_v2_fp16_int4_stage1;
+        return &launch_gemm_w4a4_fp16_int4_stage1;
       }
       if (dtype == Tensor::BF16) {
-        return &launch_gemm_w4a4_v2_bf16_int4_stage1;
+        return &launch_gemm_w4a4_bf16_int4_stage1;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4 expects FP16 or BF16 INT4 scales.");
     case 2:
       if (dtype == Tensor::FP16) {
-        return &launch_gemm_w4a4_v2_fp16_int4_stage2;
+        return &launch_gemm_w4a4_fp16_int4_stage2;
       }
       if (dtype == Tensor::BF16) {
-        return &launch_gemm_w4a4_v2_bf16_int4_stage2;
+        return &launch_gemm_w4a4_bf16_int4_stage2;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4 expects FP16 or BF16 INT4 scales.");
     case 3:
       if (dtype == Tensor::FP16) {
-        return &launch_gemm_w4a4_v2_fp16_int4_stage3;
+        return &launch_gemm_w4a4_fp16_int4_stage3;
       }
       if (dtype == Tensor::BF16) {
-        return &launch_gemm_w4a4_v2_bf16_int4_stage3;
+        return &launch_gemm_w4a4_bf16_int4_stage3;
       }
-      throw std::runtime_error("svdq_gemm_w4a4_native_v2 expects FP16 or BF16 INT4 scales.");
+      throw std::runtime_error("svdq_gemm_w4a4 expects FP16 or BF16 INT4 scales.");
     default:
-      throw std::runtime_error("svdq_gemm_w4a4_native_v2 stage must be one of 1, 2, or 3.");
+      throw std::runtime_error("svdq_gemm_w4a4 stage must be one of 1, 2, or 3.");
   }
 }
 
 }  // namespace
 
-void gemm_w4a4_native_v2(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales,
-                         Tensor lora_act_in, Tensor lora_up, Tensor bias, bool act_unsigned,
-                         float alpha, Tensor wcscales, int stage) {
+void gemm_w4a4(Tensor act, Tensor wgt, Tensor out, Tensor ascales, Tensor wscales,
+               Tensor lora_act_in, Tensor lora_up, Tensor bias, bool act_unsigned, float alpha,
+               Tensor wcscales, int stage) {
   if (!act.valid() || !wgt.valid() || !out.valid() || !ascales.valid() || !wscales.valid()) {
     throw std::runtime_error(
-      "svdq_gemm_w4a4_native_v2 requires act, wgt, out, ascales, and wscales tensors.");
+      "svdq_gemm_w4a4 requires act, wgt, out, ascales, and wscales tensors.");
   }
   if (alpha != 1.0f) {
-    throw std::runtime_error(
-      "svdq_gemm_w4a4_native_v2 only supports alpha=1.0 for the INT4 runtime path.");
+    throw std::runtime_error("svdq_gemm_w4a4 only supports alpha=1.0 for the INT4 runtime path.");
   }
 
   const int M = act.numel() / act.shape[-1];
   const int N = wgt.shape[0];
   Tensor::ScalarType dtype = ascales.dtype();
-  const int logical_block_m = get_v2_logical_block_m(M, N);
-  const int num_stages = get_v2_num_stages(stage);
-  const auto launch = get_v2_launch_fn(dtype, num_stages);
+  const int logical_block_m = get_plain_logical_block_m(M, N);
+  const int num_stages = get_plain_num_stages(stage);
+  const auto launch = get_plain_launch_fn(dtype, num_stages);
   launch(act, wgt, out, ascales, wscales, lora_act_in, lora_up, bias, act_unsigned, alpha, wcscales,
          logical_block_m);
 }

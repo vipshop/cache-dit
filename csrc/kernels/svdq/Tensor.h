@@ -549,3 +549,9 @@ struct TensorsProvider {
   virtual bool contains(const std::string &key) const = 0;
   virtual Tensor getTensor(const std::string &key) = 0;
 };
+
+namespace svdq {
+// Explicit namespace spelling for the global SVDQ tensor descriptor. `::Tensor` remains the
+// canonical type name for ABI compatibility; `svdq::Tensor` is the preferred spelling in new code.
+using Tensor = ::Tensor;
+}  // namespace svdq
