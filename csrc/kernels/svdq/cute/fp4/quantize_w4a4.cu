@@ -271,7 +271,7 @@ __device__ __forceinline__ void quantize_group(PackedBF16 (&tmp)[4], uint8_t *qa
 // manual mma.sync/ldmatrix and explicit shared-memory staging. Once the native-matching schedule
 // is locked, re-express the same tile/reduction/output plan with CuTe TiledMMA/TiledCopy atoms.
 // Keep the v1 A/SFA and row-major BF16 D contract unchanged.
-template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps>
+template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict__ input,
                                                 const __nv_bfloat16 *__restrict__ smooth,
                                                 const __nv_bfloat16 *__restrict__ lora_down,
@@ -280,10 +280,13 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
                                                 __nv_bfloat16 *__restrict__ lora_act,
                                                 LoraScaleParams scales, int M, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
-  constexpr int kAccTiles = kRankTiles > 0 ? kRankTiles : 1;
+  static_assert(kRankSplits == 1 || kRankSplits == 2);
+  constexpr int kLocalRankTiles = kRankTiles / kRankSplits;
+  constexpr int kAccTiles = kLocalRankTiles > 0 ? kLocalRankTiles : 1;
   constexpr int kRank = kRankTiles * 16;
-  constexpr int kRankStride = kRankTiles == 2 ? kRank + 4 : kRank + 1;
-  constexpr int kDStageFloats = kRankTiles > 0 ? 32 * kRankStride : 0;
+  constexpr int kLocalRank = kLocalRankTiles * 16;
+  constexpr int kRankStride = kRankTiles == 2 ? kLocalRank + 4 : kLocalRank + 1;
+  constexpr int kDStageFloats = kLocalRankTiles > 0 ? 32 * kRankStride : 0;
   constexpr int kWarpStageFloats = kAStageFloats;
   constexpr int kASharedFloats = kWarps * kWarpStageFloats;
   constexpr int kDSharedFloats = kReductionBuffers * kDStageFloats;
@@ -292,15 +295,16 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
   const int lane = threadIdx.x % 32;
   const int warp = threadIdx.x / 32;
   const int row0 = blockIdx.x * 32;
+  const int rank0 = kRankSplits == 1 ? 0 : blockIdx.y * kLocalRank;
   extern __shared__ float shared_scratch[];
   auto *warp_stage = reinterpret_cast<__nv_bfloat16 *>(shared_scratch + warp * kWarpStageFloats);
 
   PackedF32 acc[2][kAccTiles];
-  if constexpr (kRankTiles > 0) {
+  if constexpr (kLocalRankTiles > 0) {
 #pragma unroll
     for (int mt = 0; mt < 2; ++mt) {
 #pragma unroll
-      for (int rt = 0; rt < kRankTiles; ++rt) {
+      for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
           acc[mt][rt].data[j] = 0.0f;
@@ -340,49 +344,51 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
       __syncwarp();
     }
 
-    __nv_bfloat162 smooth0[4];
-    __nv_bfloat162 smooth1[4];
-#pragma unroll
-    for (int n = 0; n < 4; ++n) {
-      const int col = k0 + n * 16 + (lane % 4) * 2;
-      smooth0[n] = load_bf16x2(smooth + col);
-      smooth1[n] = load_bf16x2(smooth + col + 8);
-    }
-
-#pragma unroll
-    for (int mt = 0; mt < 2; ++mt) {
-      PackedBF16 quant[4];
+    if (kRankSplits == 1 || blockIdx.y == 0) {
+      __nv_bfloat162 smooth0[4];
+      __nv_bfloat162 smooth1[4];
 #pragma unroll
       for (int n = 0; n < 4; ++n) {
-        quant[n] = raw_all[mt][n];
-        quant[n].data[0] = div_bf16x2(quant[n].data[0], smooth0[n]);
-        quant[n].data[1] = div_bf16x2(quant[n].data[1], smooth0[n]);
-        quant[n].data[2] = div_bf16x2(quant[n].data[2], smooth1[n]);
-        quant[n].data[3] = div_bf16x2(quant[n].data[3], smooth1[n]);
+        const int col = k0 + n * 16 + (lane % 4) * 2;
+        smooth0[n] = load_bf16x2(smooth + col);
+        smooth1[n] = load_bf16x2(smooth + col + 8);
       }
-      quantize_group(quant, qact, ascales, M, K, row0 + mt * 16, k0, lane);
+
+#pragma unroll
+      for (int mt = 0; mt < 2; ++mt) {
+        PackedBF16 quant[4];
+#pragma unroll
+        for (int n = 0; n < 4; ++n) {
+          quant[n] = raw_all[mt][n];
+          quant[n].data[0] = div_bf16x2(quant[n].data[0], smooth0[n]);
+          quant[n].data[1] = div_bf16x2(quant[n].data[1], smooth0[n]);
+          quant[n].data[2] = div_bf16x2(quant[n].data[2], smooth1[n]);
+          quant[n].data[3] = div_bf16x2(quant[n].data[3], smooth1[n]);
+        }
+        quantize_group(quant, qact, ascales, M, K, row0 + mt * 16, k0, lane);
+      }
     }
 
     if constexpr (kRankTiles == 8) {
 #pragma unroll
-      for (int rt = 0; rt < kRankTiles; ++rt) {
+      for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
         for (int n = 0; n < 4; ++n) {
-          PackedBF16 b =
-            load_lora_fragment_register_transpose(lora_down, kRank, k0 + n * 16, rt * 16, lane);
+          PackedBF16 b = load_lora_fragment_register_transpose(lora_down, kRank, k0 + n * 16,
+                                                               rank0 + rt * 16, lane);
 #pragma unroll
           for (int mt = 0; mt < 2; ++mt) {
             acc[mt][rt] = mma_lora(raw_all[mt][n], b, acc[mt][rt]);
           }
         }
       }
-    } else if constexpr (kRankTiles > 0) {
+    } else if constexpr (kLocalRankTiles > 0) {
       // The 32-row variant loads each B fragment once for both M16 halves.
 #pragma unroll
-      for (int rt = 0; rt < kRankTiles; ++rt) {
+      for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
         for (int n = 0; n < 4; ++n) {
-          PackedBF16 b = load_lora_fragment(lora_down, kRank, k0 + n * 16, rt * 16, lane);
+          PackedBF16 b = load_lora_fragment(lora_down, kRank, k0 + n * 16, rank0 + rt * 16, lane);
 #pragma unroll
           for (int mt = 0; mt < 2; ++mt) {
             acc[mt][rt] = mma_lora(raw_all[mt][n], b, acc[mt][rt]);
@@ -392,7 +398,7 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
     }
   }
 
-  if constexpr (kRankTiles > 0) {
+  if constexpr (kLocalRankTiles > 0) {
     static_assert(kWarps % kReductionBuffers == 0);
     if constexpr (kReductionBuffers < kWarps) {
       // The A staging area is overlaid only after every warp has finished its K loop. Each buffer
@@ -406,7 +412,7 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
 #pragma unroll
           for (int mt = 0; mt < 2; ++mt) {
 #pragma unroll
-            for (int rt = 0; rt < kRankTiles; ++rt) {
+            for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
               for (int j = 0; j < 8; ++j) {
                 const int row = mt * 16 + lane / 4 + 8 * ((j / 2) % 2);
@@ -426,7 +432,7 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
 #pragma unroll
       for (int mt = 0; mt < 2; ++mt) {
 #pragma unroll
-        for (int rt = 0; rt < kRankTiles; ++rt) {
+        for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
           for (int j = 0; j < 8; ++j) {
             const int row = mt * 16 + lane / 4 + 8 * ((j / 2) % 2);
@@ -440,17 +446,18 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
     }
 
     // Each output element is rounded once after the FP32 reduction and rank scaling.
-    for (int index = threadIdx.x; index < 32 * kRank; index += kWarps * 32) {
-      const int row = index / kRank;
-      const int col = index % kRank;
+    for (int index = threadIdx.x; index < 32 * kLocalRank; index += kWarps * 32) {
+      const int row = index / kLocalRank;
+      const int col = index % kLocalRank;
       const int shared_col = kRankTiles == 2 ? (col ^ row) : col;
       float sum = 0.0f;
 #pragma unroll
       for (int w = 0; w < kReductionBuffers; ++w) {
         sum += shared_scratch[w * kDStageFloats + row * kRankStride + shared_col];
       }
-      lora_act[size_t(row0 + row) * kRank + col] =
-        __float2bfloat16_rn(sum * scales.values[col / 16]);
+      const int rank_col = rank0 + col;
+      lora_act[size_t(row0 + row) * kRank + rank_col] =
+        __float2bfloat16_rn(sum * scales.values[rank_col / 16]);
     }
   }
 #else
@@ -458,26 +465,27 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
 #endif
 }
 
-template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps>
+template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smooth,
                           const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
                           __nv_bfloat16 *lora_act, LoraScaleParams scales, int M, int K,
                           cudaStream_t stream) {
-  constexpr int kRank = kRankTiles * 16;
-  constexpr int kRankStride = kRankTiles == 2 ? kRank + 4 : kRank + 1;
-  constexpr int kDStageFloats = kRankTiles > 0 ? 32 * kRankStride : 0;
+  constexpr int kLocalRankTiles = kRankTiles / kRankSplits;
+  constexpr int kLocalRank = kLocalRankTiles * 16;
+  constexpr int kRankStride = kRankTiles == 2 ? kLocalRank + 4 : kLocalRank + 1;
+  constexpr int kDStageFloats = kLocalRankTiles > 0 ? 32 * kRankStride : 0;
   constexpr int kWarpStageFloats = kAStageFloats;
   constexpr int kASharedFloats = kWarps * kWarpStageFloats;
   constexpr int kDSharedFloats = kReductionBuffers * kDStageFloats;
   constexpr int kSharedFloats = kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats;
   constexpr size_t kSmemBytes = static_cast<size_t>(kSharedFloats) * sizeof(float);
-  auto kernel = quantize_w4a4_fused_lora_kernel<kRankTiles, kWarps, kReductionBuffers>;
+  auto kernel = quantize_w4a4_fused_lora_kernel<kRankTiles, kWarps, kReductionBuffers, kRankSplits>;
   if constexpr (kSmemBytes > 48 * 1024) {
     checkCUDA(
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
   }
-  kernel<<<dim3(M / 32), dim3(kWarps * 32), kSmemBytes, stream>>>(input, smooth, lora_down, qact,
-                                                                  ascales, lora_act, scales, M, K);
+  kernel<<<dim3(M / 32, kRankSplits), dim3(kWarps * 32), kSmemBytes, stream>>>(
+    input, smooth, lora_down, qact, ascales, lora_act, scales, M, K);
 }
 
 }  // namespace
@@ -530,8 +538,13 @@ void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, 
     launch_quantize_w4a4<3, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                lora_act_ptr, scales, M, K, stream);
   } else if (rank == 64) {
-    launch_quantize_w4a4<4, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                               lora_act_ptr, scales, M, K, stream);
+    if (M <= 4096) {
+      launch_quantize_w4a4<4, 8, 8, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                       lora_act_ptr, scales, M, K, stream);
+    } else {
+      launch_quantize_w4a4<4, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                 lora_act_ptr, scales, M, K, stream);
+    }
   } else if (rank == 80) {
     launch_quantize_w4a4<5, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                lora_act_ptr, scales, M, K, stream);
@@ -542,8 +555,13 @@ void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, 
     launch_quantize_w4a4<7, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                lora_act_ptr, scales, M, K, stream);
   } else {
-    launch_quantize_w4a4<8, 8, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
-                                  lora_act_ptr, scales, M, K, stream);
+    if (M <= 8192) {
+      launch_quantize_w4a4<8, 8, 2, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                       lora_act_ptr, scales, M, K, stream);
+    } else {
+      launch_quantize_w4a4<8, 8, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                    lora_act_ptr, scales, M, K, stream);
+    }
   }
   checkCUDA(cudaGetLastError());
 }
