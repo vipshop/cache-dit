@@ -5,8 +5,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <vector>
 
 namespace svdq::cute_kernels {
@@ -158,6 +156,11 @@ struct W4A4QuantizeKernel {
   /// Fire-and-forget FP32 global reduction used by the split-K D path.
   static __device__ __forceinline__ void global_add_f32(float *addr, float value) {
     asm volatile("red.relaxed.gpu.global.add.f32 [%0], %1;" ::"l"(addr), "f"(value));
+  }
+
+  /// Two adjacent rank columns of one row; halves the split-K atomic instruction count.
+  static __device__ __forceinline__ void global_add_f32x2(float *addr, float a, float b) {
+    asm volatile("red.relaxed.gpu.global.add.v2.f32 [%0], {%1, %2};" ::"l"(addr), "f"(a), "f"(b));
   }
 
   /// Apply two B atoms to one 16-row activation fragment and update its FP32 accumulator.
@@ -708,14 +711,15 @@ struct W4A4QuantizeKernel {
         for (int rt = 0; rt < kChunkTiles; ++rt) {
           const int global_rt = chunk * kChunkTiles + rt;
 #pragma unroll
-          for (int j = 0; j < 8; ++j) {
-            // Fragment-major scratch keeps every lane of one (row_block, rank tile, warp, atom)
-            // at consecutive addresses, so red.add uses one coalesced sector per warp instead of
-            // the scattered row-major pattern. Finalize performs the row-major scatter.
-            const int atom = mt * 8 + j;
+          for (int pair = 0; pair < 4; ++pair) {
+            // Each v2 entry holds the two adjacent rank columns of one row. Four lanes therefore
+            // produce eight contiguous BF16 columns, which finalize emits as one uint4 store.
+            const int atom = mt * 4 + pair;
             const int packed_index =
-              ((((blockIdx.x * kRankTiles + global_rt) * kWarps + warp) * 16 + atom) * 32 + lane);
-            global_add_f32(lora_scratch + packed_index, acc[mt][rt].data[j]);
+              ((((blockIdx.x * kRankTiles + global_rt) * kWarps + warp) * 8 + atom) * 32 + lane) *
+              2;
+            global_add_f32x2(lora_scratch + packed_index, acc[mt][rt].data[pair * 2],
+                             acc[mt][rt].data[pair * 2 + 1]);
           }
         }
       }
@@ -762,24 +766,24 @@ __global__ void finalize_lora_bf16_kernel(const float *__restrict__ scratch,
   const int rank_tile = index % kRankTiles;
   const int row_block = index / kRankTiles;
   const int mt = q_pair / 4;
-  const int j = (q_pair % 4) * 2;
-  const int atom = mt * 8 + j;
+  const int pair = q_pair % 4;
+  const int atom = mt * 4 + pair;
   const int lane0 = lane_group * 4;
   const int base =
-    ((((row_block * kRankTiles + rank_tile) * kWarps + warp) * 16 + atom) * 32 + lane0);
+    ((((row_block * kRankTiles + rank_tile) * kWarps + warp) * 8 + atom) * 32 + lane0) * 2;
   const float4 lo = *reinterpret_cast<const float4 *>(scratch + base);
-  const float4 hi = *reinterpret_cast<const float4 *>(scratch + base + 32);
+  const float4 hi = *reinterpret_cast<const float4 *>(scratch + base + 4);
   const float scale = scales.values[rank_tile];
   auto pack_pair = [scale](float a, float b) {
     __nv_bfloat162 value =
       make_bfloat162(__float2bfloat16_rn(a * scale), __float2bfloat16_rn(b * scale));
     return *reinterpret_cast<const uint32_t *>(&value);
   };
-  const uint4 packed = make_uint4(pack_pair(lo.x, hi.x), pack_pair(lo.y, hi.y),
-                                  pack_pair(lo.z, hi.z), pack_pair(lo.w, hi.w));
+  const uint4 packed = make_uint4(pack_pair(lo.x, lo.y), pack_pair(lo.z, lo.w),
+                                  pack_pair(hi.x, hi.y), pack_pair(hi.z, hi.w));
   constexpr int kRank = kRankTiles * 16;
-  const int row = row_block * (kWarps * 32) + warp * 32 + mt * 16 + lane_group + 8 * ((j / 2) % 2);
-  const int col_base = rank_tile * 16 + 8 * (j / 4);
+  const int row = row_block * (kWarps * 32) + warp * 32 + mt * 16 + lane_group + 8 * (pair % 2);
+  const int col_base = rank_tile * 16 + 8 * (pair / 2);
   *reinterpret_cast<uint4 *>(output + row * kRank + col_base) = packed;
 }
 

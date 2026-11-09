@@ -57,7 +57,6 @@
 //   cute + FP4 -> cute gemm_w4a4 with LoraLayout kNative/kRowMajor
 //   native producer -> native quantize_w4a4; row_major producer -> cute quantize_w4a4
 
-#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -206,12 +205,15 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
       throw std::runtime_error("lora_layout='row_major' implements the NVFP4 producer only.");
     }
     torch::Tensor lora_scratch_t;
-    if (std::getenv("CACHE_DIT_SVDQ_PRODUCER_SPLIT_K") != nullptr && input && lora_down &&
-        input->dim() > 0 && lora_down->dim() > 0) {
+    if (input && lora_down && input->dim() > 0 && lora_down->dim() > 0) {
       const int64_t K = input->size(-1);
       const int64_t M = input->numel() / K;
       const int64_t rank = lora_down->size(-1);
-      if (rank == 32 || rank == 64 || rank == 128) {
+      // RTX PRO 5000 measured crossover. Below the threshold split-K wins by 1%–10%;
+      // 16K rank32/128 and all rank64 large-M cells remain faster on the fused producer.
+      const bool use_split_k =
+        (rank == 32 && M <= 8192) || (rank == 64 && M <= 2048) || (rank == 128 && M <= 8192);
+      if (use_split_k) {
         lora_scratch_t = at::empty({M, rank}, input->options().dtype(at::kFloat));
       }
     }
