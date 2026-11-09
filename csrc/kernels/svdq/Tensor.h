@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/Tensor.h
+// Adapted from nunchaku/src/Tensor.h
 #pragma once
 
 #include "common.h"

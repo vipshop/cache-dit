@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/dispatch_utils.h
+// Adapted from nunchaku/src/kernels/dispatch_utils.h
 #pragma once
 
 #include "common.h"

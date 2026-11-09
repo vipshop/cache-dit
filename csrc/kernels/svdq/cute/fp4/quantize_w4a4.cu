@@ -153,6 +153,16 @@ struct W4A4QuantizeKernel {
     return d;
   }
 
+  /// Fire-and-forget FP32 global reduction used by the split-K D path.
+  static __device__ __forceinline__ void global_add_f32(float *addr, float value) {
+    asm volatile("red.relaxed.gpu.global.add.f32 [%0], %1;" ::"l"(addr), "f"(value));
+  }
+
+  /// Two adjacent rank columns of one row; halves the split-K atomic instruction count.
+  static __device__ __forceinline__ void global_add_f32x2(float *addr, float a, float b) {
+    asm volatile("red.relaxed.gpu.global.add.v2.f32 [%0], {%1, %2};" ::"l"(addr), "f"(a), "f"(b));
+  }
+
   /// Apply two B atoms to one 16-row activation fragment and update its FP32 accumulator.
   static __device__ __forceinline__ PackedF32 mma_lora(PackedBF16 a, PackedBF16 b, PackedF32 acc) {
     uint4 aa = *reinterpret_cast<uint4 *>(&a);
@@ -329,12 +339,17 @@ struct W4A4QuantizeKernel {
     // the rank-32 XOR layout conflict-free; other ranks use a one-column guard.
     constexpr int kRankStride = kRankTiles == 2 ? kLocalRank + 4 : kLocalRank + 1;
     constexpr int kDStageFloats = kLocalRankTiles > 0 ? 32 * kRankStride : 0;
-    // A and D share the same dynamic shared allocation: A staging is live during the K loop, D
-    // partials only after the final barrier, so the larger of the two sizes is sufficient.
+    // The full-buffer path keeps A staging and D partials disjoint: it already runs at one CTA/SM
+    // from register pressure, so the extra shared memory is free and removes the CTA-wide barrier
+    // otherwise needed before overwriting A. The staged path overlays the two regions and uses a
+    // barrier between phases.
     constexpr int kWarpStageFloats = kAStageFloats;
     constexpr int kASharedFloats = kWarps * kWarpStageFloats;
     constexpr int kDSharedFloats = kReductionBuffers * kDStageFloats;
-    constexpr int kSharedFloats = kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats;
+    constexpr int kSharedFloats =
+      kReductionBuffers == kWarps
+        ? kASharedFloats + kDSharedFloats
+        : (kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats);
     constexpr int kAStride = 64 + 8;
     const int lane = threadIdx.x % 32;
     const int warp = threadIdx.x / 32;
@@ -519,10 +534,10 @@ struct W4A4QuantizeKernel {
           __syncthreads();
         }
       } else {
-        // Full-buffer path: each warp owns a private 32xR_local partial, so all warps can store
-        // without inter-warp serialization. The barrier below makes every partial visible before
-        // the cooperative sum and also protects the preceding A staging overlay.
-        float *warp_partial = shared_scratch + warp * kDStageFloats;
+        // Full-buffer path: A staging and D partials are disjoint, so a warp that finishes its K
+        // loop early cannot clobber another warp's ldmatrix input. Only the post-store barrier is
+        // needed before the cooperative sum.
+        float *warp_partial = shared_scratch + kASharedFloats + warp * kDStageFloats;
 #pragma unroll
         for (int mt = 0; mt < 2; ++mt) {
 #pragma unroll
@@ -551,9 +566,11 @@ struct W4A4QuantizeKernel {
         const int col = index % kLocalRank;
         const int shared_col = kRankTiles == 2 ? (col ^ row) : col;
         float sum = 0.0f;
+        const float *partial_base =
+          kReductionBuffers == kWarps ? shared_scratch + kASharedFloats : shared_scratch;
 #pragma unroll
         for (int w = 0; w < kReductionBuffers; ++w) {
-          sum += shared_scratch[w * kDStageFloats + row * kRankStride + shared_col];
+          sum += partial_base[w * kDStageFloats + row * kRankStride + shared_col];
         }
         const int rank_col = rank0 + col;
         lora_act[size_t(row0 + row) * kRank + rank_col] =
@@ -564,7 +581,250 @@ struct W4A4QuantizeKernel {
     asm volatile("trap;");
 #endif
   }
+
+  // Split-K producer. A CTA owns 256 rows and one K128 slice: each of the eight warps owns a
+  // distinct 32-row panel, so qact/ascales are written exactly once per (M256, K64) block and no
+  // warp ever duplicates another warp's activation work. LoRA-D is reduced across K CTAs into an
+  // FP32 scratch tensor; the caller zeroes it before this launch. The finalize kernel applies the
+  // per-16-rank scale and performs the single BF16 rounding.
+  //
+  // Parallel decomposition:
+  //   grid.x = M / (kWarps * 32)   one 256-row block when kWarps == 8
+  //   grid.y = ceil(K / kKChunk)   one K128 slice per CTA
+  //   block  = kWarps * 32 threads
+  //   warp   = one 32-row panel (two M16 halves)
+  //
+  // A warp owns rows [row0, row0+32) for every K64 in this CTA's K128 slice. The two K64 A
+  // fragments stay in raw_all registers so qact and D consume the same global read. D is streamed
+  // one R16 rank tile at a time: the full rank is never resident in registers, which is what keeps
+  // this path below the 220-255 registers of the fused small-M producer.
+  //
+  // Numerical/layout contract:
+  //   qact/ascales: native 256-row pack, one writer per (row block, K64).
+  //   LoRA scratch: fragment-major FP32, zeroed by the caller, reduced with v2.f32 atomics.
+  //   finalize: per-16-rank scale + exactly one BF16 rounding into row-major lora_act.
+  //   D addition order is therefore not bitwise-defined across K CTAs; qact/ascales remain exact.
+  template <int kRankTiles, int kWarps>
+  static __device__ void quantize_w4a4_split_k(const __nv_bfloat16 *__restrict__ input,
+                                               const __nv_bfloat16 *__restrict__ smooth,
+                                               const __nv_bfloat16 *__restrict__ lora_down,
+                                               uint8_t *__restrict__ qact,
+                                               uint8_t *__restrict__ ascales,
+                                               float *__restrict__ lora_scratch, int M, int K) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
+    constexpr int kRank = kRankTiles * 16;
+    constexpr int kKChunk = 128;
+    const int lane = threadIdx.x % 32;
+    const int warp = threadIdx.x / 32;
+    // blockIdx.y selects the K128 slice. K is always a multiple of 64, so the second K64 exists
+    // except for a final 64-wide tail; the slice loop below guards that case.
+    const int k_begin = blockIdx.y * kKChunk;
+    const int k_end = k_begin + kKChunk < K ? k_begin + kKChunk : K;
+    if (k_begin >= K) {
+      return;
+    }
+    // warp-major row ownership: each warp stages and consumes exactly its own 32 rows. The
+    // warp-private shared tile is therefore reused without any cross-warp barrier.
+    const int row0 = blockIdx.x * (kWarps * 32) + warp * 32;
+    extern __shared__ float shared_scratch[];
+    auto *warp_stage = reinterpret_cast<__nv_bfloat16 *>(shared_scratch + warp * kAStageFloats);
+
+    // Keep the two K64 A fragments for this K128 CTA in registers, but only one rank chunk of D.
+    // Native uses the same shape: full A for the K tile, rank-chunk streaming for D. Holding all
+    // rank tiles would recreate the 128-FP32 register pressure this split-K path is meant to avoid.
+    // kChunkTiles == 1 keeps one R16 accumulator per rank chunk; two K64 slices are accumulated
+    // before the chunk is reduced, so scratch traffic stays at one v2 pair per column pair.
+    constexpr int kChunkTiles = 1;
+    static_assert(kRankTiles % kChunkTiles == 0);
+    constexpr int kRankChunks = kRankTiles / kChunkTiles;
+    // raw_all[mt][slice][n]: two M16 halves, two K64 slices, four K16 atoms per slice.
+    PackedBF16 raw_all[2][2][4];
+#pragma unroll
+    // Load both K64 slices once: stage 16x64 BF16 through warp-private shared memory, then
+    // ldmatrix into raw_all. qact and D both read raw_all, so the global input is not re-read.
+    for (int slice = 0; slice < 2; ++slice) {
+      const int k0 = k_begin + slice * 64;
+      if (k0 >= k_end) {
+        break;
+      }
+#pragma unroll
+      for (int mt = 0; mt < 2; ++mt) {
+#pragma unroll
+        for (int row = 0; row < 16; row += 4) {
+          const int stage_row = row + lane / 8;
+          const int stage_col = (lane % 8) * 8;
+          const uint4 pack = *reinterpret_cast<const uint4 *>(
+            input + size_t(row0 + mt * 16 + stage_row) * K + k0 + stage_col);
+          *reinterpret_cast<uint4 *>(warp_stage + stage_row * (64 + 8) + stage_col) = pack;
+        }
+        __syncwarp();
+#pragma unroll
+        for (int n = 0; n < 4; ++n) {
+          uint4 tmp;
+          const int row = lane % 16;
+          const int col = n * 16 + lane / 16 * 8;
+          ldmatrix_x4(warp_stage + row * (64 + 8) + col, tmp);
+          raw_all[mt][slice][n] = *reinterpret_cast<PackedBF16 *>(&tmp);
+        }
+        __syncwarp();
+      }
+
+      // Quantize the K64 slice immediately after its A fragments land. qact/ascales are indexed by
+      // (row block, K64), so each CTA writes a disjoint slice; this is the only place the native
+      // activation pack is produced.
+      __nv_bfloat162 smooth0[4];
+      __nv_bfloat162 smooth1[4];
+#pragma unroll
+      for (int n = 0; n < 4; ++n) {
+        const int col = k0 + n * 16 + (lane % 4) * 2;
+        smooth0[n] = load_bf16x2(smooth + col);
+        smooth1[n] = load_bf16x2(smooth + col + 8);
+      }
+#pragma unroll
+      for (int mt = 0; mt < 2; ++mt) {
+        PackedBF16 quant[4];
+#pragma unroll
+        for (int n = 0; n < 4; ++n) {
+          quant[n] = raw_all[mt][slice][n];
+          quant[n].data[0] = div_bf16x2(quant[n].data[0], smooth0[n]);
+          quant[n].data[1] = div_bf16x2(quant[n].data[1], smooth0[n]);
+          quant[n].data[2] = div_bf16x2(quant[n].data[2], smooth1[n]);
+          quant[n].data[3] = div_bf16x2(quant[n].data[3], smooth1[n]);
+        }
+        quantize_group(quant, qact, ascales, M, K, row0 + mt * 16, k0, lane);
+      }
+    }
+
+    // Rank-chunk streaming. A chunk is accumulated over both K64 slices, reduced into FP32
+    // scratch, then the same registers are reused for the next chunk. kChunkTiles == 1 means the
+    // live D state is one R16 tile per M16 half, independent of the full rank width.
+#pragma unroll
+    for (int chunk = 0; chunk < kRankChunks; ++chunk) {
+      PackedF32 acc[2][kChunkTiles];
+#pragma unroll
+      for (int mt = 0; mt < 2; ++mt) {
+#pragma unroll
+        for (int rt = 0; rt < kChunkTiles; ++rt) {
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            acc[mt][rt].data[j] = 0.0f;
+          }
+        }
+      }
+
+#pragma unroll
+      for (int slice = 0; slice < 2; ++slice) {
+        const int k0 = k_begin + slice * 64;
+        if (k0 >= k_end) {
+          break;
+        }
+#pragma unroll
+        for (int rt = 0; rt < kChunkTiles; ++rt) {
+          const int global_rt = chunk * kChunkTiles + rt;
+#pragma unroll
+          for (int n = 0; n < 4; ++n) {
+            PackedBF16 b =
+              kRankTiles == 8
+                ? movmatrix_lora_frags_trans(lora_down, kRank, k0 + n * 16, global_rt * 16, lane)
+                : load_lora_frags(lora_down, kRank, k0 + n * 16, global_rt * 16, lane);
+#pragma unroll
+            for (int mt = 0; mt < 2; ++mt) {
+              acc[mt][rt] = mma_lora(raw_all[mt][slice][n], b, acc[mt][rt]);
+            }
+          }
+        }
+      }
+
+      // Fragment-major reduction. Trace one atom: (row_block, rank tile, warp, mt/pair) selects a
+      // 32-lane vector, and the final *2 stores lane-l and lane-l+1 as adjacent rank columns.
+      // A warp therefore touches one coalesced sector per atom; finalize later turns each four-lane
+      // group into eight contiguous row-major BF16 columns. The scratch must be zeroed before this
+      // kernel because every K CTA contributes with red.add.
+#pragma unroll
+      for (int mt = 0; mt < 2; ++mt) {
+#pragma unroll
+        for (int rt = 0; rt < kChunkTiles; ++rt) {
+          const int global_rt = chunk * kChunkTiles + rt;
+#pragma unroll
+          for (int pair = 0; pair < 4; ++pair) {
+            const int atom = mt * 4 + pair;
+            const int packed_index =
+              ((((blockIdx.x * kRankTiles + global_rt) * kWarps + warp) * 8 + atom) * 32 + lane) *
+              2;
+            global_add_f32x2(lora_scratch + packed_index, acc[mt][rt].data[pair * 2],
+                             acc[mt][rt].data[pair * 2 + 1]);
+          }
+        }
+      }
+    }
+#else
+    asm volatile("trap;");
+#endif
+  }
 };
+
+// Thin shell for the 256-row split-K producer.
+template <int kRankTiles, int kWarps>
+__global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ input,
+                                             const __nv_bfloat16 *__restrict__ smooth,
+                                             const __nv_bfloat16 *__restrict__ lora_down,
+                                             uint8_t *__restrict__ qact,
+                                             uint8_t *__restrict__ ascales,
+                                             float *__restrict__ lora_scratch, int M, int K) {
+  W4A4QuantizeKernel::quantize_w4a4_split_k<kRankTiles, kWarps>(input, smooth, lora_down, qact,
+                                                                ascales, lora_scratch, M, K);
+}
+
+// Convert the accumulated FP32 split-K scratch to row-major BF16 and apply the per-16-rank scale.
+// This is deliberately a separate linear pass: it keeps the producer free of a full-rank register
+// accumulator and performs the only BF16 rounding after all K CTAs have contributed.
+//
+// Scratch decode (inverse of the producer's fragment-major layout):
+//   pair_index -> lane_group [0,8), q_pair [0,8), warp, rank_tile, row_block
+//   q_pair = mt*4 + pair, lane0 = lane_group*4
+//   base points at four lanes x two columns for atom (mt,pair)
+//   row  = row_block*(kWarps*32) + warp*32 + mt*16 + lane_group + 8*(pair%2)
+//   col  = rank_tile*16 + 8*(pair/2)
+// Each thread reads 8 contiguous FP32 values (two float4 loads) and writes one uint4 = 8 BF16
+// values, so the output store is 16-byte vectorized and never crosses a 16-rank scale tile.
+template <int kRankTiles, int kWarps>
+__global__ void finalize_lora_bf16_kernel(const float *__restrict__ scratch,
+                                          __nv_bfloat16 *__restrict__ output,
+                                          LoraScaleParams scales, int total) {
+  // One thread owns four lanes x two adjacent rank columns = eight consecutive columns.
+  const int pair_index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (pair_index * 8 >= total) {
+    return;
+  }
+  const int lane_group = pair_index & 7;
+  int index = pair_index >> 3;
+  const int q_pair = index & 7;
+  index >>= 3;
+  const int warp = index % kWarps;
+  index /= kWarps;
+  const int rank_tile = index % kRankTiles;
+  const int row_block = index / kRankTiles;
+  const int mt = q_pair / 4;
+  const int pair = q_pair % 4;
+  const int atom = mt * 4 + pair;
+  const int lane0 = lane_group * 4;
+  const int base =
+    ((((row_block * kRankTiles + rank_tile) * kWarps + warp) * 8 + atom) * 32 + lane0) * 2;
+  const float4 lo = *reinterpret_cast<const float4 *>(scratch + base);
+  const float4 hi = *reinterpret_cast<const float4 *>(scratch + base + 4);
+  const float scale = scales.values[rank_tile];
+  auto pack_pair = [scale](float a, float b) {
+    __nv_bfloat162 value =
+      make_bfloat162(__float2bfloat16_rn(a * scale), __float2bfloat16_rn(b * scale));
+    return *reinterpret_cast<const uint32_t *>(&value);
+  };
+  const uint4 packed = make_uint4(pack_pair(lo.x, lo.y), pack_pair(lo.z, lo.w),
+                                  pack_pair(hi.x, hi.y), pack_pair(hi.z, hi.w));
+  constexpr int kRank = kRankTiles * 16;
+  const int row = row_block * (kWarps * 32) + warp * 32 + mt * 16 + lane_group + 8 * (pair % 2);
+  const int col_base = rank_tile * 16 + 8 * (pair / 2);
+  *reinterpret_cast<uint4 *>(output + row * kRank + col_base) = packed;
+}
 
 // Thin launch shell: all kernel logic lives in W4A4QuantizeKernel::quantize_w4a4_fused_lora.
 template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
@@ -592,7 +852,10 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
   constexpr int kWarpStageFloats = W4A4QuantizeKernel::kAStageFloats;
   constexpr int kASharedFloats = kWarps * kWarpStageFloats;
   constexpr int kDSharedFloats = kReductionBuffers * kDStageFloats;
-  constexpr int kSharedFloats = kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats;
+  constexpr int kSharedFloats =
+    kReductionBuffers == kWarps
+      ? kASharedFloats + kDSharedFloats
+      : (kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats);
   constexpr size_t kSmemBytes = static_cast<size_t>(kSharedFloats) * sizeof(float);
   auto kernel = quantize_w4a4_fused_lora_kernel<kRankTiles, kWarps, kReductionBuffers, kRankSplits>;
   if constexpr (kSmemBytes > 48 * 1024) {
@@ -601,6 +864,30 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
   }
   kernel<<<dim3(M / 32, kRankSplits), dim3(kWarps * 32), kSmemBytes, stream>>>(
     input, smooth, lora_down, qact, ascales, lora_act, scales, M, K);
+}
+
+/// Launch the 256-row split-K producer, then finalize FP32 scratch into row-major BF16 D.
+template <int kRankTiles, int kWarps>
+void launch_quantize_w4a4_split_k(const __nv_bfloat16 *input, const __nv_bfloat16 *smooth,
+                                  const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
+                                  float *scratch, __nv_bfloat16 *lora_act, LoraScaleParams scales,
+                                  int M, int K, cudaStream_t stream) {
+  constexpr int kRank = kRankTiles * 16;
+  constexpr int kRows = kWarps * 32;
+  constexpr int kSharedFloats = kWarps * W4A4QuantizeKernel::kAStageFloats;
+  constexpr size_t kSmemBytes = static_cast<size_t>(kSharedFloats) * sizeof(float);
+  auto kernel = quantize_w4a4_split_k_kernel<kRankTiles, kWarps>;
+  if constexpr (kSmemBytes > 48 * 1024) {
+    checkCUDA(
+      cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
+  }
+  checkCUDA(cudaMemsetAsync(scratch, 0, static_cast<size_t>(M) * kRank * sizeof(float), stream));
+  kernel<<<dim3(M / kRows, (K + 127) / 128), dim3(kWarps * 32), kSmemBytes, stream>>>(
+    input, smooth, lora_down, qact, ascales, scratch, M, K);
+  const int total = M * kRank;
+  const int vectors = total / 8;
+  finalize_lora_bf16_kernel<kRankTiles, kWarps>
+    <<<(vectors + 255) / 256, 256, 0, stream>>>(scratch, lora_act, scales, total);
 }
 
 // One immutable argument packet shared by every rank/schedule specialization in the dispatcher.
@@ -630,7 +917,7 @@ void launch_quantize_w4a4(const QuantizeLaunchArgs &args) {
 
 void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                    svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                   std::vector<float> lora_scales) {
+                   std::vector<float> lora_scales, svdq::Tensor lora_scratch) {
   W4A4QuantizeKernel::require(input.valid() && output.valid() && ascales.valid() && smooth.valid(),
                               "quantize_w4a4 requires input/output/ascales/smooth");
   W4A4QuantizeKernel::require(
@@ -673,6 +960,31 @@ void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
     K,
     getCurrentCUDAStream(),
   };
+
+  if (lora_scratch.valid()) {
+    W4A4QuantizeKernel::require(
+      lora_scratch.dtype() == svdq::Tensor::FP32 &&
+        lora_scratch.numel() >= static_cast<size_t>(M) * rank,
+      "split-K quantize_w4a4 requires an FP32 scratch of at least M*rank elements");
+    float *scratch = lora_scratch.data_ptr<float>();
+    if (rank == 32) {
+      launch_quantize_w4a4_split_k<2, 8>(args.input, args.smooth, args.lora_down, args.qact,
+                                         args.ascales, scratch, args.lora_act, scales, M, K,
+                                         args.stream);
+    } else if (rank == 64) {
+      launch_quantize_w4a4_split_k<4, 8>(args.input, args.smooth, args.lora_down, args.qact,
+                                         args.ascales, scratch, args.lora_act, scales, M, K,
+                                         args.stream);
+    } else if (rank == 128) {
+      launch_quantize_w4a4_split_k<8, 8>(args.input, args.smooth, args.lora_down, args.qact,
+                                         args.ascales, scratch, args.lora_act, scales, M, K,
+                                         args.stream);
+    } else {
+      throw std::runtime_error("split-K quantize_w4a4 supports rank 32/64/128 only");
+    }
+    checkCUDA(cudaGetLastError());
+    return;
+  }
 
   // Dispatch policy. The four template arguments are:
   //   [0] full rank tiles = rank / 16;

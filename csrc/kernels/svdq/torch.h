@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/interop/torch.h
+// Adapted from nunchaku/src/interop/torch.h
 #pragma once
 
 #include <torch/extension.h>

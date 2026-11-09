@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/gemm_w4a4_launch_impl.cuh
+// Adapted from nunchaku/src/kernels/zgemm/gemm_w4a4_launch_impl.cuh
 #include "gemm_w4a4_ext_launch.cuh"
 
 namespace svdq::native_kernels {

@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/utils.cuh
+// Adapted from nunchaku/src/kernels/utils.cuh
 // Adated from FasterTransformer,
 // https://github.com/NVIDIA/FasterTransformer/blob/release/v5.3_tag/src/fastertransformer/kernels/decoder_masked_multihead_attention/decoder_masked_multihead_attention_template.hpp
 #pragma once

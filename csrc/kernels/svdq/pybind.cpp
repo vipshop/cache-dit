@@ -1,4 +1,4 @@
-// Copied from nunchaku/nunchaku/csrc/pybind.cpp
+// Adapted from nunchaku/nunchaku/csrc/pybind.cpp
 #include <torch/extension.h>
 
 #include <pybind11/pybind11.h>

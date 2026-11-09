@@ -782,3 +782,67 @@ FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K 
 - 修改前后小尺寸 golden：rank0/32/64/128 的 qact/ascales 与 D 逐字节一致（`qact_exact`, `ascales_exact`, `D_exact`）。
 - `tests/kernels/test_svdquant_cute.py -k row_major` 当前13 passed（统一类重构前）；统一类重构后重新编译并跑 golden，全部 PASS。提交前仍需跑完整 producer+GEMM parity、pre-commit 和 diff 检查。
 - 未完成项：rank128 2K/4K/8K/长K与 rank64 2K/4K仍高于native；下一步应优先解释小M的输入重复读取与D归约开销，而不是继续扫 warp 数或重复已证伪的16-row/K-split-scratch路线。
+
+## 27. split-K rank chunk=1 调参与适用区间（2026-11-09，RTX PRO 5000）
+
+### 27.1 改动
+
+split-K producer 的 rank 流式累加从 `kChunkTiles=2` 改为 `1`：每线程只保留一个 R16 tile 的 FP32 D，降低寄存器压力；K128 CTA 仍覆盖两个 K64 slice。D scratch 使用 fragment-major 连续 lane 布局，`red.add` 按 sector 合并；finalize 合并相邻 j atom，一次 `uint4` 写 8 个 BF16。
+
+### 27.2 chunk=1 vs chunk=2（split-K，µs）
+
+同一口径 GPU4、warmup10/iters50、Event median；比值越小越好。
+
+| Shape | rank64 chunk2 | rank64 chunk1 | rank64 c1/c2 | rank128 chunk2 | rank128 chunk1 | rank128 c1/c2 |
+|---|---:|---:|---:|---:|---:|---:|
+| 2048×3072×3072 | 41.98 | 41.23 | 0.982 | 52.32 | 50.82 | 0.971 |
+| 4096×3072×3072 | 62.54 | 60.80 | 0.972 | 82.69 | 79.42 | 0.960 |
+| 8192×3072×3072 | 99.31 | 95.76 | 0.964 | 131.84 | 127.34 | 0.966 |
+| 16384×8192×8192 | 578.83 | 577.62 | 0.998 | 591.25 | 617.62 | 1.045 |
+| 4608×3072×15360 | 329.92 | 322.48 | 0.977 | 343.28 | 361.89 | 1.054 |
+
+结论：
+
+- rank64：chunk=1 在全部测试格都略优，但 2K/4K/8K 相对 native 仍为 1.06/1.07/1.04 左右，尚未达标。
+- rank128：chunk=1 对 2K/4K/8K 有 3%–4% 收益；长K/16K 应保留 chunk=2。
+- chunk=1 的适用区间暂定为 **rank64/rank128 的序列长度 ≤8K**；长K/16K 不切换。
+- 最终 dispatch 暂不落地，等 fused/split-K 的 cp.async/GEMM 优化收敛后统一按 `rank + M + K` 决定。
+
+### 27.3 状态
+
+当前 split-K 仍由 `CACHE_DIT_SVDQ_PRODUCER_SPLIT_K` 控制，默认生产路径仍是 fused；本节只记录调参结论，不代表已改默认分派。固定 dispatch 已于 §28 落地，取代本节 env 状态。
+
+## 28. 固定 rank/M dispatch 与 rank64 现状（2026-11-09，RTX PRO 5000）
+
+### 28.1 已落地 dispatch
+
+不再依赖环境变量；`ops.h` 在 row_major 路径按 rank 和 M 决定是否分配 FP32 scratch：
+
+| rank | split-K 区间 | fused 区间 |
+|---|---|---|
+| 32 | M ≤ 8192 | M > 8192（16K） |
+| 64 | M ≤ 2048 | M > 2048（4K/8K/16K/长K） |
+| 128 | M ≤ 8192 | M > 8192（16K） |
+
+split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fragment-major FP32 scratch，`red.add.v2.f32` 相邻两列；finalize 每个线程读 8 个 FP32，一次 `uint4` 写 8 个 BF16。
+
+### 28.2 当前矩阵（GPU4，warmup10/iters50，Event median，µs）
+
+| Shape | rank32 native / row (ratio) | rank64 native / row (ratio) | rank128 native / row (ratio) |
+|---|---:|---:|---:|
+| 2048×3072×3072 | 35.09 / 33.23 (0.947) | 38.48 / 40.67 (1.057) | 47.44 / 51.55 (1.087) |
+| 4096×3072×3072 | 48.64 / 44.70 (0.919) | 57.68 / 60.10 (1.042) | 73.76 / 81.68 (1.107) |
+| 4096×6144×3072 | 49.54 / 45.31 (0.915) | 56.94 / 59.74 (1.049) | 73.68 / 81.62 (1.108) |
+| 8192×3072×3072 | 77.30 / 63.95 (0.827) | 92.50 / 93.73 (1.013) | 124.46 / 131.39 (1.056) |
+| 8192×6144×3072 | 76.53 / 64.26 (0.840) | 92.56 / 93.92 (1.015) | 124.72 / 130.48 (1.046) |
+| 16384×8192×8192 | 382.19 / 348.02 (0.911) | 426.66 / 365.92 (0.858) | 572.43 / 569.41 (0.995) |
+| 4608×3072×15360 | 223.50 / 197.52 (0.884) | 254.62 / 259.49 (1.019) | 319.81 / 368.82 (1.153) |
+
+### 28.3 rank64 重点结论
+
+- rank64 只有 2K 走 split-K（1.057），4K 保持 fused（1.042/1.049），8K 1.013–1.015，长K 1.019，16K 0.858。
+- 4K 是 rank64 的主要差距；NCU：CuTe 4w/4buf/split2 为 52.03µs、182 regs、grid256、waves1.16；native 48.67µs、164 regs、grid384、waves3.49。两者 occupancy 都是 16.7%，差异主要是 block 粒度/尾波和输入重复读取。
+- 4K split-K producer 58.18µs，比 fused 52.03 更慢；缓存 scratch 没有收益。
+- 已证伪的 4K 配置：8w/4buf/split2 63.3/64.2；8w/8buf/split2 63.4/62.4；8w/split1 65.8；split4 与 K64 split-K 均明显回退。
+- qact 按 K64 slice 在 split2 两个 CTA 间分摊：rank128 约快 1%，但 rank64 4K 回退到 77.5µs，并破坏 fused D 位级一致，已撤销。
+- 当前最优仍是 4w/4buf/split2；要再进一步需要减少 split2 的输入重复读取（cluster/DSMEM 或共享 A）或匹配 native 的 256-row + K 维 grid/epilogue 结构。

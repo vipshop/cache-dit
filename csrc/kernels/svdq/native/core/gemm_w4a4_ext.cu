@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/gemm_w4a4.cu
+// Adapted from nunchaku/src/kernels/zgemm/gemm_w4a4.cu
 #include "../zgemm.h"
 #include "gemm_w4a4_ext_launch.cuh"
 

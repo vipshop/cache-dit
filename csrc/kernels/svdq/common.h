@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/common.h
+// Adapted from nunchaku/src/common.h
 #pragma once
 
 #include <cstddef>

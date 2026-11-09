@@ -1,4 +1,4 @@
-// Copied from nunchaku/src/kernels/zgemm/gemm_w4a4_launch.cuh
+// Adapted from nunchaku/src/kernels/zgemm/gemm_w4a4_launch.cuh
 #include "gemm_w4a4_ext.cuh"
 #include "epilogues.cuh"
 
