@@ -1024,10 +1024,12 @@ quant_config = QuantizeConfig(
 )
 ```
 
-The generate CLI only exposes <span style="color:#c77dff;">--svdq-runtime</span> for the backend family; `lora_layout` is currently a Python `QuantizeConfig` setting (omitting `--svdq-runtime` has the same INT4 native v2 behavior):
+The generate CLI exposes both selectors: <span style="color:#c77dff;">--svdq-runtime</span> for the backend family and <span style="color:#c77dff;">--svdq-lora-layout</span> for the `D` contract (omitting `--svdq-runtime` has the same INT4 native v2 behavior):
 
 ```bash
 python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --compile
+python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute \
+  --svdq-lora-layout row_major --compile
 ```
 
 When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requested `runtime_kernel` / `lora_layout` overrides the value recorded in the checkpoint, since both are pure runtime dispatch choices that do not change the serialized tensors.
