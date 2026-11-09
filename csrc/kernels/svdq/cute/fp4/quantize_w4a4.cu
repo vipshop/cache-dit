@@ -608,7 +608,7 @@ struct W4A4QuantizeKernel {
     // Keep the two K64 A fragments for this K128 CTA in registers, but only one rank chunk of D.
     // Native uses the same shape: full A for the K tile, rank-chunk streaming for D. Holding all
     // rank tiles would recreate the 128-FP32 register pressure this split-K path is meant to avoid.
-    constexpr int kChunkTiles = 2;
+    constexpr int kChunkTiles = 1;
     static_assert(kRankTiles % kChunkTiles == 0);
     constexpr int kRankChunks = kRankTiles / kChunkTiles;
     PackedBF16 raw_all[2][2][4];
