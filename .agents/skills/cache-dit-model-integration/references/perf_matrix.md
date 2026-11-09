@@ -687,3 +687,7 @@ python perf_chart.py .tmp/$TASK/rows.json --unit s --metric "mel SSIM" --gate 0.
 
 Combine it with §6's `--cal-speedup` output: paste the *table* into the PR body and upload the
 *figure* to `pr-assets`.
+
+Reference image:
+
+![perf_chart_example](./perf_chart_example.png)
