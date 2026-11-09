@@ -810,4 +810,39 @@ split-K producer 的 rank 流式累加从 `kChunkTiles=2` 改为 `1`：每线程
 
 ### 27.3 状态
 
-当前 split-K 仍由 `CACHE_DIT_SVDQ_PRODUCER_SPLIT_K` 控制，默认生产路径仍是 fused；本节只记录调参结论，不代表已改默认分派。
+当前 split-K 仍由 `CACHE_DIT_SVDQ_PRODUCER_SPLIT_K` 控制，默认生产路径仍是 fused；本节只记录调参结论，不代表已改默认分派。固定 dispatch 已于 §28 落地，取代本节 env 状态。
+
+## 28. 固定 rank/M dispatch 与 rank64 现状（2026-11-09，RTX PRO 5000）
+
+### 28.1 已落地 dispatch
+
+不再依赖环境变量；`ops.h` 在 row_major 路径按 rank 和 M 决定是否分配 FP32 scratch：
+
+| rank | split-K 区间 | fused 区间 |
+|---|---|---|
+| 32 | M ≤ 8192 | M > 8192（16K） |
+| 64 | M ≤ 2048 | M > 2048（4K/8K/16K/长K） |
+| 128 | M ≤ 8192 | M > 8192（16K） |
+
+split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fragment-major FP32 scratch，`red.add.v2.f32` 相邻两列；finalize 每个线程读 8 个 FP32，一次 `uint4` 写 8 个 BF16。
+
+### 28.2 当前矩阵（GPU4，warmup10/iters50，Event median，µs）
+
+| Shape | rank32 native / row (ratio) | rank64 native / row (ratio) | rank128 native / row (ratio) |
+|---|---:|---:|---:|
+| 2048×3072×3072 | 35.09 / 33.23 (0.947) | 38.48 / 40.67 (1.057) | 47.44 / 51.55 (1.087) |
+| 4096×3072×3072 | 48.64 / 44.70 (0.919) | 57.68 / 60.10 (1.042) | 73.76 / 81.68 (1.107) |
+| 4096×6144×3072 | 49.54 / 45.31 (0.915) | 56.94 / 59.74 (1.049) | 73.68 / 81.62 (1.108) |
+| 8192×3072×3072 | 77.30 / 63.95 (0.827) | 92.50 / 93.73 (1.013) | 124.46 / 131.39 (1.056) |
+| 8192×6144×3072 | 76.53 / 64.26 (0.840) | 92.56 / 93.92 (1.015) | 124.72 / 130.48 (1.046) |
+| 16384×8192×8192 | 382.19 / 348.02 (0.911) | 426.66 / 365.92 (0.858) | 572.43 / 569.41 (0.995) |
+| 4608×3072×15360 | 223.50 / 197.52 (0.884) | 254.62 / 259.49 (1.019) | 319.81 / 368.82 (1.153) |
+
+### 28.3 rank64 重点结论
+
+- rank64 只有 2K 走 split-K（1.057），4K 保持 fused（1.042/1.049），8K 1.013–1.015，长K 1.019，16K 0.858。
+- 4K 是 rank64 的主要差距；NCU：CuTe 4w/4buf/split2 为 52.03µs、182 regs、grid256、waves1.16；native 48.67µs、164 regs、grid384、waves3.49。两者 occupancy 都是 16.7%，差异主要是 block 粒度/尾波和输入重复读取。
+- 4K split-K producer 58.18µs，比 fused 52.03 更慢；缓存 scratch 没有收益。
+- 已证伪的 4K 配置：8w/4buf/split2 63.3/64.2；8w/8buf/split2 63.4/62.4；8w/split1 65.8；split4 与 K64 split-K 均明显回退。
+- qact 按 K64 slice 在 split2 两个 CTA 间分摊：rank128 约快 1%，但 rank64 4K 回退到 77.5µs，并破坏 fused D 位级一致，已撤销。
+- 当前最优仍是 4w/4buf/split2；要再进一步需要减少 split2 的输入重复读取（cluster/DSMEM 或共享 A）或匹配 native 的 256-row + K 维 grid/epilogue 结构。
