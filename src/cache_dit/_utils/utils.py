@@ -728,6 +728,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
   )
   parser.add_argument(
+    "--svdq-lora-layout",
+    type=str,
+    default=None,
+    choices=["native", "row_major"],
+    help=("Layout of the LoRA-down activation D. Default: auto (native). 'row_major' is the "
+          "CuTe producer's BF16 D and requires --svdq-runtime cute."),
+  )
+  parser.add_argument(
     "--svdq-few-shot-steps",
     type=int,
     default=1,
@@ -2058,6 +2066,7 @@ def maybe_quantize_transformer(
       "smooth_strategy": args.svdq_smooth_strategy,
       "calibrate_precision": args.svdq_calibrate_precision,
       "runtime_kernel": args.svdq_runtime,
+      "lora_layout": args.svdq_lora_layout,
       "quantize_device": args.svdq_quantize_device,
       "offload_quantized_layers_to_cpu": offload_quantized_layers_to_cpu,
       "layerwise_offload": args.svdq_layerwise_offload,
