@@ -90,8 +90,8 @@ __device__ __forceinline__ __nv_bfloat162 load_lora_pair(const __nv_bfloat16 *lo
 // Load the B fragment for two m16n8k16 atoms from row-major lora_down[K,R]. data[0]/[1] are the
 // K and K+8 pairs for rank columns 0..7; data[2]/[3] are the same pairs for rank columns 8..15.
 // Scalar loads also avoid the 4-byte alignment assumption on odd rank columns.
-__device__ __forceinline__ PackedBF16 load_lora_fragment(const __nv_bfloat16 *lora, int R, int row,
-                                                         int col, int lane) {
+__device__ __forceinline__ PackedBF16 load_lora_frags(const __nv_bfloat16 *lora, int R, int row,
+                                                      int col, int lane) {
   const int k = row + (lane % 4) * 2;
   const int r = col + lane / 4;
   PackedBF16 out;
@@ -111,10 +111,10 @@ __device__ __forceinline__ __nv_bfloat162 movmatrix_trans_bf16x2(__nv_bfloat162 
 }
 
 // Form four row-major 8x8 fragments with aligned 32-bit loads, then transpose them in registers.
-// The four matrices are (K0,R0), (K8,R0), (K0,R8), (K8,R8), matching load_lora_fragment's output
-// order after transposition. Four loads per lane replace eight scalar BF16 loads without staging.
-__device__ __forceinline__ PackedBF16 load_lora_fragment_register_transpose(
-  const __nv_bfloat16 *lora, int R, int row, int col, int lane) {
+// The four matrices are (K0,R0), (K8,R0), (K0,R8), (K8,R8), matching the output order of
+// load_lora_frags after transposition. Four loads per lane replace eight scalar BF16 loads.
+__device__ __forceinline__ PackedBF16 movmatrix_lora_frags_trans(const __nv_bfloat16 *lora, int R,
+                                                                 int row, int col, int lane) {
   const int k = row + lane / 4;
   const int r = col + (lane % 4) * 2;
   PackedBF16 out;
@@ -374,8 +374,8 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
       for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
         for (int n = 0; n < 4; ++n) {
-          PackedBF16 b = load_lora_fragment_register_transpose(lora_down, kRank, k0 + n * 16,
-                                                               rank0 + rt * 16, lane);
+          PackedBF16 b =
+            movmatrix_lora_frags_trans(lora_down, kRank, k0 + n * 16, rank0 + rt * 16, lane);
 #pragma unroll
           for (int mt = 0; mt < 2; ++mt) {
             acc[mt][rt] = mma_lora(raw_all[mt][n], b, acc[mt][rt]);
@@ -388,7 +388,7 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
       for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
         for (int n = 0; n < 4; ++n) {
-          PackedBF16 b = load_lora_fragment(lora_down, kRank, k0 + n * 16, rank0 + rt * 16, lane);
+          PackedBF16 b = load_lora_frags(lora_down, kRank, k0 + n * 16, rank0 + rt * 16, lane);
 #pragma unroll
           for (int mt = 0; mt < 2; ++mt) {
             acc[mt][rt] = mma_lora(raw_all[mt][n], b, acc[mt][rt]);
@@ -538,8 +538,11 @@ void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, 
     launch_quantize_w4a4<3, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                lora_act_ptr, scales, M, K, stream);
   } else if (rank == 64) {
-    if (M <= 4096) {
+    if (M <= 2048) {
       launch_quantize_w4a4<4, 8, 8, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                       lora_act_ptr, scales, M, K, stream);
+    } else if (M <= 4096) {
+      launch_quantize_w4a4<4, 4, 4, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                        lora_act_ptr, scales, M, K, stream);
     } else {
       launch_quantize_w4a4<4, 8>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
@@ -555,7 +558,13 @@ void quantize_w4a4_row_major(::Tensor input, ::Tensor output, ::Tensor ascales, 
     launch_quantize_w4a4<7, 4>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                lora_act_ptr, scales, M, K, stream);
   } else {
-    if (M <= 8192) {
+    if (M <= 2048) {
+      launch_quantize_w4a4<8, 8, 2, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                       lora_act_ptr, scales, M, K, stream);
+    } else if (M <= 4096) {
+      launch_quantize_w4a4<8, 4, 2, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
+                                       lora_act_ptr, scales, M, K, stream);
+    } else if (M <= 8192) {
       launch_quantize_w4a4<8, 8, 2, 2>(input_ptr, smooth_ptr, lora_down_ptr, qact_ptr, ascales_ptr,
                                        lora_act_ptr, scales, M, K, stream);
     } else {
