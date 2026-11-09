@@ -737,3 +737,48 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 3. `nvidia-cutlass-dsl` 必须**带 deps** 升级：`--no-deps` 只抬 python 包，`nvidia-cutlass-dsl-libs-base` 停在 4.4.0.dev1 时所有 CuTe-DSL kernel 都会 `Loader for '.o' files is not registered`；python 包与 `libs-*` 全部对齐 4.8.1 才正常。
 
 FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K rank32 略胜 1.9%，与本文件 §15 的旧结论（CuTeDSL 慢 9%–15%）方向一致。
+
+## 26. row_major producer rank128 专项优化（2026-11-09，RTX PRO 5000）
+
+### 26.1 范围与代码状态
+
+只修改 `csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu`，不改变 v1 qact/ascales、row-major BF16 D、公开接口或 GEMM。全部 producer 类型外的 device 辅助函数、量化、主循环、D 归约和 launcher 已收进统一 `W4A4QuantizeKernel`；主 kernel 入口为 `W4A4QuantizeKernel::quantize_w4a4_fused_lora`，外部只保留薄的 `__global__` 启动壳。launcher 使用 `QuantizeLaunchArgs` 参数包，分派处只写 rank/warp/buffer/split 配置。
+
+### 26.2 当前完整矩阵（GPU4，Event median，warmup10/iters50，1 轮复测）
+
+命令口径：`bench/kernels/bench_svdquant_kernels.py --rank 32/64/128 --impl quantize,quantize-row-major`。下表左为 native µs，右为 row_major µs，括号为 row/native；<1 表示 CuTe 更快。
+
+| Shape M×N×K | rank32 | rank64 | rank128 |
+|---|---:|---:|---:|
+| 2048×3072×3072 | 34.38 / 32.43 (0.943) | 38.46 / 40.62 (1.056) | 47.15 / 54.00 (1.145) |
+| 4096×3072×3072 | 48.66 / 46.88 (0.964) | 56.62 / 59.82 (1.057) | 73.15 / 80.59 (1.102) |
+| 4096×6144×3072 | 48.70 / 47.57 (0.977) | 56.42 / 59.07 (1.047) | 73.28 / 80.86 (1.104) |
+| 8192×3072×3072 | 76.45 / 64.11 (0.839) | 91.74 / 92.98 (1.013) | 123.63 / 135.84 (1.099) |
+| 8192×6144×3072 | 76.42 / 65.38 (0.856) | 93.10 / 92.96 (0.999) | 123.89 / 137.23 (1.108) |
+| 16384×8192×8192 | 380.54 / 347.57 (0.913) | 426.45 / 365.70 (0.858) | 565.94 / 564.64 (0.998) |
+| 4608×3072×15360 | 221.70 / 222.75 (1.005) | 252.77 / 258.40 (1.022) | 316.66 / 366.93 (1.159) |
+
+结论：rank32 除长 K 持平外全部更快；rank64 16K 快14%、8K 持平、2K/4K 慢5%–6%；rank128 16K 已持平，2K/4K/8K 仍慢10%–14.5%，长 K 慢约16%。rank128 相比优化前的 1.5×–2.13× 已明显收敛，但“全格≤1.00”目标尚未完成。
+
+### 26.3 保留的优化
+
+1. **D partial shared 归约缓冲可配**：rank128 用 2 个 buffer 分阶段确定性累加，替换每 warp 一份完整 32×R partial，shared 从约67KB降到约34KB；A staging 与 D buffer 显式 phase barrier overlay，所有 warp（包括无 K slice）走同一 barrier。D 仍 FP32 归约、一次 BF16 rounding。
+2. **小 M rank split**：`blockIdx.y` 把 rank 分给两个 CTA，grid 翻倍、局部累加器减半；qact/ascales 只由 `blockIdx.y==0` 写，D 各写不重叠列，不引入 scratch/finalize。rank128 在 M≤8192、rank64 在 M≤4096 启用。
+3. **rank128 B 装载 `movmatrix.trans`**：四个对齐32-bit load + 寄存器转置，替代八个标量 BF16 fragment load；global load request 约减半，4K/长K/16K有实测收益，qact/ascales/D 保持位级一致。
+4. **按 M 的 warp/buffer 分派**：rank128 2K用 `8w/2buf/split2`、4K用 `4w/2buf/split2`、8K用 `8w/2buf/split2`、16K用 `8w/2buf/split1`；rank64 2K用 `8w/8buf/split2`、4K用 `4w/4buf/split2`、8K+用 `8w`。这些阈值是在 RTX PRO 5000 上逐格实测的 crossover，不能直接外推到 PRO 6000/H800。
+
+### 26.4 已证伪并移除的尝试
+
+- **16-row CTA**：累加器减半但两个 M16 half 的 B 复用消失，global load requests/sectors 约翻倍；4K NCU duration 约149µs，明显差于32-row基线，移除。
+- **4K×4 rank-group 的16-warp CTA**：512线程触发128-reg上限，local spill约1.2M/2.3M sectors，命名 barrier stall 13.2，4K约138µs，移除。
+- **rank64 强制2 CTA/SM + 2归约缓冲**：仍受 shared/寄存器组合限制，引入spill，2K/4K/长K明显回退，移除。
+- **B shared staging + XOR swizzle**：请求数下降但 bank conflict不降，延迟无净收益；movmatrix路径更简单，移除staging/swizzle。
+- **A staging 128B XOR swizzle**：bank conflict从约0.69M升到1.38M，三档rank均回退，移除。
+- **B vector-load + shuffle 伪路径**：早期版本按目标 lane 预选 word，但 `__shfl` 取的是源 lane 的寄存器，映射错误，golden 失败；未保留。
+- **rank128 split4**：2K与split2几乎同速；rank64 split4出现全列数值错误且无收益，模板支持已删除。
+
+### 26.5 验证状态
+
+- 修改前后小尺寸 golden：rank0/32/64/128 的 qact/ascales 与 D 逐字节一致（`qact_exact`, `ascales_exact`, `D_exact`）。
+- `tests/kernels/test_svdquant_cute.py -k row_major` 当前13 passed（统一类重构前）；统一类重构后重新编译并跑 golden，全部 PASS。提交前仍需跑完整 producer+GEMM parity、pre-commit 和 diff 检查。
+- 未完成项：rank128 2K/4K/8K/长K与 rank64 2K/4K仍高于native；下一步应优先解释小M的输入重复读取与D归约开销，而不是继续扫 warp 数或重复已证伪的16-row/K-split-scratch路线。
