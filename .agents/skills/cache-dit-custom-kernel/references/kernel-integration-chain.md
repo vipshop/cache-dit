@@ -37,15 +37,18 @@
 
 **import 时机**：`import cache_dit` **会**把 `cache_dit.kernels` 拉起来（经 `attention/__init__.py` 的依赖链），所以 `.so` 的加载发生在包导入期。但 loader 内部 `except Exception` 吞掉并缓存错误，**缺 `.so` 不会让 import 失败**，只会在真正调用算子时抛 `RuntimeError`；import 期唯一会硬失败的情况是重复注册（§4.5 第 3 条）。
 
-## 2. 三个算子族的现状（符号级盘点）
+## 2. 四个算子族的现状（符号级盘点）
 
 | 族 | extension | pybind TU | 声明头 | C++ namespace | 子模块 | Python 模块 | schema 数 | 内部调用点 | arch 谓词 | 偏离模板处 |
 |---|---|---|---|---|---|---:|---|---|---|---|
 | comm | `cache_dit._C_comm` | `comm/comm_ops.cpp` | `comm/comm_ops.h` | `cache_dit::comm` | `ops` | `_comm.py` | 4 | `distributed/core/_distributed_primitives.py` | `_is_supported_comm_sm_target`（>=sm89） | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
 | attn | `cache_dit._C_attn` | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `ops` | `_attn.py` | 1 | `distributed/core/_templated_ring.py` | 复用 `_is_supported_comm_sm_target` | impl 无 dtype 校验；fake 复刻 view 链 |
 | svdq | `cache_dit._C_svdquant` | `svdq/pybind.cpp` | `svdq/ops.h`（内联定义） | `svdq::ops` / `svdq::native_kernels` / `svdq::cute_kernels` | `ops` + `utils` | `_svdquant.py` | 7（+2 个非 Tensor 走 `utils`） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | `_is_supported_svdquant_sm_target`（>=sm80 且排除 sm90） | 3 个 required getter；非 Tensor 算子绕过 `torch.library`；C++ 侧无 `TORCH_CHECK` |
+| models | `cache_dit._C_models` | `models/models.cpp`（整族唯一入口，各模型 `X.cpp` 只注册） | `models/X.h` | `cache_dit::models` | `ops` | `_models/_X.py` | 每模型自定（boogu: 3） | `models/pipelines/X/fused_ops.py`（模型侧 wrapper） | `_is_supported_models_sm_target`（>=sm80，Hopper 不排除） | 整族共用一个 `PYBIND11_MODULE`；多一层模型侧 wrapper + 逐位等价 eager 回退 |
 
-**没有统一的文件名契约**：三族的声明头分别是 `attn.h`、`comm_ops.h`、`ops.h`，pybind TU 分别是 `attn.cpp`、`comm_ops.cpp`、`pybind.cpp`。契约只约束结构——**每族一个 pybind TU + 一个被它 include 的声明头 + `def_submodule("ops")`**；文件名自选，新增族推荐 `<族>.h` + `<族>.cpp`。
+**没有统一的文件名契约**：前三族的声明头分别是 `attn.h`、`comm_ops.h`、`ops.h`，pybind TU 分别是 `attn.cpp`、`comm_ops.cpp`、`pybind.cpp`。契约只约束结构——**每族一个 pybind TU + 一个被它 include 的声明头 + `def_submodule("ops")`**；文件名自选，新增族推荐 `<族>.h` + `<族>.cpp`。
+
+`models` 是**模型级**族，例外于上面两条：文件名有契约（`<model>.h` / `<model>.cpp` / `<model>_<op>.cu`），且 `models.cpp` 是整族唯一的 `PYBIND11_MODULE`，各模型只提供 `register_<model>_ops(py::module_&)` 供它调用；新增模型不加 extension、不改 `setup.py`（源清单是 glob）。因此它比框架级三族多一层 `models/pipelines/<model>/fused_ops.py`：算子是否启用、以及未启用时的等价表达式，都由模型侧决定。命名与硬规则见 `SKILL.md` §9。
 
 盘点表刻意只列符号级信息：算子名逐个列举、行号、mtime 都会腐化，查具体算子请直接看 pybind TU。
 
@@ -180,6 +183,8 @@ __all__ = ["<族>_extension_is_available", "<族>_get_load_error", "<op>", ...]
 
 `include_dirs` 至少给 `csrc/kernels` 和族目录；`-gencode` 循环用 `_resolve_sm_targets(scope, is_supported)` 的结果。
 
+**`models` 族是例外**：它的源清单是 `csrc/kernels/models/*.cu|cpp` 的 glob，并且四个「族清单」里已包含它。新增**模型**（新 `<model>.h/.cpp/*.cu`）不需要动 `setup.py`；只有新增**族**才走上面 6 处。
+
 ### 5.2 arch 谓词与 skip 语义
 
 - `_is_supported_svdquant_sm_target`：`>=sm80` 且排除 `sm90`。
@@ -221,6 +226,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 - 错误信息必须带构建命令与 arch 门槛，照抄 `_get_required_ops_module()` 的文案；否则用户只会看到 dispatch 报错或裸 `AttributeError`。
 - **autograd**：三族都只注册了 `CUDA` key，**没有 Autograd key**。这些算子是推理专用：`requires_grad=True` 的输入走 `autograd_not_implemented` fallback（torch 2.11 实测为 `UserWarning`，并注明该行为未来会变成 error）。要可微必须显式注册 Autograd 实现（或包一层 `autograd.Function`），不要指望"能跑通就是对的"。
 - **torch.compile**：注册了 fake + fake 无数据依赖分支 + 公开包装里不出现 `.item()`/值比较，即可 `fullgraph=True`。模板见 `tests/kernels/test_cuda_merge_attn_states.py` 与 `tests/kernels/test_cuda_fp8_comm_ops.py::test_fp8_comm_compile_smoke`。
+- **模型级族（`models`）多一层 wrapper**：调用点不在框架代码里，而在 `models/pipelines/<model>/fused_ops.py`。它负责三件事——前置条件（必须覆盖 C++ 的 `TORCH_CHECK`）、逐位等价的 eager 回退、以及模型语义开关 `CACHE_DIT_{MODEL}_FUSED_OPS`（默认 on）。框架级三族没有这层义务，所以别把三族的写法直接套到模型侧。
 
 ## 7. 测试矩阵（含现有用例的真实强度）
 
