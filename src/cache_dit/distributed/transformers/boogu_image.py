@@ -49,8 +49,8 @@ logger = init_logger(__name__)
 _CP_REFINER_STACKS = ("noise_refiner", "ref_image_refiner")
 
 
-def _arm_cp_processors(transformer: nn.Module) -> None:
-  """Mark exactly the processors whose inputs the CP plan shards.
+def _set_cp_eligible_processors(transformer: nn.Module) -> None:
+  """Set `_boogu_cp_eligible` on exactly the processors the CP plan shards.
 
   `_runtime` attaches `_cp_config` to every diffusers `Attention` processor, so
   eligibility is what keeps an unsplit stack (the context refiner) on the local
@@ -88,7 +88,7 @@ class BooguImageContextParallelismPlanner(ContextParallelismPlanner):
       raise ValueError("Boogu-Image does not implement the async Ulysses path; drop "
                        "`ulysses_async` (synchronous Ulysses fully supports this model).")
 
-    _arm_cp_processors(transformer)
+    _set_cp_eligible_processors(transformer)
 
     plan: _ContextParallelModelPlan = {}
 

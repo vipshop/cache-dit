@@ -85,7 +85,7 @@ def test_boogu_cp_plan_gathers_outside_the_cached_stacks() -> None:
   assert f"noise_refiner.{len(transformer.noise_refiner) - 1}" in plan
 
 
-def test_boogu_cp_plan_arms_only_split_processors() -> None:
+def test_boogu_cp_plan_marks_only_split_processors() -> None:
   transformer = _tiny_transformer()
   BooguImageContextParallelismPlanner()._apply(
     transformer=transformer,
