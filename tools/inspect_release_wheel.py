@@ -72,6 +72,8 @@ def main() -> int:
       raise SystemExit(f"{wheel.name} carries no communication extension: {binaries}")
     if args.so == "svdquant" and not any("_C_attn" in name for name in binaries):
       raise SystemExit(f"{wheel.name} carries no attention extension: {binaries}")
+    if args.so == "svdquant" and not any("_C_models" in name for name in binaries):
+      raise SystemExit(f"{wheel.name} carries no model-specific extension: {binaries}")
     version = _module_version(archive)
 
   if version != args.version:

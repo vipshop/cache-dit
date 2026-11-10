@@ -1799,21 +1799,37 @@ def ernie_image_adapter(pipe, **kwargs) -> BlockAdapter:
 
 @BlockAdapterRegister.register("BooguImage")
 def boogu_image_adapter(pipe, **kwargs) -> BlockAdapter:
-  """BlockAdapter for Boogu-Image (third-party, non-diffusers model).
+  """BlockAdapter for the vendored Boogu-Image transformer.
 
-  Boogu-Image uses a dual-stream architecture similar to HiDream:
-  - double_stream_layers: joint image+instruction processing (Pattern_0)
-  - single_stream_layers: fused single-stream processing (Pattern_3)
+  Boogu-Image processes two stacks per step: the double-stream layers run the
+  joint image+instruction attention (pattern 0, two in / two out) and the
+  single-stream layers run the fused sequence (pattern 3, one in / one out).
 
-  Block forward signatures are non-standard, so check_forward_pattern is disabled.
-  The existing apply_cache_dit_caching() in boogu-image already validates this approach.
+  `check_forward_pattern` stays off because the double-stream block takes
+  `(img_hidden_states, instruct_hidden_states)` rather than a `hidden_states`
+  first argument; the stack types are asserted explicitly instead.
   """
+  from ...models.pipelines.boogu_image.transformer_boogu import (
+    BooguImageDoubleStreamTransformerBlock,
+    BooguImageSingleStreamTransformerBlock,
+    BooguImageTransformer2DModel,
+  )
+
+  transformer = pipe.transformer
+  if not isinstance(transformer, BooguImageTransformer2DModel):
+    raise TypeError("BooguImage adapter expects the vendored BooguImageTransformer2DModel, "
+                    f"got {type(transformer).__name__}.")
+  if not isinstance(transformer.double_stream_layers[0], BooguImageDoubleStreamTransformerBlock):
+    raise TypeError("BooguImage `double_stream_layers` holds unexpected blocks.")
+  if not isinstance(transformer.single_stream_layers[0], BooguImageSingleStreamTransformerBlock):
+    raise TypeError("BooguImage `single_stream_layers` holds unexpected blocks.")
+
   return BlockAdapter(
     pipe=pipe,
-    transformer=pipe.transformer,
+    transformer=transformer,
     blocks=[
-      pipe.transformer.double_stream_layers,
-      pipe.transformer.single_stream_layers,
+      transformer.double_stream_layers,
+      transformer.single_stream_layers,
     ],
     forward_pattern=[
       ForwardPattern.Pattern_0,
