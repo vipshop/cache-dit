@@ -133,6 +133,25 @@ def test_boogu_gated_rms_norm_rejects_mismatched_residual() -> None:
     boogu_gated_rms_norm(x, weight, 1e-5, gate, x[:, :4], False)
 
 
+def test_boogu_fused_ops_switch_is_model_scoped() -> None:
+  from cache_dit.models.pipelines.boogu_image import fused_ops
+
+  assert fused_ops._BOOGU_FUSED_OPS_ENV == "CACHE_DIT_BOOGU_FUSED_OPS"
+  assert fused_ops._BOOGU_FUSED_OPS_ENABLED is True
+
+
+def test_boogu_fused_ops_env_parsing(monkeypatch) -> None:
+  from cache_dit.models.pipelines.boogu_image import fused_ops
+
+  name = fused_ops._BOOGU_FUSED_OPS_ENV
+  for raw, expected in (("0", False), ("off", False), ("false", False), ("1", True), ("on", True),
+                        ("nonsense", True)):
+    monkeypatch.setenv(name, raw)
+    assert fused_ops._env_enabled(name, True) is expected, raw
+  monkeypatch.delenv(name)
+  assert fused_ops._env_enabled(name, True) is True
+
+
 def test_boogu_model_fused_path_matches_eager_chain() -> None:
   _require_runtime()
   from cache_dit.models.pipelines.boogu_image import fused_ops
@@ -180,9 +199,9 @@ def test_boogu_model_fused_path_matches_eager_chain() -> None:
       )
     return out[0] if isinstance(out, (list, tuple)) else out
 
-  fused_ops.set_fused_ops_enabled(False)
+  fused_ops.set_boogu_fused_ops_enabled(False)
   eager = run()
-  fused_ops.set_fused_ops_enabled(True)
+  fused_ops.set_boogu_fused_ops_enabled(True)
   fused = run()
 
   assert torch.isfinite(fused).all()

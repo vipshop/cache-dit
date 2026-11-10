@@ -15,10 +15,17 @@ kernel path when all shape/dtype/alignment preconditions hold, so an unsupported
 input (fp32 weights, DTensor shards, batch > 1, non-complex RoPE table, missing
 extension, ...) silently produces the same numbers as before the fusion.
 
-``_FUSED_OPS_ENABLED`` is a test seam: verification runs flip it off to compare
-the fused model against the bit-exact eager chain. It is not a user-facing
-switch — production always runs with the kernels on when they are available.
+``CACHE_DIT_BOOGU_FUSED_OPS`` is the model-scoped escape hatch, read once at
+import. Boogu is the first model to ship its own kernel family, not the last, so
+the switch carries the model name instead of being a generic process-wide flag;
+each future ``{MODEL}`` family gets its own ``CACHE_DIT_{MODEL}_*`` variable. It
+**defaults to on** — the kernels are the intended production path, and the
+variable only exists to bisect a suspected kernel problem (or to reproduce the
+pre-fusion chain) without editing code. ``set_boogu_fused_ops_enabled()`` is the
+in-process equivalent used by the parity test.
 """
+
+import os
 
 import torch
 
@@ -27,29 +34,52 @@ from ....kernels._models._boogu import boogu_gated_rms_norm
 from ....kernels._models._boogu import boogu_scaled_rms_norm
 from ....kernels._models._boogu import models_extension_is_available
 
-_FUSED_OPS_ENABLED = True
+_BOOGU_FUSED_OPS_ENV = "CACHE_DIT_BOOGU_FUSED_OPS"
 
 # The kernels pack 8 bf16 lanes per vec unit and cap the per-row channel count.
 _MAX_FUSED_CHANNELS = 8192
 
 
-def _kernels_usable() -> bool:
-  """Return whether the fused path may run in this process.
+def _env_enabled(name: str, default: bool) -> bool:
+  """Read a boolean environment switch.
 
-  :returns: `True` when the switch is on and `cache_dit._C_models` is importable.
+  :param name: Environment variable name.
+  :param default: Value used when the variable is unset or unparsable.
+  :returns: The parsed flag.
   """
 
-  return _FUSED_OPS_ENABLED and models_extension_is_available()
+  raw = os.environ.get(name)
+  if raw is None:
+    return default
+  value = raw.strip().lower()
+  if value in ("1", "true", "on", "yes"):
+    return True
+  if value in ("0", "false", "off", "no"):
+    return False
+  return default
 
 
-def set_fused_ops_enabled(enabled: bool) -> None:
-  """Enable or disable the fused kernel path process-wide.
+_BOOGU_FUSED_OPS_ENABLED = _env_enabled(_BOOGU_FUSED_OPS_ENV, default=True)
 
-  :param enabled: Whether fused kernels may be used.
+
+def _boogu_kernels_usable() -> bool:
+  """Return whether the Boogu fused path may run in this process.
+
+  :returns: `True` when the model switch is on and `cache_dit._C_models` is
+    importable.
   """
 
-  global _FUSED_OPS_ENABLED
-  _FUSED_OPS_ENABLED = enabled
+  return _BOOGU_FUSED_OPS_ENABLED and models_extension_is_available()
+
+
+def set_boogu_fused_ops_enabled(enabled: bool) -> None:
+  """Enable or disable the Boogu fused kernel path for this process.
+
+  :param enabled: Whether the Boogu kernels may be used.
+  """
+
+  global _BOOGU_FUSED_OPS_ENABLED
+  _BOOGU_FUSED_OPS_ENABLED = enabled
 
 
 def _fusable_norm(x: torch.Tensor, norm, batch_one: bool) -> bool:
@@ -61,7 +91,7 @@ def _fusable_norm(x: torch.Tensor, norm, batch_one: bool) -> bool:
   :returns: `True` when every precondition of the fused kernel holds.
   """
 
-  if not _kernels_usable() or norm is None:
+  if not _boogu_kernels_usable() or norm is None:
     return False
   weight = getattr(norm, "weight", None)
   if weight is None or getattr(norm, "bias", None) is not None:
@@ -163,7 +193,7 @@ def _fusable_qk_norm_rope(x: torch.Tensor, rotary, norm) -> bool:
   :returns: `True` when every precondition of the fused kernel holds.
   """
 
-  if not _kernels_usable() or rotary is None or norm is None:
+  if not _boogu_kernels_usable() or rotary is None or norm is None:
     return False
   weight = getattr(norm, "weight", None)
   if weight is None or getattr(norm, "bias", None) is not None:
