@@ -58,6 +58,7 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |ERNIE-Image|✅|✅|✅|
 |ERNIE-Image-Turbo|✅|✅|✅|
 |Krea-2-Turbo|✅|✅|✅|
+|Boogu-Image-Edit|✅|✅|✅|
 |FLUX.2-dev|✅|✅|✅|
 |FLUX.1-dev|✅|✅|✅|
 |FLUX.1-Fill-dev|✅|✅|✅|

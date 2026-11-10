@@ -2322,7 +2322,7 @@ def cosmos3_omni_example(args: argparse.Namespace, **kwargs) -> Example:
 
 @ExampleRegister.register("boogu_image_edit", default="BOOGU-IMAGE/Boogu-Image-0.1-Edit")
 def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
-  from boogu.pipelines.boogu.pipeline_boogu import BooguImagePipeline
+  from ..models.pipelines.boogu_image import BooguImagePipeline
 
   if args.image_path is not None:
     image = load_image(args.image_path).convert("RGB")
@@ -2342,7 +2342,6 @@ def boogu_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
       task_type=ExampleType.IE2I,
       model_name_or_path=_path("BOOGU-IMAGE/Boogu-Image-0.1-Edit"),
       pipeline_class=BooguImagePipeline,
-      trust_remote_code=True,
       post_init_hook=_boogu_post_init_hook,
     ),
     input_data=ExampleInputData(

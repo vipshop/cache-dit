@@ -110,6 +110,23 @@ def _is_supported_comm_sm_target(sm: str) -> bool:
   return int(normalized) >= 89
 
 
+def _is_supported_models_sm_target(sm: str) -> bool:
+  """Return whether a normalized SM target can host the model-specific kernels.
+
+  The per-model kernels only use bf16 arithmetic, warp shuffles and vectorized
+  16B loads, so `>=sm80` is the floor; unlike SVDQuant, Hopper (sm90) is fine.
+
+  :param sm: Normalized SM target such as `80`, `90`, or `120a`.
+  :returns: `True` when the target is `>=sm80`.
+  """
+
+  normalized = sm.removesuffix("a")
+  if not normalized.isdigit():
+    return False
+
+  return int(normalized) >= 80
+
+
 def _env_flag(name: str) -> bool:
   return os.getenv(name, "0").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -176,9 +193,9 @@ def _should_build_cuda() -> bool:
   """Return whether the optional CUDA extensions take part in the build.
 
   `CACHE_DIT_BUILD_CUDA=1` is the single switch for all of them: the build asks for
-  `cache_dit._C_svdquant`, `cache_dit._C_comm`, and `cache_dit._C_attn` at once, and each
-  extension is then skipped with a warning when none of the resolved SM targets can host
-  its kernels.
+  `cache_dit._C_svdquant`, `cache_dit._C_comm`, `cache_dit._C_attn`, and
+  `cache_dit._C_models` at once, and each extension is then skipped with a warning when
+  none of the resolved SM targets can host its kernels.
 
   :returns: `True` when the build requests the CUDA extensions.
   """
@@ -353,6 +370,23 @@ def _required_attn_sources() -> list[str]:
 def _missing_attn_sources() -> list[str]:
   return [
     relative_path for relative_path in _required_attn_sources()
+    if not (ROOT_DIR / relative_path).exists()
+  ]
+
+
+def _required_models_sources() -> list[str]:
+  return [
+    "csrc/kernels/models/models.cpp",
+    "csrc/kernels/models/boogu.cpp",
+    "csrc/kernels/models/boogu_scaled_rms_norm.cu",
+    "csrc/kernels/models/boogu_gated_rms_norm.cu",
+    "csrc/kernels/models/boogu_qk_norm_rope.cu",
+  ]
+
+
+def _missing_models_sources() -> list[str]:
+  return [
+    relative_path for relative_path in _required_models_sources()
     if not (ROOT_DIR / relative_path).exists()
   ]
 
@@ -798,6 +832,100 @@ def _get_attn_extension():
   return [extension]
 
 
+def _get_models_extension():
+  """Build the optional model-specific extension requested by `CACHE_DIT_BUILD_CUDA`.
+
+  :returns: A single-element list holding the `cache_dit._C_models` extension, or an empty
+    list when the build does not request it, or when no resolved SM target can host its
+    kernels.
+  """
+
+  if not _should_build_cuda():
+    return []
+
+  sm_targets = _resolve_sm_targets("Models", _is_supported_models_sm_target)
+  if not sm_targets:
+    reason = "no resolved SM target can host cache_dit._C_models (>=sm80)"
+    if IS_CU13_RELEASE:
+      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships every CUDA extension, "
+                         f"but {reason}.")
+    _warn_skipped(f"[cache-dit] CUDA build: skipping cache_dit._C_models -- {reason}; set "
+                  "CACHE_DIT_CUDA_ARCH_LIST to a supported target to build it.")
+    return []
+
+  _require_min_cuda_for_cu13_release()
+
+  missing_sources = _missing_models_sources()
+  if missing_sources:
+    preview = ", ".join(missing_sources[:4])
+    if len(missing_sources) > 4:
+      preview += ", ..."
+    raise RuntimeError(
+      "The Cache-DiT model-specific extension was requested, but its native source tree is "
+      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
+
+  assert CUDAExtension is not None
+
+  gcc_flags = [
+    "-DBUILD_CACHE_DIT_MODELS=1",
+    "-fvisibility=hidden",
+    "-O3",
+    "-std=c++20",
+  ]
+  msvc_flags = [
+    "/DBUILD_CACHE_DIT_MODELS=1",
+    "/O2",
+    "/std:c++20",
+    "/Zc:__cplusplus",
+    "/FS",
+  ]
+  # The model kernels are plain bf16 elementwise/reduction code, so the SVDQuant-only
+  # fast-math and spdlog settings are intentionally left out.
+  nvcc_flags = [
+    "-DBUILD_CACHE_DIT_MODELS=1",
+    "-O3",
+    "-std=c++20",
+    "-U__CUDA_NO_HALF_OPERATORS__",
+    "-U__CUDA_NO_HALF_CONVERSIONS__",
+    "-U__CUDA_NO_HALF2_OPERATORS__",
+    "-U__CUDA_NO_HALF2_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
+    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
+    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
+    "--expt-relaxed-constexpr",
+    "--expt-extended-lambda",
+  ]
+  if os.getenv("CACHE_DIT_BUILD_WHEELS", "0") == "0":
+    nvcc_flags.append("--generate-line-info")
+  for sm_target in sm_targets:
+    nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
+
+  extension = CUDAExtension(
+    name="cache_dit._C_models",
+    sources=_required_models_sources(),
+    include_dirs=[
+      str(ROOT_DIR / "csrc" / "kernels"),
+      str(ROOT_DIR / "csrc" / "kernels" / "models"),
+    ],
+    extra_compile_args={
+      "gcc": gcc_flags,
+      "msvc": msvc_flags,
+      "nvcc": nvcc_flags,
+      "nvcc_msvc": [
+        "-Xcompiler",
+        "/Zc:__cplusplus",
+        "-Xcompiler",
+        "/FS",
+        "-Xcompiler",
+        "/bigobj",
+      ],
+    },
+  )
+
+  return [extension]
+
+
 def _get_extensions() -> tuple[list, dict[str, object]]:
   """Collect every CUDA extension requested by `CACHE_DIT_BUILD_CUDA`.
 
@@ -809,13 +937,18 @@ def _get_extensions() -> tuple[list, dict[str, object]]:
   if not _should_build_cuda():
     return [], {}
 
-  ext_modules = [*_get_svdquant_extension(), *_get_comm_extension(), *_get_attn_extension()]
+  ext_modules = [
+    *_get_svdquant_extension(),
+    *_get_comm_extension(),
+    *_get_attn_extension(),
+    *_get_models_extension(),
+  ]
   if not ext_modules:
     raise SystemExit(
       "[cache-dit] CACHE_DIT_BUILD_CUDA=1 was set, but no resolved SM target can host any of "
-      "the three extensions (SVDQuant >=sm80 excluding sm90, comm and attn >=sm89). Set "
-      "CACHE_DIT_CUDA_ARCH_LIST to a supported target list, or unset CACHE_DIT_BUILD_CUDA "
-      "for a pure-Python install.")
+      "the four extensions (SVDQuant >=sm80 excluding sm90, comm and attn >=sm89, models "
+      ">=sm80). Set CACHE_DIT_CUDA_ARCH_LIST to a supported target list, or unset "
+      "CACHE_DIT_BUILD_CUDA for a pure-Python install.")
 
   assert CacheDiTBuildExtension is not None
   return ext_modules, {"build_ext": CacheDiTBuildExtension}

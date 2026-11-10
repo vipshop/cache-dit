@@ -43,14 +43,15 @@ CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-i
 
 `CACHE_DIT_BUILD_CUDA=1` is the only CUDA build switch, and it builds every optional
 extension at once: SVDQuant (`cache_dit._C_svdquant`), the communication operators used by
-FP8 Ulysses (`cache_dit._C_comm`), and the attention-state merge operator used by Ring
-Attention (`cache_dit._C_attn`). There is no per-extension switch.
+FP8 Ulysses (`cache_dit._C_comm`), the attention-state merge operator used by Ring
+Attention (`cache_dit._C_attn`), and the model-specific fused operators
+(`cache_dit._C_models`). There is no per-extension switch.
 
 An extension whose kernels cannot run on any requested SM target is skipped with a
 `[cache-dit] CUDA build: skipping ...` warning instead of failing the build. SVDQuant needs
-sm80+ and excludes Hopper (sm90), so a Hopper build ships `_C_comm` and `_C_attn` only;
-`_C_comm` and `_C_attn` need sm89+. A build where none of the three can run fails instead of
-producing an extension-less wheel.
+sm80+ and excludes Hopper (sm90), so a Hopper build ships `_C_comm`, `_C_attn` and
+`_C_models` only; `_C_comm` and `_C_attn` need sm89+, `_C_models` needs sm80+. A build where
+none of the four can run fails instead of producing an extension-less wheel.
 
 The architecture set defaults to `89`, `90a`, `100`, and `120a` (see
 `DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`), trimmed to what the local nvcc supports.

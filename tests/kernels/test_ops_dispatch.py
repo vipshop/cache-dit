@@ -5,6 +5,7 @@ import pytest
 import cache_dit.kernels as kernels
 import cache_dit.kernels._attn as attn_ops
 import cache_dit.kernels._comm as comm_ops
+import cache_dit.kernels._models as models_ops
 import cache_dit.kernels._svdquant as svdq_ops
 
 
@@ -16,6 +17,11 @@ import cache_dit.kernels._svdquant as svdq_ops
     ("fp8_comm_per_token_dequant", comm_ops),
     ("fp8_comm_qkv_permute_quant", comm_ops),
     ("fp8_comm_qkv_permute_dequant", comm_ops),
+    ("models_get_load_error", models_ops),
+    ("models_extension_is_available", models_ops),
+    ("boogu_scaled_rms_norm", models_ops),
+    ("boogu_gated_rms_norm", models_ops),
+    ("boogu_fused_qk_norm_rope", models_ops),
     ("svdq_get_load_error", svdq_ops),
     ("svdq_quantize_w4a4", svdq_ops),
     ("svdq_extension_is_available", svdq_ops),

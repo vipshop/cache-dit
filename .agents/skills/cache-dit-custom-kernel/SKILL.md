@@ -9,11 +9,12 @@ user-invocable: true
 
 ## 使用范围与路由
 
-本 skill 处理 `csrc/kernels/` 下**所有**算子族（现有 `comm`、`attn`、`svdq`，目前全部是 CUDA/CuTe C++ kernel）的接入、移植、构建、profile 与优化。读完本节再动手：
+本 skill 处理 `csrc/kernels/` 下**所有**算子族（现有 `comm`、`attn`、`svdq`、`models`，目前全部是 CUDA/CuTe C++ kernel）的接入、移植、构建、profile 与优化。读完本节再动手：
 
 | 任务 | 判据 | 读哪里 |
 |---|---|---|
 | 接入新算子 / 新算子族 | 要新建 `csrc/kernels/<族>/` 下的文件，或要动 `setup.py` 的源清单/扩展/schema 注册 | `references/kernel-integration-chain.md` |
+| 接入**模型专属**算子族（`models`） | 算子只服务单个 vendored 模型，要动 `csrc/kernels/models/` 与 `kernels/_models/`，或要在模型侧加 `fused_ops.py` 调用点 | 本文 §9 + `references/kernel-integration-chain.md` §2 |
 | 从上游仓库移植算子 | 有 nunchaku / deepcompressor / flashinfer 参照实现 | `references/operator-migration.md` |
 | 改现有算子实现 | 只改 `.cu/.cuh/.h`，schema、`setup.py`、Python 包装都不动 | 本文 §5 + 该族 Python 模块 + 对应测试 |
 | 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列三份 ref |
@@ -189,3 +190,60 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
+
+## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/_models`）
+
+`comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。
+
+### 9.1 三段布局
+
+```text
+csrc/kernels/models/
+  models.cpp                 # 整族唯一的 PYBIND11_MODULE(TORCH_EXTENSION_NAME) + def_submodule("ops")
+  <model>.h                  # cache_dit::models 下的 void 入口声明（out-param）
+  <model>.cpp                # register_<model>_ops(py::module_&)：只挂 pybind，不含计算
+  <model>_<op>.cu            # 一个算子一个 TU
+
+src/cache_dit/kernels/_models/
+  __init__.py                # re-export 公开包装 + models_extension_is_available
+  _<model>.py                # 六段模板（同 §2 第 5 步），公开名带模型前缀 <model>_<op>
+
+src/cache_dit/models/pipelines/<model>/
+  fused_ops.py               # 模型侧调用点：前置条件 + 逐位等价 eager 回退 + 开关
+```
+
+与三族最大的结构差异：**整族共用一个 extension 和一个 `PYBIND11_MODULE`**。各模型只提供 `void register_<model>_ops(py::module_& ops)`，在 `models.cpp` 里加一行调用即可；新增模型不再新增 extension，也不再改 `setup.py`。
+
+### 9.2 命名
+
+| 对象 | 规范 | 例 |
+|---|---|---|
+| kernel TU | `{model}_{op}.cu` | `boogu_qk_norm_rope.cu` |
+| 声明头 / pybind TU | `{model}.h` / `{model}.cpp` | `boogu.h` / `boogu.cpp` |
+| C++ namespace | `cache_dit::models` | — |
+| 公开 torch 算子 | `{model}_{op}` | `boogu_scaled_rms_norm` |
+| Python 模块 | `kernels/_models/_<model>.py` | `_boogu.py` |
+| extension | `cache_dit._C_models`（全族共用） | — |
+| 融合开关 | `CACHE_DIT_{MODEL}_FUSED_OPS` | `CACHE_DIT_BOOGU_FUSED_OPS` |
+
+开关随模型命名，不写无前缀的全局开关：模型专属算子会越来越多，`_FUSED_OPS_ENABLED` 这类名字一次就撞车。
+
+### 9.3 模型侧 `fused_ops.py` 是契约的一部分
+
+1. 每个算子一个 `apply_<语义>()`，函数体就是 `if 前置条件: kernel else: 融合前的表达式`；**回退分支必须与融合前字面等价**（同 dtype、同运算顺序、同 `unsqueeze` 位置），否则 CPU / 非 bf16 / DTensor / offload 场景会静默改数。
+2. 前置条件必须覆盖 C++ 侧全部 `TORCH_CHECK`：dtype、contiguous、`storage_offset()==0`、`is_cuda`、形状、8 元素/16B 对齐、通道上限；再叠加模型语义限制（`B==1`、norm 无 bias、只认自己的 RMSNorm 标记，不能顺手把 `nn.LayerNorm` 也当成 RMSNorm）。
+3. 开关默认 **on**，import 时读一次，只有显式 falsey（`0/false/off/no`）才关闭，乱值按默认处理；另留 `set_<model>_fused_ops_enabled()` 给 parity 测试。
+4. `weight.is_cuda` 这类检查不是冗余：layerwise offload 期间 norm 权重可能还在 CPU，漏掉就从「优雅回退」变成 kernel 里硬报错。
+
+### 9.4 构建与测试
+
+- `_required_models_sources()` 用 `csrc/kernels/models/*.cu|cpp` 的 glob，新增模型**不需要**动 `setup.py`；只有新增「族」才需要 §5.1 的 6 处。
+- 每模型一份 `tests/kernels/test_<model>_model_ops.py`：`FakeTensorMode` 注册、算子 vs 参考实现、`fullgraph=True` compile smoke、边界回退（非法通道 / 非连续 / 错 shape）、**模型级 fused-vs-eager forward 对照**、开关名字与解析断言。
+- `tests/kernels/test_ops_dispatch.py` 的参数表要加本族条目——该表手工维护，漏了不会有任何报错。
+- 想证明「默认真的生效」不要只读代码：给三个公开包装器加计数，或在 profiler 里查 `cache_dit_cuda_ops::<model>_*` 与具体 kernel 名；调用次数与 profiler `count` 必须逐一相等。
+
+### 9.5 硬规则
+
+- schema 形参顺序 = C++ 形参顺序 = bridge 调用顺序，三者任一写反都不报错、只静默算错。
+- 不要因为「模型侧 batch 恒为 1」就在 kernel 里假定 `B==1`：`per-channel` 融合显式限制 `B==1` 并回退，docstring 写明边界。
+- 模型级 CP/TP 分片（DTensor）会改变输入布局，融合前置条件要能识别并回退，不能让分片张量进 kernel。
