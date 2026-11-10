@@ -10,14 +10,14 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from ...kernels._svdquant import _svdq_gemm_w4a4_ext
+from ...kernels._svdquant import svdq_gemm_w4a4
 from .linear import SVDQW4A4Linear
 
 
 def _require_native_lora_layout(*modules: nn.Module) -> None:
   """Reject non-native LoRA-down layouts, which the fused passes cannot consume.
 
-  The fused passes feed `quantize()`'s D straight into the native ext GEMM, which
+  The fused passes feed `quantize()`'s D straight into the native GEMM, which
   reinterprets it as packed FP32 MMA fragments. A row-major BF16 D would be read
   out of bounds there, so fail fast instead.
 
@@ -43,10 +43,12 @@ def fused_gelu_mlp(
   """Fused quantized MLP with GELU activation.
 
   Combines the first quantized linear layer, GELU activation, and the
-  second quantized linear layer into a single CUDA kernel chain.  The
-  intermediate fp16 activation is never written back to HBM — the first
-  GEMM directly produces 4-bit quantized output consumed by the second
-  GEMM.
+  second quantized linear layer into a single CUDA kernel chain: the first
+  GEMM applies GELU in-register and directly emits the 4-bit packed
+  activation (plus its scales) consumed by the second GEMM, so the fp16
+  GELU output never has to be re-quantized by a separate launch. The kernel
+  still writes the dense fp16 output buffer as part of the same epilogue
+  chain; this pass simply ignores it.
 
   :param x: Input tensor with shape ``[..., in_features]`` and dtype
       ``float16`` or ``bfloat16``.
@@ -108,7 +110,7 @@ def fused_gelu_mlp(
     device=x.device,
   )
 
-  _svdq_gemm_w4a4_ext(
+  svdq_gemm_w4a4(
     act=quantized_x,
     wgt=fc1.qweight,
     qout=qout_act,
@@ -141,9 +143,9 @@ def fused_gelu_proj(
 ) -> torch.Tensor:
   """Fused fc1 GEMM + GELU in a single kernel.
 
-  Uses private ``_svdq_gemm_w4a4_ext`` with the GELU epilogue to combine
-  the first quantized linear layer and GELU activation without a
-  separate GELU kernel launch.
+  Feeds ``svdq_gemm_w4a4`` the GELU epilogue arguments to combine the first
+  quantized linear layer and the GELU activation without a separate GELU
+  kernel launch.
 
   Unlike ``fused_gelu_mlp``, this does **not** fuse the second linear
   layer — the caller is responsible for feeding the returned fp16
@@ -174,14 +176,8 @@ def fused_gelu_proj(
 
   batch_size_pad = quantized_x.shape[0]
   fc1_out_padded = getattr(fc1, '_padded_out_features', fc1.out_features)
-  out = torch.empty(
-    batch_size_pad,
-    fc1_out_padded,
-    dtype=x.dtype,
-    device=x.device,
-  )
 
-  # qout / oscales are required by the ext kernel schema but the
+  # qout / oscales are required by the fused-GELU kernel branch but the
   # caller does not use them — the kernel still populates them.
   if fc1.precision == "nvfp4":
     qout_act = torch.empty(
@@ -218,10 +214,9 @@ def fused_gelu_proj(
     device=x.device,
   )
 
-  _svdq_gemm_w4a4_ext(
+  out = svdq_gemm_w4a4(
     act=quantized_x,
     wgt=fc1.qweight,
-    out=out,
     qout=qout_act,
     ascales=ascales,
     wscales=fc1.wscales,

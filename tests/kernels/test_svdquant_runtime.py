@@ -1,14 +1,12 @@
 """Cd cache-dit pytest tests/kernels/test_svdquant_runtime.py -v -s."""
 
-import os
-
 import pytest
 import torch
+import torch.nn.functional as F
 
 from cache_dit.kernels import svdq_extension_is_available
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
-from cache_dit.kernels._svdquant import _svdq_gemm_w4a4_ext as svdq_gemm_w4a4_ext
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
@@ -63,7 +61,7 @@ def test_svdquant_int4_runtime_smoke() -> None:
     weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = pack_int4_weight(weights)
 
-    output = svdq_gemm_w4a4_ext(
+    output = svdq_gemm_w4a4(
       act=quantized_activations,
       wgt=qweight,
       ascales=ascales,
@@ -89,258 +87,15 @@ def test_svdquant_int4_runtime_smoke() -> None:
   assert output.float().abs().sum().item() > 0.0
 
 
-def test_svdquant_int4_runtime_plain_smoke() -> None:
-  _require_svdquant_runtime()
+def test_svdquant_fused_gelu_epilogue_matches_gelu_of_plain_output() -> None:
+  """The fused qout/oscales/lora_down branch must not disturb the GEMM accumulator.
 
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-  out_features = 128
-  rank = 16
+  Passing the fused arguments switches the kernel to the GELU + quantized-output
+  epilogue chain. `out` then holds `gelu(acc)` instead of `acc`, so comparing it
+  against `gelu(out_plain)` proves the extra arguments only add epilogue work and
+  do not reorder or drop any of the packed inputs.
+  """
 
-  with torch.inference_mode():
-    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-    smooth = torch.ones(in_features, device=device, dtype=dtype)
-    lora_down = torch.zeros(in_features, rank, device=device, dtype=dtype)
-    lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
-    bias = torch.zeros(out_features, device=device, dtype=dtype)
-
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
-      input=activations,
-      lora_down=lora_down,
-      smooth=smooth,
-      fuse_glu=False,
-      fp4=False,
-      pad_size=256,
-    )
-
-    weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = pack_int4_weight(weights)
-
-    output = svdq_gemm_w4a4(
-      act=quantized_activations,
-      wgt=qweight,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_activations,
-      lora_up=lora_up,
-      bias=bias,
-      wcscales=None,
-      act_unsigned=False,
-      fp4=False,
-      alpha=1.0,
-    )
-    torch.cuda.synchronize()
-
-  assert output.shape == (batch_size, out_features)
-  assert output.is_cuda
-  assert output.dtype == dtype
-  assert torch.isfinite(output).all()
-  assert output.float().abs().sum().item() > 0.0
-
-
-def test_svdquant_int4_ext_runtime_smoke() -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-  out_features = 128
-  rank = 16
-
-  with torch.inference_mode():
-    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-    smooth = torch.ones(in_features, device=device, dtype=dtype)
-    lora_down = torch.zeros(in_features, rank, device=device, dtype=dtype)
-    lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
-    bias = torch.zeros(out_features, device=device, dtype=dtype)
-
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
-      input=activations,
-      lora_down=lora_down,
-      smooth=smooth,
-      fuse_glu=False,
-      fp4=False,
-      pad_size=256,
-    )
-
-    weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = pack_int4_weight(weights)
-
-    base_output = svdq_gemm_w4a4_ext(
-      act=quantized_activations,
-      wgt=qweight,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_activations,
-      lora_up=lora_up,
-      bias=bias,
-      wcscales=None,
-      act_unsigned=False,
-      fp4=False,
-      alpha=1.0,
-    )
-    ext_output = torch.empty_like(base_output)
-    result = svdq_gemm_w4a4_ext(
-      act=quantized_activations,
-      wgt=qweight,
-      out=ext_output,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_activations,
-      lora_up=lora_up,
-      bias=bias,
-      act_unsigned=False,
-      fp4=False,
-      alpha=1.0,
-    )
-    torch.cuda.synchronize()
-
-  assert result is ext_output
-  assert ext_output.shape == (batch_size, out_features)
-  assert ext_output.is_cuda
-  assert ext_output.dtype == dtype
-  assert torch.isfinite(ext_output).all()
-  torch.testing.assert_close(ext_output, base_output, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("stage", [1, 2, 3])
-def test_svdquant_int4_plain_matches_ext(stage: int) -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-  out_features = 128
-  rank = 16
-
-  with torch.inference_mode():
-    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-    smooth = torch.ones(in_features, device=device, dtype=dtype)
-    lora_down = torch.zeros(in_features, rank, device=device, dtype=dtype)
-    lora_up = torch.zeros(out_features, rank, device=device, dtype=dtype)
-    bias = torch.zeros(out_features, device=device, dtype=dtype)
-
-    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
-      input=activations,
-      lora_down=lora_down,
-      smooth=smooth,
-      fuse_glu=False,
-      fp4=False,
-      pad_size=256,
-    )
-
-    weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-    qweight, wscales = pack_int4_weight(weights)
-
-    output_ext = svdq_gemm_w4a4_ext(
-      act=quantized_activations,
-      wgt=qweight,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_activations,
-      lora_up=lora_up,
-      bias=bias,
-      wcscales=None,
-      act_unsigned=False,
-      fp4=False,
-      alpha=1.0,
-    )
-    output_plain = svdq_gemm_w4a4(
-      act=quantized_activations,
-      wgt=qweight,
-      ascales=ascales,
-      wscales=wscales,
-      lora_act_in=lora_activations,
-      lora_up=lora_up,
-      bias=bias,
-      wcscales=None,
-      act_unsigned=False,
-      fp4=False,
-      alpha=1.0,
-      stage=stage,
-    )
-    torch.cuda.synchronize()
-
-  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("stage", [1, 2, 3])
-@pytest.mark.parametrize("logical_block_m", [64, 128, 256])
-def test_svdquant_int4_plain_block_m_variants_match_ext(logical_block_m: int, stage: int) -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-  batch_size = 256
-  in_features = 128
-  out_features = 128
-
-  previous = os.environ.get("CACHE_DIT_SVDQ_BLOCK_M")
-  os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = str(logical_block_m)
-
-  try:
-    with torch.inference_mode():
-      activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-      smooth = torch.ones(in_features, device=device, dtype=dtype)
-      bias = torch.randn(out_features, device=device, dtype=dtype) * 0.01
-
-      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
-        input=activations,
-        lora_down=None,
-        smooth=smooth,
-        fuse_glu=False,
-        fp4=False,
-        pad_size=256,
-      )
-
-      weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-      qweight, wscales = pack_int4_weight(weights)
-
-      output_ext = svdq_gemm_w4a4_ext(
-        act=quantized_activations,
-        wgt=qweight,
-        ascales=ascales,
-        wscales=wscales,
-        lora_act_in=None,
-        lora_up=None,
-        bias=bias,
-        wcscales=None,
-        act_unsigned=False,
-        fp4=False,
-        alpha=1.0,
-      )
-      output_plain = svdq_gemm_w4a4(
-        act=quantized_activations,
-        wgt=qweight,
-        ascales=ascales,
-        wscales=wscales,
-        lora_act_in=None,
-        lora_up=None,
-        bias=bias,
-        wcscales=None,
-        act_unsigned=False,
-        fp4=False,
-        alpha=1.0,
-        stage=stage,
-      )
-      torch.cuda.synchronize()
-  finally:
-    if previous is None:
-      os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
-    else:
-      os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = previous
-
-  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("stage", [1, 2, 3])
-@pytest.mark.parametrize("logical_block_m", [64, 128, 256])
-def test_svdquant_int4_plain_block_m_lora_variants_match_ext(logical_block_m: int,
-                                                             stage: int) -> None:
   _require_svdquant_runtime()
 
   device = "cuda"
@@ -350,102 +105,89 @@ def test_svdquant_int4_plain_block_m_lora_variants_match_ext(logical_block_m: in
   out_features = 128
   rank = 32
 
-  previous = os.environ.get("CACHE_DIT_SVDQ_BLOCK_M")
-  os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = str(logical_block_m)
-
-  try:
-    with torch.inference_mode():
-      activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
-      smooth = torch.ones(in_features, device=device, dtype=dtype)
-      lora_down = torch.randn(in_features, rank, device=device, dtype=dtype) * 0.01
-      lora_up = torch.randn(out_features, rank, device=device, dtype=dtype) * 0.01
-      bias = torch.randn(out_features, device=device, dtype=dtype) * 0.01
-
-      quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
-        input=activations,
-        lora_down=lora_down,
-        smooth=smooth,
-        fuse_glu=False,
-        fp4=False,
-        pad_size=256,
-      )
-
-      weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
-      qweight, wscales = pack_int4_weight(weights)
-
-      output_ext = svdq_gemm_w4a4_ext(
-        act=quantized_activations,
-        wgt=qweight,
-        ascales=ascales,
-        wscales=wscales,
-        lora_act_in=lora_activations,
-        lora_up=lora_up,
-        bias=bias,
-        wcscales=None,
-        act_unsigned=False,
-        fp4=False,
-        alpha=1.0,
-      )
-      output_plain = svdq_gemm_w4a4(
-        act=quantized_activations,
-        wgt=qweight,
-        ascales=ascales,
-        wscales=wscales,
-        lora_act_in=lora_activations,
-        lora_up=lora_up,
-        bias=bias,
-        wcscales=None,
-        act_unsigned=False,
-        fp4=False,
-        alpha=1.0,
-        stage=stage,
-      )
-      torch.cuda.synchronize()
-  finally:
-    if previous is None:
-      os.environ.pop("CACHE_DIT_SVDQ_BLOCK_M", None)
-    else:
-      os.environ["CACHE_DIT_SVDQ_BLOCK_M"] = previous
-
-  torch.testing.assert_close(output_plain, output_ext, rtol=0.0, atol=0.0)
-
-
-@pytest.mark.parametrize("stage", [0, 4, 5])
-def test_svdquant_int4_plain_rejects_invalid_stage(stage: int) -> None:
-  _require_svdquant_runtime()
-
-  device = "cuda"
-  dtype = runtime_dtype()
-
   with torch.inference_mode():
-    activations = torch.randn(256, 128, device=device, dtype=dtype)
-    smooth = torch.ones(128, device=device, dtype=dtype)
-    quantized_activations, ascales, _ = svdq_quantize_w4a4(
+    activations = torch.randn(batch_size, in_features, device=device, dtype=dtype)
+    smooth = torch.ones(in_features, device=device, dtype=dtype)
+    lora_down = torch.randn(in_features, rank, device=device, dtype=dtype)
+    lora_up = torch.randn(out_features, rank, device=device, dtype=dtype)
+    bias = torch.randn(out_features, device=device, dtype=dtype)
+
+    quantized_activations, ascales, lora_activations = svdq_quantize_w4a4(
       input=activations,
-      lora_down=None,
+      lora_down=lora_down,
       smooth=smooth,
       fuse_glu=False,
       fp4=False,
       pad_size=256,
     )
-    weights = torch.randn(128, 128, device=device, dtype=dtype)
+    weights = torch.randn(out_features, in_features, device=device, dtype=dtype)
     qweight, wscales = pack_int4_weight(weights)
 
-    with pytest.raises(ValueError, match="stage"):
-      svdq_gemm_w4a4(
-        act=quantized_activations,
-        wgt=qweight,
-        ascales=ascales,
-        wscales=wscales,
-        lora_act_in=None,
-        lora_up=None,
-        bias=None,
-        wcscales=None,
-        act_unsigned=False,
-        fp4=False,
-        alpha=1.0,
-        stage=stage,
-      )
+    plain = svdq_gemm_w4a4(
+      act=quantized_activations,
+      wgt=qweight,
+      ascales=ascales,
+      wscales=wscales,
+      lora_act_in=lora_activations,
+      lora_up=lora_up,
+      bias=bias,
+      fp4=False,
+      alpha=1.0,
+    )
+
+    qout = torch.zeros(batch_size, out_features // 2, dtype=torch.uint8, device=device)
+    oscales = torch.zeros(out_features // 64, batch_size, dtype=dtype, device=device)
+    lora_act_out = torch.zeros(batch_size, rank, dtype=torch.float32, device=device)
+    fused = svdq_gemm_w4a4(
+      act=quantized_activations,
+      wgt=qweight,
+      ascales=ascales,
+      wscales=wscales,
+      qout=qout,
+      oscales=oscales,
+      lora_act_in=lora_activations,
+      lora_up=lora_up,
+      lora_down=lora_down,
+      lora_act_out=lora_act_out,
+      bias=bias,
+      smooth_factor=torch.ones(out_features, dtype=dtype, device=device),
+      fp4=False,
+      alpha=1.0,
+    )
+
+    # Negative controls: the bias and the LoRA-up term have to move the result, otherwise
+    # the O(1) comparison below would still pass with either of them silently dropped.
+    without_bias = svdq_gemm_w4a4(
+      act=quantized_activations,
+      wgt=qweight,
+      ascales=ascales,
+      wscales=wscales,
+      lora_act_in=lora_activations,
+      lora_up=lora_up,
+      fp4=False,
+      alpha=1.0,
+    )
+    without_lora = svdq_gemm_w4a4(
+      act=quantized_activations,
+      wgt=qweight,
+      ascales=ascales,
+      wscales=wscales,
+      bias=bias,
+      fp4=False,
+      alpha=1.0,
+    )
+    torch.cuda.synchronize()
+
+  expected = F.gelu(plain.float(), approximate="tanh").to(dtype)
+  # Both paths share one fp16 accumulator, so the only difference is the extra fp16
+  # rounding of the GELU output in `fused`.
+  torch.testing.assert_close(fused, expected, rtol=2e-3, atol=2e-3)
+  assert not torch.allclose(plain, without_bias)
+  assert not torch.allclose(plain, without_lora)
+  assert qout.abs().sum().item() > 0
+  assert torch.isfinite(oscales.float()).all()
+  assert torch.isfinite(lora_act_out).all()
+  assert lora_act_out.abs().sum().item() > 0
 
 
 def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
@@ -509,3 +251,10 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
   assert_rank_metric_trend(metrics_by_rank, "rel_l2", ranks=RANKS_WITH_BASELINE)
   assert metrics_by_rank[128].mae < metrics_by_rank[0].mae
   assert metrics_by_rank[128].rel_l2 < metrics_by_rank[0].rel_l2
+
+  # Absolute accuracy gate on the whole INT4 path (weight pack + activation pack + GEMM +
+  # LoRA). A monotonic trend alone survives a uniformly wrong result; a swapped
+  # ascales/wscales or a dropped LoRA term lands far outside these bounds.
+  assert metrics_by_rank[128].rel_l2 < 0.01
+  assert metrics_by_rank[128].cosine > 0.9999
+  assert metrics_by_rank[32].rel_l2 < 0.06

@@ -13,9 +13,4 @@ bash bench.sh default
 bash metrics.sh
 ```
 
-```bash
-cd cache-dit
-python bench/kernels/bench_svdq_runtime.py
-```
-
 Temporary benchmark outputs should continue to go under `cache-dit/.tmp/`.

@@ -298,7 +298,7 @@ from ._comm import fp8_comm_per_token_quant
 
 ### 这次移植证明了什么
 
-- native W4A4 闭包可以不整包引入上游就迁过来（`csrc/kernels/svdq/` 后来重组为 `core/`、`int4/`、`fp4/`，这些现在位于 `csrc/kernels/svdq/native/` 之下、与 `csrc/kernels/svdq/cute/` 并列；这是本地布局选择，上游 nunchaku 保持扁平的 `csrc/`）
+- native W4A4 闭包可以不整包引入上游就迁过来（本地最终布局是 `csrc/kernels/svdq/native/` 与 `csrc/kernels/svdq/cute/` 并列，两侧内部都扁平、不再分子目录；上游 nunchaku 保持扁平的 `csrc/`）
 - 公开算子封装要显式、与仓库约定对齐
 - `torch.library` 的 schema 与实现要和域封装放在一起，统一在 `cache_dit_cuda_ops` 命名空间
 - 可选扩展的 import 要延迟，加载错误要可查询

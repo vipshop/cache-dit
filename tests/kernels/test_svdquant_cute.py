@@ -561,20 +561,19 @@ def test_runtime_kernel_auto_selection_and_invalid_values() -> None:
 
 
 @pytest.mark.parametrize("runtime_kernel", [None, "native"])
-def test_native_int4_dispatches_plain_runtime(monkeypatch, runtime_kernel: str | None) -> None:
+@pytest.mark.parametrize("precision", ["int4", "nvfp4"])
+def test_native_dispatch_uses_single_gemm_bridge(monkeypatch, runtime_kernel: str | None,
+                                                 precision: str) -> None:
   if not torch.cuda.is_available():
     pytest.skip("CUDA is required")
   import cache_dit.kernels._svdquant as svdq_ops
 
-  module = SVDQW4A4Linear(128, 128, rank=0, precision="int4", runtime_kernel=runtime_kernel)
+  module = SVDQW4A4Linear(128, 128, rank=0, precision=precision, runtime_kernel=runtime_kernel)
   seen: list[str] = []
-  monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4_ext",
-                      lambda *args, **kwargs: seen.append("ext"))
-  monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4_native",
-                      lambda *args, **kwargs: seen.append("plain"))
+  monkeypatch.setattr(svdq_ops, "_call_svdq_gemm_w4a4", lambda *args, **kwargs: seen.append("gemm"))
   module.forward_quant(torch.empty(0, 128, device="cuda:0"), torch.empty(0, device="cuda:0"),
                        torch.empty(0, device="cuda:0"))
-  assert seen == ["plain"]
+  assert seen == ["gemm"]
 
 
 def test_lora_layout_validation() -> None:
@@ -718,9 +717,29 @@ def test_gemm_w4a4_fake_registration() -> None:
   ascales = torch.empty(256 * 128 // 16, dtype=torch.float8_e4m3fn, device="meta")
   wscales = torch.empty(128 * 128 // 16, dtype=torch.float8_e4m3fn, device="meta")
   for runtime in ("cute", "native"):
-    output = torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(act, wgt, ascales, wscales, None, None,
-                                                         None, None, runtime, True, 1.0, False, 1,
-                                                         1, [], "native")
+    output = torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(
+      act=act,
+      wgt=wgt,
+      ascales=ascales,
+      wscales=wscales,
+      qout=None,
+      oscales=None,
+      lora_act_in=None,
+      lora_up=None,
+      lora_down=None,
+      lora_act_out=None,
+      bias=None,
+      smooth_factor=None,
+      wcscales=None,
+      act_unsigned=False,
+      fuse_silu=False,
+      fp4=True,
+      alpha=1.0,
+      lora_scales=[],
+      runtime=runtime,
+      lora_layout="native",
+      out_dtype_id=1,
+    )
     assert output.shape == (256, 128)
     assert output.dtype == torch.bfloat16
   input = torch.empty(256, 128, dtype=torch.bfloat16, device="meta")

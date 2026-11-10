@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETUP_PY = REPO_ROOT / "setup.py"
 SVDQ_SOURCE_ROOT = REPO_ROOT / "csrc" / "kernels" / "svdq"
-MANIFEST_HELPERS = frozenset({"_svdquant_stage_sources", "_required_svdquant_sources"})
+MANIFEST_HELPERS = frozenset({"_required_svdquant_sources"})
 
 
 def _load_manifest_helpers() -> dict:
@@ -21,7 +21,7 @@ def _load_manifest_helpers() -> dict:
   setup.py has no ``__main__`` guard, so importing it would start a build. The helpers are pure
   functions over string literals and can be executed on their own.
 
-  :returns: Namespace holding the two manifest helper functions.
+  :returns: Namespace holding the manifest helper functions.
   """
 
   tree = ast.parse(SETUP_PY.read_text(encoding="utf-8"), filename=str(SETUP_PY))

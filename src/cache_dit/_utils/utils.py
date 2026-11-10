@@ -725,7 +725,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=str,
     default=None,
     choices=["native", "cute"],
-    help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
+    help="SVDQ GEMM family. Default: auto (native for INT4 and NVFP4).",
   )
   parser.add_argument(
     "--svdq-lora-layout",

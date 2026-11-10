@@ -144,12 +144,6 @@ inline __device__ float2 operator*(float2 a, float b) { return make_float2(a.x *
 inline __device__ float2 operator+(float2 a, float b) { return make_float2(a.x + b, a.y + b); }
 inline __device__ float2 operator-(float2 a, float b) { return make_float2(a.x - b, a.y - b); }
 
-static inline __device__ int8_t float_to_int8_rn(float x) {
-  uint32_t dst;
-  asm volatile("cvt.rni.sat.s8.f32 %0, %1;" : "=r"(dst) : "f"(x));
-  return reinterpret_cast<const int8_t &>(dst);
-}
-
 template <typename T>
 inline __device__ T ldg(const T *val) {
   return __ldg(val);
@@ -399,32 +393,6 @@ __device__ inline __nv_bfloat162 cuda_cast<__nv_bfloat162, half2>(half2 val) {
 }
 
 #endif  // ENABLE BF16
-
-template <typename f16_t>
-__device__ __forceinline__ packed_as<f16_t, 2>::type f162f162(f16_t x);
-
-template <>
-__device__ __forceinline__ packed_as<half, 2>::type f162f162<half>(half x) {
-  return __half2half2(x);
-}
-
-#ifdef ENABLE_BF16
-template <>
-__device__ __forceinline__ packed_as<__nv_bfloat16, 2>::type f162f162<__nv_bfloat16>(
-  __nv_bfloat16 x) {
-  return __bfloat162bfloat162(x);
-}
-#endif
-
-template <typename To, typename Ti>
-__device__ inline To cuda_sum(Ti val) {
-  return cuda_cast<To>(val);
-};
-
-template <typename To>
-__device__ inline To cuda_sum(float2 val) {
-  return cuda_cast<To>(val.x + val.y);
-};
 
 // Unary maximum: compute the max of a vector type
 template <typename To, typename Ti>

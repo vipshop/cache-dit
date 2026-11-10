@@ -7,7 +7,7 @@ row-major BF16 D instead, `native`/`cute`/`cute-row-major` are *kernel-only* GEM
 pack is prepared once and only the GEMM is timed), and the `*+e2e` rows measure quantize + GEMM.
 `speedup_vs_native` compares against the matching native baseline, so kernel rows use the
 kernel-only baseline and e2e rows use the e2e baseline. FlashInfer activation quantization uses its
-own standard 128x4 pack; native/cute use cache-dit's v1 activation pack.
+own standard 128x4 pack; native/cute use cache-dit's own activation pack.
 
 Examples:
 
@@ -25,7 +25,7 @@ Examples:
     --impl native,flashinfer+cutlass-sm120
 
 The FlashInfer kernel-only timings use its standard weight/activation pack. They are not
-numerically interchangeable with cache-dit's v1 activation pack; `finite` is reported for
+numerically interchangeable with cache-dit's own activation pack; `finite` is reported for
 FlashInfer, while `rel_l2_vs_native` is only meaningful for cache-dit's cute kernel.
 
 The FlashInfer implementations are optional. When FlashInfer cannot be imported, those rows are

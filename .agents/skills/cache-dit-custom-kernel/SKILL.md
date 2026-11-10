@@ -79,14 +79,20 @@ SVDQW4A4Linear.quantize / forward_quant
 
 目录与命名契约：
 
-- `csrc/kernels/svdq/native/`：旧 native 实现，使用 `svdq::native_kernels`。
+- `csrc/kernels/svdq/native/`：唯一 native 实现，使用 `svdq::native_kernels`。**已扁平化，没有 `core/`、`int4/`、`fp4/` 子目录**：
+  - `gemm_w4a4.{cu,cuh}`：W4A4 主 GEMM。INT4 与 NVFP4 共用同一条 host 分派与 epilogue 链，device 侧按 `USE_FP4` 在 `gemm_w4a4_kernel`（INT4）与 `gemm_w4a4_fp4_kernel`（NVFP4）之间选择。
+  - `gemm_w4a4_impl.cuh` / `gemm_w4a4_launch.cuh`：launch 接线（`GEMM_W4A4_Launch<Config, USE_FP4>`）与显式实例化助手。
+  - `gemm_w4a4_int4.cu` / `gemm_w4a4_fp4.cu`：唯一两个负责把 kernel 实例化进 `.so` 的 TU。
+  - `gemm_base.cuh`、`mma.cuh`、`lora.cuh`、`epilogues.cuh`、`gemm_utils.cuh`、`utils.cuh`、`dispatch.h`：共享构件；`epilogues.cuh` 现在只剩 `EpilogueGelu`（其余 `EpilogueQKVProj` / `RMSNormRope` / `PackQKV` / `LiteLA` 已随无调用者的 native 分支删除）。
+  - `zgemm.h`：对外只声明 `gemm_w4a4` 与 `quantize_w4a4`。
 - `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
 - `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译。公共入口声明在 `quantize.h`。
-- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。API 统一后，`ops.h`/pybind 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher，由 C++ `RuntimeParams`（runtime/fp4/stage/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 完整 ext ABI 仅作内部 `gemm_w4a4_ext` 服务 fused/ext。Python 侧只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，`svdq_gemm_w4a4_ext` 已转私有 `_svdq_gemm_w4a4_ext`。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`ops.h`/pybind 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher，由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
+- `csrc/kernels/svdq/runtime.h`：`RuntimeKernel` / `RuntimeParams` 与 `LoraLayout` 的**唯一**定义处。原 `runtime_params.h` 已删除；`LoraLayout` 原先定义在 cute 的 `gemm_w4a4.h`，现由 `runtime.h` 提供、cute 头 include 它。只有 host 侧依赖这个头，device kernel 体不依赖。
 - 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
 
-公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 使用 plain native；NVFP4 的 runtime 默认仍是 native，显式 `cute` 时 Python 默认 `lora_layout="row_major"`；显式 native 与 `fused_mlp` 保留 FP32 fragment-D 契约。GEMM 尚未达到相对 native 的 5% 验收目标，见 §8.1。
+公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 与 NVFP4 都走同一个 native `gemm_w4a4`，差别只在 packed 权重/scale 格式（`fp4` 开关）；显式 `cute` 时 Python 默认 `lora_layout="row_major"`；显式 native 与 `fused_mlp` 保留 FP32 fragment-D 契约。GEMM 尚未达到相对 native 的 5% 验收目标，见 §8.1。
 
 SVDQ 在通用模板之外的偏离（3 个 required getter、`utils` 子模块、无 `TORCH_CHECK`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
 
@@ -209,6 +215,21 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - e2e 最终目标是完整 CuTe 工作流相对旧 native 稳定降低至少 5% 延迟。
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
+
+### 8.3 已知遗留：`fused_gelu_mlp` 多写一块被丢弃的 dense 输出（待开专题，2026-11-10 记录）
+
+**现象**：`quantization/svdquant/fused.py::fused_gelu_mlp` 走融合 qout 路径时，kernel 仍会跑一遍 `EpilogueDefault`（shmem unpack + 全量 gmem store），把 `[M, N]` dense fp16 输出写到 HBM，而调用方连返回值都不接收。按 FLUX 类 FF 层（M=4096、N=12288、bf16）估算，每次调用约多写 100 MB。
+
+**机制**：单 op 形态下 `_svdquant.py:545` 无条件分配 `out` 并传给 pybind，C++ 侧再以 `out.valid()` 选择 epilogue 链——融合 qout 分支在 `native/gemm_w4a4_impl.cuh:216` 进入后，`impl.cuh:238` 的 `if (out.valid())` 为真就会追加 `EpilogueDefault`。当前 ABI 没有"不要 dense 输出"的出口。
+
+**不是 2026-11-10 那次清理引入的**：HEAD 的 `_svdq_gemm_w4a4_ext` 在 `out=None` 时同样无条件 `torch.empty` 后传入，所以这是**预存在**行为；`fused.py` 旧 docstring 里 "the intermediate fp16 activation is never written back to HBM" 当时就已经不成立，现已改成实际语义。
+
+**修法方向（二选一，需开专题）**：
+
+1. schema 加显式开关（推荐）：例如 `bool write_dense = True`，`False` 时 Python 传 `out=None` —— pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断，C++ 自然退化为纯 `EpilogueQuantize` 分支。**schema / pybind / impl / `_call_*` 四处顺序必须同步**（写反不报错、只静默算错）。
+2. 给融合 MLP 单开一个不带 dense 输出的 op：与"单 op、单 ABI"的收敛目标冲突，不推荐。
+
+**验收要求**：① `fused_gelu_mlp` vs `fc2(F.gelu(fc1(x)))` 的 rel-L2 门 —— 目前 `tests/` 对 fused 路径**零执行覆盖**（`test_fused_passes_reject_row_major` 在真正执行前就抛错）；② `torch.cuda.max_memory_allocated` 差值或 nsys 上消失的 `[M,N]` store；③ 确认 `fused_gelu_proj` 不受影响 —— 它显式需要 dense 输出并返回给调用方。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/_models`）
 

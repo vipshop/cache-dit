@@ -143,8 +143,8 @@ class FusedGeluMlpPass(BasePass):
   After quantization the linear layers become ``SVDQW4A4Linear``
   instances.  This pass patches the ``FeedForward.forward`` method to
   call ``fused_gelu_mlp(fc1, fc2)``, which uses the
-  private ``_svdq_gemm_w4a4_ext`` qout path to eliminate the intermediate fp16
-  HBM write between the two GEMMs.
+  native ``qout`` path to eliminate the intermediate fp16 HBM write between
+  the two GEMMs.
 
   .. note::
 
@@ -337,7 +337,7 @@ class FusedGeluProjPass(BasePass):
 
       fc1(x) → GELU → fc2 → output
 
-  The ext kernel can fuse all three steps because fc2's only input
+  The native GEMM can fuse all three steps because fc2's only input
   is the GELU output — the qout path writes quantized activations
   directly from the first GEMM into the second GEMM, skipping HBM.
 
@@ -353,7 +353,7 @@ class FusedGeluProjPass(BasePass):
   GEMM — it would be missing half the features.
 
   **What we CAN fuse**: ``fc1 + GELU`` into a single kernel via
-  ``fused_gelu_proj``.  This uses the ext kernel's GELU epilogue
+  ``fused_gelu_proj``.  This uses the native GEMM's GELU epilogue
   to write fp16 GELU'd output directly, eliminating one GELU kernel
   launch and one fp16 HBM roundtrip per single block.  The concat
   and fc2 remain unchanged.

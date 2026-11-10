@@ -527,10 +527,10 @@ W4A4CuteTraits 的字节/layout 契约
 | 相对路径 | 行号 | 内容 |
 |---|---:|---|
 | `cache-dit/csrc/third_party/cutlass/include/cutlass/arch/barrier.h` | 726–738 | `fence_view_async_shared()` 实际对应 `fence.proxy.async.shared::cta` |
-| `cache-dit/csrc/kernels/svdq/native/core/gemm_w4a4.cuh` | 15–42 | `GEMM_W4A4` 和不支持 FP4 时的 `trap_no_fp4()` 兜底 |
+| `cache-dit/csrc/kernels/svdq/native/gemm_w4a4.cuh` | 15–42 | `GEMM_W4A4` 和不支持 FP4 时的 `trap_no_fp4()` 兜底 |
 | 同上 | 64–88 | `load_amscale/load_wmscale` 的 packed scale 读取 |
 | 同上 | 249–340 | `gemm_w4a4_fp4_block` 的 native stage 预取与主循环入口 |
-| `cache-dit/csrc/kernels/svdq/native/core/gemm_w4a4_impl.cuh` | 28–64 | native packed FP4 到当前 CuTe 布局转换的性能负结果背景 |
+| `cache-dit/csrc/kernels/svdq/native/gemm_w4a4_impl.cuh` | 28–64 | native packed FP4 到当前 CuTe 布局转换的性能负结果背景 |
 
 本文写作时该目录名拼写有误；已在后续提交中统一更正为 `native/` 并同步全部 include、构建和文档引用，本文引用路径已按新名更新。native 实现不含这里的 TMA smem pipeline，因此只适合作为性能、数值和数据布局参照，不适合作为 mbarrier 协议参考。
 

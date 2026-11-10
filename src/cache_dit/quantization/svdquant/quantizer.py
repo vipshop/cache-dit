@@ -57,7 +57,8 @@ def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str | None) ->
   precision = _normalize_svdq_precision(precision)
   if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
     raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
-                     f"got {runtime_kernel!r}.")
+                     f"got {runtime_kernel!r}. The deprecated per-implementation selectors are "
+                     "rejected; the native runtime now has a single W4A4 GEMM.")
   if precision == "int4" and runtime_kernel == "cute":
     raise ValueError("runtime_kernel='cute' is only supported for SVDQ NVFP4.")
 

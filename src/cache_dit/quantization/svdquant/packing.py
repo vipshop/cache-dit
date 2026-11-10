@@ -161,9 +161,9 @@ class MmaWeightPacker:
   W4A4 kernels in `csrc/kernels/svdq/native`. For the INT4 path it defaults to `comp_n = 16` and
   `comp_k = 256 / bits = 64`, then splits the tile across `8` N-side lanes and `4` K-side lanes.
 
-  Those values mirror the kernel-side contract in `core/gemm_base.cuh`: the W4A4 path exposes
+  Those values mirror the kernel-side contract in `native/gemm_base.cuh`: the W4A4 path exposes
   `INSN_K = 64` and `WARP_N = 128` at the GEMM layer, while the low-level wrappers in
-  `core/mma.cuh` ultimately issue `mma.sync.aligned.m16n8k64` PTX fragments. The
+  `native/mma.cuh` ultimately issue `mma.sync.aligned.m16n8k64` PTX fragments. The
   `insn_n = 8` bookkeeping here intentionally follows that lower-level fragment width; the
   surrounding kernel composes two `m16n8k64` fragments to reach the higher-level `INSN_N = 16`
   tile.
@@ -225,10 +225,10 @@ class SVDQWeightPacker(MmaWeightPacker):
   cache-dit's concrete artifacts: signed INT4 weights, grouped scales or FP4 micro-scales, biases
   and smooth factors, plus optional low-rank residual matrices. The output is not an arbitrary
   checkpoint layout. It mirrors the weight-side operand and scale ordering that
-  `csrc/kernels/svdq/native/core/gemm_base.cuh` and `gemm_w4a4.cuh` expect to load.
+  `csrc/kernels/svdq/native/gemm_base.cuh` and `gemm_w4a4.cuh` expect to load.
 
   On the kernel side, those packed tiles are consumed by `mma_m16n8kx_s32common` in
-  `core/mma.cuh`, which lowers to `mma.sync.aligned.m16n8k64.row.col.s32.u4.s4.s32` or
+  `native/mma.cuh`, which lowers to `mma.sync.aligned.m16n8k64.row.col.s32.u4.s4.s32` or
   `mma.sync.aligned.m16n8k64.row.col.s32.s4.s4.s32` depending on activation signedness. In PTX
   terms `.row.col` means row-major A and column-major B, `.u4`/`.s4` select unsigned or signed
   4-bit multiplicands, and `.s32` is the accumulator/result type. For the `m16n8k64` fragment

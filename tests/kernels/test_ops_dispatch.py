@@ -38,9 +38,10 @@ def test_public_api_matches_all() -> None:
   assert all(getattr(kernels, name) is not None for name in kernels.__all__)
 
 
-def test_svdq_ext_is_private() -> None:
+def test_svdq_has_single_public_gemm() -> None:
   assert not hasattr(kernels, "svdq_gemm_w4a4_ext")
-  assert hasattr(svdq_ops, "_svdq_gemm_w4a4_ext")
+  assert not hasattr(svdq_ops, "_svdq_gemm_w4a4_ext")
+  assert not hasattr(svdq_ops, "_call_svdq_gemm_w4a4_native")
 
 
 @pytest.mark.parametrize(

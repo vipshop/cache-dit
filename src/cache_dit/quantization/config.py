@@ -95,7 +95,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   "activation_buffer_flush_cpu_bytes": None,
   # Smooth-factor strategy used by SVDQ quantization. PTQ currently supports
   # activation-derived smoothing only, while DQ intentionally fixes this to the
-  # identity vector to preserve the v1 zero-calibration contract.
+  # identity vector to preserve the zero-calibration contract.
   "smooth_strategy": "activation",
   # Only valid for the DQ few-shot smooth strategy. It specifies how many root-module
   # (that is, transformer/module) forward calls should be observed before runtime
@@ -134,7 +134,7 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   "few_shot_auto_compile": False,
   # When enabled, SVDQ fuses the first quantized linear layer, GELU activation,
   # and second quantized linear layer in standard diffusers ``FeedForward`` GELU
-  # MLP blocks into a single kernel chain via private ``_svdq_gemm_w4a4_ext``.  The
+  # MLP blocks into a single kernel chain via the native GEMM qout path.  The
   # intermediate fp16 activation is never written to HBM — the first GEMM
   # directly produces 4-bit quantized output consumed by the second GEMM.
   # Requires the ``fused_gelu_mlp`` and ``fused_gelu_proj`` passes to be
@@ -190,8 +190,9 @@ def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str | None:
     raise TypeError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', or None, got {type(value)}.")
   normalized = value.lower()
   if normalized not in _SVDQ_RUNTIME_KERNELS:
-    raise ValueError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', or None; got {value!r}. "
-                     "The v1/v2 selectors are deprecated.")
+    raise ValueError(f"svdq_kwargs[{key!r}] must be one of 'native', 'cute', or None; got "
+                     f"{value!r}. The deprecated per-implementation selectors are rejected; the "
+                     "native runtime now has a single W4A4 GEMM.")
   return normalized
 
 

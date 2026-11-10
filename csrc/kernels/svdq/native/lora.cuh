@@ -77,7 +77,6 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
           result[i].data[j] =
             load_pred(ptrlane + offset, pred);  // * scales[rtile * LORA_R_TILES + r];
         });
-        // CHECK_NAN(tmp, "load_lora_act.tmp");
       });
     });
   }
@@ -163,8 +162,6 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
         for (int m = 0; m < LORA_M_TILES; m++) {
           for (int n = 0; n < LORA_N_TILES; n++) {
             for (int r = 0; r < LORA_R_TILES; r++) {
-              CHECK_NAN(lora_act[m * LORA_R_TILES + r], "lora_act");
-              CHECK_NAN(lora_wgt[n * LORA_R_TILES + r], "lora_wgt");
               f32psum[m * WARP_N_TILES + n] =
                 mma_f16xf16_f32(A_fp16[m * LORA_R_TILES + r], W[n * LORA_R_TILES + r],
                                 f32psum[m * WARP_N_TILES + n]);
@@ -231,15 +228,11 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       const int bm = binfo.bm;
       const int bn = binfo.bn;
 
-      CHECK_NAN(fpsum, "fpsum");
-
       apply_lora_up(fpsum,
                     args.lora_act + bm * (args.rank / WARP_R) *
                                       (NUM_WARPS * LORA_M_TILES * LORA_R_TILES * 8 * WARP_SIZE),
                     args.lora_wgt_up + bn * (BLOCK_N / 16) * (args.rank / 16) * WARP_SIZE,
                     args.scales, args.rank, args.alwaysfalse);
-
-      CHECK_NAN(fpsum, "fpsum");
     }
   };
 
@@ -282,12 +275,7 @@ class Lora<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
             for (int r = 0; r < LORA_R_TILES; r++) {
               auto &psum = lora_act[m * LORA_R_TILES + r];
 
-              CHECK_NAN(fpsum[m * WARP_N_TILES + n], "apply_lora_down.fpsum");
-              CHECK_NAN(lora_wgt[n * LORA_R_TILES + r], "apply_lora_down.lora_wgt");
-
               psum = mma_f16xf16_f32(fpsum[m * WARP_N_TILES + n], W[n * LORA_R_TILES + r], psum);
-
-              CHECK_NAN(psum, "apply_lora_down.psum");
             }
           }
         }
