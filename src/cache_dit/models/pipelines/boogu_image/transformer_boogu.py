@@ -938,54 +938,59 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
 
     flat_l_effective_ref_img_len = list(itertools.chain(*l_effective_ref_img_len))
     num_ref_images = len(flat_l_effective_ref_img_len)
-    max_ref_img_len = max(flat_l_effective_ref_img_len)
+    max_ref_img_len = max(flat_l_effective_ref_img_len) if flat_l_effective_ref_img_len else 0
 
-    batch_ref_img_mask = ref_image_hidden_states.new_zeros(num_ref_images,
-                                                           max_ref_img_len,
-                                                           dtype=torch.bool)
-    batch_ref_image_hidden_states = ref_image_hidden_states.new_zeros(num_ref_images,
-                                                                      max_ref_img_len,
-                                                                      self.config.hidden_size)
-    batch_ref_img_rotary_emb = hidden_states.new_zeros(
-      num_ref_images,
-      max_ref_img_len,
-      ref_img_rotary_emb.shape[-1],
-      dtype=ref_img_rotary_emb.dtype,
-    )
-    batch_temb = temb.new_zeros(num_ref_images, *temb.shape[1:], dtype=temb.dtype)
-
-    # Flatten reference images into a temporary batch.
-    idx = 0
-    for i in range(batch_size):
-      shift = 0
-      for ref_img_len in l_effective_ref_img_len[i]:
-        batch_ref_img_mask[idx, :ref_img_len] = True
-        batch_ref_image_hidden_states[idx, :ref_img_len] = (ref_image_hidden_states[i, shift:shift +
-                                                                                    ref_img_len])
-        batch_ref_img_rotary_emb[idx, :ref_img_len] = ref_img_rotary_emb[i,
-                                                                         shift:shift + ref_img_len]
-        batch_temb[idx] = temb[i]
-        shift += ref_img_len
-        idx += 1
-
-    # Refine each reference-image sample.
-    for layer in self.ref_image_refiner:
-      batch_ref_image_hidden_states = layer(
-        batch_ref_image_hidden_states,
-        batch_ref_img_mask,
-        batch_ref_img_rotary_emb,
-        batch_temb,
+    # Text-to-image yields a zero-length reference row. The refiner would then
+    # run on `[batch, 0, hidden]` (a zero-length attention call) and write
+    # nothing back, so skipping it is numerically identical and avoids feeding a
+    # degenerate sequence to the backend.
+    if num_ref_images > 0 and max_ref_img_len > 0:
+      batch_ref_img_mask = ref_image_hidden_states.new_zeros(num_ref_images,
+                                                             max_ref_img_len,
+                                                             dtype=torch.bool)
+      batch_ref_image_hidden_states = ref_image_hidden_states.new_zeros(
+        num_ref_images, max_ref_img_len, self.config.hidden_size)
+      batch_ref_img_rotary_emb = hidden_states.new_zeros(
+        num_ref_images,
+        max_ref_img_len,
+        ref_img_rotary_emb.shape[-1],
+        dtype=ref_img_rotary_emb.dtype,
       )
+      batch_temb = temb.new_zeros(num_ref_images, *temb.shape[1:], dtype=temb.dtype)
 
-    # Restore reference-image sequence layout.
-    idx = 0
-    for i in range(batch_size):
-      shift = 0
-      for ref_img_len in l_effective_ref_img_len[i]:
-        ref_image_hidden_states[i, shift:shift +
-                                ref_img_len] = (batch_ref_image_hidden_states[idx, :ref_img_len])
-        shift += ref_img_len
-        idx += 1
+      # Flatten reference images into a temporary batch.
+      idx = 0
+      for i in range(batch_size):
+        shift = 0
+        for ref_img_len in l_effective_ref_img_len[i]:
+          batch_ref_img_mask[idx, :ref_img_len] = True
+          batch_ref_image_hidden_states[idx, :ref_img_len] = (ref_image_hidden_states[i,
+                                                                                      shift:shift +
+                                                                                      ref_img_len])
+          batch_ref_img_rotary_emb[idx, :ref_img_len] = ref_img_rotary_emb[i, shift:shift +
+                                                                           ref_img_len]
+          batch_temb[idx] = temb[i]
+          shift += ref_img_len
+          idx += 1
+
+      # Refine each reference-image sample.
+      for layer in self.ref_image_refiner:
+        batch_ref_image_hidden_states = layer(
+          batch_ref_image_hidden_states,
+          batch_ref_img_mask,
+          batch_ref_img_rotary_emb,
+          batch_temb,
+        )
+
+      # Restore reference-image sequence layout.
+      idx = 0
+      for i in range(batch_size):
+        shift = 0
+        for ref_img_len in l_effective_ref_img_len[i]:
+          ref_image_hidden_states[i, shift:shift +
+                                  ref_img_len] = (batch_ref_image_hidden_states[idx, :ref_img_len])
+          shift += ref_img_len
+          idx += 1
 
     combined_img_hidden_states = hidden_states.new_zeros(batch_size, max_combined_img_len,
                                                          self.config.hidden_size)

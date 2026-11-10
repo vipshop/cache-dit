@@ -111,9 +111,9 @@ void boogu_gated_rms_norm(at::Tensor x, at::Tensor weight, double eps, at::Tenso
                           at::Tensor residual, bool zero_centered_weight, at::Tensor out) {
   TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && x.is_contiguous(),
               "boogu_gated_rms_norm: x must be contiguous CUDA bf16");
-  TORCH_CHECK(residual.sizes() == x.sizes() && residual.is_contiguous() &&
+  TORCH_CHECK(residual.sizes() == x.sizes() && residual.is_cuda() && residual.is_contiguous() &&
                 residual.scalar_type() == at::kBFloat16,
-              "boogu_gated_rms_norm: residual must match x (contiguous bf16)");
+              "boogu_gated_rms_norm: residual must match x (contiguous CUDA bf16)");
   TORCH_CHECK(weight.is_cuda() && weight.is_contiguous() && weight.scalar_type() == at::kBFloat16,
               "boogu_gated_rms_norm: weight must be contiguous CUDA bf16");
   TORCH_CHECK(gate.is_cuda() && gate.is_contiguous() && gate.scalar_type() == at::kBFloat16,

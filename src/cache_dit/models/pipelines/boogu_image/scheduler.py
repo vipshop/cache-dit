@@ -171,9 +171,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
               t_arr = self._time_shift_v1(t_arr, mu, sigma=1.0)
             # else: no-op if we lack num_tokens
           elif self.config.time_shift_version == "v2":
-            # MUST remain identical to current behavior when v2 + dynamic=True
-            # m = sqrt(num_tokens) / 40; t' = t / (m - m t + t)
-            # When input resolution is 320 * 320, m = 1, when input resolution is 512 * 512, m = 1.6, when input resolution is 1024 * 1024, m = 3.2
+            # Upstream ships `time_shift_v2_scaling_factor = 60 * 2 = 120`, while
+            # its own comment states the training formula `m = sqrt(tokens) / 40`
+            # (that form reproduces the 1.0/1.6/3.2 examples for 320/512/1024).
+            # The vendored value stays verbatim so schedules match the released
+            # package bit-for-bit; changing it would silently re-time every v2
+            # checkpoint. The shipped Boogu-Image configs use v1.
             if num_tokens is not None and num_tokens > 0:
               m = (float(np.sqrt(num_tokens)) / self.time_shift_v2_scaling_factor)
               t_arr = self._time_shift_v2(t_arr, m)
@@ -204,6 +207,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # print(f">> self.time_shift_v2_scaling_factor:  {self.time_shift_v2_scaling_factor}")
     # #######################################################
 
+    # `timesteps` is documented as a list, so a bare `torch.from_numpy` would
+    # reject the public list form; accept lists, arrays and tensors alike.
+    if isinstance(timesteps, torch.Tensor):
+      timesteps = timesteps.detach().to(dtype=torch.float32).cpu().numpy()
+    else:
+      timesteps = np.asarray(timesteps, dtype=np.float32)
     timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
     _timesteps = torch.cat([timesteps, torch.ones(1, device=timesteps.device)])
 

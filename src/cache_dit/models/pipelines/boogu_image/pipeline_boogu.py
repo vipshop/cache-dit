@@ -417,7 +417,7 @@ class BooguImagePipeline(DiffusionPipeline):
     processed_input_pil_images = []
     for image in input_pil_images:
       if crops_coords is not None:
-        image = [i.crop(crops_coords) for i in image]
+        image = image.crop(crops_coords)
       height, width = self.image_processor.get_new_height_width(image, height, width, max_pixels,
                                                                 max_side_length)
       processed_input_pil_images.append(

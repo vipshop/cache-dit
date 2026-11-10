@@ -116,17 +116,14 @@ class BooguImageProcessor(VaeImageProcessor):
     if max_pixels is None:
       max_pixels = self.max_pixels
 
+    # Either limit may be unset; only the provided one contributes a ratio.
+    # Clamp to <=1 to avoid upscaling input images in preprocessing.
     ratio = 1.0
     if max_side_length is not None:
-      if height > width:
-        max_side_length_ratio = max_side_length / height
-      else:
-        max_side_length_ratio = max_side_length / width
-
-    cur_pixels = height * width
-    max_pixels_ratio = (max_pixels / cur_pixels) ** 0.5
-    # Clamp ratio to <=1 to avoid upscaling input images in preprocessing.
-    ratio = min(max_pixels_ratio, max_side_length_ratio, 1.0)
+      ratio = min(ratio, max_side_length / max(height, width))
+    if max_pixels is not None:
+      ratio = min(ratio, (max_pixels / (height * width)) ** 0.5)
+    ratio = min(ratio, 1.0)
 
     new_height, new_width = (
       int(height * ratio) // self.config.vae_scale_factor * self.config.vae_scale_factor,

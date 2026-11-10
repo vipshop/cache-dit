@@ -33,6 +33,19 @@ from ....kernels._models._boogu import boogu_fused_qk_norm_rope
 from ....kernels._models._boogu import boogu_gated_rms_norm
 from ....kernels._models._boogu import boogu_scaled_rms_norm
 from ....kernels._models._boogu import models_extension_is_available
+from .rms_norm import RMSNorm
+
+#: Norm classes whose forward is a plain RMS (`x * rsqrt(mean(x^2) + eps) * w`).
+#: `diffusers.models.normalization.RMSNorm` is what `Attention(qk_norm="rms_norm")`
+#: builds, so the QK fusion must accept it as well as the vendored norm.
+_RMS_NORM_TYPES: tuple[type, ...] = (RMSNorm, )
+
+try:  # diffusers always ships this, but keep the import defensive.
+  from diffusers.models.normalization import RMSNorm as _DiffusersRMSNorm
+
+  _RMS_NORM_TYPES = (RMSNorm, _DiffusersRMSNorm)
+except ImportError:  # pragma: no cover - diffusers is a hard dependency
+  pass
 
 _BOOGU_FUSED_OPS_ENV = "CACHE_DIT_BOOGU_FUSED_OPS"
 
@@ -82,6 +95,43 @@ def set_boogu_fused_ops_enabled(enabled: bool) -> None:
   _BOOGU_FUSED_OPS_ENABLED = enabled
 
 
+def _aligned16(t: torch.Tensor) -> bool:
+  """Return whether `t` starts on a 16-byte boundary.
+
+  The kernels load with `uint4` (16 B), so a tensor whose first element is not
+  16 B-aligned would fault. Only the offset needs checking: the caching
+  allocator hands out 512 B-aligned blocks, so `offset * itemsize % 16` fully
+  decides alignment. Sliced views (e.g. the `chunk(4, dim=1)` modulation terms)
+  are routinely offset but still aligned, which is why this must be an
+  alignment test rather than `storage_offset() == 0`.
+
+  :param t: Tensor about to be handed to a kernel.
+  :returns: `True` when the first byte is 16 B-aligned.
+  """
+
+  return (t.storage_offset() * t.element_size()) % 16 == 0
+
+
+def _rms_norm_convention(norm) -> bool | None:
+  """Return the zero-centered weight flag when `norm` is a plain RMSNorm.
+
+  The fused kernels only do an RMS reduction, so a module that subtracts the
+  mean (`nn.LayerNorm`, or any custom norm exposing `weight`/`eps`) must never
+  reach them. Type-based detection is the only reliable marker here: the
+  vendored RMSNorm carries `zero_centered_weight`, while diffusers' RMSNorm does
+  not, so an attribute-presence test alone would either drop the QK fusion
+  (`Attention(qk_norm="rms_norm")` builds diffusers' class) or accept a
+  LayerNorm.
+
+  :param norm: Candidate norm module.
+  :returns: The zero-centered flag, or `None` when the module is not an RMSNorm.
+  """
+
+  if not isinstance(norm, _RMS_NORM_TYPES):
+    return None
+  return bool(getattr(norm, "zero_centered_weight", False))
+
+
 def _fusable_norm(x: torch.Tensor, norm, batch_one: bool) -> bool:
   """Return whether a norm module can be fused for this input.
 
@@ -96,10 +146,9 @@ def _fusable_norm(x: torch.Tensor, norm, batch_one: bool) -> bool:
   weight = getattr(norm, "weight", None)
   if weight is None or getattr(norm, "bias", None) is not None:
     return False
-  # Only the RMSNorm variants set this marker; a plain nn.LayerNorm would pass
-  # the weight/bias checks while requiring a mean subtraction the kernel does
-  # not perform.
-  if getattr(norm, "zero_centered_weight", None) is None:
+  # A plain nn.LayerNorm passes the weight/bias checks while requiring a mean
+  # subtraction the kernel does not perform, so gate on the norm class.
+  if _rms_norm_convention(norm) is None:
     return False
   if not x.is_cuda or x.dtype is not torch.bfloat16 or x.dim() != 3:
     return False
@@ -109,12 +158,10 @@ def _fusable_norm(x: torch.Tensor, norm, batch_one: bool) -> bool:
   if channels == 0 or channels % 8 != 0 or channels > _MAX_FUSED_CHANNELS:
     return False
   # `weight.is_cuda` matters under layerwise offload: the norm weight can still
-  # be on the CPU when the forward runs, and the kernel would reject it. The
-  # storage offset rejects views that are only 2-byte aligned, which the kernels
-  # TORCH_CHECK on.
+  # be on the CPU when the forward runs, and the kernel would reject it.
   return (weight.is_cuda and weight.dtype is torch.bfloat16 and weight.is_contiguous()
-          and weight.numel() == channels and weight.storage_offset() == 0
-          and x.storage_offset() == 0 and x.is_contiguous())
+          and weight.numel() == channels and _aligned16(weight) and _aligned16(x)
+          and x.is_contiguous())
 
 
 def _fusable_scale(scale, channels: int) -> bool:
@@ -122,13 +169,15 @@ def _fusable_scale(scale, channels: int) -> bool:
 
   :param scale: Modulation tensor, or `None`.
   :param channels: Channel count of the tensor it scales.
-  :returns: `True` when `scale` is a single-row bf16 contiguous `[1, D]` tensor.
+  :returns: `True` when `scale` is a single-row bf16 contiguous CUDA `[1, D]`
+    tensor with no storage offset.
   """
 
   if scale is None:
     return False
   return (scale.dim() == 2 and scale.shape[0] == 1 and scale.shape[1] == channels
-          and scale.dtype is torch.bfloat16 and scale.is_contiguous())
+          and scale.dtype is torch.bfloat16 and scale.is_cuda and scale.is_contiguous()
+          and _aligned16(scale))
 
 
 def apply_scaled_rms_norm(x: torch.Tensor, norm, scale=None) -> torch.Tensor:
@@ -148,7 +197,7 @@ def apply_scaled_rms_norm(x: torch.Tensor, norm, scale=None) -> torch.Tensor:
         norm.weight,
         norm.eps,
         flat_scale,
-        getattr(norm, "zero_centered_weight", False),
+        bool(_rms_norm_convention(norm)),
       )
   out = norm(x)
   if scale is not None:
@@ -172,14 +221,15 @@ def apply_gated_rms_norm(
   """
 
   if (_fusable_norm(x, norm, batch_one=True) and _fusable_scale(gate, x.shape[-1])
-      and residual.shape == x.shape and residual.dtype is x.dtype and residual.is_contiguous()):
+      and residual.shape == x.shape and residual.dtype is x.dtype and residual.is_cuda
+      and residual.is_contiguous() and _aligned16(residual)):
     return boogu_gated_rms_norm(
       x,
       norm.weight,
       norm.eps,
       gate[0],
       residual,
-      getattr(norm, "zero_centered_weight", False),
+      bool(_rms_norm_convention(norm)),
     )
   return residual + gate.unsqueeze(1).tanh() * norm(x)
 
@@ -197,6 +247,10 @@ def _fusable_qk_norm_rope(x: torch.Tensor, rotary, norm) -> bool:
     return False
   weight = getattr(norm, "weight", None)
   if weight is None or getattr(norm, "bias", None) is not None:
+    return False
+  # Only plain RMSNorm modules may be fused, and the kernel has no zero-centered
+  # flag (`weight + 1` would be dropped), so reject that convention outright.
+  if _rms_norm_convention(norm) is not False:
     return False
   if x.dtype is not torch.bfloat16 or not x.is_cuda or x.dim() != 4 or not x.is_contiguous():
     return False
