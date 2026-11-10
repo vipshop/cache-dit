@@ -216,6 +216,21 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
 
+### 8.3 已知遗留：`fused_gelu_mlp` 多写一块被丢弃的 dense 输出（待开专题，2026-11-10 记录）
+
+**现象**：`quantization/svdquant/fused.py::fused_gelu_mlp` 走融合 qout 路径时，kernel 仍会跑一遍 `EpilogueDefault`（shmem unpack + 全量 gmem store），把 `[M, N]` dense fp16 输出写到 HBM，而调用方连返回值都不接收。按 FLUX 类 FF 层（M=4096、N=12288、bf16）估算，每次调用约多写 100 MB。
+
+**机制**：单 op 形态下 `_svdquant.py:545` 无条件分配 `out` 并传给 pybind，C++ 侧再以 `out.valid()` 选择 epilogue 链——融合 qout 分支在 `native/gemm_w4a4_impl.cuh:216` 进入后，`impl.cuh:238` 的 `if (out.valid())` 为真就会追加 `EpilogueDefault`。当前 ABI 没有"不要 dense 输出"的出口。
+
+**不是 2026-11-10 那次清理引入的**：HEAD 的 `_svdq_gemm_w4a4_ext` 在 `out=None` 时同样无条件 `torch.empty` 后传入，所以这是**预存在**行为；`fused.py` 旧 docstring 里 "the intermediate fp16 activation is never written back to HBM" 当时就已经不成立，现已改成实际语义。
+
+**修法方向（二选一，需开专题）**：
+
+1. schema 加显式开关（推荐）：例如 `bool write_dense = True`，`False` 时 Python 传 `out=None` —— pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断，C++ 自然退化为纯 `EpilogueQuantize` 分支。**schema / pybind / impl / `_call_*` 四处顺序必须同步**（写反不报错、只静默算错）。
+2. 给融合 MLP 单开一个不带 dense 输出的 op：与"单 op、单 ABI"的收敛目标冲突，不推荐。
+
+**验收要求**：① `fused_gelu_mlp` vs `fc2(F.gelu(fc1(x)))` 的 rel-L2 门 —— 目前 `tests/` 对 fused 路径**零执行覆盖**（`test_fused_passes_reject_row_major` 在真正执行前就抛错）；② `torch.cuda.max_memory_allocated` 差值或 nsys 上消失的 `[M,N]` store；③ 确认 `fused_gelu_proj` 不受影响 —— 它显式需要 dense 输出并返回给调用方。
+
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/_models`）
 
 `comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。
