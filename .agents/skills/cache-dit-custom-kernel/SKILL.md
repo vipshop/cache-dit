@@ -80,13 +80,13 @@ SVDQW4A4Linear.quantize / forward_quant
 目录与命名契约：
 
 - `csrc/kernels/svdq/native/`：旧 native 实现，使用 `svdq::native_kernels`。
-- `csrc/kernels/svdq/cute/fp4/`：独立 CuTe 实现，使用 `svdq::cute_kernels`。
+- `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
+- `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译。公共入口声明在 `quantize.h`。
 - cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。API 统一后，`ops.h`/pybind 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher，由 C++ `RuntimeParams`（runtime/fp4/stage/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 完整 ext ABI 仅作内部 `gemm_w4a4_ext` 服务 fused/ext。Python 侧只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，`svdq_gemm_w4a4_ext` 已转私有 `_svdq_gemm_w4a4_ext`。
-- `gemm_w4a4.cu/.cuh/.h`：NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
-- `quantize_w4a4.cu`：`quantize_w4a4_fused_lora_kernel`，SVDQ 上半段 activation quant + LoRA-down 融合。
+- 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
 
-公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 使用 plain native；NVFP4 当前默认 native ext，`cute` 为显式 opt-in，直到 GEMM 和 e2e 性能达标。
+公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 使用 plain native；NVFP4 的 runtime 默认仍是 native，显式 `cute` 时 Python 默认 `lora_layout="row_major"`；显式 native 与 `fused_mlp` 保留 FP32 fragment-D 契约。GEMM 尚未达到相对 native 的 5% 验收目标，见 §8.1。
 
 SVDQ 在通用模板之外的偏离（3 个 required getter、`utils` 子模块、无 `TORCH_CHECK`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
 
@@ -95,15 +95,20 @@ SVDQ 在通用模板之外的偏离（3 个 required getter、`utils` 子模块�
 保持以下数据流，不得重新引入旧工作流适配层：
 
 ```text
-quantize_w4a4_fused_lora_kernel
-  -> row-major E2M1 A + CUTLASS 128x4 SFA + row-major BF16 D[M,R]
+quantize_r32/64/128（或 rank32/K<=3072 的 quantize_uni）
+  -> native packed qact/ascales + row-major BF16 D[M,R]
   -> gemm_w4a4_kernel
-  -> A/B/SFA/SFB TMA + NVFP4 MMA + BF16 LoRA-up MMA
+  -> A/SFA G2R + B/SFB/D/L1 TMA + NVFP4 MMA + BF16 LoRA-up MMA
 ```
 
-禁止在 CuTe forward 中调用 native activation quantizer、读取 native FP32 LoRA scratch、执行 G2R 旧布局反解或增加 `lora_act_to_bf16`。旧 checkpoint 只能在加载时一次性转换 `qweight/wscales/proj_up/proj_down/smooth_factor`；state dict 保持原 native pack 格式。
+CuTe producer 的两条合法 D 路径：
 
-当前 producer 使用手写 `mma.sync/ldmatrix` 和 shared staging。未来迁移到 CuTe `TiledMMA/TiledCopy` 时，必须保留现有数学、输出布局和 CTA 内归约契约。
+- fused：CTA 内完成 FP32 D 归约，无 global scratch/finalize；当前 rank32 M>8192 使用。
+- split-K：CTA 内 rank streaming，D 写自己的 fragment-major FP32 scratch，kernel 后用向量化 finalize 转 BF16；rank64/128 和较小 M 的 rank32 使用。这里的 scratch 是 CuTe producer 内部实现，不是允许读取 native producer 的 FP32 fragment D。
+
+禁止在 CuTe forward 中调用 native activation quantizer、读取 native FP32 LoRA scratch、执行旧布局反解或增加 `lora_act_to_bf16`。旧 checkpoint 只能在加载时一次性转换 `qweight/wscales/proj_up/proj_down/smooth_factor`；state dict 保持原 native pack 格式。
+
+当前 producer 已迁移到 CuTe `TiledMMA/TiledCopy` + swizzled shared staging，并按 rank/K/M 选择 fused、K128 async split-K 或 K256 split-K。修改时必须保留 native qact/ascales 布局、D 的 FP32 累加/单次 BF16 rounding、K64 tail 和 rank 特化入口。
 
 ## 5. 可重复构建
 
@@ -122,7 +127,7 @@ bash tools/build_fast.sh install -e . --no-build-isolation --no-deps
 
 每次 kernel 迭代使用同一入口。不要因为源码改动触发全量重编就放弃缓存；记录构建是否 cold、是否换过 compiler/shim，避免把首次 ccache 填充时间误报为加速收益。
 
-**改共享 `.h` 必须显式清理**：`setup.py` 没有 `depends=`，`build_ext` 只比源文件 mtime，改头文件后 `.so` 会静默不变。新增算子族要动的 `setup.py` 位置见 `references/kernel-integration-chain.md` §5.1。
+**头文件依赖**：SVDQ 扩展现在通过 `CUDAExtension(depends=[csrc/kernels/svdq/**/*.{h,cuh}])` 跟踪 SVDQ 头文件；修改 `quantize_impl.cuh` / `gemm_w4a4.cuh` 应触发扩展重建。改该目录之外的共享头，或用旧 wheel/缓存构建时，仍需显式 `CACHE_DIT_CLEAN=1`。新增算子族要同步的 `setup.py` 位置见 `references/kernel-integration-chain.md` §5.1。
 
 ## 6. 优化工作流
 
@@ -167,7 +172,21 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 ## 8. SVDQ 当前性能结论与边界
 
-截至 2026-11-05，SM120、M=4096/N=K=3072/rank=32：
+### 8.1 最新状态（2026-11-10，RTX PRO 5000，PR #1271）
+
+- producer 已完成 CuTe `TiledMMA/TiledCopy` rank 特化：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，fused 与 split-K 均保留；实现和调参证据见 `references/svdq-nvfp4-cute.md` §29。
+- 官方 `bench/kernels/bench_svdquant_kernels.py`，5 个默认 shape × rank32/64/128，warmup10/iters50：**producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）**；**完整 GEMM e2e geomean 1.038×，13/15 快**。
+- kernel-only CuTe row-major GEMM geomean 仅 **1.013×**；producer 收益明显大于 e2e 收益，说明当前主瓶颈已转到 **W4A4 GEMM**。后续优先优化 GEMM 的 shared/TMA/同步与 epilogue，不要继续反复扫 producer warp/M 分桶。
+- rank64/M8192 两个 e2e 点仍回退：N3072 **0.976×**、N6144 **0.988×**；对应 producer 仍快 1.060×/1.072×，应按 GEMM schedule 问题处理。
+- FlashInfer kernel-only 对照：对 `cute-dsl` geomean **1.095×（15/15 胜）**，对 `cutlass-sm120` **1.144×（9/10 胜）**；后者不支持 rank128，且使用独立 activation pack，不能比较 rel-L2。
+- 当前有效 dispatch：rank32/K≤3072 走 universal；rank32/K>3072 且 M>8192 走 fused，其余 rank32 走 split-K；rank64 在 K≤3072 走 K256 split-K、长 K 走 K128 async split-K；rank128 全走 K256 split-K。
+- Python 普通 CuTe 路径默认 `lora_layout="row_major"`；显式 native 和 `fused_mlp` 继续使用 FP32 fragment D。
+- 验证：121 项 SVDQ 回归；12 组 v1 golden 的 qact/ascales bitwise 一致、D rel-L2 <0.01；K64/192/3136 tail；FLUX eager+compile 出图正常，e2e rel-L2 ≤0.0033。
+- 结论适用 PRO 5000；未在 PRO 6000/H800 复测前不要外推绝对阈值。split-K D 使用 relaxed FP32 atomics，不保证逐位可复现，D 用误差门槛。
+
+### 8.2 历史基线（截至 2026-11-05，M=4096/N=K=3072/rank=32）
+
+以下内容保留用于追溯早期 hybrid/TMA 迭代，不代表 2026-11-10 的当前实现：
 
 - 当前 CuTe GEMM 已恢复为 A/SFA G2R + B/SFB/D/L1 TMA，当前 CuTe producer 直接输出 native A/SFA 与 BF16 D，无 finalize。
 - 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。

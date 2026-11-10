@@ -1003,14 +1003,14 @@ pipe.transformer = cache_dit.load(
 The SVDQ W4A4 entry points are organized around two orthogonal selectors: <span style="color:#c77dff;">runtime</span> (which backend family runs) and <span style="color:#c77dff;">lora_layout</span> (which layout the LoRA-down activation `D` is stored in).
 
 - <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span>. `None`/`native` selects native v2 for INT4 and the native kernel for NVFP4; `cute` is NVFP4-only. The old v1/v2 configuration values are deprecated and rejected; v2 is now an internal native implementation name, not a separate runtime family.
-- <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in.
+- <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in. For `runtime="cute"`, the default (`None`) is `row_major`; other runtimes default to `native`. The `fused_mlp` configuration keeps its implicit `native` layout because those passes require fragment `D`.
 
 Only three combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, and <span style="color:green;">cute+row_major</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native v1 GEMM, which only understands the native FP32 fragment `D`.
 
-Both selectors are configurable through `svdq_kwargs` and are carried into every quantized `SVDQW4A4Linear` layer at runtime (the per-rank `lora_scales` contract is a kernel-internal detail; checkpoints do not store it). `lora_layout=None`/`"native"` keeps the existing behavior, and `"row_major"` requires `runtime_kernel="cute"` — the combination is validated at config construction, at quantization, and in the runtime module constructor.
+Both selectors are configurable through `svdq_kwargs` and are carried into every quantized `SVDQW4A4Linear` layer at runtime (the per-rank `lora_scales` contract is a kernel-internal detail; checkpoints do not store it). Explicit `lora_layout="native"` preserves the fragment-D behavior with either runtime. Older cute checkpoints whose metadata omits the layout now resolve to `row_major`; producer and consumer switch together, but D changes from packed FP32 to BF16 and is not expected to remain bitwise identical to the old execution path.
 
 ```python
-# Default: runtime and layout are resolved automatically (native).
+# Default: runtime and layout are resolved automatically (native runtime + native D).
 quant_config = QuantizeConfig(
   quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
   svdq_kwargs={"runtime_kernel": "native"},  # optional: INT4 native v2 is already the default.
@@ -1036,7 +1036,7 @@ When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requ
 
 Historical INT4 measurements may still label the two implementation variants as v1/v2. Those labels describe kernel implementations used for comparison, not accepted `runtime_kernel` configuration values.
 
-The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes a v1 256-row interleaved E2M1 activation pack, matching activation scales and row-major BF16 LoRA activations directly. The GEMM loads activation A/SFA gmem-to-register (G2R), while weight B/SFB and BF16 D/L1 use TMA over shared memory, and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer, read v1 FP32 LoRA scratch, or run a separate BF16 finalize kernel. The padded batch must be a multiple of 256. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
+The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes a v1-compatible 256-row interleaved E2M1 activation pack, matching activation scales and row-major BF16 LoRA activations directly. The GEMM loads activation A/SFA gmem-to-register (G2R), while weight B/SFB and BF16 D/L1 use TMA over shared memory, and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer or consume the native packed FP32 D. The current producer dispatch uses a fused in-CTA reduction for rank32 above M=8192 and split-K for rank64/128 and smaller-M rank32; split-K maintains its own FP32 scratch and runs a separate BF16 finalize kernel. The padded batch must be a multiple of 256. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
 
 ### Performance comparison (native vs cute vs FlashInfer)
 

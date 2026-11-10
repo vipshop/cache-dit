@@ -43,11 +43,11 @@ def _decode_fragment_d(fragment_d: torch.Tensor) -> torch.Tensor:
   return fragment_d.flatten()[indices]
 
 
+@pytest.mark.parametrize("m,k", [(256, 128), (2304, 192), (256, 3136)])
 @pytest.mark.parametrize("rank,scales", [(32, [0.5, 2.0]), (64, [1.0] * 4), (128, [1.0] * 8)])
-def test_row_major_quantize_producer(rank: int, scales: list[float]) -> None:
+def test_row_major_quantize_producer(m: int, k: int, rank: int, scales: list[float]) -> None:
   _require_sm120()
   torch.manual_seed(1234)
-  m, k = 256, 128
   x = torch.randn(m, k, dtype=torch.bfloat16, device="cuda:0")
   smooth = torch.rand(k, dtype=torch.bfloat16, device="cuda:0") + 0.5
   lora_down = torch.randn(k, rank, dtype=torch.bfloat16, device="cuda:0") * 0.02
@@ -110,6 +110,16 @@ def test_row_major_producer_rejects_non_256_padded_batch() -> None:
   smooth = torch.ones(128, dtype=torch.bfloat16, device="cuda:0")
   with pytest.raises(RuntimeError, match="multiple of 256"):
     svdq_quantize_w4a4(x, None, smooth, lora_layout="row_major", lora_scales=[1.0], pad_size=128)
+
+
+@pytest.mark.parametrize("rank", [32, 64, 128])
+def test_row_major_quantize_rejects_non_bf16_lora_down(rank: int) -> None:
+  _require_sm120()
+  x = torch.randn(256, 128, dtype=torch.bfloat16, device="cuda:0")
+  smooth = torch.ones(128, dtype=torch.bfloat16, device="cuda:0")
+  lora_down = torch.randn(128, rank, dtype=torch.float16, device="cuda:0")
+  with pytest.raises(RuntimeError, match="BF16"):
+    svdq_quantize_w4a4(x, lora_down, smooth, lora_layout="row_major", fp4=True)
 
 
 @pytest.mark.parametrize("rank", [32, 64, 128])
@@ -309,6 +319,42 @@ def test_row_major_pipeline_matches_native_runtime(rank: int) -> None:
                             alpha=cute.wtscale)
   assert lora_act.dtype == torch.bfloat16
   assert actual.shape[0] >= x.shape[0]
+  assert torch.isfinite(actual).all()
+  assert _relative_l2(actual[:x.shape[0]], expected) < 5e-3
+
+
+@pytest.mark.parametrize("m,k,rank", [
+  (256, 4096, 32),
+  (16384, 4096, 32),
+  (256, 4096, 64),
+  (256, 4096, 128),
+])
+def test_rank_specialized_long_k_pipeline_matches_native(m: int, k: int, rank: int) -> None:
+  """Exercise specialized async-A split-K and rank32 large-M fused producer dispatch."""
+
+  _require_sm120()
+  torch.manual_seed(20261116)
+  linear = nn.Linear(k, 128, bias=True).cuda().to(torch.bfloat16)
+  calibration = torch.randn(256, k, dtype=torch.bfloat16, device="cuda:0")
+  state_dict = quantize_linear_svdq_w4a4(
+    linear,
+    [calibration],
+    rank=rank,
+    precision="nvfp4",
+    device="cuda:0",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+  )
+  native = SVDQW4A4Linear(k, 128, rank=rank, precision="nvfp4",
+                          runtime_kernel="native").cuda().eval()
+  cute = SVDQW4A4Linear(k, 128, rank=rank, precision="nvfp4", runtime_kernel="cute").cuda().eval()
+  for module in (native, cute):
+    module.load_state_dict(state_dict)
+  x = torch.randn(m, k, dtype=torch.bfloat16, device="cuda:0")
+  with torch.inference_mode():
+    expected = native(x)
+    actual = cute(x)
+  assert cute.lora_layout == "row_major"
   assert torch.isfinite(actual).all()
   assert _relative_l2(actual[:x.shape[0]], expected) < 5e-3
 
@@ -532,9 +578,13 @@ def test_native_int4_dispatches_plain_runtime(monkeypatch, runtime_kernel: str |
 
 
 def test_lora_layout_validation() -> None:
-  assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute").lora_layout == "native"
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4",
+                        runtime_kernel="cute").lora_layout == "row_major"
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute",
+                        lora_layout="native").lora_layout == "native"
   assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute",
                         lora_layout="row_major").lora_layout == "row_major"
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4").lora_layout == "native"
   with pytest.raises(ValueError, match="only supported with runtime_kernel='cute'"):
     SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="native", lora_layout="row_major")
   with pytest.raises(ValueError, match="lora_layout must be"):

@@ -1,5 +1,5 @@
 #include "common.h"
-#include "gemm_w4a4.h"
+#include "quantize.h"
 
 #include <cuda_bf16.h>
 
@@ -28,7 +28,7 @@ struct LoraScaleParams {
 
 // Unified activation producer for the CuTe NVFP4 path. It owns the packed types required at the
 // kernel boundary and every helper used to produce native qact/ascales plus row-major BF16 D.
-struct W4A4QuantizeKernel {
+struct W4A4QuantizeUniversalKernel {
   // A 16x64 BF16 staging tile is stored as BF16; this is its size in float words.
   static constexpr int kAStageFloats = 16 * (64 + 8) / 2;
 
@@ -771,8 +771,8 @@ __global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ i
                                              uint8_t *__restrict__ qact,
                                              uint8_t *__restrict__ ascales,
                                              float *__restrict__ lora_scratch, int M, int K) {
-  W4A4QuantizeKernel::quantize_w4a4_split_k<kRankTiles, kWarps>(input, smooth, lora_down, qact,
-                                                                ascales, lora_scratch, M, K);
+  W4A4QuantizeUniversalKernel::quantize_w4a4_split_k<kRankTiles, kWarps>(
+    input, smooth, lora_down, qact, ascales, lora_scratch, M, K);
 }
 
 // Convert the accumulated FP32 split-K scratch to row-major BF16 and apply the per-16-rank scale.
@@ -826,7 +826,8 @@ __global__ void finalize_lora_bf16_kernel(const float *__restrict__ scratch,
   *reinterpret_cast<uint4 *>(output + row * kRank + col_base) = packed;
 }
 
-// Thin launch shell: all kernel logic lives in W4A4QuantizeKernel::quantize_w4a4_fused_lora.
+// Thin launch shell: all kernel logic lives in
+// W4A4QuantizeUniversalKernel::quantize_w4a4_fused_lora.
 template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict__ input,
                                                 const __nv_bfloat16 *__restrict__ smooth,
@@ -835,7 +836,8 @@ __global__ void quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict_
                                                 uint8_t *__restrict__ ascales,
                                                 __nv_bfloat16 *__restrict__ lora_act,
                                                 LoraScaleParams scales, int M, int K) {
-  W4A4QuantizeKernel::quantize_w4a4_fused_lora<kRankTiles, kWarps, kReductionBuffers, kRankSplits>(
+  W4A4QuantizeUniversalKernel::quantize_w4a4_fused_lora<kRankTiles, kWarps, kReductionBuffers,
+                                                        kRankSplits>(
     input, smooth, lora_down, qact, ascales, lora_act, scales, M, K);
 }
 
@@ -849,7 +851,7 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
   constexpr int kLocalRank = kLocalRankTiles * 16;
   constexpr int kRankStride = kRankTiles == 2 ? kLocalRank + 4 : kLocalRank + 1;
   constexpr int kDStageFloats = kLocalRankTiles > 0 ? 32 * kRankStride : 0;
-  constexpr int kWarpStageFloats = W4A4QuantizeKernel::kAStageFloats;
+  constexpr int kWarpStageFloats = W4A4QuantizeUniversalKernel::kAStageFloats;
   constexpr int kASharedFloats = kWarps * kWarpStageFloats;
   constexpr int kDSharedFloats = kReductionBuffers * kDStageFloats;
   constexpr int kSharedFloats =
@@ -857,6 +859,7 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *smoot
       ? kASharedFloats + kDSharedFloats
       : (kASharedFloats > kDSharedFloats ? kASharedFloats : kDSharedFloats);
   constexpr size_t kSmemBytes = static_cast<size_t>(kSharedFloats) * sizeof(float);
+  static_assert(kSmemBytes <= 101376, "quantize shared memory exceeds the SM120 opt-in budget");
   auto kernel = quantize_w4a4_fused_lora_kernel<kRankTiles, kWarps, kReductionBuffers, kRankSplits>;
   if constexpr (kSmemBytes > 48 * 1024) {
     checkCUDA(
@@ -874,8 +877,9 @@ void launch_quantize_w4a4_split_k(const __nv_bfloat16 *input, const __nv_bfloat1
                                   int M, int K, cudaStream_t stream) {
   constexpr int kRank = kRankTiles * 16;
   constexpr int kRows = kWarps * 32;
-  constexpr int kSharedFloats = kWarps * W4A4QuantizeKernel::kAStageFloats;
+  constexpr int kSharedFloats = kWarps * W4A4QuantizeUniversalKernel::kAStageFloats;
   constexpr size_t kSmemBytes = static_cast<size_t>(kSharedFloats) * sizeof(float);
+  static_assert(kSmemBytes <= 101376, "quantize shared memory exceeds the SM120 opt-in budget");
   auto kernel = quantize_w4a4_split_k_kernel<kRankTiles, kWarps>;
   if constexpr (kSmemBytes > 48 * 1024) {
     checkCUDA(
@@ -915,32 +919,41 @@ void launch_quantize_w4a4(const QuantizeLaunchArgs &args) {
 
 }  // namespace
 
-void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
-                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                   std::vector<float> lora_scales, svdq::Tensor lora_scratch) {
-  W4A4QuantizeKernel::require(input.valid() && output.valid() && ascales.valid() && smooth.valid(),
-                              "quantize_w4a4 requires input/output/ascales/smooth");
-  W4A4QuantizeKernel::require(
+void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
+                  svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
+                  std::vector<float> lora_scales, svdq::Tensor lora_scratch) {
+  W4A4QuantizeUniversalKernel::require(
+    input.valid() && output.valid() && ascales.valid() && smooth.valid(),
+    "quantize_w4a4 requires input/output/ascales/smooth");
+  W4A4QuantizeUniversalKernel::require(
     input.dtype() == svdq::Tensor::BF16 && smooth.dtype() == svdq::Tensor::BF16,
     "quantize_w4a4 currently requires BF16 input and smooth");
-  W4A4QuantizeKernel::require(
+  W4A4QuantizeUniversalKernel::require(
     output.dtype() == svdq::Tensor::INT8 && ascales.dtype() == svdq::Tensor::FP8_E4M3,
     "quantize_w4a4 output must be INT8 and ascales FP8_E4M3");
-  W4A4QuantizeKernel::require(input.is_contiguous() && smooth.is_contiguous(),
-                              "input and smooth must be contiguous");
+  W4A4QuantizeUniversalKernel::require(input.is_contiguous() && smooth.is_contiguous(),
+                                       "input and smooth must be contiguous");
   const int K = input.shape[-1];
+  W4A4QuantizeUniversalKernel::require(K > 0, "quantize_w4a4 requires non-empty input channels");
   const int M = input.numel() / K;
   const int rank = lora_down.valid() ? lora_down.shape[-1] : 0;
-  W4A4QuantizeKernel::require(
+  W4A4QuantizeUniversalKernel::require(
     M % 256 == 0 && K % 64 == 0,
     "quantize_w4a4 requires M%256==0 for the native activation pack and K%64==0");
-  W4A4QuantizeKernel::require(rank == 0 || (rank % 16 == 0 && rank <= 128),
-                              "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
-  W4A4QuantizeKernel::require(static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),
-                              "lora_scales must have one value per 16-rank tile");
+  W4A4QuantizeUniversalKernel::require(
+    output.numel() >= static_cast<int64_t>(M) * K / 2 &&
+      ascales.numel() >= static_cast<int64_t>(M) * K / 16,
+    "quantize_w4a4 output/ascales storage is smaller than the native activation pack");
+  W4A4QuantizeUniversalKernel::require(
+    rank == 0 || (rank % 16 == 0 && rank <= 128),
+    "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
+  W4A4QuantizeUniversalKernel::require(
+    static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),
+    "lora_scales must have one value per 16-rank tile");
   if (rank > 0) {
-    W4A4QuantizeKernel::require(
-      lora_down.is_contiguous() && lora_act.valid() && lora_act.dtype() == svdq::Tensor::BF16,
+    W4A4QuantizeUniversalKernel::require(
+      lora_down.dtype() == svdq::Tensor::BF16 && lora_down.is_contiguous() && lora_act.valid() &&
+        lora_act.dtype() == svdq::Tensor::BF16,
       "CuTe LoRA-down must be row-major BF16 and lora_act must be BF16");
   }
 
@@ -962,7 +975,7 @@ void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
   };
 
   if (lora_scratch.valid()) {
-    W4A4QuantizeKernel::require(
+    W4A4QuantizeUniversalKernel::require(
       lora_scratch.dtype() == svdq::Tensor::FP32 &&
         lora_scratch.numel() >= static_cast<size_t>(M) * rank,
       "split-K quantize_w4a4 requires an FP32 scratch of at least M*rank elements");

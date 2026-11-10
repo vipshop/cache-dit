@@ -30,14 +30,16 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - high: use float32 calibration math and float64 SVD.
   "calibrate_precision": "low",
   # Packed runtime GEMM family used by SVDQW4A4Linear.
-  # - None: automatic selection; INT4 -> native v2, NVFP4 -> CuTe.
-  # - native: INT4 -> native v2; NVFP4 -> deprecated native v1 implementation.
+  # - None: automatic selection; INT4 and NVFP4 both use the native runtime.
+  # - native: native INT4 or NVFP4 implementation.
   # - cute: SM120 CuTe NVFP4 path with fused BF16 LoRA-up; invalid for INT4.
   # The old v1/v2 selectors are deprecated and intentionally not accepted here.
   "runtime_kernel": None,
   # Layout of the LoRA-down term D produced by the activation quantizer and
   # consumed by the packed GEMM.
-  # - None/native: packed FP32 MMA-fragment D (works with both runtimes).
+  # - None: row-major BF16 D for ordinary CuTe, packed FP32 fragment D otherwise;
+  #   fused_mlp preserves packed FP32 fragment D because its passes require that layout.
+  # - native: packed FP32 MMA-fragment D (works with both runtimes).
   # - row_major: row-major BF16 D with per-rank scales folded in; emitted by
   #   the CuTe producer only, so it requires runtime_kernel="cute".
   "lora_layout": None,
@@ -348,6 +350,11 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
+  # SVDQW4A4Linear defaults the ordinary CuTe path to row-major D. The fused MLP passes cannot
+  # consume that layout, so preserve their previous implicit native-fragment contract.
+  if (resolved["runtime_kernel"] == "cute" and resolved["fused_mlp"]
+      and resolved["lora_layout"] is None):
+    resolved["lora_layout"] = "native"
   _warn_about_aggressive_svdq_few_shot_relax_factor(resolved)
   return resolved
 

@@ -61,12 +61,4 @@ void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tenso
                svdq::Tensor bias, svdq::Tensor wcscales, std::vector<float> lora_scales,
                float alpha, LoraLayout lora_layout = LoraLayout::kNative);
 
-// Produce native interleaved E2M1 activation, matching native SFA and row-major BF16 LoRA-down D
-// directly, which pairs with `gemm_w4a4(..., LoraLayout::kRowMajor)`. The default path completes
-// the full K reduction in warp registers and emits D in one launch. When `lora_scratch` is valid,
-// the split-K path instead accumulates D in FP32 global scratch and finalizes it to BF16.
-void quantize_w4a4(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
-                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {});
-
 }  // namespace svdq::cute_kernels

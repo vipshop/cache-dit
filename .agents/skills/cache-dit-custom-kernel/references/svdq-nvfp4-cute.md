@@ -846,3 +846,74 @@ split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fr
 - 已证伪的 4K 配置：8w/4buf/split2 63.3/64.2；8w/8buf/split2 63.4/62.4；8w/split1 65.8；split4 与 K64 split-K 均明显回退。
 - qact 按 K64 slice 在 split2 两个 CTA 间分摊：rank128 约快 1%，但 rank64 4K 回退到 77.5µs，并破坏 fused D 位级一致，已撤销。
 - 当前最优仍是 4w/4buf/split2；要再进一步需要减少 split2 的输入重复读取（cluster/DSMEM 或共享 A）或匹配 native 的 256-row + K 维 grid/epilogue 结构。
+
+## 29. Rank-specialized CuTe producer 与 GEMM 主瓶颈（2026-11-10，RTX PRO 5000，PR #1271）
+
+### 29.1 实现与 dispatch 状态
+
+- CuTe producer 已拆为 `quantize_impl.cuh` + `quantize_r32/64/128.cu`，每个 TU 只实例化一个 rank；通用路径保留在 `quantize_uni.cu`。GEMM 在 `gemm/`，producer 在 `quantize/`。
+- fused：CTA 内 FP32 D 归约；split-K：rank streaming、fragment-major FP32 scratch、`red.relaxed.gpu.add.v2.f32`、后置向量化 BF16 finalize。
+- `ops.h` 当前选择：
+  - rank32 且 K≤3072：全部走 universal（K3072 的 2K/4K/8K 实测 universal 更快）。
+  - rank32 且 K>3072：M≤8192 走 split-K，M>8192 走 fused。
+  - rank64/rank128：当前生产矩阵全部走 split-K。
+- 特化 split-K：rank32/K>3072 用 K128 double-A async；rank64/K≤3072 用 K256，rank64/K>3072 用 K128 async；rank128 全 K256。
+- rank64/128 fused 实例仍编译并做过独立数值验收，但当前 `ops.h` 不会选中；不要根据旧 §26/§28 的 fused 阈值重开，除非给出新的逐格 Event 证据。
+- Python 普通 CuTe 路径默认 `lora_layout="row_major"`，显式 native 与 `fused_mlp` 保持 FP32 fragment D。
+
+### 29.2 测量口径
+
+官方 `bench/kernels/bench_svdquant_kernels.py`，5 个默认 `MxNxK`，显式扩展 rank32/64/128；warmup=10、iterations=50、median；同时跑 `quantize`、`quantize-row-major`、native/cute GEMM、三组 e2e 和 FlashInfer。共 150 行，cutlass-sm120 不支持 rank128 产生 5 个 skipped。GPU4：NVIDIA RTX PRO 5000 72GB。
+
+### 29.3 Producer 与 e2e 全矩阵
+
+µs 为 CUDA Event median；producer speedup = native quantize / CuTe row-major quantize，e2e speedup = native+e2e / CuTe-row-major+e2e。
+
+| M×N×K | R | native q µs | CuTe q µs | q speedup | native e2e µs | CuTe e2e µs | e2e speedup | e2e rel-L2 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4096×3072×3072 | 32 | 48.11 | 43.86 | 1.097× | 170.00 | 160.50 | 1.059× | 0.003263 |
+| 4096×3072×3072 | 64 | 56.21 | 52.02 | 1.081× | 181.12 | 169.82 | 1.067× | 0.003209 |
+| 4096×3072×3072 | 128 | 72.64 | 63.36 | 1.146× | 204.37 | 189.20 | 1.080× | 0.003117 |
+| 4096×6144×3072 | 32 | 48.11 | 43.97 | 1.094× | 270.46 | 252.18 | 1.073× | 0.003279 |
+| 4096×6144×3072 | 64 | 56.22 | 51.30 | 1.096× | 283.90 | 267.38 | 1.062× | 0.003241 |
+| 4096×6144×3072 | 128 | 72.56 | 63.36 | 1.145× | 318.56 | 293.14 | 1.087× | 0.003167 |
+| 8192×3072×3072 | 32 | 76.64 | 64.26 | 1.193× | 306.50 | 301.47 | 1.017× | 0.003263 |
+| 8192×3072×3072 | 64 | 90.98 | 85.82 | 1.060× | 324.96 | 333.10 | **0.976×** | 0.003209 |
+| 8192×3072×3072 | 128 | 123.81 | 106.46 | 1.163× | 368.77 | 366.74 | 1.006× | 0.003117 |
+| 8192×6144×3072 | 32 | 76.70 | 63.26 | 1.212× | 500.77 | 494.91 | 1.012× | 0.003279 |
+| 8192×6144×3072 | 64 | 91.07 | 84.99 | 1.072× | 528.42 | 534.80 | **0.988×** | 0.003240 |
+| 8192×6144×3072 | 128 | 123.90 | 106.56 | 1.163× | 591.44 | 575.57 | 1.028× | 0.003167 |
+| 16384×8192×8192 | 32 | 379.95 | 349.49 | 1.087× | 2953.52 | 2939.39 | 1.005× | 0.003297 |
+| 16384×8192×8192 | 64 | 428.61 | 358.99 | 1.194× | 3107.42 | 2978.32 | 1.043× | 0.003282 |
+| 16384×8192×8192 | 128 | 566.42 | 500.11 | 1.133× | 3438.46 | 3169.07 | 1.085× | 0.003247 |
+
+汇总：
+
+- producer geomean **1.1281×**，15/15 快，范围 **1.060×–1.212×**。
+- kernel-only CuTe row-major GEMM geomean **1.0125×**；仅比 native 快 1.25%，是当前主瓶颈。
+- e2e geomean **1.0384×**，13/15 快。
+- e2e 回退点均为 rank64/M8192：N3072 **0.976×**、N6144 **0.988×**；producer 本身仍为 1.060×/1.072×，说明回退来自 GEMM schedule，而不是 quantize。
+- producer 收益大于 e2e 收益，后续优化重点明确转为 **W4A4 GEMM**。
+
+### 29.4 FlashInfer 对照
+
+kernel-only GEMM，FlashInfer 使用独立 activation pack，因此 rel-L2 不可比：
+
+- vs `flashinfer+cute-dsl`：geomean **1.0951×**，15/15 CuTe 胜；单点 +0.36%–+17.84%。
+- vs `flashinfer+cutlass-sm120`：geomean **1.1438×**，9/10 CuTe 胜；唯一落后是 `8192×6144×3072, rank32`，CuTe 慢约 0.61%。cutlass-sm120 不支持 rank128。
+
+### 29.5 正确性与构建
+
+- 121 项 SVDQ 回归（dispatch/CuTe/runtime/source manifest/config）通过。
+- 12 组 v1 golden：qact、ascales bitwise 一致；D 用误差门槛，因为 split-K 的 relaxed FP32 atomics 不保证逐位顺序。
+- 独立 FP32 D 覆盖 K64/K192/K3136 tail、非单位 rank scale、M2304/M8448、rank32/64/128。
+- fused 与 split-K 均实际执行并做 golden/独立参考验证；最终恢复生产 dispatch。
+- FLUX eager + compile 八组生成成功，e2e rel-L2 ≤0.0033；compile 模式 row-major 为 6.04s，native 6.06s，BF16 base 14.85s。
+- `setup.py` 已给 SVDQ extension 加 header `depends`；pre-commit/clang-format/yapf 通过。
+
+### 29.6 后续优先级
+
+1. **W4A4 GEMM shared/TMA/同步与 epilogue**：先按 `svdq-nvfp4-cute-tma-sync-analysis.md` 取 NCU，再定位 rank64/M8192 两个 e2e 回退。
+2. 不再重复 producer 的 warp 数、M 分桶、K split chunk 扫描；本轮已把 15/15 producer 做到 native 以下，重复扫参收益不足。
+3. 若继续 producer，只接受能解释 NCU 主指标的新假设；同时保持 qact/ascales bitwise golden 与 D rel-L2 验收。
+4. GEMM 达到相对 native 至少 5% 后，再讨论 NVFP4 runtime 默认从 native 切到 cute。

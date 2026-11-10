@@ -18,33 +18,35 @@
 
 | 编号 | 项目 | 状态 | 验收标准 |
 |---|---|---|---|
-| CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 直接输出 native A/SFA + BF16 D，无 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
-| CDK-2 | Producer kernel 性能追平/略优 | 进行中 | PRO 5000 7×3 矩阵：rank32 多数快2%–16%；rank64 16K快14%/8K持平/2K–4K慢5%–6%；rank128 16K 0.998、2K/4K/8K慢10%–14.5%、长K慢16%；未达全格≤1.00 |
-| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 待开始 | 保持当前 native A/SFA 与 BF16 D 性能 |
-| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | M=4096 约117.2us vs native117.5us（约0.3%）；大 shape native 反超2.6%–6.6%，未达5% |
-| CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 待开始 | 多次 FLUX native/CuTe 对照 |
+| CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 输出 native qact/ascales + row-major BF16 D；fused 无 scratch，split-K 使用内部 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
+| CDK-2 | Producer kernel 性能追平/略优 | 已完成 | PRO 5000 官方 bench 5 shape × rank32/64/128：producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）；证据见 `svdq-nvfp4-cute.md` §29 |
+| CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 已完成 | rank32/64/128 拆分 TU，fused + K128 async split-K + K256 split-K；qact/ascales bitwise golden 通过 |
+| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | CUDA Event kernel-only geomean 1.013× vs native；仍未达5%，且 rank64/M8192 两个 e2e 点回退，现为主瓶颈 |
+| CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 进行中 | 官方 bench e2e geomean 1.038×，13/15 快；rank64/M8192 为 0.976×/0.988×，未达稳定5% |
 | CDK-6 | 可重复 ccache 构建链路 | 已完成 | `build_fast.sh` editable + nvcc shim 验证通过 |
 
 完成任一项时，同步更新本表、下方清单和 `SKILL.md` 的当前状态摘要。若实验否定某方案，将方案移到性能记录的已证伪表，不要删除证据。
 
 ## 3. 完成状态清单
 
-- [x] CDK-1：独立 CuTe producer + hybrid A/SFA G2R、B/SFB/D/L1 TMA GEMM；producer 直接输出 native A/SFA + BF16 D，无 FP32 scratch/finalize。
-- [ ] CDK-2：producer 稳态性能追平/略优。PRO 5000 当前矩阵见 `svdq-nvfp4-cute.md` §26：rank128 16K 已持平，小 M/长 K 仍慢10%–16%，rank64 小 M仍慢5%–6%；继续降低输入重复读取与 D 归约开销，未达全格≤1.00。
-- [ ] CDK-3：将手写 `mma.sync/ldmatrix` producer 迁移为 CuTe atoms；不得恢复旧 pack 或降低当前性能。
-- [ ] CDK-4：GEMM 快于 native 至少 5%。M=4096 hybrid nsys 约117.2µs vs native117.536µs（约0.3%）；`16Kx8Kx8K` native 反而快6.58%，尚未达到 5%。下一步先解释大 shape 退化。
-- [ ] CDK-5：完整工作流 e2e 快至少 5%。达标前 NVFP4 默认 runtime 保持 native。
+- [x] CDK-1：独立 CuTe producer + A/SFA G2R、B/SFB/D/L1 TMA GEMM；fused 和 split-K 均输出 native qact/ascales 与 row-major BF16 D。
+- [x] CDK-2：producer 官方 bench 5 shape × 3 rank 全格快于 native，geomean 1.128×；rank32/64/128 无回退点。
+- [x] CDK-3：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，TiledMMA/TiledCopy/swizzle、K128 double-A async、K256 split-K、rank32 大 M fused；K64/192/3136 tail 与 golden 已验证。
+- [ ] CDK-4：GEMM 快于 native 至少 5%。kernel-only geomean 1.013×；producer 收益明显大于 e2e，下一步集中优化 W4A4 GEMM shared/TMA/同步和 epilogue。
+- [ ] CDK-5：完整工作流 e2e 快至少 5%。当前 geomean 1.038×；优先消除 rank64/M8192 的 0.976×/0.988× 回退，再评估默认 runtime。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 
-## 4. CDK-3：Producer CuTe 化设计约束
+## 4. CDK-3：Producer CuTe 化设计约束（已完成）
 
-- 保留标准 row-major E2M1、CUTLASS 128x4 SFA 和 row-major BF16 D 输出。
-- 保留 CTA 内 K 切分与 D 归约，避免重新引入 global FP32 scratch 和二次 finalize。
-- 评估 CuTe `TiledMMA/TiledCopy`、TMA、多级流水和 warp specialization；不能仅为“使用 CuTe”而牺牲已验证的 coalescing 和 occupancy。
-- 每次改动先跑 identity LoRA-down、随机 D、标准 A/SFA 和高层 Linear，再做 nsys/NCU。
-- 当前手写实现是性能对照基线，不得在迁移完成前删除。
+- 保留 native packed qact/ascales 与 row-major BF16 D 输出；不得退回标准 row-major A/SFA 或旧 G2R 反解。
+- fused 保持 CTA 内 D 归约；split-K 允许 producer 自有的 fragment-major FP32 scratch 与一次 BF16 finalize，但禁止读取 native producer 的 fragment D。
+- 使用 CuTe `TiledMMA/TiledCopy` 与 swizzled shared staging；K128 async 只支持双 A stage，K256 使用四 slice + 单 A stage。
+- 每次改动先跑 qact/ascales golden、K64 tail、非单位 rank scale 和高层 Linear parity，再做 nsys/NCU。
+- 当前 rank-specialized 实现是新的性能基线；旧手写 fused/split-K 只作为历史参考，不再恢复。
 
 ## 5. CDK-4：GEMM 候选方案
+
+2026-11-10 起 CDK-4 是主优先级：producer 已在 15/15 格快于 native（geomean 1.128×），但 kernel-only GEMM 只有 1.013×、e2e 1.038×。先解释 rank64/M8192/N3072 的 0.976× 和 N6144 的 0.988×，再从 shared 装载、TMA/mbarrier、同步和 epilogue 中按 NCU 选一个主瓶颈；不要继续扫 producer warp/M 分桶。
 
 按单个假设逐项验证：
 
