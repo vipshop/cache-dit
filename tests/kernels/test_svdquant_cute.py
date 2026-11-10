@@ -739,9 +739,42 @@ def test_gemm_w4a4_fake_registration() -> None:
       runtime=runtime,
       lora_layout="native",
       out_dtype_id=1,
+      write_dense=True,
     )
     assert output.shape == (256, 128)
     assert output.dtype == torch.bfloat16
+  # write_dense=False has to stay shape-consistent with the real kernel so that tracing does
+  # not diverge from eager execution.
+  for runtime, write_dense in (("native", False), ("native", True), ("cute", True)):
+    output = torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(
+      act=act,
+      wgt=wgt,
+      ascales=ascales,
+      wscales=wscales,
+      qout=None,
+      oscales=None,
+      lora_act_in=None,
+      lora_up=None,
+      lora_down=None,
+      lora_act_out=None,
+      bias=None,
+      smooth_factor=None,
+      wcscales=None,
+      act_unsigned=False,
+      fuse_silu=False,
+      fp4=True,
+      alpha=1.0,
+      lora_scales=[],
+      runtime=runtime,
+      lora_layout="native",
+      out_dtype_id=1,
+      write_dense=write_dense,
+    )
+    if write_dense:
+      assert output.shape == (256, 128)
+    else:
+      assert output.shape == (0, 128)
+      assert output.numel() == 0
   input = torch.empty(256, 128, dtype=torch.bfloat16, device="meta")
   lora_down = torch.empty(128, 32, dtype=torch.bfloat16, device="meta")
   smooth = torch.empty(128, dtype=torch.bfloat16, device="meta")

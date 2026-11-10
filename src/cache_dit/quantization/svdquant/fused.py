@@ -46,9 +46,9 @@ def fused_gelu_mlp(
   second quantized linear layer into a single CUDA kernel chain: the first
   GEMM applies GELU in-register and directly emits the 4-bit packed
   activation (plus its scales) consumed by the second GEMM, so the fp16
-  GELU output never has to be re-quantized by a separate launch. The kernel
-  still writes the dense fp16 output buffer as part of the same epilogue
-  chain; this pass simply ignores it.
+  GELU output never has to be re-quantized by a separate launch. Passing
+  ``write_dense=False`` also drops the dense fp16 store, so this pass writes
+  no full-size fp16 activation to HBM at all.
 
   :param x: Input tensor with shape ``[..., in_features]`` and dtype
       ``float16`` or ``bfloat16``.
@@ -126,6 +126,7 @@ def fused_gelu_mlp(
     fp4=fc1.precision == "nvfp4",
     alpha=fc1.wtscale,
     wcscales=fc1.wcscales,
+    write_dense=False,
   )
 
   output = fc2.forward_quant(qout_act, qout_ascales, qout_lora_act)

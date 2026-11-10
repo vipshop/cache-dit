@@ -216,20 +216,23 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 详细数据和历史负结果见参考文档。修改性能结论时同步更新本节的摘要和 RFC 状态。
 
-### 8.3 已知遗留：`fused_gelu_mlp` 多写一块被丢弃的 dense 输出（待开专题，2026-11-10 记录）
+### 8.3 `write_dense` 开关：融合 MLP 路径不再写被丢弃的 dense 输出（2026-11-10 已修）
 
-**现象**：`quantization/svdquant/fused.py::fused_gelu_mlp` 走融合 qout 路径时，kernel 仍会跑一遍 `EpilogueDefault`（shmem unpack + 全量 gmem store），把 `[M, N]` dense fp16 输出写到 HBM，而调用方连返回值都不接收。按 FLUX 类 FF 层（M=4096、N=12288、bf16）估算，每次调用约多写 100 MB。
+**问题**：`fused_gelu_mlp` 走融合 qout 路径时，kernel 仍会跑一遍 `EpilogueDefault`（shmem unpack + 全量 gmem store），把 `[M, N]` dense fp16 写到 HBM，而调用方从不读它。FLUX 类 FF 层（M=4096、N=12288、bf16）每次多写 **96 MiB**。
 
-**机制**：单 op 形态下 `_svdquant.py:545` 无条件分配 `out` 并传给 pybind，C++ 侧再以 `out.valid()` 选择 epilogue 链——融合 qout 分支在 `native/gemm_w4a4_impl.cuh:216` 进入后，`impl.cuh:238` 的 `if (out.valid())` 为真就会追加 `EpilogueDefault`。当前 ABI 没有"不要 dense 输出"的出口。
+**契约**：`svdq_gemm_w4a4(..., write_dense=False)` 时 Python 传 `out=None`（pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断），C++ 融合分支的 `if (out.valid())` 为假，于是只留 `EpilogueQuantize`、不加载 `EpilogueDefault`。三条硬约束：
 
-**不是 2026-11-10 那次清理引入的**：HEAD 的 `_svdq_gemm_w4a4_ext` 在 `out=None` 时同样无条件 `torch.empty` 后传入，所以这是**预存在**行为；`fused.py` 旧 docstring 里 "the intermediate fp16 activation is never written back to HBM" 当时就已经不成立，现已改成实际语义。
+1. 只有 `runtime='native'`（CuTe GEMM 的唯一输出就是 dense buffer）；
+2. 必须同时给 `qout` + `oscales`（否则 C++ 落到 `else { assert(false) }`，直接 abort）；
+3. 必须给 `smooth_factor`（`EpilogueQuantize` 无条件读它）；NVFP4 还要至少给 `bias` / `lora_up` / `lora_down` / `wcscales` 之一——`out` 缺席后它们是 `gemm_w4a4.cu` 仅剩的 dtype 来源，全为空时 `Config` 推断不出来、kernel 根本不 launch。
 
-**修法方向（二选一，需开专题）**：
+这几条在 Python 侧 `_svdq_gemm_w4a4` 与公开 `svdq_gemm_w4a4` 各校一次。**注意 C++ 侧的对应检查是启用的**：本仓的 `-DNDEBUG` 只进 host `cflags`，不进 `cuda_cflags`，所以 `assert` 在 nvcc TU 里是活的（现场见过 `Assertion 'lora_down.shape[0] == N' failed`），坏组合会 SIGABRT 而不是"静默跳过"——因此 Python 守卫的价值是**可读的报错**，不是"唯一的防线"。返回值是 `act.new_empty((0, wgt.shape[0]))` 占位张量：dtype 跟随 `act`（即 int8）、**禁止读取**，`numel()==0` 是唯一契约。
 
-1. schema 加显式开关（推荐）：例如 `bool write_dense = True`，`False` 时 Python 传 `out=None` —— pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断，C++ 自然退化为纯 `EpilogueQuantize` 分支。**schema / pybind / impl / `_call_*` 四处顺序必须同步**（写反不报错、只静默算错）。
-2. 给融合 MLP 单开一个不带 dense 输出的 op：与"单 op、单 ABI"的收敛目标冲突，不推荐。
+**为什么不改变数值**：`EpilogueDefault` 按值接收 `fpsum`，只在写出去的 pack 上做 fp16 clamp；`EpilogueGelu` 才原地改累加器，且在链上位于 Default 之前。所以 qout/oscales 与 `write_dense=True` **bitwise 相同**（`test_svdquant_write_dense_false_preserves_the_fused_outputs` 断言 `torch.equal`）；`lora_act_out` 走 `red.relaxed.gpu.global.add.f32` 跨 block 原子累加，只在单 tile grid 下 bitwise 稳定，测试用 `1e-6` 容差。
 
-**验收要求**：① `fused_gelu_mlp` vs `fc2(F.gelu(fc1(x)))` 的 rel-L2 门 —— 目前 `tests/` 对 fused 路径**零执行覆盖**（`test_fused_passes_reject_row_major` 在真正执行前就抛错）；② `torch.cuda.max_memory_allocated` 差值或 nsys 上消失的 `[M,N]` store；③ 确认 `fused_gelu_proj` 不受影响 —— 它显式需要 dense 输出并返回给调用方。
+**实测**：M=4096/N=12288/K=3072/R=32、bf16，op 级 peak 分配 96.0 MiB → 0.0 MiB。`fused_gelu_proj` 不受影响（它必须返回 dense 激活，保持默认 `True`）。
+
+**回归口径**：`test_fused_gelu_mlp_matches_the_unfused_two_step[int4|nvfp4]` 是 fused 路径的**首个执行覆盖**，同时验证 rel-L2 < 5e-3 / cosine > 0.999 与"flag 真的传下去了"（spy `fused.svdq_gemm_w4a4`）。注意 `fused_gelu_mlp` 的第二个 GEMM 走 `linear.py` 的 import，spy 只能拦到 2 次调用。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/_models`）
 
