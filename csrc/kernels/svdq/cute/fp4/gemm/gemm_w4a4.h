@@ -1,20 +1,11 @@
 #pragma once
 
 #include "Tensor.h"
+#include "runtime.h"
 
 #include <vector>
 
 namespace svdq::cute_kernels {
-
-// How the LoRA-down term D is laid out in `lora_act_in`.
-//   kNative:   the native activation producer's packed FP32 MMA-fragment D. The kernel gathers it
-//              gmem->register and applies `lora_scales[i]` to rank group i on the fly.
-//   kRowMajor: plain row-major BF16 [M, R] D with the per-rank scales already folded in. The kernel
-//              TMA-loads it next to the weight tiles.
-enum class LoraLayout {
-  kNative,
-  kRowMajor,
-};
 
 // SM120 CuTe NVFP4 (W4A4) GEMM with a fused BF16 LoRA-up epilogue.
 //

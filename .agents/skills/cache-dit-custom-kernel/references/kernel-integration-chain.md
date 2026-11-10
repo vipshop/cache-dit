@@ -43,7 +43,7 @@
 |---|---|---|---|---|---|---:|---|---|---|---|
 | comm | `cache_dit._C_comm` | `comm/comm_ops.cpp` | `comm/comm_ops.h` | `cache_dit::comm` | `ops` | `_comm.py` | 4 | `distributed/core/_distributed_primitives.py` | `_is_supported_comm_sm_target`（>=sm89） | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
 | attn | `cache_dit._C_attn` | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `ops` | `_attn.py` | 1 | `distributed/core/_templated_ring.py` | 复用 `_is_supported_comm_sm_target` | impl 无 dtype 校验；fake 复刻 view 链 |
-| svdq | `cache_dit._C_svdquant` | `svdq/pybind.cpp` | `svdq/ops.h`（内联定义） | `svdq::ops` / `svdq::native_kernels` / `svdq::cute_kernels` | `ops` + `utils` | `_svdquant.py` | 7（+2 个非 Tensor 走 `utils`） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | `_is_supported_svdquant_sm_target`（>=sm80 且排除 sm90） | 3 个 required getter；非 Tensor 算子绕过 `torch.library`；C++ 侧无 `TORCH_CHECK` |
+| svdq | `cache_dit._C_svdquant` | `svdq/pybind.cpp` | `svdq/ops.h`（内联定义） | `svdq::ops` / `svdq::native_kernels` / `svdq::cute_kernels` | `ops` + `utils` | `_svdquant.py` | 2（`gemm_w4a4` / `quantize_w4a4`；另 2 个 availability getter 与 `utils.set_log_level` 不注册 schema） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | `_is_supported_svdquant_sm_target`（>=sm80 且排除 sm90） | 3 个 required getter；非 Tensor 算子绕过 `torch.library`；C++ 侧无 `TORCH_CHECK` |
 | models | `cache_dit._C_models` | `models/models.cpp`（整族唯一入口，各模型 `X.cpp` 只注册） | `models/X.h` | `cache_dit::models` | `ops` | `_models/_X.py` | 每模型自定（boogu: 3） | `models/pipelines/X/fused_ops.py`（模型侧 wrapper） | `_is_supported_models_sm_target`（>=sm80，Hopper 不排除） | 整族共用一个 `PYBIND11_MODULE`；多一层模型侧 wrapper + 逐位等价 eager 回退 |
 
 **没有统一的文件名契约**：前三族的声明头分别是 `attn.h`、`comm_ops.h`、`ops.h`，pybind TU 分别是 `attn.cpp`、`comm_ops.cpp`、`pybind.cpp`。契约只约束结构——**每族一个 pybind TU + 一个被它 include 的声明头 + `def_submodule("ops")`**；文件名自选，新增族推荐 `<族>.h` + `<族>.cpp`。
@@ -109,7 +109,7 @@ C++ 侧已是 out-param，真正要定的是 schema 形状：
 
 **默认把 out-param 藏在 `_call_*` 里，schema 只暴露函数式返回**——这样 functionalization 看到的是普通"返回新张量"的算子，不需要 `mutates_args`。
 
-例外是内部私有 `_svdq_gemm_w4a4_ext`：它的 schema 直接把 `out` / `qout` / `oscales` / `lora_act_out` 等一堆输出张量列为参数，因此**不能进图**，调用它的上层（`quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj`）必须标 `@torch.compiler.disable`。它不再从 `cache_dit.kernels` 公共导出，只允许 fused 内部从 `_svdquant` 私有导入；新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
+例外是 svdq 的 `svdq_gemm_w4a4`：融合 MLP 路径要求把 `qout` / `oscales` / `lora_act_out` 这些 in-place 输出缓冲列进 schema（`out` 仍由 impl 内部分配并返回），因此该调用形态**不能进图**，上层 `quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj` 必须标 `@torch.compiler.disable`。新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
 
 ## 4. Python 层
 
@@ -153,7 +153,7 @@ __all__ = ["<族>_extension_is_available", "<族>_get_load_error", "<op>", ...]
 
 ### 4.3 `_call_*` 的职责边界
 
-它只为"C++ out-param ↔ schema 函数式"而存在。可以承担**签名归一化**：dtype→整数编码、stage 归一化、`None`→默认值（见 `_svdquant.py` 的 `_encode_svdq_output_dtype`、`_normalize_svdq_runtime_stage`）。**不可以**承担输出形状/dtype 的推导——那属于 impl，否则 fake 必然漂移。
+它只为"C++ out-param ↔ schema 函数式"而存在。可以承担**签名归一化**：dtype→整数编码、按 rank 补齐 scale 列表、`None`→默认值（见 `_svdquant.py` 的 `_encode_svdq_output_dtype`、`_normalize_svdq_lora_scales`）。**不可以**承担输出形状/dtype 的推导——那属于 impl，否则 fake 必然漂移。
 
 ### 4.4 fake 的两条规则（条件式）
 
@@ -217,7 +217,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 
 注意 `kernels/__init__.py` 现状只 re-export 了 `svdq_extension_is_available` / `svdq_get_load_error`，comm/attn 的 availability getter 只能从域模块导入；新族建议把 availability getter 一并 re-export，否则冒烟命令容易 `ImportError`。
 
-`build_ext` 只比较**源文件** mtime（`setup.py` 里没有任何 `depends=`），所以改共享 `.h` 不会触发重编，见 §8。
+`build_ext` 比较源文件 mtime，`depends=` 只影响"头文件也参与 mtime 比较"。**现状只有 svdq 声明了 `depends=`**（`setup.py` 对 `csrc/kernels/svdq` 下全部 `.h/.cuh` 做 `rglob`），所以改 svdq 的头会重编；comm/attn/models 没有 `depends=`，改它们的共享 `.h` 不会重编，见 §8。
 
 ## 6. 内部调用接入
 
@@ -234,7 +234,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 |---|---|---|
 | 包内 re-export、`__all__` 自洽 | `tests/kernels/test_ops_dispatch.py` | 参数表**手工维护**，新算子不加条目等于没测；断言只保证 `kernels.__all__` 与 `vars(kernels)` 自洽（`!= "kernels"` 豁免），import 与 `__all__` 两边都漏时依然全绿 |
 | fake 注册 | `test_cuda_fp8_comm_ops.py::test_fp8_comm_fake_registration_shapes`、`test_cuda_merge_attn_states.py::test_fused_merge_attn_states_fake_registration` | `FakeTensorMode` 构图即可，CPU 能跑 |
-| 数值正确 | `test_cuda_fp8_comm_ops.py`（packing 参考）、`test_cuda_merge_attn_states.py`（float32 参考实现逐元素比）、`test_svdquant_runtime.py`（INT4 plain/ext 等价） | 需 CUDA + 扩展 |
+| 数值正确 | `test_cuda_fp8_comm_ops.py`（packing 参考）、`test_cuda_merge_attn_states.py`（float32 参考实现逐元素比）、`test_svdquant_runtime.py`（INT4 smoke + 融合 GELU epilogue 对 `gelu(out)` 的等价护栏） | 需 CUDA + 扩展 |
 | 边界与空输入 | `test_cuda_fp8_comm_ops.py`（未定义布局拒绝、empty input） | 需 CUDA + 扩展 |
 | 无扩展时的行为 | 各测试文件里的 `_require_*()` 守卫（现状 2 个文件有） | 只 `pytest.skip`，不断言错误文案 |
 | 源清单与磁盘一致 | `tests/kernels/test_svdquant_source_manifest.py` | **仅 svdq**，且是双向比对；comm/attn 只有构建期"清单有、磁盘缺"这一向 |
@@ -244,7 +244,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 
 ## 8. 坑清单（按"不报错"的危害排序）
 
-1. **改共享 `.h` 不触发重编**：`setup.py` 没有 `depends=`，`CacheDiTBuildExtension` 只合并 flag 桶，setuptools 只比源文件 mtime → 改头文件后 `.so` 静默不变。要么 `CACHE_DIT_CLEAN=1`，要么 touch 引用它的 `.cu`。
+1. **改共享 `.h` 不一定触发重编**：只有声明了 `depends=` 的族才把头文件纳入 mtime 比较——**现状只有 svdq 有**（`setup.py` 对 `csrc/kernels/svdq` 下全部 `.h/.cuh` 做 `rglob`）；comm/attn/models 没有，改它们的共享 `.h` 后 `.so` 会静默不变。新增族记得声明 `depends=`；否则要么 `CACHE_DIT_CLEAN=1`，要么 touch 引用它的 `.cu`。
 2. **schema 参数顺序写错 → 静默算错**（§4.5 第 2 条）。
 3. **陈旧 `.so` 缺新算子 → 裸 `AttributeError: ... has no attribute '<op>'`**，没有任何"请重建"提示。
 4. **源清单漏登记**：清单有、磁盘缺 → 构建期 `RuntimeError`（好情况）；磁盘有、清单无 → 该文件根本不参与编译，**静默**。

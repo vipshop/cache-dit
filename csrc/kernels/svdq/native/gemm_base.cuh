@@ -4,7 +4,7 @@
 #include "common.h"
 
 #include "utils.cuh"
-#include "../dispatch.h"
+#include "dispatch.h"
 #include "gemm_utils.cuh"
 #include "mma.cuh"
 
@@ -16,18 +16,9 @@
 #define ALWAYSINLINE __attribute__((always_inline))
 #endif
 
-// #define ENABLE_NAN_CHECK 1
-#if ENABLE_NAN_CHECK
-#define STRINGIZE(x) STRINGIZE2(x)
-#define STRINGIZE2(x) #x
-#define CHECK_NAN(data, name) checkNan(data, name " at " STRINGIZE(__LINE__))
-#else
-#define CHECK_NAN(data, name)
-#endif
-
 namespace svdq::native_kernels {
 
-template <bool bf16, bool faster_i2f = false>
+template <bool bf16>
 class GEMMConfig_W4A4 {
  public:
   // BE CAREFUL: weights need to be repacked when the tiling size changes
@@ -41,37 +32,12 @@ class GEMMConfig_W4A4 {
   static constexpr int INSN_N = 16;
   static constexpr int INSN_K = 64;
 
-  // faster i2f conversion on sm_75
-  // may generate incorrect results in certain circumstances
-  static constexpr bool FASTER_I2F = faster_i2f;
-
   using half_t = typename std::conditional_t<bf16, __nv_bfloat16, half>;
   using half2_t = typename std::conditional_t<bf16, __nv_bfloat162, half2>;
 };
 
 using GEMMConfig_W4A4_FP16 = GEMMConfig_W4A4<false>;
 using GEMMConfig_W4A4_BF16 = GEMMConfig_W4A4<true>;
-using GEMMConfig_W4A4_FP16_FasterI2F = GEMMConfig_W4A4<false, true>;
-
-class GEMMConfig_W8A8 {
- public:
-  static constexpr int BLOCK_M = 256;
-  static constexpr int BLOCK_N = 128;
-  static constexpr int WARP_SIZE = 32;
-  static constexpr int NUM_WARPS = 8;
-
-  static constexpr int INSN_M = 16;
-  static constexpr int INSN_N = 16;
-  static constexpr int INSN_K = 32;
-
-#if 0
-    using half_t  = half;
-    using half2_t = half2;
-#else
-  using half_t = __nv_bfloat16;
-  using half2_t = __nv_bfloat162;
-#endif
-};
 
 template <class Config>
 class GEMMBase : public Config {
@@ -924,24 +890,6 @@ __global__ static void invoke_kernel(T... args) {
   // ???
   kernel()(args...);
 #endif
-}
-
-template <typename T>
-__global__ static void test_sizeof_device() {
-  printf("sizeof on device = %d\n", (int)sizeof(T));
-}
-
-template <typename T>
-static void test_sizeof_host() {
-  printf("sizeof on host = %d\n", (int)sizeof(T));
-}
-
-template <typename T>
-static void test_sizeof() {
-  printf("typeid = %s\n", typeid(T).name());
-  test_sizeof_host<T>();
-  test_sizeof_device<T><<<1, 1>>>();
-  checkCUDA(cudaDeviceSynchronize());
 }
 
 };  // namespace svdq::native_kernels

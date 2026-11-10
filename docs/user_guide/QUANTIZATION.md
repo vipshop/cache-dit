@@ -20,7 +20,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native v2 GEMM.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
+|<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer, excluded Hopper (NO INT4 MMA)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
@@ -398,7 +398,7 @@ Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with hi
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with the CUDA extensions**.
 
-For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs and defaults to the native v2 GEMM. NVFP4 is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and defaults to the native GEMM. The public <span style="color:#c77dff;">runtime_kernel</span> choices are only <span style="color:#c77dff;">native</span> and <span style="color:#c77dff;">cute</span>; <span style="color:#c77dff;">None</span> selects the defaults above, while <span style="color:#c77dff;">cute</span> is an NVFP4-only opt-in path (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). For INT4, explicit <span style="color:#c77dff;">native</span> also selects native v2. The deprecated v1/v2 configuration strings are rejected; native v1 remains an implementation name for historical benchmarks.
+For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs and defaults to the native W4A4 GEMM. NVFP4 is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and defaults to the same native GEMM. The public <span style="color:#c77dff;">runtime_kernel</span> choices are only <span style="color:#c77dff;">native</span> and <span style="color:#c77dff;">cute</span>; <span style="color:#c77dff;">None</span> selects the defaults above, while <span style="color:#c77dff;">cute</span> is an NVFP4-only opt-in path (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). One native kernel family serves both precisions, so INT4 and NVFP4 differ only in the packed weight format.
 
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
@@ -596,7 +596,7 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 
 Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span>, <span style="color:#c77dff;">svdq_int4_r128_dq</span>, <span style="color:#c77dff;">svdq_nvfp4_r32_dq</span>, and <span style="color:#c77dff;">svdq_nvfp4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
 
-The DQ runtime routing is identical to PTQ: INT4 defaults to native v2 and NVFP4 defaults to native. Explicit <span style="color:#c77dff;">runtime_kernel="native"</span> selects native v2 for INT4 and the native kernel for NVFP4; <span style="color:#c77dff;">cute</span> is an NVFP4-only opt-in path (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). The deprecated v1/v2 configuration strings are not accepted; use <span style="color:#c77dff;">None</span>, <span style="color:#c77dff;">native</span>, or <span style="color:#c77dff;">cute</span>.
+The DQ runtime routing is identical to PTQ: INT4 and NVFP4 both default to the native W4A4 GEMM. Explicit <span style="color:#c77dff;">runtime_kernel="native"</span> selects that same native kernel; <span style="color:#c77dff;">cute</span> is an NVFP4-only opt-in path (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). Only <span style="color:#c77dff;">None</span>, <span style="color:#c77dff;">native</span>, and <span style="color:#c77dff;">cute</span> are accepted.
 
 Under the hood, cache-dit now treats this as an explicit backend-local smooth-strategy choice: DQ uses the identity smooth vector by default, while PTQ continues to use activation-derived smoothing. The public DQ behavior does not change, but this separation makes it easier to add future opt-in smooth strategies without redefining the meaning of existing `_dq` quant types.
 
@@ -914,7 +914,7 @@ python3 -m cache_dit.quantization.converter \
 | `--device` | no | `cuda` | Device to run quantization on. |
 | `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
 | `--svdq-calibrate-precision` | no | `low` | Precision plan for SVDQ decomposition math. One of: `low`, `medium`, `high`. |
-| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native` or `cute`. Default is automatic: INT4 native v2, NVFP4 native. See [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics. |
+| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native` or `cute`. Default is automatic: `native` for both INT4 and NVFP4. See [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics. |
 | `--verbose` | no | `false` | Print detailed quantization information including per-layer skip reasons. |
 
 ### Usage examples
@@ -965,7 +965,7 @@ cache-dit-convert \
 **With explicit native runtime and verbose logging:**
 
 ```bash
-# INT4 native automatically selects the native v2 implementation.
+# INT4 and NVFP4 both default to the native W4A4 implementation.
 cache-dit-convert \
   --model-path /path/to/FLUX.1-dev \
   --save-dir ./FLUX.1-dev-svdq \
@@ -1002,10 +1002,10 @@ pipe.transformer = cache_dit.load(
 
 The SVDQ W4A4 entry points are organized around two orthogonal selectors: <span style="color:#c77dff;">runtime</span> (which backend family runs) and <span style="color:#c77dff;">lora_layout</span> (which layout the LoRA-down activation `D` is stored in).
 
-- <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span>. `None`/`native` selects native v2 for INT4 and the native kernel for NVFP4; `cute` is NVFP4-only. The old v1/v2 configuration values are deprecated and rejected; v2 is now an internal native implementation name, not a separate runtime family.
+- <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span>. `None`/`native` selects the single native W4A4 GEMM for both INT4 and NVFP4; `cute` is NVFP4-only.
 - <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in. For `runtime="cute"`, the default (`None`) is `row_major`; other runtimes default to `native`. The `fused_mlp` configuration keeps its implicit `native` layout because those passes require fragment `D`.
 
-Only three combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, and <span style="color:green;">cute+row_major</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native v1 GEMM, which only understands the native FP32 fragment `D`.
+Only three combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, and <span style="color:green;">cute+row_major</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native GEMM, which only understands the native FP32 fragment `D`.
 
 Both selectors are configurable through `svdq_kwargs` and are carried into every quantized `SVDQW4A4Linear` layer at runtime (the per-rank `lora_scales` contract is a kernel-internal detail; checkpoints do not store it). Explicit `lora_layout="native"` preserves the fragment-D behavior with either runtime. Older cute checkpoints whose metadata omits the layout now resolve to `row_major`; producer and consumer switch together, but D changes from packed FP32 to BF16 and is not expected to remain bitwise identical to the old execution path.
 
@@ -1013,7 +1013,7 @@ Both selectors are configurable through `svdq_kwargs` and are carried into every
 # Default: runtime and layout are resolved automatically (native runtime + native D).
 quant_config = QuantizeConfig(
   quant_type="svdq_int4_r128_dq", # _r{rank}, e.g., r16, r32, r64, r128, etc.
-  svdq_kwargs={"runtime_kernel": "native"},  # optional: INT4 native v2 is already the default.
+  svdq_kwargs={"runtime_kernel": "native"},  # optional: native is already the default.
 )
 
 # CuTe NVFP4 with the row-major BF16 D contract (SM120): the fastest path on
@@ -1024,7 +1024,7 @@ quant_config = QuantizeConfig(
 )
 ```
 
-The generate CLI exposes both selectors: <span style="color:#c77dff;">--svdq-runtime</span> for the backend family and <span style="color:#c77dff;">--svdq-lora-layout</span> for the `D` contract (omitting `--svdq-runtime` has the same INT4 native v2 behavior):
+The generate CLI exposes both selectors: <span style="color:#c77dff;">--svdq-runtime</span> for the backend family and <span style="color:#c77dff;">--svdq-lora-layout</span> for the `D` contract (omitting `--svdq-runtime` keeps the same native default):
 
 ```bash
 python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --compile
@@ -1034,9 +1034,9 @@ python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute \
 
 When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requested `runtime_kernel` / `lora_layout` overrides the value recorded in the checkpoint, since both are pure runtime dispatch choices that do not change the serialized tensors.
 
-Historical INT4 measurements may still label the two implementation variants as v1/v2. Those labels describe kernel implementations used for comparison, not accepted `runtime_kernel` configuration values.
+Historical INT4 measurements may still label earlier implementation variants. Those labels describe kernel implementations used for comparison, not accepted `runtime_kernel` configuration values; the native runtime now has exactly one W4A4 GEMM implementation.
 
-The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes a v1-compatible 256-row interleaved E2M1 activation pack, matching activation scales and row-major BF16 LoRA activations directly. The GEMM loads activation A/SFA gmem-to-register (G2R), while weight B/SFB and BF16 D/L1 use TMA over shared memory, and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer or consume the native packed FP32 D. The current producer dispatch uses a fused in-CTA reduction for rank32 above M=8192 and split-K for rank64/128 and smaller-M rank32; split-K maintains its own FP32 scratch and runs a separate BF16 finalize kernel. The padded batch must be a multiple of 256. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
+The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down producer writes a 256-row interleaved E2M1 activation pack that matches the native packed layout, including activation scales and row-major BF16 LoRA activations. The GEMM loads activation A/SFA gmem-to-register (G2R), while weight B/SFB and BF16 D/L1 use TMA over shared memory, and fuses the BF16 LoRA-up correction into the same FP32 accumulator. It does not call the native activation quantizer or consume the native packed FP32 D. The current producer dispatch uses a fused in-CTA reduction for rank32 above M=8192 and split-K for rank64/128 and smaller-M rank32; split-K maintains its own FP32 scratch and runs a separate BF16 finalize kernel. The padded batch must be a multiple of 256. Legacy checkpoints are converted to the CuTe weight-side pack once at load time; the serialized native state dict remains unchanged.
 
 ### Performance comparison (native vs cute vs FlashInfer)
 
@@ -1084,7 +1084,7 @@ All three cache-dit paths agree numerically: `rel_l2` against native is 3.1–3.
 
 ## SVDQ with Fused MLP
 
-When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via the internal full-ABI SVDQ GEMM (``gemm_w4a4_ext`` in C++), eliminating one kernel launch per block.
+When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via the native SVDQ GEMM (``gemm_w4a4`` in C++), eliminating one kernel launch per block.
 
 The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automatically with most diffusers transformer families — no per-model configuration is needed.
 

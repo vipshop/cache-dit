@@ -320,8 +320,6 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
 
     auto f16psum = packed_fp32_to_fp16(fpsum);
 
-    CHECK_NAN(f16psum, "f16psum");
-
     Epilogue()(binfo, f16psum, M, N, K, epilogueArgs);
   }
 
@@ -580,78 +578,6 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
     __syncwarp();
   }
 
-  // each thread block (1 warp) quantize WARP_M * WARP_K tile (32 * 64)
-  struct quantize_w4a4_act_kernel {
-    static constexpr int MIN_ARCH = std::is_same_v<half_t, __nv_bfloat16> ? 800 : 750;
-    __device__ void operator()(const half_t *input, packed_act_t *output, packed_ascale_t *oscales,
-                               int K) {
-      const int laneId = threadIdx.x % WARP_SIZE;
-
-      const int bm = blockIdx.x / (BLOCK_M / WARP_M);
-      const int bk = blockIdx.y;
-      const int warpId = blockIdx.x % (BLOCK_M / WARP_M);
-
-      const int row = blockIdx.x * WARP_M;
-      const int col = blockIdx.y * WARP_K;
-
-      __shared__ alignas(128) half_t oscale_shmem[WARP_M];
-      __shared__ alignas(128) uint8_t tmp_shmem[INSN_M * INSN_K / 2];
-
-      for (int tileId = 0; tileId < WARP_M_TILES; tileId++) {
-        packed_act_t tmpout;
-
-        quantize_w4a4_warp(input + (row + tileId * INSN_M) * K + col, K, tmpout,
-                           oscale_shmem + tileId * INSN_M, tmp_shmem);
-
-        store(&output[(((bm * K / WARP_K + bk) * NUM_WARPS + warpId) * WARP_M_TILES + tileId) *
-                        WARP_SIZE +
-                      laneId],
-              tmpout);
-      }
-
-      // if (threadIdx.x == 0) {
-      //     printf("Block (%d, %d) => offset = %d\n", blockIdx.x, blockIdx.y, (bm * K / WARP_K +
-      //     bk) * NUM_WARPS
-      //     + warpId);
-      // }
-      pack_ascales(oscale_shmem, &oscales[((bm * K / WARP_K + bk) * NUM_WARPS + warpId) *
-                                          ASCALES_NUM_PACKS * ASCALES_VALID_LANES]);
-    }
-  };
-
-  // each thread block (1 warp) quantize WARP_N * WARP_K tile (128 * 64)
-  struct quantize_w4a4_wo_kernel {
-    static constexpr int MIN_ARCH = std::is_same_v<half_t, __nv_bfloat16> ? 800 : 750;
-    __device__ void operator()(const half_t *input, packed_wgt_t *output, packed_wscale_t *oscales,
-                               int K) {
-      const int laneId = threadIdx.x % WARP_SIZE;
-
-      const int bn = blockIdx.x / (BLOCK_N / WARP_N);
-      const int bk = blockIdx.y;
-
-      const int col = blockIdx.x * WARP_N;
-      const int row = blockIdx.y * WARP_K;
-
-      __shared__ alignas(128) half_t oscale_shmem[WARP_N];
-      __shared__ alignas(128) uint8_t tmp_shmem[INSN_M * INSN_K / 2];
-
-      for (int tileId = 0; tileId < WARP_N_TILES; tileId++) {
-        packed_wgt_t tmpout;
-
-        quantize_w4a4_warp(input + (col + tileId * INSN_N) * K + row, K, tmpout,
-                           oscale_shmem + tileId * INSN_N, tmp_shmem);
-
-        std::swap(tmpout.y, tmpout.z);
-
-        store(&output[((bn * K / WARP_K + bk) * WARP_N_TILES + tileId) * WARP_SIZE + laneId],
-              tmpout);
-      }
-
-      pack_wscales(oscale_shmem,
-                   &oscales[(bn * K / WARP_K + bk) * WSCALES_NUM_PACKS * WSCALES_VALID_LANES]);
-    }
-  };
-
   struct i2f_sm80 {
     __device__ __forceinline__ static float2 int2float2(int x, int y) {
       return make_float2(int2float_fast(x), int2float_fast(y));
@@ -662,117 +588,18 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
     }
   };
 
-  struct i2f_sm75 {
-    __device__ __forceinline__ static float2 int2float2(int x, int y) {
-      return make_float2(int2float_fast(x), int2float_fast(y));
-    }
-
-    __device__ __forceinline__ static half2_t int2half2(int x, int y) {
-      return half2(__int2half_rn(x), __int2half_rn(y));
-    }
-  };
-
-  struct i2f_sm75_fast {
-    __device__ __forceinline__ static float2 int2float2(int x, int y) {
-      return make_float2(int2float_fast(x), int2float_fast(y));
-    }
-
-    __device__ __forceinline__ static half2_t int2half2(int x, int y) {
-      return int2half2_fast_512(x, y);
-    }
-  };
-
   template <bool ACT_UNSIGNED, typename T>
   __device__ __forceinline__ static void compute(const act_warp &A, const wgt_warp &W,
                                                  const ascale_warp &ascale,
                                                  const wscale_warp &wscale, T &fpsum) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 800
     using int2half2 = i2f_sm80;
-#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 750
-    using int2half2 = std::conditional_t<Config::FASTER_I2F, i2f_sm75_fast, i2f_sm75>;
-    ;
 #else
-  using int2half2 = Base::i2f_normal;
+    using int2half2 = Base::i2f_normal;
 #endif
 
     Base::template apply_scales<int2half2>(
       [&](int i, int j) { return mma<ACT_UNSIGNED>(A[i], W[j]); }, ascale, wscale, fpsum);
-  }
-
-  __device__ __forceinline__ static void checkNan(fpsum_warp fpsum, const char *info = "") {
-#if ENABLE_NAN_CHECK
-    const int laneId = threadIdx.x % WARP_SIZE;
-    const int warpId = threadIdx.x / WARP_SIZE;
-
-    for (int i = 0; i < fpsum.size(); i++) {
-      for (int j = 0; j < 4; j++) {
-        bool abnormal =
-          !isfinite((float)fpsum[i].data[j].x) || !isfinite((float)fpsum[i].data[j].y);
-        if (abnormal) {
-          printf(
-            "abnormal value detected at block.x=%d block.y=%d warpId=%d laneId=%d fpsum_warp (%s) "
-            "i=%d "
-            "j=%d data.x=%f data.y=%f\n",
-            blockIdx.x, blockIdx.y, warpId, laneId, info, i, j, (float)fpsum[i].data[j].x,
-            (float)fpsum[i].data[j].y);
-          __trap();
-        }
-      }
-    }
-#endif
-  }
-
-  __device__ __forceinline__ static void checkNan(packed_f32psum_t fpsum, const char *info = "") {
-#if ENABLE_NAN_CHECK
-    const int laneId = threadIdx.x % WARP_SIZE;
-    const int warpId = threadIdx.x / WARP_SIZE;
-
-    for (int j = 0; j < 8; j++) {
-      bool abnormal = !isfinite(fpsum.data[j]);
-      if (abnormal) {
-        printf(
-          "abnormal value detected at bm=%d bn=%d warpId=%d laneId=%d packed_f32psum_t (%s) j=%d "
-          "data=%f\n",
-          blockIdx.x, blockIdx.y, warpId, laneId, info, j, fpsum.data[j]);
-        __trap();
-      }
-    }
-#endif
-  }
-
-  __device__ __forceinline__ static void checkNan(packed_fpsum_t fpsum, const char *info = "") {
-#if ENABLE_NAN_CHECK
-    const int laneId = threadIdx.x % WARP_SIZE;
-    const int warpId = threadIdx.x / WARP_SIZE;
-
-    for (int j = 0; j < 4; j++) {
-      bool abnormal = !isfinite((float)fpsum.data[j].x) || !isfinite((float)fpsum.data[j].y);
-      if (abnormal) {
-        printf(
-          "abnormal value detected at bm=%d bn=%d warpId=%d laneId=%d packed_fpsum_t (%s) j=%d "
-          "data.x=%f "
-          "data.y=%f\n",
-          blockIdx.x, blockIdx.y, warpId, laneId, info, j, (float)fpsum.data[j].x,
-          (float)fpsum.data[j].y);
-        __trap();
-      }
-    }
-#endif
-  }
-
-  __device__ __forceinline__ static void checkNan(float data, const char *info = "") {
-#if ENABLE_NAN_CHECK
-    const int laneId = threadIdx.x % WARP_SIZE;
-    const int warpId = threadIdx.x / WARP_SIZE;
-
-    bool abnormal = !isfinite(data);
-    if (abnormal) {
-      printf(
-        "abnormal value detected at bm=%d bn=%d warpId=%d laneId=%d packed_fpsum_t (%s) data=%f\n",
-        blockIdx.x, blockIdx.y, warpId, laneId, info, data);
-      __trap();
-    }
-#endif
   }
 
   // out: [M / BLOCK_M, N / BLOCK_N, NUM_WARPS, 1, NUM_M_TILES, NUM_N_TILES, WARP_SIZE] of
@@ -864,8 +691,6 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
     } else {
       f16psum = fpsum;
     }
-
-    CHECK_NAN(f16psum, "f16psum");
 
     Epilogue()(binfo, f16psum, M, N, K, epilogueArgs);
   }
@@ -987,8 +812,6 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
   template <typename Epilogue, bool ACT_UNSIGNED>
   struct gemm_w4a4_kernel {
     static constexpr int MIN_ARCH = std::is_same_v<half_t, __nv_bfloat16> ? 800 : 750;
-    static constexpr int MAX_ARCH =
-      Config::FASTER_I2F ? 750 : INT_MAX;  // FASTER_I2F is only needed on sm_75
 
     __device__ void operator()(const packed_act_t *act, const packed_wgt_t *wgt,
                                const packed_ascale_t *ascales, const packed_wscale_t *wscales,
@@ -1077,7 +900,6 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
         // args.smooth_factor ? args.smooth_factor + n_offset : nullptr
       );
 
-      CHECK_NAN(fpsum, "fpsum");
       // for (int i = 0; i < 16; i++) {
       //     printf("bm=%d bn=%d warp=%d lane=%d fpsum[%d][0:1]=%f %f\n",
       //         bm, bn, warpId, threadIdx.x % WARP_SIZE, i,

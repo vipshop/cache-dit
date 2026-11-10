@@ -85,7 +85,7 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     type=str,
     default=None,
     choices=("native", "cute"),
-    help="SVDQ GEMM family. Default: auto (INT4 native v2, NVFP4 native).",
+    help="SVDQ GEMM family. Default: auto (native for INT4 and NVFP4).",
   )
   parser.add_argument(
     "--verbose",

@@ -6,34 +6,6 @@
 #include <cuda_fp16.h>
 
 template <typename F>
-inline auto dispatchFloat(Tensor::ScalarType scalarType, F &&func) {
-  switch (scalarType) {
-    case Tensor::BF16:
-      return func.template operator()<__nv_bfloat16>();
-    case Tensor::FP16:
-      return func.template operator()<half>();
-    case Tensor::FP32:
-      return func.template operator()<float>();
-    default:
-      assert(false);
-      throw std::invalid_argument("scalarType is not a floating type");
-  }
-}
-
-template <typename F>
-inline auto dispatchFloat16(Tensor::ScalarType scalarType, F &&func) {
-  switch (scalarType) {
-    case Tensor::BF16:
-      return func.template operator()<__nv_bfloat16>();
-    case Tensor::FP16:
-      return func.template operator()<half>();
-    default:
-      assert(false);
-      throw std::invalid_argument("scalarType is not a float16 type");
-  }
-}
-
-template <typename F>
 inline auto dispatch(Tensor::ScalarType scalarType, F &&func) {
   switch (scalarType) {
     case Tensor::BF16:
@@ -63,16 +35,6 @@ inline bool isTypeMatch(Tensor::ScalarType scalarType) {
 }
 #pragma nv_diagnostic pop
 
-template <typename F, int... N>
-inline auto dispatchVal(int val, std::integer_sequence<int, N...>, F &&func) {
-  auto call = [&]<int i>() {
-    if (val == i) {
-      func.template operator()<i>();
-    }
-  };
-  (call.template operator()<N>(), ...);
-}
-
 template <typename F>
 inline auto dispatchBool(bool val, F &&func) {
   if (val) {
@@ -81,6 +43,3 @@ inline auto dispatchBool(bool val, F &&func) {
     func.template operator()<false>();
   }
 }
-
-#define VLLM_DISPATCH_FLOATING_TYPES(TYPE, NAME, ...) \
-  dispatchFloat(TYPE, [&]<typename scalar_t>() { __VA_ARGS__(); });
