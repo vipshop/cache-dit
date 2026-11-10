@@ -334,8 +334,11 @@ def _required_svdquant_sources() -> list[str]:
     "csrc/kernels/svdq/native/core/gemm_w4a4_ext.cu",
     "csrc/kernels/svdq/native/int4/gemm_w4a4_ext_i4.cu",
     "csrc/kernels/svdq/native/fp4/gemm_w4a4_ext_f4.cu",
-    "csrc/kernels/svdq/cute/fp4/gemm_w4a4.cu",
-    "csrc/kernels/svdq/cute/fp4/quantize_w4a4.cu",
+    "csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cu",
+    "csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu",
+    "csrc/kernels/svdq/cute/fp4/quantize/quantize_r32.cu",
+    "csrc/kernels/svdq/cute/fp4/quantize/quantize_r64.cu",
+    "csrc/kernels/svdq/cute/fp4/quantize/quantize_r128.cu",
   ]
 
 
@@ -623,6 +626,10 @@ def _get_svdquant_extension():
   extension = CUDAExtension(
     name="cache_dit._C_svdquant",
     sources=_required_svdquant_sources(),
+    depends=[
+      str(path) for path in (ROOT_DIR / "csrc" / "kernels" / "svdq").rglob("*")
+      if path.suffix in {".h", ".cuh"}
+    ],
     include_dirs=[
       str(ROOT_DIR / "csrc" / "kernels"),
       str(ROOT_DIR / "csrc" / "kernels" / "svdq"),

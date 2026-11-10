@@ -44,12 +44,14 @@
 //                          epilogue, fusion epilogues, quantization/vector utilities.
 //
 // CuTe runtime:
-//   cute/fp4/gemm_w4a4.h   Public CuTe NVFP4 GEMM ABI and LoraLayout enum.
-//   cute/fp4/gemm_w4a4.cuh / gemm_w4a4.cu
+//   cute/fp4/gemm/gemm_w4a4.{h,cuh,cu}
 //                          SM120 CuTe NVFP4 TMA/MMA implementation for native and row-major D.
-//   cute/fp4/quantize_w4a4.cu
-//                          Unified W4A4QuantizeKernel producer: native activation pack + row-major
-//                          BF16 LoRA-down D, launched when lora_layout='row_major'.
+//   cute/fp4/quantize/quantize_uni.cu
+//                          Universal producer for rank 0 and all non-specialized rank values.
+//   cute/fp4/quantize/quantize_impl.cuh
+//                          Shared TiledMMA/TiledCopy implementation for rank-specialized TUs.
+//   cute/fp4/quantize/quantize_r{32,64,128}.cu
+//                          Independent rank-specific fused and split-K instantiations.
 //
 // Selection summary:
 //   native + native layout + plain INT4 -> native gemm_w4a4 (stage=1 default)
@@ -65,7 +67,8 @@
 #include "torch.h"
 #include "runtime_params.h"
 #include "native/zgemm.h"
-#include "cute/fp4/gemm_w4a4.h"
+#include "cute/fp4/gemm/gemm_w4a4.h"
+#include "cute/fp4/quantize/quantize.h"
 
 namespace svdq::ops {
 
@@ -204,15 +207,16 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     if (!fp4) {
       throw std::runtime_error("lora_layout='row_major' implements the NVFP4 producer only.");
     }
+    const int64_t rank = lora_down && lora_down->dim() > 0 ? lora_down->size(-1) : 0;
+    const int64_t K = input && input->dim() > 0 ? input->size(-1) : 0;
+    if (input && input->dim() > 0 && K <= 0) {
+      throw std::runtime_error("quantize_w4a4 requires a non-empty input channel dimension.");
+    }
+    const int64_t M = K > 0 ? input->numel() / K : 0;
     torch::Tensor lora_scratch_t;
     if (input && lora_down && input->dim() > 0 && lora_down->dim() > 0) {
-      const int64_t K = input->size(-1);
-      const int64_t M = input->numel() / K;
-      const int64_t rank = lora_down->size(-1);
-      // RTX PRO 5000 measured crossover. Below the threshold split-K wins by 1%–10%;
-      // 16K rank32/128 and all rank64 large-M cells remain faster on the fused producer.
-      const bool use_split_k =
-        (rank == 32 && M <= 8192) || (rank == 64 && M <= 2048) || (rank == 128 && M <= 8192);
+      // Rank32 crosses to fused above 8K; rank64/128 use split-K throughout the measured matrix.
+      const bool use_split_k = cute_kernels::is_specialized_rank(rank) && (rank != 32 || M <= 8192);
       if (use_split_k) {
         lora_scratch_t = at::empty({M, rank}, input->options().dtype(at::kFloat));
       }
@@ -221,9 +225,17 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     if (lora_scratch_t.defined()) {
       lora_scratch = from_torch(lora_scratch_t);
     }
-    cute_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),
-                                get_tensor(lora_down), get_tensor(lora_act), get_tensor(smooth),
-                                std::move(lora_scales), lora_scratch);
+    auto quantize = &cute_kernels::quantize_uni;
+    if (rank == 32 && K > 3072) {
+      // Keep the universal producer for rank32/K3072, where it remains faster at 2K/4K/8K.
+      quantize = &cute_kernels::quantize_r32;
+    } else if (rank == 64) {
+      quantize = &cute_kernels::quantize_r64;
+    } else if (rank == 128) {
+      quantize = &cute_kernels::quantize_r128;
+    }
+    quantize(get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
+             get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch);
     return;
   }
   native_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),

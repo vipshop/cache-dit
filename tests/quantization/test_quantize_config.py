@@ -82,6 +82,18 @@ def test_quantize_config_accepts_explicit_native_lora_layout() -> None:
   assert config.svdq_kwargs["lora_layout"] == "native"
 
 
+def test_quantize_config_fused_mlp_keeps_native_default_lora_layout() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r128_dq",
+    svdq_kwargs={
+      "runtime_kernel": "cute",
+      "fused_mlp": True
+    },
+  )
+
+  assert config.svdq_kwargs["lora_layout"] == "native"
+
+
 def test_quantize_config_rejects_row_major_with_fused_mlp() -> None:
   with pytest.raises(ValueError, match="fused_mlp"):
     QuantizeConfig(
