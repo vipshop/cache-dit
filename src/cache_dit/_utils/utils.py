@@ -1569,6 +1569,9 @@ def _compile_options(args) -> Optional[Dict[str, Any]]:
 def _force_compile_dynamic(args, pipe) -> bool:
   _class_maybe_force_compile_dynamic = [
     "QwenImage",
+    # `_QwenImage21Pipeline` is the cache-dit optimisation pass over `QwenImage21Pipeline`
+    # and must compile with the same `dynamic` decision as the stock pipeline.
+    "_QwenImage21",
     "Flux2KleinKV",
   ]
   if args.force_compile_dynamic:

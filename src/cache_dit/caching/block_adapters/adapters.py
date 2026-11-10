@@ -533,6 +533,7 @@ def _qwenimage21_default_cfg_scale(pipe) -> Optional[float]:
 
 # NOTE: The registry returns the first class-name prefix that matches, so "QwenImage21" must be
 # registered before "QwenImage" ("QwenImage21*" class names also start with "QwenImage").
+@BlockAdapterRegister.register("_QwenImage21")
 @BlockAdapterRegister.register("QwenImage21")
 def qwenimage21_adapter(pipe, **kwargs) -> BlockAdapter:
   try:
@@ -543,6 +544,14 @@ def qwenimage21_adapter(pipe, **kwargs) -> BlockAdapter:
   _relaxed_assert(pipe.transformer, QwenImage21Transformer2DModel)
 
   from cache_dit.caching.patch_functors import QwenImage21PatchFunctor
+
+  if pipe.__class__.__name__.startswith("_QwenImage21"):
+    # cache-dit's own optimisation pass: install the fused forwards instead of the stock ones.
+    from cache_dit.models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+
+    patch_functor = _QwenImage21PatchFunctor()
+  else:
+    patch_functor = QwenImage21PatchFunctor()
 
   cfg_scale = _qwenimage21_default_cfg_scale(pipe)
   # Qwen-Image 2.1 samples without guidance by default, so each step runs the transformer once.
@@ -562,7 +571,7 @@ def qwenimage21_adapter(pipe, **kwargs) -> BlockAdapter:
     # per-layer prefix KV cache survives the cached-blocks wrapper.
     blocks=pipe.transformer.transformer_blocks,
     forward_pattern=ForwardPattern.Pattern_3,
-    patch_functor=QwenImage21PatchFunctor(),
+    patch_functor=patch_functor,
     check_forward_pattern=True,
     has_separate_cfg=has_separate_cfg,
     **kwargs,

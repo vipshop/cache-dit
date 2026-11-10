@@ -378,6 +378,11 @@ def _required_models_sources() -> list[str]:
     "csrc/kernels/models/boogu_scaled_rms_norm.cu",
     "csrc/kernels/models/boogu_gated_rms_norm.cu",
     "csrc/kernels/models/boogu_qk_norm_rope.cu",
+    "csrc/kernels/models/qwen_image21.cpp",
+    "csrc/kernels/models/qwen_image21_qk_norm_rope.cu",
+    "csrc/kernels/models/qwen_image21_modulate_affine.cu",
+    "csrc/kernels/models/qwen_image21_gated_residual.cu",
+    "csrc/kernels/models/qwen_image21_silu_mul.cu",
   ]
 
 

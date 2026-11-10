@@ -184,6 +184,16 @@ class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
   rejected because this model-specific processor implements the standard padded Ulysses path only.
   """
 
+  def patch_functor(self):
+    """Return the functor that installs the CP split/gather.
+
+    :returns: The stock Qwen-Image 2.1 patch functor.
+    """
+
+    from ...caching.patch_functors import QwenImage21PatchFunctor
+
+    return QwenImage21PatchFunctor()
+
   def _apply(
     self,
     transformer: QwenImage21Transformer2DModel,
@@ -211,9 +221,7 @@ class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
     if not getattr(transformer, "_is_patched", False):
       # The split/gather lives in the patch functor, so context parallelism needs it even when the
       # cache engine is not enabled. The functor is idempotent (`_is_patched`) for the cache path.
-      from ...caching.patch_functors import QwenImage21PatchFunctor
-
-      QwenImage21PatchFunctor().apply(transformer)
+      self.patch_functor().apply(transformer)
 
     _patch_attn_processor_for_cp()
     logger.info("Enabled Qwen-Image 2.1 context parallelism: full-sequence shards with "
@@ -283,3 +291,27 @@ class QwenImage21TensorParallelismPlanner(TensorParallelismPlanner):
       layer_plans.append(layer_plan)
 
     return transformer, layer_plans
+
+
+@ContextParallelismPlannerRegister.register("_QwenImage21")
+class _QwenImage21ContextParallelismPlanner(QwenImage21ContextParallelismPlanner):
+  """Context parallelism for the cache-dit optimisation pass over Qwen-Image 2.1.
+
+  The split/gather lives in the patch functor, and the fused functor is the only one that
+  accepts a transformer whose `__module__` is cache-dit's, so context parallelism has to
+  go through it. Everything else is inherited.
+  """
+
+  def patch_functor(self):
+    """Return the fused functor so the CP split/gather is actually installed.
+
+    :returns: The fused Qwen-Image 2.1 patch functor.
+    """
+
+    from ...models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+
+    return _QwenImage21PatchFunctor()
+
+
+TensorParallelismPlannerRegister.register("_QwenImage21Transformer2DModel")(
+  QwenImage21TensorParallelismPlanner)
