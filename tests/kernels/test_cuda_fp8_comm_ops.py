@@ -3,16 +3,16 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.kernels._comm import fp8_comm_per_token_dequant
 from cache_dit.kernels._comm import fp8_comm_per_token_quant
 from cache_dit.kernels._comm import fp8_comm_qkv_permute_dequant
 from cache_dit.kernels._comm import fp8_comm_qkv_permute_quant
-from cache_dit.kernels._comm import comm_extension_is_available
 
 
 def _require_runtime() -> None:
-  if not torch.cuda.is_available() or not comm_extension_is_available():
-    pytest.skip("CUDA and the cache-dit communication extension are required.")
+  if not torch.cuda.is_available() or not cuda_ext_is_available():
+    pytest.skip("CUDA and the cache-dit CUDA extension are required.")
 
 
 def _pack_rows(rows: torch.Tensor, eps: float, scale_dtype: torch.dtype) -> torch.Tensor:

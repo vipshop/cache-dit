@@ -1,7 +1,7 @@
 """Fused-op call sites of the vendored Boogu-Image model.
 
 Three normalizations dominate the block cost, and each one is a candidate for a
-fused CUDA launch from ``cache_dit._C_models``:
+fused CUDA launch from ``cache_dit._C_ops``:
 
 ``apply_scaled_rms_norm``
   ``rms_norm(x) * (1 + scale)``, the modulation epilogue of every block.
@@ -29,10 +29,10 @@ import os
 
 import torch
 
+from ....kernels import cuda_ext_is_available
 from ....kernels._models._boogu import boogu_fused_qk_norm_rope
 from ....kernels._models._boogu import boogu_gated_rms_norm
 from ....kernels._models._boogu import boogu_scaled_rms_norm
-from ....kernels._models._boogu import models_extension_is_available
 from .rms_norm import RMSNorm
 
 #: Norm classes whose forward is a plain RMS (`x * rsqrt(mean(x^2) + eps) * w`).
@@ -78,11 +78,11 @@ _BOOGU_FUSED_OPS_ENABLED = _env_enabled(_BOOGU_FUSED_OPS_ENV, default=True)
 def _boogu_kernels_usable() -> bool:
   """Return whether the Boogu fused path may run in this process.
 
-  :returns: `True` when the model switch is on and `cache_dit._C_models` is
+  :returns: `True` when the model switch is on and `cache_dit._C_ops` is
     importable.
   """
 
-  return _BOOGU_FUSED_OPS_ENABLED and models_extension_is_available()
+  return _BOOGU_FUSED_OPS_ENABLED and cuda_ext_is_available()
 
 
 def set_boogu_fused_ops_enabled(enabled: bool) -> None:

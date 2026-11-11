@@ -48,7 +48,7 @@ user-invocable: true
 | int8_* | >=sm80 | torchao（int8 kernel 走 mslk，需另装） |
 | int4_weight_only | >=sm90（w4a16 需要 TMA） | torchao（int4 kernel 走 mslk，需另装） |
 | nvfp4 / nvfp4_weight_only | >=sm100 | torchao（nvfp4 kernel 走 mslk，需另装；Triton 激活量化 + 动态 per-tensor scale） |
-| svdq_int4_* | >=sm80 且排除 sm90（无 INT4 MMA） | cache-dit CUDA 扩展 |
+| svdq_int4_* | >=sm89 且排除 sm90（无 INT4 MMA；统一 `_C_ops` 扩展的门槛） | cache-dit CUDA 扩展 |
 | svdq_nvfp4_* | >=sm120 | cache-dit CUDA 扩展 |
 
 分布式（CP/TP）场景优先 float8，避免 int4/nvfp4 的运行时不兼容；float8 内部还要避开 **`float8_per_block`**——文档明确它对 distributed inference 暂不支持。

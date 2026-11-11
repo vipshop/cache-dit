@@ -7,88 +7,17 @@ transformer:
 * ``boogu_gated_rms_norm`` — ``residual + tanh(gate) * rms_norm(x)``
 * ``boogu_fused_qk_norm_rope`` — per-head RMSNorm followed by interleaved RoPE
 
-They are optional: when ``cache_dit._C_models`` is missing the model code falls
-back to the bit-equivalent eager chain in
+They are optional: when the ``cache_dit._C_ops`` extension is missing the model code
+falls back to the bit-equivalent eager chain in
 ``cache_dit.models.pipelines.boogu_image.fused_ops``. This module only owns the
 operator layer (schema, fake, launch), not the call-site gating.
 """
 
-import importlib
-from types import ModuleType
 from typing import Optional
 
 import torch
 
-_EXTENSION_MODULE_NAME = "cache_dit._C_models"
-_cached_extension_module: Optional[ModuleType] = None
-_cached_load_error: Optional[Exception] = None
-
-
-def _load_extension_module() -> Optional[ModuleType]:
-  """Import the optional model-specific CUDA extension at most once.
-
-  :returns: The loaded extension module, or `None` when the import failed and the
-    failure was cached.
-  """
-
-  global _cached_extension_module, _cached_load_error
-
-  if _cached_extension_module is not None:
-    return _cached_extension_module
-  if _cached_load_error is not None:
-    return None
-
-  try:
-    _cached_extension_module = importlib.import_module(_EXTENSION_MODULE_NAME)
-  except Exception as exc:  # pragma: no cover - exercised without the extension
-    _cached_load_error = exc
-    return None
-
-  return _cached_extension_module
-
-
-def models_extension_is_available() -> bool:
-  """Return whether the optional model-specific CUDA extension can be imported.
-
-  :returns: `True` when `cache_dit._C_models` is importable.
-  """
-
-  return _load_extension_module() is not None
-
-
-def models_get_load_error() -> Optional[Exception]:
-  """Return the cached import error of the optional model-specific extension.
-
-  :returns: The import error raised while loading the extension, or `None` when
-    the extension loaded successfully.
-  """
-
-  _load_extension_module()
-  return _cached_load_error
-
-
-def _get_required_ops_module() -> ModuleType:
-  """Return the extension's `ops` submodule used by the Python wrappers.
-
-  :returns: The `ops` submodule exported by the loaded extension.
-  :raises RuntimeError: If the extension is unavailable or does not expose `ops`.
-  """
-
-  extension_module = _load_extension_module()
-  if extension_module is None:
-    raise RuntimeError(
-      "The optional Cache-DiT model-specific CUDA extension is not available. Build the "
-      "CUDA extensions with "
-      "`CACHE_DIT_BUILD_CUDA=1 python -m pip install -e . --no-build-isolation` after "
-      "`conda activate cdit`. The model kernels need sm80+, so a build that printed a "
-      "skipped-SM warning omits this extension.") from models_get_load_error()
-
-  ops_module = getattr(extension_module, "ops", None)
-  if ops_module is None:
-    raise RuntimeError(
-      "The loaded Cache-DiT model-specific CUDA extension does not expose an `ops` "
-      "submodule.")
-  return ops_module
+from .._cuda_ext import _get_required_ops_module
 
 
 def _call_boogu_scaled_rms_norm(
@@ -355,9 +284,6 @@ def boogu_fused_qk_norm_rope(
 
 
 __all__ = [
-  "_get_required_ops_module",
-  "models_extension_is_available",
-  "models_get_load_error",
   "boogu_scaled_rms_norm",
   "boogu_gated_rms_norm",
   "boogu_fused_qk_norm_rope",

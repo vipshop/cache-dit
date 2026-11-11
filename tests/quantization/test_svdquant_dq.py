@@ -16,7 +16,7 @@ import cache_dit
 import cache_dit.quantization.svdquant.ptq as svdq_ptq
 import cache_dit.quantization.svdquant.quantizer as svdq_quantizer
 from cache_dit import BlockAdapter
-from cache_dit.kernels import svdq_is_available
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.metrics import compute_psnr
 from cache_dit._utils.utils import get_args
 from cache_dit._utils.utils import maybe_apply_optimization
@@ -59,7 +59,7 @@ _FLUX2_FEW_SHOT_WARMUP_PROMPT = _FLUX2_PROMPTS[0]
 _FLUX2_FEW_SHOT_BENCH_PROMPTS = _FLUX2_PROMPTS[1:5]
 
 pytestmark = pytest.mark.skipif(
-  not torch.cuda.is_available() or not svdq_is_available(),
+  not torch.cuda.is_available() or not cuda_ext_is_available(),
   reason="SVDQ DQ tests require CUDA and the optional SVDQuant extension.",
 )
 

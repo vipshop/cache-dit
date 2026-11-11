@@ -1,4 +1,4 @@
-"""Python bridge for the Qwen-Image 2.1 operators in ``cache_dit._C_models``.
+"""Python bridge for the Qwen-Image 2.1 operators in ``cache_dit._C_ops``.
 
 Same six-section layout as :mod:`._boogu`, and the same shared extension: the C++ side
 only contributes ``qwen_image21_*`` entries to the existing ``ops`` submodule, so the
@@ -10,7 +10,7 @@ from typing import Optional
 
 import torch
 
-from ._boogu import _get_required_ops_module
+from .._cuda_ext import _get_required_ops_module
 
 __all__ = [
   "qwen_image21_gated_residual",

@@ -39,14 +39,14 @@ SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
   -> torch.ops.cache_dit_cuda_ops.<op>        Python 侧 torch.library：dispatch / fake / compile
   -> kernels/_<族>.py  @torch.library.impl(..., "CUDA")   元数据校验 + 建输出
   -> _call_<op>()                            out-param 桥 + 签名归一化
-  -> _C_<族>.ops.<op>                        pybind 子模块
-  -> csrc/kernels/<族>/<TU>.cpp -> <kernel>.cu            TORCH_CHECK + launch
+  -> _C_ops.ops.<op>                         pybind 子模块（单扩展，四族共用）
+  -> csrc/kernels/<族>/<族>.cpp -> <kernel>.cu            TORCH_CHECK + launch
 ```
 
 两条最容易找错地方的机制：
 
-- `cache_dit_cuda_ops` 命名空间**只存在于 Python**（`torch.library.define` 在模块 import 时创建）；`csrc/` 里没有任何 `TORCH_LIBRARY`，pybind 只暴露 `ops`（SVDQ 另有 `utils`）子模块。两套注册表靠 `_call_*` 桥接。
-- 三族现状、extension 名、namespace、arch 门槛、内部调用点、以及"没有统一文件名契约"这一事实，全部只在 `references/kernel-integration-chain.md` §2 维护，不要在这里重抄。
+- `cache_dit_cuda_ops` 命名空间**只存在于 Python**（`torch.library.define` 在模块 import 时创建）；`csrc/` 里没有任何 `TORCH_LIBRARY`，pybind 只暴露一个 `ops` 子模块，由唯一的 `csrc/kernels/ops.cpp` 建立，各族只提供 `register_<族>_ops(py::module_&)`。两套注册表靠 `_call_*` 桥接。
+- 四族现状、extension 名、namespace、arch 门槛、内部调用点与文件名契约（`<族>/<族>.h` + `<族>/<族>.cpp`），只在 `references/kernel-integration-chain.md` §2 维护，不要在这里重抄。
 
 C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 对 torch 不可见、不需要 `mutates_args`。校验以 C++ 的 `TORCH_CHECK` 为权威（`svdq` 是历史例外，两侧都几乎不校验，见 ref §3.3）。
 
@@ -56,11 +56,11 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 
 1. `csrc/kernels/<族>/<kernel>.cu`：kernel + 入口 `TORCH_CHECK`。
 2. 声明头：`void <op>(at::Tensor ...)`，`namespace cache_dit::<族>`。
-3. pybind TU：`PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)` + `m.def_submodule("ops").def("<op>", ...)`。
-4. `setup.py` 6 处：`_required_<族>_sources` / `_missing_<族>_sources` / `_get_<族>_extension` / `_get_extensions()` 追加 / 该函数里的 `"the three extensions"` 文案 / `IS_CU13_RELEASE` 分支；另有 4 个"族清单"同步点（ref §5.3）。
-5. `src/cache_dit/kernels/_<族>.py` 六段：loader → availability → `_get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装。
-6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装，并建议一并 re-export `<族>_extension_is_available` / `<族>_get_load_error`（现状只有 svdq 导出了这两个）；`__all__` 等于全部非下划线成员。
-7. 内部调用点：可用性门禁用 `<族>_extension_is_available()` 或捕获 `RuntimeError`；错误信息要带构建命令与 arch 门槛。
+3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("<op>", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。
+4. `setup.py`：加 `_required_<族>_sources()`、并进 `_required_cuda_sources()`、族目录加进 `_get_cuda_extension()` 的 `include_dirs`。没有 per-family extension 了；arch 谓词只有 `_is_supported_cuda_sm_target`（ref §5.1/§5.3）。
+5. `src/cache_dit/kernels/_<族>.py` 五段：`from ._cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
+6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/_cuda_ext.py`）；`__all__` 等于全部非下划线成员。
+7. 内部调用点：可用性门禁用 `cuda_ext_is_available()` 或捕获 `RuntimeError`；错误信息要带构建命令与 arch 门槛（sm89+、排除 sm90）。
 8. 测试：`test_ops_dispatch.py` 参数表条目、fake 用例、参考实现对比、`fullgraph=True` compile smoke（模板 `tests/kernels/test_cuda_fp8_comm_ops.py`）。
 
 三条硬规则：schema 形参顺序即调用顺序（写反不报错、静默算错）；fake 的 shape/dtype 必须与 impl 一致（否则 eager 绿、compile 炸）；`torch.library.define`/`impl` 不幂等，不要 reload 这些模块。
@@ -73,7 +73,7 @@ SVDQ 调用链：
 SVDQW4A4Linear.quantize / forward_quant
   -> src/cache_dit/kernels/_svdquant.py
   -> torch.library schema + fake/CUDA impl
-  -> pybind.cpp -> ops.h
+  -> svdq.cpp -> svdq.h（registrar + dispatcher 实现）
   -> svdq::native_kernels 或 svdq::cute_kernels
 ```
 
@@ -87,14 +87,14 @@ SVDQW4A4Linear.quantize / forward_quant
   - `zgemm.h`：对外只声明 `gemm_w4a4` 与 `quantize_w4a4`。
 - `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
 - `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译。公共入口声明在 `quantize.h`。
-- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`ops.h`/pybind 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher，由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
 - `csrc/kernels/svdq/runtime.h`：`RuntimeKernel` / `RuntimeParams` 与 `LoraLayout` 的**唯一**定义处。原 `runtime_params.h` 已删除；`LoraLayout` 原先定义在 cute 的 `gemm_w4a4.h`，现由 `runtime.h` 提供、cute 头 include 它。只有 host 侧依赖这个头，device kernel 体不依赖。
 - 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
 
 公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 与 NVFP4 都走同一个 native `gemm_w4a4`，差别只在 packed 权重/scale 格式（`fp4` 开关）；显式 `cute` 时 Python 默认 `lora_layout="row_major"`；显式 native 与 `fused_mlp` 保留 FP32 fragment-D 契约。GEMM 尚未达到相对 native 的 5% 验收目标，见 §8.1。
 
-SVDQ 在通用模板之外的偏离（3 个 required getter、`utils` 子模块、无 `TORCH_CHECK`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
+SVDQ 在通用模板之外的偏离（C++ 侧几乎无 `TORCH_CHECK`、形状/通道校验在 Python；`RuntimeParams`/`LoraLayout` 仍属全局 `svdq`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
 
 ## 4. SVDQ 专项：独立 NVFP4 CuTe 工作流
 
@@ -252,20 +252,20 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 ```text
 csrc/kernels/models/
-  models.cpp                 # 整族唯一的 PYBIND11_MODULE(TORCH_EXTENSION_NAME) + def_submodule("ops")
+  models.cpp                 # 族级 registrar：register_models_ops(ops) 逐个调 per-model registrar
   <model>.h                  # cache_dit::models 下的 void 入口声明（out-param）
   <model>.cpp                # register_<model>_ops(py::module_&)：只挂 pybind，不含计算
   <model>_<op>.cu            # 一个算子一个 TU
 
 src/cache_dit/kernels/_models/
-  __init__.py                # re-export 公开包装 + models_extension_is_available
+  __init__.py                # re-export 公开包装（可用性统一走 kernels/_cuda_ext.py）
   _<model>.py                # 六段模板（同 §2 第 5 步），公开名带模型前缀 <model>_<op>
 
 src/cache_dit/models/pipelines/<model>/
   fused_ops.py               # 模型侧调用点：前置条件 + 逐位等价 eager 回退 + 开关
 ```
 
-与三族最大的结构差异：**整族共用一个 extension 和一个 `PYBIND11_MODULE`**。各模型只提供 `void register_<model>_ops(py::module_& ops)`，在 `models.cpp` 里加一行调用即可；新增模型不再新增 extension，也不再改 `setup.py`。
+与框架级三族最大的结构差异：**本族内部再分层**。`models.cpp` 是族级 registrar（`register_models_ops`），各模型只提供 `void register_<model>_ops(py::module_& ops)`，在 `models.cpp` 里加一行调用即可；新增模型不加 extension，也不用改 `csrc/kernels/ops.cpp`，只要把新文件加进 `setup.py` 的 `_required_models_sources()`。
 
 ### 9.2 命名
 
@@ -276,7 +276,7 @@ src/cache_dit/models/pipelines/<model>/
 | C++ namespace | `cache_dit::models` | — |
 | 公开 torch 算子 | `{model}_{op}` | `boogu_scaled_rms_norm` |
 | Python 模块 | `kernels/_models/_<model>.py` | `_boogu.py` |
-| extension | `cache_dit._C_models`（全族共用） | — |
+| extension | `cache_dit._C_ops`（全部四族共用） | — |
 | 融合开关 | `CACHE_DIT_{MODEL}_FUSED_OPS` | `CACHE_DIT_BOOGU_FUSED_OPS` |
 
 开关随模型命名，不写无前缀的全局开关：模型专属算子会越来越多，`_FUSED_OPS_ENABLED` 这类名字一次就撞车。

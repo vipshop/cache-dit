@@ -5,7 +5,7 @@
 | 构建 | 内容 | 来源 |
 |---|---|---|
 | `cache-dit` | 纯 Python 源码 | [PyPI](https://pypi.org/project/cache-dit/) |
-| `cache-dit`（CUDA） | 同一份源码编译进 SVDQuant 扩展（`cache_dit._C_svdquant`） | 自建索引 `https://vipshop.github.io/cache-dit/whl/cu13/` |
+| `cache-dit`（CUDA） | 同一份源码编译进单一 CUDA 扩展（`cache_dit._C_ops`，含 SVDQuant/comm/attn/models 四族） | 自建索引 `https://vipshop.github.io/cache-dit/whl/cu13/` |
 
 两者同名同包（`cache_dit/`），靠 wheel 的 local 版本区分：CUDA 包是 `1.5.3+cu13`，纯包是 `1.5.3`。
 
@@ -18,7 +18,7 @@ pip install cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/
 
 - **必须用 `--extra-index-url`（不是 `--index-url`）**：自建索引只放 `cache-dit` 一个项目、不带依赖，PyPI 必须保持依赖来源。`pip` 合并两个索引并取最高版本，所以这条命令会解析到 CUDA 构建。反过来写（`--index-url` 指向自建索引、PyPI 作 extra）虽然也能装上，但依赖的来源会被这条命令一并改写，不要这么写。
 - **先装 torch**：wheel 只针对 CUDA 13.x 编译（验证基线 `torch==2.11.0+cu130`）。让 pip 从 PyPI 拉 torch 会拿到非 cu13 构建，装完 `import` 时报 `libcudart.so.13` 找不到。先 `pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu130`。
-- 运行前提：Linux x86_64、glibc ≥ 2.38、Python 3.11–3.14（以索引页列为准）、torch cu130、GPU 属于已编译架构（默认 setup.py 全架构集，CUDA 13 下 sm 89/90a/100/120a）。
+- 运行前提：Linux x86_64、glibc ≥ 2.38、Python 3.11–3.14（以索引页列为准）、torch cu130、GPU 属于已编译架构（默认 setup.py 集，当前 sm 89/120a；`sm90` 一律不编，`sm100` 需显式加编）。
 - pip 行为（实测）：local 版本排序高于同 base 版本，两个索引同时可用时 CUDA 包胜出，且已装的纯包不再满足需求；装过 CUDA 包后 `pip install -U cache-dit`（不带自建索引）**不会**降级回纯包；要退回纯包是「卸载再装」：
 
 ```bash
@@ -63,7 +63,7 @@ curl -s "https://vipshop.github.io/cache-dit/whl/cu13/cache-dit/" | grep -o 'cac
 安装后自检（纯包 `False`，CUDA 包 `True`；版本必须与 wheel 一致）：
 
 ```bash
-python -c "import cache_dit; from cache_dit.quantization import svdq_is_available; \
+python -c "import cache_dit; from cache_dit.kernels import cuda_ext_is_available; \
 print(cache_dit.__version__, svdq_is_available())"
 ```
 

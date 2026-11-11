@@ -66,14 +66,10 @@ def main() -> int:
     if args.so == "none" and binaries:
       raise SystemExit(
         f"{wheel.name} carries a binary, so it is not a pure-Python wheel: {binaries}")
-    if args.so == "svdquant" and not any("_C_svdquant" in name for name in binaries):
-      raise SystemExit(f"{wheel.name} carries no SVDQuant extension: {binaries}")
-    if args.so == "svdquant" and not any("_C_comm" in name for name in binaries):
-      raise SystemExit(f"{wheel.name} carries no communication extension: {binaries}")
-    if args.so == "svdquant" and not any("_C_attn" in name for name in binaries):
-      raise SystemExit(f"{wheel.name} carries no attention extension: {binaries}")
-    if args.so == "svdquant" and not any("_C_models" in name for name in binaries):
-      raise SystemExit(f"{wheel.name} carries no model-specific extension: {binaries}")
+    if args.so == "svdquant" and not any("_C_ops" in name for name in binaries):
+      raise SystemExit(
+        f"{wheel.name} carries no cache_dit._C_ops extension (the CUDA build links every "
+        f"operator family into that one module): {binaries}")
     version = _module_version(archive)
 
   if version != args.version:

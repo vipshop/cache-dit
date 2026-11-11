@@ -12,7 +12,7 @@ repo) and keeps its class names, block attribute names and `state_dict` keys, so
 released checkpoints load with `strict=True`. Intentional differences:
 
 * Triton RMSNorm replaced by `rms_norm.RMSNorm` (pure PyTorch) and the
-  `fused_ops` call sites for the `cache_dit._C_models` kernels;
+  `fused_ops` call sites for the `cache_dit._C_ops` kernels;
 * TeaCache / TaylorSeer removed (cache-dit's own cache owns that role);
 * context-parallel support written into the attention processors and the
   double-stream block instead of being patched in;

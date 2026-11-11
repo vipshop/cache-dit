@@ -6,7 +6,7 @@ The eager branch is therefore written as a literal transcription of the upstream
 expression (same dtypes, same operation order, same rounding points), not as an
 "approximately equal" reference.
 
-The kernels live in :mod:`cache_dit.kernels._models` (the shared ``cache_dit._C_models``
+The kernels live in :mod:`cache_dit.kernels._models` (the shared ``cache_dit._C_ops``
 extension). When the extension is missing, or a precondition below fails (dtype, device,
 alignment, shape, CP sharding, offload), the eager branch runs instead: that is the only
 fallback, and it is never silent on the operator-selection level because
@@ -115,14 +115,14 @@ def set_qwen_image21_fused_ops_enabled(enabled: bool) -> None:
 
 
 def fused_ops_extension_available() -> bool:
-  """Return whether the shared model-kernel extension can be imported.
+  """Return whether the shared CUDA extension can be imported.
 
-  :returns: `True` when ``cache_dit._C_models`` and its ops are usable.
+  :returns: `True` when ``cache_dit._C_ops`` and its ops are usable.
   """
 
-  from ....kernels._models import models_extension_is_available
+  from ....kernels import cuda_ext_is_available
 
-  return models_extension_is_available()
+  return cuda_ext_is_available()
 
 
 def _fusable_tensor(x: torch.Tensor) -> bool:

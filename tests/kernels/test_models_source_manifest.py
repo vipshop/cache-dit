@@ -1,4 +1,4 @@
-"""Guard the `cache_dit._C_models` source list in `setup.py`.
+"""Guard the `cache_dit._C_ops` model-specific source list in `setup.py`.
 
 `_required_models_sources()` is an explicit list, not a glob, so a new `<model>_<op>.cu`
 that is not added there is simply never compiled: `_missing_models_sources()` stays empty

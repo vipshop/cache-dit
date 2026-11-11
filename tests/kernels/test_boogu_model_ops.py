@@ -3,15 +3,15 @@ import torch
 from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.kernels._models import boogu_fused_qk_norm_rope
 from cache_dit.kernels._models import boogu_gated_rms_norm
 from cache_dit.kernels._models import boogu_scaled_rms_norm
-from cache_dit.kernels._models import models_extension_is_available
 
 
 def _require_runtime() -> None:
-  if not torch.cuda.is_available() or not models_extension_is_available():
-    pytest.skip("CUDA and the cache-dit model-specific extension are required.")
+  if not torch.cuda.is_available() or not cuda_ext_is_available():
+    pytest.skip("CUDA and the cache-dit CUDA extension are required.")
 
 
 def _ref_scaled_rms_norm(x, weight, eps, scale=None, zero_centered=False):

@@ -195,7 +195,7 @@ def test_switch_only_turns_off_on_explicit_falsey_values(monkeypatch):
 
 
 def test_ops_fall_back_to_eager_without_the_extension(monkeypatch):
-  """A missing `_C_models` must degrade to the literal expression, not raise."""
+  """A missing CUDA extension must degrade to the literal expression, not raise."""
 
   from cache_dit.models.pipelines._qwen_image21 import fused_ops
 

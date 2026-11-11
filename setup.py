@@ -34,11 +34,12 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # release build runs in.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
-# Default builds cover Ada (89), Hopper architecture-specific (90a), Blackwell
-# datacenter (100), and Blackwell consumer architecture-specific (120a). The
-# SVDQuant extension filters out Hopper because its INT4 kernels require >=sm80
-# and exclude sm90; its FP4 kernels still require sm120a or newer at runtime.
-DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")
+# Default builds cover Ada (89) and Blackwell consumer architecture-specific (120a) only:
+# every extra target multiplies the compile time of the single `_C_ops` extension, and the
+# Hopper (90a) / Blackwell datacenter (100) targets are not worth it by default. Hopper is
+# rejected by the predicate anyway (the SVDQuant INT4 kernels exclude sm90), and an explicit
+# CACHE_DIT_CUDA_ARCH_LIST still lets you add 100 (or anything else >= sm89).
+DEFAULT_CUDA_ARCH_TARGETS = ("89", "120a")
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -59,72 +60,40 @@ def _normalize_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -
   return sm
 
 
-def _default_cuda_arch_targets(
-  *,
-  support_sm90a: bool,
-  support_sm100: bool,
-  support_sm120: bool,
-) -> list[str]:
+def _default_cuda_arch_targets(*, support_sm120: bool) -> list[str]:
   """Return the default CUDA targets supported by the active nvcc toolchain.
 
-  :param support_sm90a: Whether nvcc supports the Hopper architecture-specific target.
-  :param support_sm100: Whether nvcc supports the Blackwell datacenter target.
   :param support_sm120: Whether nvcc supports the Blackwell consumer architecture-specific
     target.
-  :returns: The supported subset of `DEFAULT_CUDA_ARCH_TARGETS`.
+  :returns: The supported subset of `DEFAULT_CUDA_ARCH_TARGETS`, i.e. `["89"]`, `["120a"]`
+    or `["89", "120a"]`.
   """
 
   support = {
     "89": True,
-    "90a": support_sm90a,
-    "100": support_sm100,
     "120a": support_sm120,
   }
   return [sm for sm in DEFAULT_CUDA_ARCH_TARGETS if support.get(sm, False)]
 
 
-def _is_supported_svdquant_sm_target(sm: str) -> bool:
+def _is_supported_cuda_sm_target(sm: str) -> bool:
+  """Return whether a normalized SM target can host the single `cache_dit._C_ops` extension.
+
+  Every kernel family now shares one extension, so this predicate is the intersection of the
+  per-family floors: the communication and attention kernels need `>=sm89`, and the SVDQuant
+  INT4 kernels exclude Hopper (`sm90`). A Hopper-only target list therefore resolves to an
+  empty set and the extension is skipped as a whole.
+
+  :param sm: Normalized SM target such as `89`, `90`, or `120a`.
+  :returns: `True` when the target is `>=sm89` and is not `sm90`.
+  """
+
   normalized = sm.removesuffix("a")
   if not normalized.isdigit():
     return False
 
   capability = int(normalized)
-  return capability >= 80 and capability != 90
-
-
-def _is_supported_comm_sm_target(sm: str) -> bool:
-  """Return whether a normalized SM target can host the communication kernels.
-
-  The attention kernels share the same floor, so this predicate gates both `_C_comm`
-  and `_C_attn`.
-
-  :param sm: Normalized SM target such as `89`, `90`, or `120a`.
-  :returns: `True` when the target is `>=sm89`. Unlike SVDQuant, Hopper (sm90) is
-    supported.
-  """
-
-  normalized = sm.removesuffix("a")
-  if not normalized.isdigit():
-    return False
-
-  return int(normalized) >= 89
-
-
-def _is_supported_models_sm_target(sm: str) -> bool:
-  """Return whether a normalized SM target can host the model-specific kernels.
-
-  The per-model kernels only use bf16 arithmetic, warp shuffles and vectorized
-  16B loads, so `>=sm80` is the floor; unlike SVDQuant, Hopper (sm90) is fine.
-
-  :param sm: Normalized SM target such as `80`, `90`, or `120a`.
-  :returns: `True` when the target is `>=sm80`.
-  """
-
-  normalized = sm.removesuffix("a")
-  if not normalized.isdigit():
-    return False
-
-  return int(normalized) >= 80
+  return capability >= 89 and capability != 90
 
 
 def _env_flag(name: str) -> bool:
@@ -190,14 +159,14 @@ def _get_release_platform_tag() -> str:
 
 
 def _should_build_cuda() -> bool:
-  """Return whether the optional CUDA extensions take part in the build.
+  """Return whether the optional CUDA extension takes part in the build.
 
-  `CACHE_DIT_BUILD_CUDA=1` is the single switch for all of them: the build asks for
-  `cache_dit._C_svdquant`, `cache_dit._C_comm`, `cache_dit._C_attn`, and
-  `cache_dit._C_models` at once, and each extension is then skipped with a warning when
-  none of the resolved SM targets can host its kernels.
+  `CACHE_DIT_BUILD_CUDA=1` is the single switch: the build asks for `cache_dit._C_ops`,
+  which links every kernel family (SVDQuant, communication, attention, and model-specific)
+  into one module, and the extension is skipped with a warning when none of the resolved SM
+  targets can host it.
 
-  :returns: `True` when the build requests the CUDA extensions.
+  :returns: `True` when the build requests the CUDA extension.
   """
 
   return _env_flag(CUDA_BUILD_FLAG)
@@ -322,7 +291,7 @@ def _parse_arch_list(raw_arch_list: str) -> list[str]:
 
 def _required_svdquant_sources() -> list[str]:
   return [
-    "csrc/kernels/svdq/pybind.cpp",
+    "csrc/kernels/svdq/svdq.cpp",
     "csrc/kernels/svdq/torch.cpp",
     # One native W4A4 GEMM host TU plus the explicit INT4 / NVFP4 instantiations.
     "csrc/kernels/svdq/native/gemm_w4a4.cu",
@@ -336,24 +305,10 @@ def _required_svdquant_sources() -> list[str]:
   ]
 
 
-def _missing_svdquant_sources() -> list[str]:
-  return [
-    relative_path for relative_path in _required_svdquant_sources()
-    if not (ROOT_DIR / relative_path).exists()
-  ]
-
-
 def _required_comm_sources() -> list[str]:
   return [
-    "csrc/kernels/comm/comm_ops.cpp",
+    "csrc/kernels/comm/comm.cpp",
     "csrc/kernels/comm/fp8_comm.cu",
-  ]
-
-
-def _missing_comm_sources() -> list[str]:
-  return [
-    relative_path for relative_path in _required_comm_sources()
-    if not (ROOT_DIR / relative_path).exists()
   ]
 
 
@@ -361,13 +316,6 @@ def _required_attn_sources() -> list[str]:
   return [
     "csrc/kernels/attn/attn.cpp",
     "csrc/kernels/attn/merge_states.cu",
-  ]
-
-
-def _missing_attn_sources() -> list[str]:
-  return [
-    relative_path for relative_path in _required_attn_sources()
-    if not (ROOT_DIR / relative_path).exists()
   ]
 
 
@@ -393,6 +341,32 @@ def _missing_models_sources() -> list[str]:
   ]
 
 
+def _required_cuda_sources() -> list[str]:
+  """Return every translation unit linked into `cache_dit._C_ops`.
+
+  The per-family lists stay separate because `tests/kernels/test_svdquant_source_manifest.py`
+  and `tests/kernels/test_models_source_manifest.py` extract them from this file with `ast`.
+  The entry point is listed first: it is the only TU that defines `PYBIND11_MODULE`.
+
+  :returns: Relative paths of the entry TU followed by the four families' sources.
+  """
+
+  return [
+    "csrc/kernels/ops.cpp",
+    *_required_svdquant_sources(),
+    *_required_comm_sources(),
+    *_required_attn_sources(),
+    *_required_models_sources(),
+  ]
+
+
+def _missing_cuda_sources() -> list[str]:
+  return [
+    relative_path for relative_path in _required_cuda_sources()
+    if not (ROOT_DIR / relative_path).exists()
+  ]
+
+
 def _get_nvcc_version(cuda_home: str | None) -> str:
   nvcc_path = path.join(cuda_home, "bin", "nvcc") if cuda_home else "nvcc"
   try:
@@ -409,7 +383,9 @@ def _get_nvcc_version(cuda_home: str | None) -> str:
   return match.group(2)
 
 
-def _get_svdquant_nvcc_threads() -> int:
+def _get_cuda_nvcc_threads() -> int:
+  # One extension, so this thread count (`--threads=`) now applies to every family. The env name
+  # predates the merge and is kept so existing build scripts keep working.
   raw_threads = os.getenv("CACHE_DIT_SVDQ_NVCC_THREADS", "8").strip()
   try:
     threads = int(raw_threads)
@@ -465,20 +441,19 @@ def _validate_release_configuration() -> None:
 
 
 def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list[str]:
-  """Resolve the CUDA SM targets one optional extension compiles for.
+  """Resolve the CUDA SM targets the `cache_dit._C_ops` extension compiles for.
 
-  Every branch applies `is_supported` to the candidates, so an extension never receives a
+  Every branch applies `is_supported` to the candidates, so the extension never receives a
   `-gencode` flag its kernels cannot host: the predicate is the only gate, and there is no
-  post-hoc validation that could be forgotten when a branch is edited. An explicit arch
-  list stays authoritative -- it is never replaced by the default set -- so an extension
-  whose targets all fail the predicate resolves to an empty list, and the caller decides
-  between skipping it and failing.
+  post-hoc validation that could be forgotten when a branch is edited. An explicit arch list
+  stays authoritative -- it is never replaced by the default set -- so a list whose targets
+  all fail the predicate resolves to an empty list, and the caller fails the build.
 
-  :param scope: Extension label used in the build messages, e.g. `"Comm"` or `"Attn"`.
+  :param scope: Label used in the build messages, e.g. `"CUDA"`.
   :param is_supported: Predicate deciding whether a normalized SM target can host the
     extension's kernels.
-  :returns: The resolved SM targets, e.g. `["89", "90a", "120a"]`, or an empty list when
-    no candidate qualifies.
+  :returns: The resolved SM targets, e.g. `["89", "120a"]`, or an empty list when no
+    candidate qualifies.
   """
 
   assert packaging_version is not None
@@ -486,8 +461,6 @@ def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list
   assert torch is not None
 
   nvcc_version = _get_nvcc_version(CUDA_HOME)
-  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
-  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
@@ -520,11 +493,7 @@ def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list
         ))
     source = "detected on this machine"
   else:
-    candidates = _default_cuda_arch_targets(
-      support_sm90a=support_sm90a,
-      support_sm100=support_sm100,
-      support_sm120=support_sm120,
-    )
+    candidates = _default_cuda_arch_targets(support_sm120=support_sm120)
     source = ""
 
   sm_targets = list(dict.fromkeys(sm for sm in candidates if is_supported(sm)))
@@ -546,44 +515,55 @@ def _require_min_cuda_for_cu13_release() -> None:
                        f"but nvcc reports {nvcc_version}.")
 
 
-def _get_svdquant_extension():
-  """Build the optional SVDQuant extension requested by `CACHE_DIT_BUILD_CUDA`.
+def _get_cuda_extension():
+  """Build the single optional `cache_dit._C_ops` extension requested by `CACHE_DIT_BUILD_CUDA`.
 
-  :returns: A single-element list holding the `cache_dit._C_svdquant` extension, or an
-    empty list when the build does not request it, or when no resolved SM target can host
-    its INT4 and NVFP4 kernels.
+  One extension links every kernel family, so there is one source list, one `-gencode` set and
+  one header-dependency set. The SVDQuant sources need the spdlog and CUTLASS submodules, so
+  those become prerequisites of the whole extension rather than of a single family.
+
+  :returns: A single-element list holding the `cache_dit._C_ops` extension, or an empty list
+    when the build does not request it.
+  :raises SystemExit: If the build requested the extension but no resolved SM target can host
+    it. There is only one extension, so skipping it would silently ship a CUDA-less wheel for a
+    build that explicitly asked for CUDA.
   """
 
   if not _should_build_cuda():
     return []
 
-  sm_targets = _resolve_sm_targets("SVDQuant", _is_supported_svdquant_sm_target)
+  sm_targets = _resolve_sm_targets("CUDA", _is_supported_cuda_sm_target)
   if not sm_targets:
-    reason = "no resolved SM target can host cache_dit._C_svdquant (>=sm80, excluding sm90)"
+    reason = "no resolved SM target can host cache_dit._C_ops (>=sm89, excluding sm90)"
+    message = (f"[cache-dit] {reason}. Set CACHE_DIT_CUDA_ARCH_LIST to a supported target, or "
+               "unset CACHE_DIT_BUILD_CUDA for a pure-Python install.")
     if IS_CU13_RELEASE:
-      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships every CUDA extension, "
+      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships the CUDA extension, "
                          f"but {reason}.")
-    _warn_skipped(f"[cache-dit] CUDA build: skipping cache_dit._C_svdquant -- {reason}; set "
-                  "CACHE_DIT_CUDA_ARCH_LIST to a supported target to build it.")
-    return []
+    raise SystemExit(message)
 
   _require_min_cuda_for_cu13_release()
 
-  missing_sources = _missing_svdquant_sources()
+  missing_sources = _missing_cuda_sources()
   if missing_sources:
     preview = ", ".join(missing_sources[:4])
     if len(missing_sources) > 4:
       preview += ", ..."
     raise RuntimeError(
-      "`CACHE_DIT_BUILD_CUDA=1` was set, but the migrated SVDQuant native source tree is "
-      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
+      "`CACHE_DIT_BUILD_CUDA=1` was set, but the cache_dit._C_ops source list is incomplete. "
+      f"Missing files under {ROOT_DIR}: {preview}")
 
   assert CUDAExtension is not None
 
   _ensure_spdlog_submodule()
+  # The `-DBUILD_CACHE_DIT_*` macros are inert labels: no source references them. They are
+  # kept so the compile command still states which families the module links.
   gcc_flags = [
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
+    "-DBUILD_CACHE_DIT_COMM=1",
+    "-DBUILD_CACHE_DIT_ATTN=1",
+    "-DBUILD_CACHE_DIT_MODELS=1",
     "-fvisibility=hidden",
     "-O3",
     "-std=c++20",
@@ -591,6 +571,9 @@ def _get_svdquant_extension():
   msvc_flags = [
     "/DENABLE_BF16=1",
     "/DBUILD_CACHE_DIT_SVDQUANT=1",
+    "/DBUILD_CACHE_DIT_COMM=1",
+    "/DBUILD_CACHE_DIT_ATTN=1",
+    "/DBUILD_CACHE_DIT_MODELS=1",
     "/O2",
     "/std:c++20",
     "/Zc:__cplusplus",
@@ -599,6 +582,9 @@ def _get_svdquant_extension():
   nvcc_flags = [
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
+    "-DBUILD_CACHE_DIT_COMM=1",
+    "-DBUILD_CACHE_DIT_ATTN=1",
+    "-DBUILD_CACHE_DIT_MODELS=1",
     "-O3",
     "-std=c++20",
     "-Xcudafe",
@@ -611,7 +597,7 @@ def _get_svdquant_extension():
     "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
     "-U__CUDA_NO_BFLOAT162_OPERATORS__",
     "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-    f"--threads={_get_svdquant_nvcc_threads()}",
+    f"--threads={_get_cuda_nvcc_threads()}",
     "--use_fast_math",
     "--expt-relaxed-constexpr",
     "--expt-extended-lambda",
@@ -623,15 +609,18 @@ def _get_svdquant_extension():
     nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
 
   extension = CUDAExtension(
-    name="cache_dit._C_svdquant",
-    sources=_required_svdquant_sources(),
+    name="cache_dit._C_ops",
+    sources=_required_cuda_sources(),
     depends=[
-      str(path) for path in (ROOT_DIR / "csrc" / "kernels" / "svdq").rglob("*")
+      str(path) for path in (ROOT_DIR / "csrc" / "kernels").rglob("*")
       if path.suffix in {".h", ".cuh"}
     ],
     include_dirs=[
       str(ROOT_DIR / "csrc" / "kernels"),
       str(ROOT_DIR / "csrc" / "kernels" / "svdq"),
+      str(ROOT_DIR / "csrc" / "kernels" / "comm"),
+      str(ROOT_DIR / "csrc" / "kernels" / "attn"),
+      str(ROOT_DIR / "csrc" / "kernels" / "models"),
       str(ROOT_DIR / "csrc" / "third_party" / "spdlog" / "include"),
       _get_cutlass_include_dir(),
     ],
@@ -653,320 +642,20 @@ def _get_svdquant_extension():
   return [extension]
 
 
-def _get_comm_extension():
-  """Build the optional communication extension requested by `CACHE_DIT_BUILD_CUDA`.
-
-  :returns: A single-element list holding the `cache_dit._C_comm` extension, or an empty
-    list when the build does not request it, or when no resolved SM target can host its
-    kernels.
-  """
-
-  if not _should_build_cuda():
-    return []
-
-  sm_targets = _resolve_sm_targets("Comm", _is_supported_comm_sm_target)
-  if not sm_targets:
-    reason = "no resolved SM target can host cache_dit._C_comm (>=sm89)"
-    if IS_CU13_RELEASE:
-      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships every CUDA extension, "
-                         f"but {reason}.")
-    _warn_skipped(f"[cache-dit] CUDA build: skipping cache_dit._C_comm -- {reason}; set "
-                  "CACHE_DIT_CUDA_ARCH_LIST to a supported target to build it.")
-    return []
-
-  _require_min_cuda_for_cu13_release()
-
-  missing_sources = _missing_comm_sources()
-  if missing_sources:
-    preview = ", ".join(missing_sources[:4])
-    if len(missing_sources) > 4:
-      preview += ", ..."
-    raise RuntimeError(
-      "The Cache-DiT communication extension was requested, but its native source tree is "
-      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
-
-  assert CUDAExtension is not None
-
-  gcc_flags = [
-    "-DBUILD_CACHE_DIT_COMM=1",
-    "-fvisibility=hidden",
-    "-O3",
-    "-std=c++20",
-  ]
-  msvc_flags = [
-    "/DBUILD_CACHE_DIT_COMM=1",
-    "/O2",
-    "/std:c++20",
-    "/Zc:__cplusplus",
-    "/FS",
-  ]
-  # The communication kernels only need relaxed constexpr and lambda evaluation, so the
-  # SVDQuant-only spdlog settings are intentionally left out; fast-math is global (see below).
-  nvcc_flags = [
-    "-DBUILD_CACHE_DIT_COMM=1",
-    "-O3",
-    "--use_fast_math",
-    "-std=c++20",
-    "-U__CUDA_NO_HALF_OPERATORS__",
-    "-U__CUDA_NO_HALF_CONVERSIONS__",
-    "-U__CUDA_NO_HALF2_OPERATORS__",
-    "-U__CUDA_NO_HALF2_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-    "--expt-relaxed-constexpr",
-    "--expt-extended-lambda",
-  ]
-  if os.getenv("CACHE_DIT_BUILD_WHEELS", "0") == "0":
-    nvcc_flags.append("--generate-line-info")
-  for sm_target in sm_targets:
-    nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
-
-  extension = CUDAExtension(
-    name="cache_dit._C_comm",
-    sources=_required_comm_sources(),
-    include_dirs=[
-      str(ROOT_DIR / "csrc" / "kernels"),
-      str(ROOT_DIR / "csrc" / "kernels" / "comm"),
-    ],
-    extra_compile_args={
-      "gcc": gcc_flags,
-      "msvc": msvc_flags,
-      "nvcc": nvcc_flags,
-      "nvcc_msvc": [
-        "-Xcompiler",
-        "/Zc:__cplusplus",
-        "-Xcompiler",
-        "/FS",
-        "-Xcompiler",
-        "/bigobj",
-      ],
-    },
-  )
-
-  return [extension]
-
-
-def _get_attn_extension():
-  """Build the optional attention extension requested by `CACHE_DIT_BUILD_CUDA`.
-
-  :returns: A single-element list holding the `cache_dit._C_attn` extension, or an empty
-    list when the build does not request it, or when no resolved SM target can host its
-    kernels.
-  """
-
-  if not _should_build_cuda():
-    return []
-
-  sm_targets = _resolve_sm_targets("Attn", _is_supported_comm_sm_target)
-  if not sm_targets:
-    reason = "no resolved SM target can host cache_dit._C_attn (>=sm89)"
-    if IS_CU13_RELEASE:
-      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships every CUDA extension, "
-                         f"but {reason}.")
-    _warn_skipped(f"[cache-dit] CUDA build: skipping cache_dit._C_attn -- {reason}; set "
-                  "CACHE_DIT_CUDA_ARCH_LIST to a supported target to build it.")
-    return []
-
-  _require_min_cuda_for_cu13_release()
-
-  missing_sources = _missing_attn_sources()
-  if missing_sources:
-    preview = ", ".join(missing_sources[:4])
-    if len(missing_sources) > 4:
-      preview += ", ..."
-    raise RuntimeError(
-      "The Cache-DiT attention extension was requested, but its native source tree is "
-      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
-
-  assert CUDAExtension is not None
-
-  gcc_flags = [
-    "-fvisibility=hidden",
-    "-O3",
-    "-std=c++20",
-  ]
-  msvc_flags = [
-    "/O2",
-    "/std:c++20",
-    "/Zc:__cplusplus",
-    "/FS",
-  ]
-  # The attention kernels only need relaxed constexpr and lambda evaluation, so the
-  # SVDQuant-only spdlog settings are intentionally left out; fast-math is global (see below).
-  nvcc_flags = [
-    "-O3",
-    "--use_fast_math",
-    "-std=c++20",
-    "-U__CUDA_NO_HALF_OPERATORS__",
-    "-U__CUDA_NO_HALF_CONVERSIONS__",
-    "-U__CUDA_NO_HALF2_OPERATORS__",
-    "-U__CUDA_NO_HALF2_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-    "--expt-relaxed-constexpr",
-    "--expt-extended-lambda",
-  ]
-  if os.getenv("CACHE_DIT_BUILD_WHEELS", "0") == "0":
-    nvcc_flags.append("--generate-line-info")
-  for sm_target in sm_targets:
-    nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
-
-  extension = CUDAExtension(
-    name="cache_dit._C_attn",
-    sources=_required_attn_sources(),
-    include_dirs=[
-      str(ROOT_DIR / "csrc" / "kernels"),
-      str(ROOT_DIR / "csrc" / "kernels" / "attn"),
-    ],
-    extra_compile_args={
-      "gcc": gcc_flags,
-      "msvc": msvc_flags,
-      "nvcc": nvcc_flags,
-      "nvcc_msvc": [
-        "-Xcompiler",
-        "/Zc:__cplusplus",
-        "-Xcompiler",
-        "/FS",
-        "-Xcompiler",
-        "/bigobj",
-      ],
-    },
-  )
-
-  return [extension]
-
-
-def _get_models_extension():
-  """Build the optional model-specific extension requested by `CACHE_DIT_BUILD_CUDA`.
-
-  :returns: A single-element list holding the `cache_dit._C_models` extension, or an empty
-    list when the build does not request it, or when no resolved SM target can host its
-    kernels.
-  """
-
-  if not _should_build_cuda():
-    return []
-
-  sm_targets = _resolve_sm_targets("Models", _is_supported_models_sm_target)
-  if not sm_targets:
-    reason = "no resolved SM target can host cache_dit._C_models (>=sm80)"
-    if IS_CU13_RELEASE:
-      raise RuntimeError("[cache-dit] The 'cu13' release flavor ships every CUDA extension, "
-                         f"but {reason}.")
-    _warn_skipped(f"[cache-dit] CUDA build: skipping cache_dit._C_models -- {reason}; set "
-                  "CACHE_DIT_CUDA_ARCH_LIST to a supported target to build it.")
-    return []
-
-  _require_min_cuda_for_cu13_release()
-
-  missing_sources = _missing_models_sources()
-  if missing_sources:
-    preview = ", ".join(missing_sources[:4])
-    if len(missing_sources) > 4:
-      preview += ", ..."
-    raise RuntimeError(
-      "The Cache-DiT model-specific extension was requested, but its native source tree is "
-      f"incomplete. Missing files under {ROOT_DIR}: {preview}")
-
-  assert CUDAExtension is not None
-
-  gcc_flags = [
-    "-DBUILD_CACHE_DIT_MODELS=1",
-    "-fvisibility=hidden",
-    "-O3",
-    "-std=c++20",
-  ]
-  msvc_flags = [
-    "/DBUILD_CACHE_DIT_MODELS=1",
-    "/O2",
-    "/std:c++20",
-    "/Zc:__cplusplus",
-    "/FS",
-  ]
-  # The model kernels are plain bf16 elementwise/reduction code, so the SVDQuant-only
-  # spdlog settings are intentionally left out; fast-math is global (see below).
-  nvcc_flags = [
-    "-DBUILD_CACHE_DIT_MODELS=1",
-    "-O3",
-    # Fast-math is on for every extension in this file. It replaces `expf` / `tanhf` /
-    # `rsqrtf` and `/` with the approximate SFU forms, so kernels that fuse one of those
-    # cannot be bit-identical to the eager expression any more; the Qwen-Image 2.1 operator
-    # family validates against rel-L2 and end-to-end PSNR instead of `torch.equal`.
-    # If you hit accuracy problems, drop this one flag (the rounding of `+ - *` is set with
-    # the explicit `__fadd_rn` / `__fmul_rn` / `__fmaf_rn` intrinsics and stays exact).
-    "--use_fast_math",
-    "-std=c++20",
-    "-U__CUDA_NO_HALF_OPERATORS__",
-    "-U__CUDA_NO_HALF_CONVERSIONS__",
-    "-U__CUDA_NO_HALF2_OPERATORS__",
-    "-U__CUDA_NO_HALF2_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT16_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT16_CONVERSIONS__",
-    "-U__CUDA_NO_BFLOAT162_OPERATORS__",
-    "-U__CUDA_NO_BFLOAT162_CONVERSIONS__",
-    "--expt-relaxed-constexpr",
-    "--expt-extended-lambda",
-  ]
-  if os.getenv("CACHE_DIT_BUILD_WHEELS", "0") == "0":
-    nvcc_flags.append("--generate-line-info")
-  for sm_target in sm_targets:
-    nvcc_flags += ["-gencode", f"arch=compute_{sm_target},code=sm_{sm_target}"]
-
-  extension = CUDAExtension(
-    name="cache_dit._C_models",
-    sources=_required_models_sources(),
-    include_dirs=[
-      str(ROOT_DIR / "csrc" / "kernels"),
-      str(ROOT_DIR / "csrc" / "kernels" / "models"),
-    ],
-    extra_compile_args={
-      "gcc": gcc_flags,
-      "msvc": msvc_flags,
-      "nvcc": nvcc_flags,
-      "nvcc_msvc": [
-        "-Xcompiler",
-        "/Zc:__cplusplus",
-        "-Xcompiler",
-        "/FS",
-        "-Xcompiler",
-        "/bigobj",
-      ],
-    },
-  )
-
-  return [extension]
-
-
 def _get_extensions() -> tuple[list, dict[str, object]]:
-  """Collect every CUDA extension requested by `CACHE_DIT_BUILD_CUDA`.
+  """Collect the CUDA extension requested by `CACHE_DIT_BUILD_CUDA`.
 
-  :returns: The requested extensions and the shared `build_ext` cmdclass mapping.
-  :raises SystemExit: If the build requested the CUDA extensions but no resolved SM target
-    can host any of them; an extension-less wheel would only surface at the first use.
+  :returns: The requested extension and the shared `build_ext` cmdclass mapping.
+  :raises SystemExit: If the build requested the CUDA extension but no resolved SM target can
+    host it; `_get_cuda_extension()` owns that check because skipping the only extension would
+    produce a wheel that silently lacks every CUDA operator.
   """
 
   if not _should_build_cuda():
     return [], {}
 
-  ext_modules = [
-    *_get_svdquant_extension(),
-    *_get_comm_extension(),
-    *_get_attn_extension(),
-    *_get_models_extension(),
-  ]
-  if not ext_modules:
-    raise SystemExit(
-      "[cache-dit] CACHE_DIT_BUILD_CUDA=1 was set, but no resolved SM target can host any of "
-      "the four extensions (SVDQuant >=sm80 excluding sm90, comm and attn >=sm89, models "
-      ">=sm80). Set CACHE_DIT_CUDA_ARCH_LIST to a supported target list, or unset "
-      "CACHE_DIT_BUILD_CUDA for a pure-Python install.")
-
   assert CacheDiTBuildExtension is not None
-  return ext_modules, {"build_ext": CacheDiTBuildExtension}
+  return _get_cuda_extension(), {"build_ext": CacheDiTBuildExtension}
 
 
 def is_git_directory(path="."):
