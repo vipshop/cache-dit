@@ -279,7 +279,7 @@ def _call_svdq_quantize_w4a4_native(
 def _call_svdq_gemm_w4a4(
   act: torch.Tensor,
   wgt: torch.Tensor,
-  out: torch.Tensor,
+  out: torch.Tensor | None,
   qout: torch.Tensor | None,
   ascales: torch.Tensor | None,
   wscales: torch.Tensor | None,
@@ -307,7 +307,8 @@ def _call_svdq_gemm_w4a4(
 
   :param act: Packed activation tensor `[M, K / 2]`.
   :param wgt: Packed quantized weight tensor `[N, K / 2]`.
-  :param out: Dense output buffer `[M, N]`.
+  :param out: Dense output buffer `[M, N]`, or None to skip the dense epilogue entirely (only
+    valid on the native fused qout path).
   :param qout: Optional packed quantized output buffer `[M, N / 2]` for the next layer.
   :param ascales: Activation scales `[K / G, M]`, where `G` is 64 for INT4 and 16 for FP4.
   :param wscales: Weight scales `[K / G, N]`, where `G` is 64 for INT4 and 16 for FP4.
@@ -483,8 +484,8 @@ torch.library.define(
   "(Tensor act, Tensor wgt, Tensor ascales, Tensor wscales, Tensor? qout, Tensor? oscales, "
   "Tensor? lora_act_in, Tensor? lora_up, Tensor? lora_down, Tensor? lora_act_out, "
   "Tensor? bias, Tensor? smooth_factor, Tensor? wcscales, bool act_unsigned, bool fuse_silu, "
-  "bool fp4, float alpha, float[] lora_scales, str runtime, str lora_layout, int out_dtype_id) "
-  "-> Tensor",
+  "bool fp4, float alpha, float[] lora_scales, str runtime, str lora_layout, int out_dtype_id, "
+  "bool write_dense=True) -> Tensor",
 )
 
 
@@ -511,6 +512,7 @@ def _svdq_gemm_w4a4(
   runtime: str,
   lora_layout: str,
   out_dtype_id: int,
+  write_dense: bool = True,
 ) -> torch.Tensor:
   if _normalize_svdq_runtime(runtime) == "cute":
     output = torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
@@ -542,9 +544,27 @@ def _svdq_gemm_w4a4(
   if _normalize_svdq_lora_layout(lora_layout) != "native":
     raise ValueError("runtime='native' only supports lora_layout='native'.")
 
-  output = torch.empty((act.shape[0], wgt.shape[0]),
-                       dtype=_decode_svdq_output_dtype(out_dtype_id),
-                       device=act.device)
+  if not write_dense:
+    # The kernel only skips the dense `EpilogueDefault` store when it takes the fused qout
+    # branch, and that branch dereferences `smooth_factor` unconditionally. The matching C++
+    # checks are `assert`s, which stay enabled in the nvcc translation units (`-DNDEBUG` only
+    # reaches the host flags), so a bad combination aborts instead of failing gracefully.
+    if qout is None or oscales is None:
+      raise ValueError("write_dense=False requires the fused qout path: pass both qout and "
+                       "oscales, otherwise the kernel has no output to write.")
+    if smooth_factor is None:
+      raise ValueError("write_dense=False requires smooth_factor; the fused qout epilogue "
+                       "consumes it unconditionally.")
+    if fp4 and all(t is None for t in (bias, lora_up, lora_down, wcscales)):
+      raise ValueError("write_dense=False on the NVFP4 path needs one of "
+                       "bias/lora_up/lora_down/wcscales: they are the only dtype sources left "
+                       "once the dense output buffer is gone.")
+    output = None
+  else:
+    output = torch.empty((act.shape[0], wgt.shape[0]),
+                         dtype=_decode_svdq_output_dtype(out_dtype_id),
+                         device=act.device)
+
   _call_svdq_gemm_w4a4(
     act=act,
     wgt=wgt,
@@ -568,6 +588,10 @@ def _svdq_gemm_w4a4(
     runtime="native",
     lora_layout="native",
   )
+  if output is None:
+    # Placeholder only: its dtype and shape carry no meaning beyond "the kernel produced no
+    # dense output". `write_dense=False` callers must not read it.
+    return act.new_empty((0, wgt.shape[0]))
   return output
 
 
@@ -594,12 +618,15 @@ def _fake_svdq_gemm_w4a4(
   runtime: str,
   lora_layout: str,
   out_dtype_id: int,
+  write_dense: bool = True,
 ) -> torch.Tensor:
   del ascales, wscales, qout, oscales, lora_act_in, lora_up, lora_down, lora_act_out, bias
   del smooth_factor, wcscales, act_unsigned, fuse_silu, fp4, alpha, lora_scales
   if _normalize_svdq_runtime(runtime) == "cute":
     _normalize_svdq_lora_layout(lora_layout)
     return act.new_empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16)
+  if not write_dense:
+    return act.new_empty((0, wgt.shape[0]))
   return act.new_empty((act.shape[0], wgt.shape[0]), dtype=_decode_svdq_output_dtype(out_dtype_id))
 
 
@@ -666,6 +693,7 @@ def svdq_gemm_w4a4(
   lora_act_out: torch.Tensor | None = None,
   smooth_factor: torch.Tensor | None = None,
   fuse_silu: bool = False,
+  write_dense: bool = True,
 ) -> torch.Tensor:
   """Run the SVDQ W4A4 GEMM on the selected runtime with an optional LoRA-up correction.
 
@@ -680,6 +708,11 @@ def svdq_gemm_w4a4(
 
   The trailing `qout`/`oscales`/`lora_down`/`lora_act_out`/`smooth_factor`/`fuse_silu` arguments
   only exist for the native fused-MLP epilogue chain; the CuTe runtime rejects them.
+
+  `write_dense=False` drops that chain's dense output entirely: the kernel skips its `EpilogueDefault`
+  store and only writes `qout`/`oscales`/`lora_act_out`, which is what a fused-MLP pass needs. It
+  requires `runtime='native'` plus `qout`, `oscales` and `smooth_factor`, and the return value becomes
+  a 0-element placeholder whose dtype and shape carry no meaning.
 
   :param act: Packed activation tensor `[M, K / 2]`.
   :param wgt: Packed weight tensor `[N, K / 2]`.
@@ -704,10 +737,14 @@ def svdq_gemm_w4a4(
   :param lora_act_out: Optional LoRA activation output buffer `[M, R]` of the next fused layer.
   :param smooth_factor: Optional smoothing factors `[N]` written for the next-layer quantizer.
   :param fuse_silu: Whether to fuse SiLU inside the native kernel.
-  :returns: Dense output `[M, N]`.
+  :param write_dense: Whether the fused qout path should also write the dense `[M, N]` activation.
+    Pass `False` when the caller only consumes `qout`/`oscales`/`lora_act_out` (for example
+    `fused_gelu_mlp`), which removes a full-size HBM store per call.
+  :returns: Dense output `[M, N]`, or a 0-element placeholder when `write_dense=False`.
   :raises ValueError: If `runtime`/`lora_layout` is unknown, if `runtime='native'` is paired with
-    `lora_layout='row_major'`, if the CuTe runtime is asked for INT4 or a non-BF16 output, or if
-    per-rank `lora_scales` are passed for row-major D.
+    `lora_layout='row_major'`, if the CuTe runtime is asked for INT4 or a non-BF16 output, if
+    per-rank `lora_scales` are passed for row-major D, or if `write_dense=False` is requested
+    without the native fused qout arguments.
   """
   normalized_runtime = _normalize_svdq_runtime(runtime)
   normalized_layout = _normalize_svdq_lora_layout(lora_layout)
@@ -726,14 +763,30 @@ def svdq_gemm_w4a4(
         or smooth_factor is not None or fuse_silu):
       raise ValueError("runtime='cute' does not accept the fused native arguments "
                        "(qout/oscales/lora_down/lora_act_out/smooth_factor/fuse_silu).")
+  if not write_dense:
+    if normalized_runtime != "native":
+      raise ValueError("write_dense=False is only available on runtime='native'; the CuTe GEMM "
+                       "always writes the dense output.")
+    if qout is None or oscales is None or smooth_factor is None:
+      raise ValueError("write_dense=False requires qout, oscales and smooth_factor; without them "
+                       "the kernel has no fused output to write.")
+    if fp4 and all(t is None for t in (bias, lora_up, lora_down, wcscales)):
+      raise ValueError("write_dense=False on the NVFP4 path needs one of "
+                       "bias/lora_up/lora_down/wcscales: they are the only dtype sources left "
+                       "once the dense output buffer is gone.")
   if alpha is None:
     alpha = 1.0
   if output_dtype is None:
-    # The CuTe runtime always writes BF16, so it needs no dtype hint from the auxiliary tensors.
-    output_dtype = (torch.bfloat16 if normalized_runtime == "cute" else _infer_svdq_output_dtype(
-      None, lora_up, bias, wscales))
-    if output_dtype is None:
-      raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4.")
+    if not write_dense:
+      # `out_dtype_id` only sizes the dense buffer, which is skipped here, so a neutral encoding
+      # avoids failing the inference for rank-0/no-bias callers.
+      output_dtype = torch.bfloat16
+    else:
+      # The CuTe runtime always writes BF16, so it needs no dtype hint from the auxiliary tensors.
+      output_dtype = (torch.bfloat16 if normalized_runtime == "cute" else _infer_svdq_output_dtype(
+        None, lora_up, bias, wscales))
+      if output_dtype is None:
+        raise ValueError("Unable to infer the output dtype for svdq_gemm_w4a4.")
   return torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(
     act=act,
     wgt=wgt,
@@ -756,6 +809,7 @@ def svdq_gemm_w4a4(
     runtime=normalized_runtime,
     lora_layout=normalized_layout,
     out_dtype_id=_encode_svdq_output_dtype(output_dtype),
+    write_dense=write_dense,
   )
 
 

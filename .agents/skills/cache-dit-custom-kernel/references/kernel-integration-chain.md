@@ -109,7 +109,7 @@ C++ 侧已是 out-param，真正要定的是 schema 形状：
 
 **默认把 out-param 藏在 `_call_*` 里，schema 只暴露函数式返回**——这样 functionalization 看到的是普通"返回新张量"的算子，不需要 `mutates_args`。
 
-例外是 svdq 的 `svdq_gemm_w4a4`：融合 MLP 路径要求把 `qout` / `oscales` / `lora_act_out` 这些 in-place 输出缓冲列进 schema（`out` 仍由 impl 内部分配并返回），因此该调用形态**不能进图**，上层 `quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj` 必须标 `@torch.compiler.disable`。新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
+例外是 svdq 的 `svdq_gemm_w4a4`：融合 MLP 路径要求把 `qout` / `oscales` / `lora_act_out` 这些 in-place 输出缓冲列进 schema，因此该调用形态**不能进图**，上层 `quantization/svdquant/fused.py` 的 `fused_gelu_mlp` / `fused_gelu_proj` 必须标 `@torch.compiler.disable`。`out` 通常由 impl 内部分配并返回，但 `write_dense=False` 时传 `None` 让 kernel 跳过 dense store（融合 MLP 只吃 qout），此时返回 0 元素占位张量——占位是刻意设计的哨兵，不是缺陷。新增算子不要复制这种形态，除非确实需要"一块大 kernel 同时写多个输出"。
 
 ## 4. Python 层
 
