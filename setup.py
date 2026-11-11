@@ -701,10 +701,11 @@ def _get_comm_extension():
     "/FS",
   ]
   # The communication kernels only need relaxed constexpr and lambda evaluation, so the
-  # SVDQuant-only fast-math and spdlog settings are intentionally left out.
+  # SVDQuant-only spdlog settings are intentionally left out; fast-math is global (see below).
   nvcc_flags = [
     "-DBUILD_CACHE_DIT_COMM=1",
     "-O3",
+    "--use_fast_math",
     "-std=c++20",
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",
@@ -793,9 +794,10 @@ def _get_attn_extension():
     "/FS",
   ]
   # The attention kernels only need relaxed constexpr and lambda evaluation, so the
-  # SVDQuant-only fast-math and spdlog settings are intentionally left out.
+  # SVDQuant-only spdlog settings are intentionally left out; fast-math is global (see below).
   nvcc_flags = [
     "-O3",
+    "--use_fast_math",
     "-std=c++20",
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",
@@ -886,10 +888,17 @@ def _get_models_extension():
     "/FS",
   ]
   # The model kernels are plain bf16 elementwise/reduction code, so the SVDQuant-only
-  # fast-math and spdlog settings are intentionally left out.
+  # spdlog settings are intentionally left out; fast-math is global (see below).
   nvcc_flags = [
     "-DBUILD_CACHE_DIT_MODELS=1",
     "-O3",
+    # Fast-math is on for every extension in this file. It replaces `expf` / `tanhf` /
+    # `rsqrtf` and `/` with the approximate SFU forms, so kernels that fuse one of those
+    # cannot be bit-identical to the eager expression any more; the Qwen-Image 2.1 operator
+    # family validates against rel-L2 and end-to-end PSNR instead of `torch.equal`.
+    # If you hit accuracy problems, drop this one flag (the rounding of `+ - *` is set with
+    # the explicit `__fadd_rn` / `__fmul_rn` / `__fmaf_rn` intrinsics and stays exact).
+    "--use_fast_math",
     "-std=c++20",
     "-U__CUDA_NO_HALF_OPERATORS__",
     "-U__CUDA_NO_HALF_CONVERSIONS__",

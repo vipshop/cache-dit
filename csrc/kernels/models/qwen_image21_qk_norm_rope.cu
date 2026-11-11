@@ -145,13 +145,16 @@ __global__ void qwen_image21_qk_norm_rope_kernel(
   for (int j = 0; j < kPairsPerLane; ++j) {
     const float2 e = __bfloat1622float2(xq[j]);
     const float2 w = __bfloat1622float2(wq[j]);
-    // Rounding 1: bf16(x * rstd). Rounding 2: bf16(n * weight).
-    const float o_re = __bfloat162float(
-      __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e.x * rstd)) * w.x));
-    const float o_im = __bfloat162float(
-      __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e.y * rstd)) * w.y));
+    // Rounding 1: bf16(x * rstd). Rounding 2: bf16(n * weight) - a native packed bf16
+    // multiply, which is the same value as an fp32 product rounded to bf16 because a bf16
+    // product is exact in fp32. It also saves the unpack/repack around the scale.
+    __nv_bfloat162 normed;
+    normed.x = __float2bfloat16_rn(e.x * rstd);
+    normed.y = __float2bfloat16_rn(e.y * rstd);
+    const __nv_bfloat162 scaled = __hmul2(normed, wq[j]);
     // Rounding 3: the rotation result.
-    rotate_pair<kVari>(o_re, o_im, cs[j], sn[j], rq + j);
+    rotate_pair<kVari>(__bfloat162float(scaled.x), __bfloat162float(scaled.y), cs[j], sn[j],
+                       rq + j);
   }
 
   // `out_strides` are already expressed in bf16-pair units.

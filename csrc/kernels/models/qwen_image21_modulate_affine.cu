@@ -36,7 +36,9 @@
 namespace cache_dit::models {
 namespace {
 
-constexpr int kWarpsPerBlock = 4;
+// Eight warps per block: the Welford pass is a ~256-step serial chain per lane, so more
+// resident warps per block is what hides it (four warps left the SM at ~30% occupancy).
+constexpr int kWarpsPerBlock = 8;
 // 16 lanes per row x 4 complex pairs = 8 channels per lane = 16 bytes per access.
 constexpr int kLanesPerRow = 16;
 constexpr int kPairsPerLane = 4;
