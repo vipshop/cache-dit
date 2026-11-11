@@ -20,6 +20,7 @@ per-operator preconditions are asserted by the tests.
 """
 
 import os
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -332,11 +333,15 @@ def _eager_qk_norm_rope(
   sin: torch.Tensor,
   rope_row_offset: int,
   eps: float,
+  norm: Optional[torch.nn.Module] = None,
 ) -> torch.Tensor:
-  """The upstream chain itself: `F.rms_norm` followed by `apply_rotary_emb`.
+  """The upstream chain itself: the norm module followed by `apply_rotary_emb`.
 
   Calling the very functions diffusers calls makes the fallback identical to the unoptimised
-  path by construction, which is what a fallback has to be.
+  path by construction, which is what a fallback has to be. The norm is invoked as a *module*
+  when one is given: under `--module-layerwise-cpu-offload` its weight still lives on the CPU
+  until accelerate's pre-forward hook moves it, so reading `.weight` directly would raise
+  "weight is on cpu" instead of falling back cleanly.
 
   :param x: `[1, S, H, D]` query or key tensor.
   :param weight: `[D]` scale of the `torch.nn.RMSNorm(head_dim)` module.
@@ -344,12 +349,16 @@ def _eager_qk_norm_rope(
   :param sin: `[rope_rows, D]` fp32 sine table.
   :param rope_row_offset: First rotation row of this stream.
   :param eps: RMSNorm epsilon.
+  :param norm: The `torch.nn.RMSNorm` module, used by the fallback when available.
   :returns: Rotated tensor with the same shape and dtype as `x`.
   """
 
   from diffusers.models.embeddings import apply_rotary_emb
 
-  normed = F.rms_norm(x, (x.shape[-1], ), weight, eps)
+  if norm is not None:
+    normed = norm(x)
+  else:
+    normed = F.rms_norm(x, (x.shape[-1], ), weight, eps)
   table = (cos[rope_row_offset:rope_row_offset + x.shape[1]],
            sin[rope_row_offset:rope_row_offset + x.shape[1]])
   return apply_rotary_emb(normed, table, sequence_dim=1)
@@ -362,6 +371,7 @@ def apply_qk_norm_rope(
   sin: torch.Tensor,
   rope_row_offset: int,
   eps: float,
+  norm: Optional[torch.nn.Module] = None,
 ) -> torch.Tensor:
   """Apply the per-head RMSNorm and the interleaved RoPE in one pass over `x`.
 
@@ -371,6 +381,7 @@ def apply_qk_norm_rope(
   :param sin: `[rope_rows, D]` fp32 sine table.
   :param rope_row_offset: First rotation row of this stream.
   :param eps: RMSNorm epsilon.
+  :param norm: The `torch.nn.RMSNorm` module, used by the fallback when available.
   :returns: Rotated tensor with the same shape and dtype as `x`.
   """
 
@@ -382,7 +393,7 @@ def apply_qk_norm_rope(
     from ....kernels import flux2_klein_qk_norm_rope
 
     return flux2_klein_qk_norm_rope(x, weight, cos, sin, rope_row_offset, eps).unsqueeze(0)
-  return _eager_qk_norm_rope(x, weight, cos, sin, rope_row_offset, eps)
+  return _eager_qk_norm_rope(x, weight, cos, sin, rope_row_offset, eps, norm=norm)
 
 
 def apply_qk_norm_rope_join(
@@ -393,6 +404,8 @@ def apply_qk_norm_rope_join(
   cos: torch.Tensor,
   sin: torch.Tensor,
   eps: float,
+  image_norm: Optional[torch.nn.Module] = None,
+  text_norm: Optional[torch.nn.Module] = None,
 ) -> torch.Tensor:
   """Normalise and rotate both attention streams into one joint buffer.
 
@@ -423,8 +436,14 @@ def apply_qk_norm_rope_join(
 
     return flux2_klein_qk_norm_rope_join(image, image_weight, text, text_weight, cos, sin,
                                          eps).unsqueeze(0)
-  rotated_text = _eager_qk_norm_rope(text, text_weight, cos, sin, 0, eps)
-  rotated_image = _eager_qk_norm_rope(image, image_weight, cos, sin, text.shape[1], eps)
+  rotated_text = _eager_qk_norm_rope(text, text_weight, cos, sin, 0, eps, norm=text_norm)
+  rotated_image = _eager_qk_norm_rope(image,
+                                      image_weight,
+                                      cos,
+                                      sin,
+                                      text.shape[1],
+                                      eps,
+                                      norm=image_norm)
   return torch.cat([rotated_text, rotated_image], dim=1)
 
 

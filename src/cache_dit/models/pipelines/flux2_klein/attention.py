@@ -87,23 +87,57 @@ class _FusedFlux2AttnProcessor(Flux2AttnProcessor):
         # The joined operator needs one epsilon for both streams; the model builds all four
         # norms from the same value, but check instead of assuming it.
         if attn.norm_q.eps == attn.norm_added_q.eps and attn.norm_k.eps == attn.norm_added_k.eps:
-          query = apply_qk_norm_rope_join(query, attn.norm_q.weight, encoder_query,
-                                          attn.norm_added_q.weight, cos, sin, attn.norm_q.eps)
-          key = apply_qk_norm_rope_join(key, attn.norm_k.weight, encoder_key,
-                                        attn.norm_added_k.weight, cos, sin, attn.norm_k.eps)
+          query = apply_qk_norm_rope_join(query,
+                                          attn.norm_q.weight,
+                                          encoder_query,
+                                          attn.norm_added_q.weight,
+                                          cos,
+                                          sin,
+                                          attn.norm_q.eps,
+                                          image_norm=attn.norm_q,
+                                          text_norm=attn.norm_added_q)
+          key = apply_qk_norm_rope_join(key,
+                                        attn.norm_k.weight,
+                                        encoder_key,
+                                        attn.norm_added_k.weight,
+                                        cos,
+                                        sin,
+                                        attn.norm_k.eps,
+                                        image_norm=attn.norm_k,
+                                        text_norm=attn.norm_added_k)
         else:
           query = torch.cat([
-            apply_qk_norm_rope(encoder_query, attn.norm_added_q.weight, cos, sin, 0,
-                               attn.norm_added_q.eps),
-            apply_qk_norm_rope(query, attn.norm_q.weight, cos, sin, encoder_query.shape[1],
-                               attn.norm_q.eps)
+            apply_qk_norm_rope(encoder_query,
+                               attn.norm_added_q.weight,
+                               cos,
+                               sin,
+                               0,
+                               attn.norm_added_q.eps,
+                               norm=attn.norm_added_q),
+            apply_qk_norm_rope(query,
+                               attn.norm_q.weight,
+                               cos,
+                               sin,
+                               encoder_query.shape[1],
+                               attn.norm_q.eps,
+                               norm=attn.norm_q)
           ],
                             dim=1)
           key = torch.cat([
-            apply_qk_norm_rope(encoder_key, attn.norm_added_k.weight, cos, sin, 0,
-                               attn.norm_added_k.eps),
-            apply_qk_norm_rope(key, attn.norm_k.weight, cos, sin, encoder_key.shape[1],
-                               attn.norm_k.eps)
+            apply_qk_norm_rope(encoder_key,
+                               attn.norm_added_k.weight,
+                               cos,
+                               sin,
+                               0,
+                               attn.norm_added_k.eps,
+                               norm=attn.norm_added_k),
+            apply_qk_norm_rope(key,
+                               attn.norm_k.weight,
+                               cos,
+                               sin,
+                               encoder_key.shape[1],
+                               attn.norm_k.eps,
+                               norm=attn.norm_k)
           ],
                           dim=1)
       else:
@@ -111,8 +145,20 @@ class _FusedFlux2AttnProcessor(Flux2AttnProcessor):
         key = torch.cat([attn.norm_added_k(encoder_key), attn.norm_k(key)], dim=1)
       value = torch.cat([encoder_value, value], dim=1)
     elif cos is not None:
-      query = apply_qk_norm_rope(query, attn.norm_q.weight, cos, sin, 0, attn.norm_q.eps)
-      key = apply_qk_norm_rope(key, attn.norm_k.weight, cos, sin, 0, attn.norm_k.eps)
+      query = apply_qk_norm_rope(query,
+                                 attn.norm_q.weight,
+                                 cos,
+                                 sin,
+                                 0,
+                                 attn.norm_q.eps,
+                                 norm=attn.norm_q)
+      key = apply_qk_norm_rope(key,
+                               attn.norm_k.weight,
+                               cos,
+                               sin,
+                               0,
+                               attn.norm_k.eps,
+                               norm=attn.norm_k)
     else:
       query = attn.norm_q(query)
       key = attn.norm_k(key)
@@ -178,8 +224,20 @@ class _FusedFlux2ParallelSelfAttnProcessor(Flux2ParallelSelfAttnProcessor):
 
     cos, sin = _rotary_tables(image_rotary_emb)
     if cos is not None:
-      query = apply_qk_norm_rope(query, attn.norm_q.weight, cos, sin, 0, attn.norm_q.eps)
-      key = apply_qk_norm_rope(key, attn.norm_k.weight, cos, sin, 0, attn.norm_k.eps)
+      query = apply_qk_norm_rope(query,
+                                 attn.norm_q.weight,
+                                 cos,
+                                 sin,
+                                 0,
+                                 attn.norm_q.eps,
+                                 norm=attn.norm_q)
+      key = apply_qk_norm_rope(key,
+                               attn.norm_k.weight,
+                               cos,
+                               sin,
+                               0,
+                               attn.norm_k.eps,
+                               norm=attn.norm_k)
     else:
       query = attn.norm_q(query)
       key = attn.norm_k(key)
