@@ -178,17 +178,17 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 ## 8. SVDQ 当前性能结论与边界
 
-### 8.1 最新状态（2026-11-10，RTX PRO 5000，PR #1271）
+### 8.1 最新状态（2026-11-11，RTX PRO 5000）
 
-- producer 已完成 CuTe `TiledMMA/TiledCopy` rank 特化：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，fused 与 split-K 均保留；实现和调参证据见 `references/svdq-nvfp4-cute.md` §29。
-- 官方 `bench/kernels/bench_svdquant.py`，5 个默认 shape × rank32/64/128，warmup10/iters50：**producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）**；**完整 GEMM e2e geomean 1.038×，13/15 快**。
-- kernel-only CuTe row-major GEMM geomean 仅 **1.013×**；producer 收益明显大于 e2e 收益，说明当前主瓶颈已转到 **W4A4 GEMM**。后续优先优化 GEMM 的 shared/TMA/同步与 epilogue，不要继续反复扫 producer warp/M 分桶。
-- rank64/M8192 两个 e2e 点仍回退：N3072 **0.976×**、N6144 **0.988×**；对应 producer 仍快 1.060×/1.072×，应按 GEMM schedule 问题处理。
-- FlashInfer kernel-only 对照：对 `cute-dsl` geomean **1.095×（15/15 胜）**，对 `cutlass-sm120` **1.144×（9/10 胜）**；后者不支持 rank128，且使用独立 activation pack，不能比较 rel-L2。
-- 当前有效 dispatch：rank32/K≤3072 走 universal；rank32/K>3072 且 M>8192 走 fused，其余 rank32 走 split-K；rank64 在 K≤3072 走 K256 split-K、长 K 走 K128 async split-K；rank128 全走 K256 split-K。
-- Python 普通 CuTe 路径默认 `lora_layout="row_major"`；显式 native 和 `fused_mlp` 继续使用 FP32 fragment D。
-- 验证：121 项 SVDQ 回归；12 组 v1 golden 的 qact/ascales bitwise 一致、D rel-L2 <0.01；K64/192/3136 tail；FLUX eager+compile 出图正常，e2e rel-L2 ≤0.0033。
+- `main` 已合入 PR #1284（mainloop 索引简化）；`dev` 在其上包含 P2 dispatch commit `3ad684c6`。P0 8M×1N、P1 S4/独立 LoRA ring 均已实测失败并回退，证据见 `references/svdq-nvfp4-cute.md` §30。
+- 官方 `bench/kernels/bench_svdquant.py`，5 shape × rank32/64/128，三轮中位：producer geomean **1.1088×**（15/15），row-major kernel-only GEMM **1.0248×**（12/15），row-major e2e **1.0553×**（14/15），cute+native-D e2e **1.0462×**（14/15）。这是单会话结果，不能替代跨会话稳定验收。
+- 当前 row-major dispatch：`M>=16384 || (M>=8192 && N>=6144)` 走 main-first，其余 LoRA-first；受控 7 轮交错 A/B 中 main-first 只在 6/15 格胜出。native fragment D 始终 main-first。
+- GEMM NCU（15 格当前 dispatch）：Tensor **84.2%**、SM 80.2%、DRAM 12.9%、L2 hit 99.9%、occupancy 17.75%、regs 168、smem 85 KiB、local load/store=0。stall：math_pipe_throttle 36.2% + wait 30.8%，long_scoreboard 18.4%，sleeping 7.5%。
+- GEMM 已接近当前架构局部最优。A/SFA 全 TMA+SMEM 是最初实现，已被 hybrid G2R 击败（同 shape nsys 约 137.4us vs 117.2us）；不要再把 A/SFA TMA 作为优化方向。8M×1N 慢 20.6%，S4/独立 LoRA ring 慢约 1%，均已证伪。
+- producer 的后续重点只保留 **CuTe split-K**（`quantize_impl.cuh`，rank64/128）：bank conflicts 380.9K（native 1.9K）、occupancy 16.6%、regs 198、smem 91 KiB。`quantize_uni.cu` 的 universal/split-K（rank32/K≤3072）是手搓 MMA/ldmatrix + 手写 swizzle，保持现状；fused 已 DRAM 90.2%，到带宽墙。
+- split-K 还有 e2e 上下文问题：NSYS 总 producer 中位 native 94.4us / CuTe 101.0us，而 NCU quantize kernel CuTe 多数更快；finalize 中位约 2us。优化 producer kernel 前先拆清 allocator/cache/finalize。
 - 结论适用 PRO 5000；未在 PRO 6000/H800 复测前不要外推绝对阈值。split-K D 使用 relaxed FP32 atomics，不保证逐位可复现，D 用误差门槛。
+- 后续优先级、精确 NCU 数值和禁止重复清单见 `references/svdq-nvfp4-cute.md` §30 与 `references/rfc-cuda-optimizations.md` §6。
 
 ### 8.2 历史基线（截至 2026-11-05，M=4096/N=K=3072/rank=32）
 

@@ -1,6 +1,6 @@
 # Cache-DiT CUDA Kernel 优化 RFC
 
-> 状态：Active ｜ 日期：2026-11-05
+> 状态：Active ｜ 日期：2026-11-11
 > 关联：[SKILL.md](../SKILL.md)、[SVDQ 性能记录](svdq-nvfp4-cute.md)。
 
 ## 1. 验收目标
@@ -21,8 +21,8 @@
 | CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 输出 native qact/ascales + row-major BF16 D；fused 无 scratch，split-K 使用内部 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
 | CDK-2 | Producer kernel 性能追平/略优 | 已完成 | PRO 5000 官方 bench 5 shape × rank32/64/128：producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）；证据见 `svdq-nvfp4-cute.md` §29 |
 | CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 已完成 | rank32/64/128 拆分 TU，fused + K128 async split-K + K256 split-K；qact/ascales bitwise golden 通过 |
-| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | CUDA Event kernel-only geomean 1.013× vs native；仍未达5%，且 rank64/M8192 两个 e2e 点回退，现为主瓶颈 |
-| CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 进行中 | 官方 bench e2e geomean 1.038×，13/15 快；rank64/M8192 为 0.976×/0.988×，未达稳定5% |
+| CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | 官方 bench 三轮中位 kernel-only geomean **1.0248×**，12/15；NCU Tensor 84.2%、DRAM 12.9%、local=0，已接近单 CTA 资源几何上限，现实剩余约 1%–2% |
+| CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 进行中 | 单会话 row-major e2e geomean **1.0553×**（14/15），cute+native-D **1.0462×**（14/15）；尚需跨会话/FLUX 稳定性验收 |
 | CDK-6 | 可重复 ccache 构建链路 | 已完成 | `build_fast.sh` editable + nvcc shim 验证通过 |
 
 完成任一项时，同步更新本表、下方清单和 `SKILL.md` 的当前状态摘要。若实验否定某方案，将方案移到性能记录的已证伪表，不要删除证据。
@@ -32,8 +32,8 @@
 - [x] CDK-1：独立 CuTe producer + A/SFA G2R、B/SFB/D/L1 TMA GEMM；fused 和 split-K 均输出 native qact/ascales 与 row-major BF16 D。
 - [x] CDK-2：producer 官方 bench 5 shape × 3 rank 全格快于 native，geomean 1.128×；rank32/64/128 无回退点。
 - [x] CDK-3：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，TiledMMA/TiledCopy/swizzle、K128 double-A async、K256 split-K、rank32 大 M fused；K64/192/3136 tail 与 golden 已验证。
-- [ ] CDK-4：GEMM 快于 native 至少 5%。kernel-only geomean 1.013×；producer 收益明显大于 e2e，下一步集中优化 W4A4 GEMM shared/TMA/同步和 epilogue。
-- [ ] CDK-5：完整工作流 e2e 快至少 5%。当前 geomean 1.038×；优先消除 rank64/M8192 的 0.976×/0.988× 回退，再评估默认 runtime。
+- [ ] CDK-4：GEMM 快于 native 至少 5%。kernel-only geomean 1.0248×；Tensor 84.2%、DRAM 12.9%、无 spill，已到当前 TMA/G2R + 单 CTA 结构的局部最优。
+- [ ] CDK-5：完整工作流 e2e 快至少 5%。row-major e2e 1.0553×、cute+native-D 1.0462×（单会话）；需重复会话与 FLUX 稳定验收后才能关闭。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 
 ## 4. CDK-3：Producer CuTe 化设计约束（已完成）
@@ -59,11 +59,35 @@
 7. **K-block/prologue 调度**：提前 release、FlashInfer/CUTLASS 两种 K-block 顺序、232-register budget 和 consumer 初始化后移均已实测；wait 局部改善被 fragment spill 或地址状态开销抵消，最终 nsys 无净收益。详见 `svdq-nvfp4-cute.md` §8，无新 spill 证据时不要重复。
 8. **Persistent/light producer/小 tile**：persistent 110 CTAs 为 143.52us，慢约 4.4%（output overlay 串行化）；light producer 288T 路线已停；BN128/S3 为 168.99us 且 occupancy 不变，已回退；BM64 被 128-row SF atom 阻止。详见 `svdq-nvfp4-cute.md` §9。
 
-FlashInfer/CUTLASS 的 K-block 顺序和 producer start state 已完成对照实验；start state 保留为标准协议，K-block 变体均已回退。最新 NCU 归因显示真正差距是 shared 指令/bank conflict 与同步开销，下一步应针对该路径或 fragment-aligned pack，而不是继续改调度外形。
+FlashInfer/CUTLASS 的 K-block 顺序和 producer start state 已完成对照实验；start state 保留为标准协议，K-block 变体均已回退。本节是 2026-11-10 的历史候选；2026-11-11 复核后 A/SFA 全 TMA 与 fragment-aligned pack 已明确关闭，最新优先级见 §6。
 
 GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验收。
 
-## 6. 实施纪律
+## 6. 2026-11-11 复核后的路径
+
+### 6.1 GEMM 判断
+
+- 15 格当前 dispatch 的 NCU：Tensor 84.2%、SM 80.2%、DRAM 12.9%、L2 hit 99.9%、occupancy 17.75%、regs 168、smem 85 KiB、local=0。
+- stall：math_pipe_throttle 36.2% + wait 30.8%，long_scoreboard 18.4%，sleeping 7.5%。
+- Tensor 指令流已接近持续发射峰值；即使非张量 stall 全消失的粗略上限也只有约 1.19×，实际远小。当前限制是单 CTA / 8 consumer warp / 128 FP32 accumulator 的资源几何，不是 DRAM 或 shared bank conflict。
+- **关闭方向**：A/SFA 全 TMA+SMEM（最初实现，慢约14.7%）、8M×1N（0.794×）、S4/独立 LoRA ring（约0.99×）、A/SFA 简单前移/双缓冲、stage 增量回绕/unroll3、persistent/light producer/Non-WS/BN128 小 tile。证据见 `svdq-nvfp4-cute.md` §30。
+- 仅存的 GEMM 研究项：以降低 accumulator/寄存器换取 2 CTA，或重做跨 warpgroup/Multi-CTA 流水。没有新的资源与数值证据前，不把 GEMM 列为短期主投入。
+
+### 6.2 Producer 优先项
+
+1. **CuTe split-K bank conflict**（`quantize_impl.cuh`，rank64/128 十格）：380.9K（native 1.9K），occupancy 16.6%、198 regs、91 KiB smem、L2-resident。先用 SASS/PC sampling 定位 SFA/SFB shared copy，再改单一路径；目标 producer kernel 3%–8%，不承诺 e2e 同幅。
+2. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：手搓 MMA/ldmatrix + 手写 swizzle，42.9K conflict、occupancy 29.7% 虽可改，但改造与回归成本高，不作为近期项。
+3. **fused 不再优化**：DRAM/Mem 已 90.2%，是带宽墙。
+4. **producer e2e 上下文**：NSYS 总 producer 中位 native 94.4us / CuTe 101.0us，而 NCU kernel 本体 CuTe 多数更快；finalize 约 2us。先拆 allocator/cache/finalize/launch，不能只看 isolated kernel。
+
+### 6.3 调度与验收
+
+- row-major dispatch 当前为 `M>=16384 || (M>=8192 && N>=6144)` → main-first，其余 LoRA-first；来自同进程 7轮×50次交错 A/B，main-first 仅赢6/15。任何改动继续按 M/N/rank 做逐格 A/B。
+- 微优化保留门槛：全矩阵 NSYS 正向约0.1%，且不能出现稳定 >0.2% 回退。
+- 数值：GEMM 调度等价要求固定输入 bitwise；producer 改布局要求 qact/ascales bitwise、D rel-L2 <0.01。
+- NCU 只做归因，交付性能以 NSYS/官方 Event 为准；跨会话结论必须同轮对照 native。
+
+## 7. 实施纪律
 
 - 动手前写清改动面、注入点、预期指标和验证矩阵。
 - 一次只改一个主要因素；profile -> 修改 -> 数值回归 -> 同口径复测。
