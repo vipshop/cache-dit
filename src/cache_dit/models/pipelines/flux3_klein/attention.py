@@ -30,7 +30,7 @@ from diffusers.models.transformers.transformer_flux3 import (
 )
 
 from ....logger import init_logger
-from .fused_ops import apply_qk_norm_rope
+from .fused_ops import ACTIVE_OPS, apply_qk_norm_rope
 
 logger = init_logger(__name__)
 
@@ -58,9 +58,10 @@ class _Flux3FusedAttnProcessor(Flux3AttnProcessor):
     :returns: `(B, S, D)` attention output.
     """
 
-    if torch.compiler.is_compiling():
-      # Same reasoning as the block forwards: compiled graphs get the stock processor so the
-      # fused pass cannot drift from stock while buying no speed.
+    # The stock processor runs whenever this one cannot use the kernel: compiled graphs (see the
+    # block forwards) and configurations that disabled `qk_norm_rope`. A transcription that only
+    # reproduces the chain approximately would drift from stock for no speed in return.
+    if torch.compiler.is_compiling() or "qk_norm_rope" not in ACTIVE_OPS:
       return super().__call__(attn, hidden_states, attention_mask, image_rotary_emb)
 
     query, key, value = _get_qkv_projections(attn, hidden_states)
