@@ -664,7 +664,7 @@ first-run 对照（rebase 前，同一份 SVDQ 代码）：native 6.05s、cute 6
 
 ## 25. PRO 6000 四方对比与 `lora_layout` dispatch（2026-11-07）
 
-口径：RTX PRO 6000 Blackwell（SM120）、`CUDA 13.0.88`、`torch 2.10.0+cu130`、`bench/kernels/bench_svdquant_kernels.py`、CUDA Event median、warmup 10 / iters 50、单轮内比较。第四节为 FlashInfer `0.7.3.dev20261106` 的 `cute-dsl` kernel（用它自己的 128x4 pack，只报 `finite`）。kernel-only 与 producer/e2e 来自同一台机器的两轮运行，跨轮单格漂移可达 30%，不要跨轮拼接。
+口径：RTX PRO 6000 Blackwell（SM120）、`CUDA 13.0.88`、`torch 2.10.0+cu130`、`bench/kernels/bench_svdquant.py`、CUDA Event median、warmup 10 / iters 50、单轮内比较。第四节为 FlashInfer `0.7.3.dev20261106` 的 `cute-dsl` kernel（用它自己的 128x4 pack，只报 `finite`）。kernel-only 与 producer/e2e 来自同一台机器的两轮运行，跨轮单格漂移可达 30%，不要跨轮拼接。
 
 ### 25.1 接口现状（PR #1259 之后）
 
@@ -746,7 +746,7 @@ FlashInfer cute-dsl 在 ≤8K 全面落后 cache-dit（+5%~+33%），只在 16K 
 
 ### 26.2 当前完整矩阵（GPU4，Event median，warmup10/iters50，1 轮复测）
 
-命令口径：`bench/kernels/bench_svdquant_kernels.py --rank 32/64/128 --impl quantize,quantize-row-major`。下表左为 native µs，右为 row_major µs，括号为 row/native；<1 表示 CuTe 更快。
+命令口径：`bench/kernels/bench_svdquant.py --rank 32/64/128 --impl quantize,quantize-row-major`。下表左为 native µs，右为 row_major µs，括号为 row/native；<1 表示 CuTe 更快。
 
 | Shape M×N×K | rank32 | rank64 | rank128 |
 |---|---:|---:|---:|
@@ -863,7 +863,7 @@ split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fr
 
 ### 29.2 测量口径
 
-官方 `bench/kernels/bench_svdquant_kernels.py`，5 个默认 `MxNxK`，显式扩展 rank32/64/128；warmup=10、iterations=50、median；同时跑 `quantize`、`quantize-row-major`、native/cute GEMM、三组 e2e 和 FlashInfer。共 150 行，cutlass-sm120 不支持 rank128 产生 5 个 skipped。GPU4：NVIDIA RTX PRO 5000 72GB。
+官方 `bench/kernels/bench_svdquant.py`，5 个默认 `MxNxK`，显式扩展 rank32/64/128；warmup=10、iterations=50、median；同时跑 `quantize`、`quantize-row-major`、native/cute GEMM、三组 e2e 和 FlashInfer。共 150 行，cutlass-sm120 不支持 rank128 产生 5 个 skipped。GPU4：NVIDIA RTX PRO 5000 72GB。
 
 ### 29.3 Producer 与 e2e 全矩阵
 

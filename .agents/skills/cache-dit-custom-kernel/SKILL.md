@@ -181,7 +181,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 ### 8.1 最新状态（2026-11-10，RTX PRO 5000，PR #1271）
 
 - producer 已完成 CuTe `TiledMMA/TiledCopy` rank 特化：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，fused 与 split-K 均保留；实现和调参证据见 `references/svdq-nvfp4-cute.md` §29。
-- 官方 `bench/kernels/bench_svdquant_kernels.py`，5 个默认 shape × rank32/64/128，warmup10/iters50：**producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）**；**完整 GEMM e2e geomean 1.038×，13/15 快**。
+- 官方 `bench/kernels/bench_svdquant.py`，5 个默认 shape × rank32/64/128，warmup10/iters50：**producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）**；**完整 GEMM e2e geomean 1.038×，13/15 快**。
 - kernel-only CuTe row-major GEMM geomean 仅 **1.013×**；producer 收益明显大于 e2e 收益，说明当前主瓶颈已转到 **W4A4 GEMM**。后续优先优化 GEMM 的 shared/TMA/同步与 epilogue，不要继续反复扫 producer warp/M 分桶。
 - rank64/M8192 两个 e2e 点仍回退：N3072 **0.976×**、N6144 **0.988×**；对应 producer 仍快 1.060×/1.072×，应按 GEMM schedule 问题处理。
 - FlashInfer kernel-only 对照：对 `cute-dsl` geomean **1.095×（15/15 胜）**，对 `cutlass-sm120` **1.144×（9/10 胜）**；后者不支持 rank128，且使用独立 activation pack，不能比较 rel-L2。
@@ -230,7 +230,17 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 **为什么不改变数值**：`EpilogueDefault` 按值接收 `fpsum`，只在写出去的 pack 上做 fp16 clamp；`EpilogueGelu` 才原地改累加器，且在链上位于 Default 之前。所以 qout/oscales 与 `write_dense=True` **bitwise 相同**（`test_svdquant_write_dense_false_preserves_the_fused_outputs` 断言 `torch.equal`）；`lora_act_out` 走 `red.relaxed.gpu.global.add.f32` 跨 block 原子累加，只在单 tile grid 下 bitwise 稳定，测试用 `1e-6` 容差。
 
-**实测**：M=4096/N=12288/K=3072/R=32、bf16，op 级 peak 分配 96.0 MiB → 0.0 MiB。`fused_gelu_proj` 不受影响（它必须返回 dense 激活，保持默认 `True`）。
+**实测**（RTX PRO 5000 72GB / sm120、torch 2.11、2026-11-11；`bench/kernels/bench_svdquant.py --fused-mlp`，**NVFP4**，M=4096 / n=12288 / k=3072 / R=32，warmup 10 / iters 50，median）：
+
+| chain | median_us | vs unfused | rel_l2 vs unfused | peak MiB |
+|---|---:|---:|---:|---:|
+| `unfused-mlp` | 1163.7 | 1.00× | 5.3e-05（自噪声地板） | 192.0 |
+| `fused-mlp` | 933.5 | **1.25×** | 1.19e-03 | 59.7 |
+| `fused-mlp+dense` | 976.8 | 1.19× | 1.19e-03 | 131.7 |
+
+即：fp16 GELU 回写加二次量化省掉后，整条 MLP 链快 **1.25×**；其中单是 dense store 一项值 **43.3 µs ≈ 4.4%** 与 **+72 MiB** peak（dense buffer 本身 96 MiB，但 `peak` 是 max-live、两链的峰值相位不同，差值不等于 buffer 尺寸，别拿它当 tensor 大小核对）。
+
+`--fused-mlp` 目前只跑 NVFP4。INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=12288/k=3072：`write_dense` 开/关 5742 / 5800 µs）：INT4 native 的 GEMM 比 NVFP4 慢约 25×，所以同样 43 µs 在那里只有 0.8%，落在噪声里 —— "去掉 dense 只省显存不省时间"这个说法**只对 INT4 成立**，NVFP4 上它是实测的 4.4%。`fused_gelu_proj` 不受影响（它必须返回 dense 激活，保持默认 `True`）。
 
 **回归口径**：`test_fused_gelu_mlp_matches_the_unfused_two_step[int4|nvfp4]` 是 fused 路径的**首个执行覆盖**，同时验证 rel-L2 < 5e-3 / cosine > 0.999 与"flag 真的传下去了"（spy `fused.svdq_gemm_w4a4`）。注意 `fused_gelu_mlp` 的第二个 GEMM 走 `linear.py` 的 import，spy 只能拦到 2 次调用。
 

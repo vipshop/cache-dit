@@ -9,20 +9,31 @@ pack is prepared once and only the GEMM is timed), and the `*+e2e` rows measure 
 kernel-only baseline and e2e rows use the e2e baseline. FlashInfer activation quantization uses its
 own standard 128x4 pack; native/cute use cache-dit's own activation pack.
 
+`--fused-mlp` switches to the two-layer MLP chain instead of a single GEMM: `(m, n, k)` then means
+fc1 is `k -> n` and fc2 is `n -> k`, both quantized at the requested rank. Three chains are timed —
+`unfused-mlp` (`fc2(gelu(fc1(x)))`, the baseline), `fused-mlp` (`fused_gelu_mlp`, which runs the
+fc1 GEMM with the GELU epilogue and skips the dense store) and `fused-mlp+dense` (the same pass
+with the dense store forced back on, to show what the skipped `[m, n]` fp16 buffer costs). That mode
+also reports the peak allocation delta per chain and is native-runtime only, because the fused
+epilogue chain exists only in the native GEMM.
+
 Examples:
 
   # All installed backends on the default shapes at rank 32
-  python bench/kernels/bench_svdquant_kernels.py
+  python bench/kernels/bench_svdquant.py
 
   # Selected shapes/ranks, local FlashInfer source tree
-  python bench/kernels/bench_svdquant_kernels.py \
+  python bench/kernels/bench_svdquant.py \
     --flashinfer-path /workspace/dev/vipshop/flashinfer \
     --shape 4096x3072x3072 --shape 16384x8192x8192 \
     --rank 32 --rank 64 --iterations 50
 
   # Only native and FlashInfer cutlass-sm120
-  python bench/kernels/bench_svdquant_kernels.py \
+  python bench/kernels/bench_svdquant.py \
     --impl native,flashinfer+cutlass-sm120
+
+  # Two-layer MLP chain: fused MLP vs the unfused two-step baseline
+  python bench/kernels/bench_svdquant.py --fused-mlp --shape 4096x12288x3072
 
 The FlashInfer kernel-only timings use its standard weight/activation pack. They are not
 numerically interchangeable with cache-dit's own activation pack; `finite` is reported for
@@ -35,15 +46,18 @@ reported as skipped and the cache-dit native/cute measurements still run to comp
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import statistics
 import sys
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
 
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
+from cache_dit.quantization.svdquant import fused as fused_mod
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.packing import convert_svdq_nvfp4_pack_to_cute
 from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
@@ -514,6 +528,143 @@ def run_case(m: int,
   return rows
 
 
+@dataclass
+class MlpCase:
+  x: torch.Tensor
+  fc1: SVDQW4A4Linear
+  fc2: SVDQW4A4Linear
+
+
+def prepare_mlp_case(m: int, n: int, k: int, rank: int, seed: int, device: torch.device) -> MlpCase:
+  """Quantize a two-layer MLP shaped like a DiT feed-forward block.
+
+  :param m: Number of tokens.
+  :param n: Hidden width, i.e. fc1's output and fc2's input.
+  :param k: Model width, i.e. fc1's input and fc2's output.
+  :param rank: LoRA rank used for both layers.
+  :param seed: Random seed for the source weights and activations.
+  :param device: CUDA device.
+  :returns: The case, with both layers quantized to the NVFP4 native pack like the other rows.
+  """
+
+  torch.manual_seed(seed)
+  x = torch.randn(m, k, dtype=torch.bfloat16, device=device)
+  fc1_linear = torch.nn.Linear(k, n, bias=True).to(device=device, dtype=torch.bfloat16)
+  fc2_linear = torch.nn.Linear(n, k, bias=True).to(device=device, dtype=torch.bfloat16)
+  calibration = x[:min(256, m)]
+  fc1 = quantize_linear_svdq_w4a4(fc1_linear, [calibration],
+                                  rank=rank,
+                                  precision="nvfp4",
+                                  device=device,
+                                  torch_dtype=torch.bfloat16)
+  # Calibrate fc2 on the distribution it actually consumes, without building a graph for the
+  # whole token batch just to keep a calibration slice.
+  with torch.no_grad():
+    hidden = F.gelu(fc1_linear(calibration), approximate="tanh")
+  fc2 = quantize_linear_svdq_w4a4(fc2_linear, [hidden],
+                                  rank=rank,
+                                  precision="nvfp4",
+                                  device=device,
+                                  torch_dtype=torch.bfloat16)
+  fc1.requires_grad_(False)
+  fc2.requires_grad_(False)
+  return MlpCase(x=x, fc1=fc1, fc2=fc2)
+
+
+def _unfused_mlp(case: MlpCase) -> torch.Tensor:
+  """Two-step reference: fc1 dense GEMM, GELU, fc2 dense GEMM."""
+  return case.fc2(F.gelu(case.fc1(case.x), approximate="tanh"))
+
+
+def _fused_mlp(case: MlpCase) -> torch.Tensor:
+  """The production pass: fused fc1 GEMM + GELU + activation quantize, then fc2."""
+  return fused_mod.fused_gelu_mlp(case.x, case.fc1, case.fc2, pad_size=256)
+
+
+@contextlib.contextmanager
+def _force_dense_store():
+  """Force the fused pass to also write the dense fp16 output, for the `+dense` row.
+
+  `fused_gelu_mlp` hard-codes `write_dense=False`; the only way to reproduce the pre-fix cost
+  from the public code path is to wrap the GEMM the pass calls.
+  """
+
+  original = fused_mod.svdq_gemm_w4a4
+
+  def forced(*args, **kwargs):
+    kwargs["write_dense"] = True
+    return original(*args, **kwargs)
+
+  fused_mod.svdq_gemm_w4a4 = forced
+  try:
+    yield
+  finally:
+    fused_mod.svdq_gemm_w4a4 = original
+
+
+def _fused_mlp_with_dense(case: MlpCase) -> torch.Tensor:
+  with _force_dense_store():
+    return fused_mod.fused_gelu_mlp(case.x, case.fc1, case.fc2, pad_size=256)
+
+
+def peak_mib(fn) -> float:
+  """Peak additional allocation of one invocation, measured from a released allocator cache.
+
+  This is allocator-level and includes transient buffers, so it is indicative rather than an exact
+  tensor-size accounting: the difference between two chains is meaningful, the absolute is not.
+  """
+  torch.cuda.synchronize()
+  torch.cuda.empty_cache()
+  torch.cuda.reset_peak_memory_stats()
+  base = torch.cuda.memory_allocated()
+  fn()
+  torch.cuda.synchronize()
+  return (torch.cuda.max_memory_allocated() - base) / 2 ** 20
+
+
+def run_mlp_case(m: int, n: int, k: int, rank: int, seed: int, warmup: int, iterations: int,
+                 device: torch.device) -> list[dict]:
+  case = prepare_mlp_case(m, n, k, rank, seed, device)
+  rows = []
+  with torch.inference_mode():
+    reference = _unfused_mlp(case)
+    baseline_us = bench(lambda: _unfused_mlp(case), warmup, iterations)
+    chains = (
+      ("unfused-mlp", lambda: _unfused_mlp(case)),
+      ("fused-mlp", lambda: _fused_mlp(case)),
+      ("fused-mlp+dense", lambda: _fused_mlp_with_dense(case)),
+    )
+    for name, call in chains:
+      out = call()
+      rel = ((out.float() - reference.float()).norm() / reference.float().norm()).item()
+      elapsed = bench(call, warmup, iterations)
+      rows.append({
+        "m": m,
+        "n": n,
+        "k": k,
+        "rank": rank,
+        "chain": name,
+        "median_us": elapsed,
+        "speedup_vs_unfused": baseline_us / elapsed,
+        "rel_l2_vs_unfused": rel,
+        "peak_mib": peak_mib(call),
+        "finite": bool(torch.isfinite(out).all()),
+      })
+  return rows
+
+
+def emit_mlp_rows(rows: list[dict], as_json: bool) -> None:
+  if as_json:
+    for row in rows:
+      print(json.dumps(row))
+    return
+  print("m,n,k,rank,chain,median_us,speedup_vs_unfused,rel_l2_vs_unfused,peak_mib,finite")
+  for row in rows:
+    print(f"{row['m']},{row['n']},{row['k']},{row['rank']},{row['chain']},"
+          f"{row['median_us']:.2f},{row['speedup_vs_unfused']:.4f},"
+          f"{row['rel_l2_vs_unfused']:.3e},{row['peak_mib']:.1f},{row['finite']}")
+
+
 def parse_shapes(values: list[str] | None) -> list[tuple[int, int, int]]:
   if not values:
     return list(DEFAULT_SHAPES)
@@ -529,7 +680,10 @@ def parse_shapes(values: list[str] | None) -> list[tuple[int, int, int]]:
 def main() -> None:
   global _flashinfer_path
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("--shape", action="append", help="MxNxK; repeat for multiple shapes")
+  parser.add_argument("--shape",
+                      action="append",
+                      help="MxNxK; repeat for multiple shapes. With --fused-mlp, N is fc1's "
+                      "output and fc2's input (the hidden width) instead of the GEMM's N")
   parser.add_argument("--rank", action="append", type=int, help="LoRA rank; repeat for multiple")
   parser.add_argument("--impl",
                       default=",".join(DEFAULT_IMPLS),
@@ -541,6 +695,9 @@ def main() -> None:
                       default=None,
                       help="optional local FlashInfer source path")
   parser.add_argument("--json", action="store_true", help="emit JSON lines instead of a table")
+  parser.add_argument("--fused-mlp",
+                      action="store_true",
+                      help="benchmark the two-layer fused MLP chain instead of single GEMMs")
   args = parser.parse_args()
 
   shapes = parse_shapes(args.shape)
@@ -549,6 +706,18 @@ def main() -> None:
   if not torch.cuda.is_available():
     raise RuntimeError("CUDA is required")
   device = torch.device("cuda:0")
+
+  if args.fused_mlp:
+    if args.impl != ",".join(DEFAULT_IMPLS) or args.flashinfer_path:
+      print("[bench] --fused-mlp is native-runtime only; --impl/--flashinfer-path are ignored",
+            file=sys.stderr)
+    mlp_rows = []
+    for m, n, k in shapes:
+      for rank in ranks:
+        mlp_rows.extend(run_mlp_case(m, n, k, rank, args.seed, args.warmup, args.iterations,
+                                     device))
+    emit_mlp_rows(mlp_rows, args.json)
+    return
 
   rows = []
   for m, n, k in shapes:
