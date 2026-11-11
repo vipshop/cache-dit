@@ -17,7 +17,7 @@ from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21Fle
 
 from ....logger import init_logger
 from .block import install_fused_modules
-from .fused_ops import probe_ln_tier, probe_rope_variant
+from .fused_ops import probe_ln_tier
 
 logger = init_logger(__name__)
 
@@ -50,7 +50,6 @@ class _QwenImage21Transformer2DModel(QwenImage21Transformer2DModel):
       self.config, "num_attention_heads", 32)
     device = next(self.parameters()).device if any(True for _ in self.parameters()) else None
     if device is not None and device.type == "cuda":
-      probe_rope_variant(device)
       probe_ln_tier(hidden_size, device)
 
     if getattr(self, "_old_forward", None) is not None:

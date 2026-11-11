@@ -55,18 +55,16 @@ def test_qk_norm_rope_is_bit_exact_for_every_rotation_variant():
   assert matched, "no rotation variant reproduces torch's complex64 multiply"
 
 
-def test_qk_norm_rope_probe_selects_a_matching_variant():
-  variant = fused_ops.probe_rope_variant(DEVICE)
-  assert variant >= 0, "the probe must find a matching variant on a supported device"
+def test_qk_norm_rope_matches_the_eager_chain_at_the_shipped_variant():
+  """The production variant is fixed, so this pins the value that actually ships."""
 
   torch.manual_seed(1)
   x = torch.randn(1, 32, 8, 128, device=DEVICE, dtype=torch.bfloat16)
   weight = (1 + 0.1 * torch.randn(128, device=DEVICE)).to(torch.bfloat16)
   rotary = torch.polar(torch.ones(32, 64, device=DEVICE), torch.randn(32, 64, device=DEVICE) * 3)
-  assert _close(
-    fused_ops._eager_qk_norm_rope(x, weight, rotary, 1e-6),
-    fused_ops.apply_qk_norm_rope(x, weight, rotary, 1e-6),
-  )
+
+  reference = fused_ops._eager_qk_norm_rope(x, weight, rotary, 1e-6)
+  assert _close(fused_ops.apply_qk_norm_rope(x, weight, rotary, 1e-6), reference)
 
 
 def test_qk_norm_rope_writes_into_a_strided_buffer():
@@ -214,26 +212,3 @@ def test_dispatch_entry_points_follow_the_active_op_list(monkeypatch):
 
   up = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16)
   assert _close(torch.nn.functional.silu(hidden) * up, fused_ops.apply_silu_mul(hidden, up))
-
-
-def test_probes_run_once_per_process(monkeypatch):
-  """A probe must never be re-entered from the per-step path."""
-
-  calls = {"rope": 0}
-
-  import cache_dit.kernels._models as models
-
-  real = models.qwen_image21_qk_norm_rope
-
-  def counting(*args, **kwargs):
-    calls["rope"] += 1
-    return real(*args, **kwargs)
-
-  monkeypatch.setattr(models, "qwen_image21_qk_norm_rope", counting)
-  monkeypatch.setattr(fused_ops, "_ROPE_VARIANT", None)
-
-  first = fused_ops.probe_rope_variant(DEVICE)
-  after_first = calls["rope"]
-  for _ in range(5):
-    assert fused_ops.probe_rope_variant(DEVICE) == first
-  assert calls["rope"] == after_first, "the probe ran again after being resolved"

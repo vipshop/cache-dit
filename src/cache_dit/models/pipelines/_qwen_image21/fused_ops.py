@@ -77,9 +77,15 @@ def _ops_from_env() -> frozenset[str]:
 ACTIVE_OPS = _ops_from_env()
 
 # `None` = not probed yet, `-1` = probed and unusable, otherwise the selected variant/tier.
-_ROPE_VARIANT: int | None = None
 _LN_TIERS: dict[int, int] = {}
 _PROBE_SEQ = 8
+# `c10::complex<float>::operator*` is `a*c - b*d` / `a*d + b*c`, and nvcc contracts one of
+# those products into an FMA. Which one is a property of the ATen build, so the kernel ships
+# five pairings; variant 3 (the classic `__mulsc3` pairing) is the one this project measured
+# as closest. The difference between variants is a single bf16 ulp and does not accumulate,
+# i.e. far below the `--use_fast_math` error that is already accepted here, so the choice is
+# a constant instead of a startup probe.
+ROTATION_VARIANT = 3
 # The extensions are built with `--use_fast_math`, which turns `expf` / `tanhf` / `rsqrtf`
 # into the approximate SFU forms. Operators that fuse one of those therefore cannot be
 # bit-identical to the eager expression any more; they are accepted at this relative L2
@@ -178,77 +184,6 @@ def _eager_qk_norm_rope(
   return torch.view_as_real(rotated * freqs).flatten(3).type_as(x)
 
 
-def probe_rope_variant(device: torch.device | None = None) -> int:
-  """Pick the FMA contraction pattern that reproduces torch's complex multiply bit-exactly.
-
-  nvcc is free to fold `re*cos - im*sin` into an FMA, and which product it folds depends on
-  the build, so the kernel ships three variants and this probe selects one per process. A
-  wrong choice costs a single bf16 ulp, which is why the probe runs before the first real
-  call instead of being assumed.
-
-  :param device: CUDA device to probe on; defaults to the current device.
-  :returns: `0`/`1`/`2` for the matching variant, or `-1` when none matches and the kernel
-    must stay disabled for this process.
-  """
-
-  global _ROPE_VARIANT
-  if _ROPE_VARIANT is not None:
-    return _ROPE_VARIANT
-  if not fused_ops_extension_available() or not torch.cuda.is_available():
-    # Cache the negative outcome too: the probe must run at most once per process, never
-    # once per denoising step.
-    _ROPE_VARIANT = -1
-    return -1
-
-  from ....kernels import qwen_image21_qk_norm_rope
-
-  dev = device or torch.device("cuda", torch.cuda.current_device())
-  torch.manual_seed(0)
-  x = torch.randn(1, _PROBE_SEQ, 8, _FUSED_HEAD_DIM, device=dev, dtype=torch.bfloat16)
-  weight = (1 + 0.1 * torch.randn(_FUSED_HEAD_DIM, device=dev)).to(torch.bfloat16)
-  rotary = torch.polar(torch.ones(_PROBE_SEQ, _FUSED_HEAD_DIM // 2, device=dev),
-                       torch.randn(_PROBE_SEQ, _FUSED_HEAD_DIM // 2, device=dev) * 3)
-  reference = _eager_qk_norm_rope(x, weight, rotary, 1e-6)
-  cos, sin = rotary_cos_sin(rotary)
-
-  # Variant 3 (the classic `__mulsc3` FMA pairing) is what current ATen builds emit, so it is
-  # tried first; the others stay as fallbacks for a different nvcc or ATen version.
-  for variant in (3, 1, 2, 0, 4):
-    probe = qwen_image21_qk_norm_rope(x, weight, cos, sin, 1e-6, variant)
-    if torch.equal(reference, probe):
-      _ROPE_VARIANT = variant
-      logger.info("Qwen-Image 2.1 fused qk-norm+RoPE reproduces the eager chain bit-exactly "
-                  f"(rotation FMA variant {variant}).")
-      return variant
-
-  # `--use_fast_math` replaces `rsqrtf`, so exactness is not available on this build; pick
-  # the variant closest to the eager chain and accept it below the fast-math tolerance.
-  best_variant = 3
-  best_error = float("inf")
-  for variant in (3, 1, 2, 0, 4):
-    error = relative_l2(qwen_image21_qk_norm_rope(x, weight, cos, sin, 1e-6, variant), reference)
-    if error < best_error:
-      best_error = error
-      best_variant = variant
-  _ROPE_VARIANT = best_variant
-  if best_error <= REL_L2_TOL:
-    logger.info(f"Qwen-Image 2.1 fused qk-norm+RoPE matches the eager chain within fast-math "
-                f"tolerance (variant {best_variant}, rel-L2 {best_error:.2e}).")
-  else:
-    # Never fall back to eager here: the operator switch is the only opt-out, and the
-    # end-to-end PSNR gate is what judges accuracy.
-    logger.warning(f"Qwen-Image 2.1 fused qk-norm+RoPE picks variant {best_variant} at "
-                   f"rel-L2 {best_error:.2e}, above the {REL_L2_TOL:.0e} fast-math tolerance; "
-                   "keep the operator, validate with PSNR, or disable the family with "
-                   "CACHE_DIT_QWEN_IMAGE21_FUSED_OPS=0.")
-  return best_variant
-
-  _ROPE_VARIANT = -1
-  logger.warning("Qwen-Image 2.1 fused qk-norm+RoPE could not reproduce torch's complex multiply "
-                 "bit-exactly on this device; the kernel stays disabled and the eager chain runs.")
-  return -1
-
-
 def apply_qk_norm_rope(
   x: torch.Tensor,
   weight: torch.Tensor,
@@ -271,14 +206,10 @@ def apply_qk_norm_rope(
       and weight.is_contiguous() and rotary_emb.dtype == torch.complex64
       and rotary_emb.shape[0] == x.shape[1]
       and (out is None or (out.is_cuda and out.dtype == x.dtype))):
-    variant = _ROPE_VARIANT
-    if variant is None and not torch.compiler.is_compiling():
-      variant = probe_rope_variant(x.device)
-    if variant is not None and variant >= 0:
-      from ....kernels import qwen_image21_qk_norm_rope
+    from ....kernels import qwen_image21_qk_norm_rope
 
-      cos, sin = rotary_cos_sin(rotary_emb)
-      return qwen_image21_qk_norm_rope(x, weight, cos, sin, eps, variant, out=out)
+    cos, sin = rotary_cos_sin(rotary_emb)
+    return qwen_image21_qk_norm_rope(x, weight, cos, sin, eps, ROTATION_VARIANT, out=out)
 
   result = _eager_qk_norm_rope(x, weight, rotary_emb, eps)
   if out is not None:
@@ -462,7 +393,6 @@ __all__ = [
   "apply_silu_mul",
   "fused_ops_extension_available",
   "probe_ln_tier",
-  "probe_rope_variant",
   "rotary_cos_sin",
   "set_qwen_image21_fused_ops_enabled",
 ]

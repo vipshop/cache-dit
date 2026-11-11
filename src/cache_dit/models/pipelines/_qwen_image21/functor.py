@@ -18,7 +18,7 @@ from diffusers import QwenImage21Transformer2DModel
 from ....caching.patch_functors.functor_qwen_image_21 import QwenImage21PatchFunctor
 from ....logger import init_logger
 from .block import install_fused_modules
-from .fused_ops import probe_ln_tier, probe_rope_variant
+from .fused_ops import probe_ln_tier
 
 logger = init_logger(__name__)
 
@@ -59,7 +59,6 @@ class _QwenImage21PatchFunctor(QwenImage21PatchFunctor):
     device = next(transformer.parameters()).device if any(
       True for _ in transformer.parameters()) else None
     if device is not None and device.type == "cuda":
-      probe_rope_variant(device)
       probe_ln_tier(hidden_size, device)
 
     if getattr(transformer, "_old_forward", None) is not None:
