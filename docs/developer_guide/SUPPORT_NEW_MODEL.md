@@ -59,7 +59,7 @@ amount of extra care:
 Reference implementation: `flux3_adapter` in
 [caching/block_adapters/adapters.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/caching/block_adapters/adapters.py),
 the `flux3` / `flux3_edit` examples in
-[\_utils/examples.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utils/examples.py),
+[\cli/examples.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cli/examples.py),
 and the TP planner in
 [distributed/transformers/flux3.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/distributed/transformers/flux3.py).
 
@@ -99,4 +99,4 @@ In order to support <span style="color:#c77dff;">auto encoder (VAE) data paralle
 
 ## Examples and Tests
 
-Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/_utils/examples.py) and perform the necessary tests.
+Once the acceleration support for the new model is completed, we should add the new models to the [Examples](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cli/examples.py) and perform the necessary tests.

@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from cache_dit._utils.examples import (
+from cache_dit.cli.examples import (
   _PIKA_H3_FLEX_CACHE_THRESHOLDS,
   _PIKA_H3_FLEX_STEPS,
   _pika_h3_flex_adapter_name,
@@ -169,11 +169,11 @@ def test_scheduler_contract_rejects_three_kinds_of_degradation():
 def test_reference_flags_decode_into_this_models_classes(tmp_path):
   # The vendored blocks reject a foreign reference class with an `isinstance` check that runs *after*
   # the 200 GiB checkpoint is resident, so the flags must build `PikaH3Flex*Reference` objects.
-  from cache_dit._utils.examples import (
+  from cache_dit.cli.examples import (
     _PIKA_H3_FLEX_REFERENCE_CLASSES,
     _PIKA_H3_FLEX_REFERENCE_PACKAGE,
   )
-  from cache_dit._utils.registers import _references_from_args
+  from cache_dit.cli.registers import _references_from_args
   from cache_dit.models.pipelines.pika_h3_flex import PikaH3FlexReference
   from PIL import Image
 

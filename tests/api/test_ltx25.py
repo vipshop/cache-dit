@@ -409,7 +409,7 @@ def test_shard_rotary_emb_processor_forwards_perturbation_arguments():
 
 
 def _cli_args(example: str):
-  from cache_dit._utils import generate
+  from cache_dit.cli import generate
 
   argv = sys.argv
   sys.argv = ["cache_dit.generate", example]
@@ -422,7 +422,7 @@ def _cli_args(example: str):
 @pytest.mark.parametrize("example", ["ltx25_t2v", "ltx25_dfr"])
 def test_ltx25_examples_construct_and_build_inputs(example):
   """A registered example that cannot even build its inputs never runs end-to-end."""
-  from cache_dit._utils.registers import ExampleRegister
+  from cache_dit.cli.registers import ExampleRegister
 
   try:
     # The example factories import their pipeline, which needs a diffusers build that also ships

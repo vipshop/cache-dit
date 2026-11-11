@@ -41,7 +41,7 @@ Added once for all modular pipelines; a new modular model does not repeat this w
 | `src/cache_dit/caching/cache_adapters/cache_adapter.py` | `CachedAdapter.apply()` accepts a modular pipeline; **`mock_transformer()` preserves the original `forward` signature**; `release_hooks()` treats it as a pipe |
 | `src/cache_dit/caching/cache_interface.py` | transformer collection and `pipe` resolution during `enable_cache()` |
 | `src/cache_dit/summary.py` | `summary()` / `strify()` treat a modular pipeline as a pipe, so `cache_dit.summary(pipe)` and `--cache-summary` work |
-| `src/cache_dit/_utils/registers.py` | `ExampleInitConfig.is_modular_pipeline` + modular `get_pipe()` + `Example.call_pipe()` (`output=` selector) |
+| `src/cache_dit/cli/registers.py` | `ExampleInitConfig.is_modular_pipeline` + modular `get_pipe()` + `Example.call_pipe()` (`output=` selector) |
 
 Check the guards still exist before integrating a new modular model:
 
@@ -133,7 +133,7 @@ after `enable_cache`, check this first.
 
 ## 4. CLI template
 
-Three pieces, all in `_utils/`:
+Three pieces, all in `cli/`:
 
 ```python
 # examples.py — one example per workflow (T2I / edit), plus a model-specific cache config
@@ -166,7 +166,7 @@ def flux3_example(args, **kwargs) -> Example:
   `post_init_hook(pipe)`.
 * `Example.call_pipe()` adds `output="images"` for `T2I` / `IE2I`, and `Example.run()` accepts
   either a `BaseOutput` (`.images`) or a plain list.
-* `_env_path_mapping` needs a `<MODEL>_DIR` entry; `__all__` and `_utils/__init__.py` need the new
+* `_env_path_mapping` needs a `<MODEL>_DIR` entry; `__all__` and `cli/__init__.py` need the new
   factory.
 * Cache defaults: pass a model-specific `cache_config` like the Qwen-Lightning examples do. For a
   16-step distilled flow-map model the generic `max_warmup_steps=8`, `residual_diff_threshold=0.12`

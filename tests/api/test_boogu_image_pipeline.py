@@ -73,7 +73,7 @@ def test_cached_call_requires_two_forwards_per_step() -> None:
 def test_example_imports_the_vendored_pipeline() -> None:
   import inspect
 
-  from cache_dit._utils.examples import boogu_image_edit_example
+  from cache_dit.cli.examples import boogu_image_edit_example
 
   source = inspect.getsource(boogu_image_edit_example)
   assert "from ..models.pipelines.boogu_image import BooguImagePipeline" in source

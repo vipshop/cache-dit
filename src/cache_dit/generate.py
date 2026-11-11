@@ -1,4 +1,4 @@
-from ._utils import entrypoint
+from .cli import entrypoint
 
 
 def main():

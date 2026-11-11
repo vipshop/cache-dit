@@ -13,9 +13,9 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import registers
-from cache_dit._utils import sana_video_example as public_example
-from cache_dit._utils.examples import (
+from cache_dit.cli import registers
+from cache_dit.cli import sana_video_example as public_example
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _path_env_mapping,
   _SANA_VIDEO_NEGATIVE_PROMPT,
@@ -23,7 +23,7 @@ from cache_dit._utils.examples import (
   sana_video_example,
   sana_video_i2v_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 
 _DEFAULT = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
 
@@ -139,7 +139,7 @@ def test_video_output_keeps_one_frame_per_timestep():
 
   from PIL import Image
 
-  from cache_dit._utils.registers import parse_audio_video_output
+  from cache_dit.cli.registers import parse_audio_video_output
 
   frames = [Image.new("RGB", (832, 480)) for _ in range(5)]
 
@@ -157,7 +157,7 @@ def test_video_output_keeps_one_frame_per_timestep():
 def test_i2v_defaults_match_the_t2v_canvas(monkeypatch):
   from diffusers import SanaImageToVideoPipeline
 
-  monkeypatch.setattr("cache_dit._utils.examples.load_image", lambda *args, **kwargs: "IMAGE")
+  monkeypatch.setattr("cache_dit.cli.examples.load_image", lambda *args, **kwargs: "IMAGE")
   example = sana_video_i2v_example(_factory_args(image_path="dummy.png"))
 
   assert example.init_config.pipeline_class is SanaImageToVideoPipeline
@@ -175,7 +175,7 @@ def test_frames_flag_reaches_the_pipeline_kwargs(monkeypatch):
 
   # The factory and `ExampleInputData.data()` each imported `load_image` into their own module.
   fake_loader = lambda *args, **kwargs: Image.new("RGB", (8, 8))
-  monkeypatch.setattr("cache_dit._utils.examples.load_image", fake_loader)
+  monkeypatch.setattr("cache_dit.cli.examples.load_image", fake_loader)
   monkeypatch.setattr(registers, "load_image", fake_loader)
 
   for requested, expected in ((None, 81), (77, 77)):

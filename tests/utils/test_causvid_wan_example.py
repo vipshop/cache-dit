@@ -8,14 +8,14 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import causvid_wan_example as public_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import causvid_wan_example as public_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _path_env_mapping,
   causvid_wan_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 
 
 @pytest.fixture(autouse=True)
@@ -87,7 +87,7 @@ def test_cli_geometry_overrides():
 
 
 def test_transformer_factory_asks_for_the_student_checkpoint():
-  from cache_dit._utils.examples import _causvid_wan_transformer_factory
+  from cache_dit.cli.examples import _causvid_wan_transformer_factory
 
   factory = _causvid_wan_transformer_factory("/definitely/missing", "/also/missing")
   with pytest.raises(FileNotFoundError, match="autoregressive_checkpoint"):

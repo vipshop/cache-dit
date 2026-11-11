@@ -25,7 +25,7 @@ import numpy as np
 import pytest
 import torch
 
-from cache_dit._utils.registers import (
+from cache_dit.cli.registers import (
   ExampleOutputData,
   ExampleType,
   _resolve_audio_sampling_rate,
@@ -152,7 +152,7 @@ def test_has_separate_cfg_stays_off_without_a_call_default():
 def test_example_rejects_parallel_vae():
   """`AutoencoderSAME` has no VAE parallel planner; the example must say so instead of crashing."""
 
-  from cache_dit._utils.examples import stable_audio_3_example
+  from cache_dit.cli.examples import stable_audio_3_example
 
   args = argparse.Namespace(
     parallel_vae=True,

@@ -29,7 +29,7 @@ user-invocable: true
 | `src/cache_dit/quantization/svdquant/` | SVDQuant：`ptq.py`（校准 + 序列化 + load）、`quantizer.py`（DQ/PTQ 量化数学）、`linear.py`/`fused.py`（运行模块）、`packing.py`/`lowrank.py`/`passes.py`/`dtensor.py` |
 | `src/cache_dit/quantization/observers.py` | 逐层精度观察器（默认关闭） |
 | `src/cache_dit/quantization/converter.py` | 独立转换 CLI（`cache-dit-convert`，只支持 SVDQ `_dq`） |
-| `src/cache_dit/_utils/utils.py` | CLI 参数与 `maybe_quantize_transformer`（`--quantize-*` → `QuantizeConfig`） |
+| `src/cache_dit/cli/utils.py` | CLI 参数与 `maybe_quantize_transformer`（`--quantize-*` → `QuantizeConfig`） |
 | `docs/user_guide/QUANTIZATION.md` | 用户文档：类型总表、各路径示例、observer 与 converter |
 | `tests/quantization/` | 配置、observer、torchao、SVDQ（ptq/dq/quantizer/compile/padding/imports/offload）测试 |
 

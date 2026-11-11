@@ -5,8 +5,8 @@ example must expose the released task type (video **with** audio) plus the `MAGI
 """
 import argparse
 
-from cache_dit._utils.examples import _env_path_mapping, magi2_i2va_example, magi2_t2va_example
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.examples import _env_path_mapping, magi2_i2va_example, magi2_t2va_example
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 
 
 def _args(**overrides) -> argparse.Namespace:

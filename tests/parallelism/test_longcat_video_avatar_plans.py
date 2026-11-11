@@ -5,7 +5,7 @@ import types
 import pytest
 import torch
 
-from cache_dit._utils.registers import ExampleRegister
+from cache_dit.cli.registers import ExampleRegister
 from cache_dit.distributed.config import ParallelismConfig
 from cache_dit.distributed.transformers.longcat_video_avatar import (
   LongCatVideoAvatarContextParallelismPlanner, )
@@ -122,7 +122,7 @@ def test_cli_examples_are_registered():
 
 
 def test_cli_env_path_mapping():
-  from cache_dit._utils.examples import _env_path_mapping
+  from cache_dit.cli.examples import _env_path_mapping
 
   assert _env_path_mapping["LONGCAT_VIDEO_AVATAR_DIR"] == "meituan-longcat/LongCat-Video-Avatar-1.5"
   # The avatar checkpoint leans on the base release for the prompt encoder / VAE / tokenizer.

@@ -448,7 +448,7 @@ def moss_image_sft_example(args, **kwargs) -> Example:
 ```
 
 Plus the usual wiring: `_env_path_mapping["<MODEL>_DIR"]`, the name in `examples.py::__all__`, and
-the factory in `_utils/__init__.py`. One factory per checkpoint variant that differs only by weights
+the factory in `cli/__init__.py`. One factory per checkpoint variant that differs only by weights
 (`moss_image_sft` / `moss_image_base`). Full CLI mechanics: [`./cli.md`](./cli.md).
 
 For entry point 2 the example usually **stays unchanged**: the class name and constructor are kept
@@ -617,8 +617,8 @@ Prefix registries match with `cls_name.startswith(name)` and take the **first** 
 | same file | pick the fused `PatchFunctor` when `pipe.__class__.__name__.startswith("_")` | cache path installs the stock forward and drops the fusion |
 | CP planner | `ContextParallelismPlannerRegister.register("_<Model>")`, plus a `patch_functor()` hook so CP installs the *fused* functor | CP splits/gathers never installed, or installed over the fused forward |
 | TP planner | `TensorParallelismPlannerRegister.register("_<Model>Transformer2DModel")` | TP falls back to a generic plan |
-| `_utils/utils.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
-| `_utils/examples.py` | `<model>_fused` (+ turbo variant) examples | no CLI path to the optimized pipeline |
+| `cli/utils.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
+| `cli/examples.py` | `<model>_fused` (+ turbo variant) examples | no CLI path to the optimized pipeline |
 | `kernels/_models/__init__.py`, `kernels/__init__.py` | new `__all__` entries | `test_public_api_matches_all` fails |
 | `setup.py` `_required_models_sources()` | every new `.cu` / `.cpp` | the file is **never compiled** (the list is explicit, not a glob) |
 

@@ -30,7 +30,7 @@ Companion file: [`./perf_matrix.md`](./perf_matrix.md) owns the **full acceptanc
 Models are stored at `/workspace/dev/vipdev/hf_models/`. List available models with `ls /workspace/dev/vipdev/hf_models/`. Set the corresponding environment variable before testing:
 
 ```bash
-# Find your model's env var in src/cache_dit/_utils/examples.py (_env_path_mapping)
+# Find your model's env var in src/cache_dit/cli/examples.py (_env_path_mapping)
 # For example:
 export FLUX_DIR=/workspace/dev/vipdev/hf_models/FLUX.1-dev
 export QWEN_IMAGE_DIR=/workspace/dev/vipdev/hf_models/Qwen-Image

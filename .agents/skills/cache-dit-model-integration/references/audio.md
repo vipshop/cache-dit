@@ -378,8 +378,8 @@ file names.
 |---|---|
 | BlockAdapter | `src/cache_dit/caching/block_adapters/adapters.py` (`longcat_audio_dit_adapter`) |
 | CP + TP planners | `src/cache_dit/distributed/transformers/longcat_audio_dit.py` (+ `planners.py`) |
-| T2A task + wav writer | `src/cache_dit/_utils/registers.py` (`ExampleType.T2A`, `_save_audio`, `parse_audio_output`) |
-| CLI example | `src/cache_dit/_utils/examples.py` (`longcat_audio_dit_example`) |
+| T2A task + wav writer | `src/cache_dit/cli/registers.py` (`ExampleType.T2A`, `_save_audio`, `parse_audio_output`) |
+| CLI example | `src/cache_dit/cli/examples.py` (`longcat_audio_dit_example`) |
 | Audio metrics | `src/cache_dit/metrics/metrics.py` (`calculate_si_sdr` / `calculate_snr` / `calculate_mel_psnr` / `calculate_mel_ssim`, `compute_audio_metric`) |
 | CPU tests | `tests/api/test_longcat_audio_dit_adapter.py`, `tests/api/test_metrics_audio.py` |
 | Multi-rank parity | `tests/parallelism/test_longcat_audio_dit_cp_tp_tiny.py` |

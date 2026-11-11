@@ -23,13 +23,13 @@ import pytest
 import torch
 from PIL import Image
 
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _MINIMAX_H3_CACHE_THRESHOLDS,
   _MINIMAX_H3_DEFAULT_THRESHOLD,
   _minimax_h3_cache_config,
 )
-from cache_dit._utils.registers import (
+from cache_dit.cli.registers import (
   ExampleInputData,
   ExampleType,
   _AUDIO_VIDEO_TASKS,
@@ -148,7 +148,7 @@ def test_skip_image_resize_never_reaches_the_pipeline(tmp_path):
 
 def _reference_video_asset() -> str:
   """Path of the bundled reference clip, used by the reference-path test."""
-  from cache_dit._utils.examples import _minimax_h3_demo_asset
+  from cache_dit.cli.examples import _minimax_h3_demo_asset
 
   return _minimax_h3_demo_asset("reference_video.mp4")
 
@@ -239,8 +239,8 @@ def test_adapter_reports_a_missing_partition():
 
 def test_fl2va_example_defaults_to_the_demo_frames(monkeypatch):
   """The example ships a first and a *different* last frame, and skips the client-side resize."""
-  from cache_dit._utils.examples import _minimax_h3_demo_asset, minimax_h3_fl2va_example
-  from cache_dit._utils.generate import get_example_args
+  from cache_dit.cli.examples import _minimax_h3_demo_asset, minimax_h3_fl2va_example
+  from cache_dit.cli.generate import get_example_args
 
   first = _minimax_h3_demo_asset("first_frame.png")
   last = _minimax_h3_demo_asset("last_frame.png")
@@ -326,7 +326,7 @@ def test_skip_image_resize_refuses_a_mask(tmp_path):
 
 def test_vision_tower_is_kept_resident_and_excluded():
   """A vision-language conditioner keeps its tower: its forward reads the parameter device."""
-  from cache_dit._utils.utils import _keep_vision_tower_resident, _stream_filter_excluding
+  from cache_dit.cli.utils import _keep_vision_tower_resident, _stream_filter_excluding
 
   conditioner = torch.nn.Module()
   conditioner.model = torch.nn.Module()
@@ -346,7 +346,7 @@ def test_vision_tower_is_kept_resident_and_excluded():
 
 
 def test_text_only_conditioner_has_no_vision_tower():
-  from cache_dit._utils.utils import _keep_vision_tower_resident
+  from cache_dit.cli.utils import _keep_vision_tower_resident
 
   conditioner = torch.nn.Module()
   conditioner.model = torch.nn.Module()
@@ -356,7 +356,7 @@ def test_text_only_conditioner_has_no_vision_tower():
 
 def test_reference_flags_are_ignored_by_a_workflow_that_takes_none(monkeypatch):
   """A global flag must not decode media (or import loaders) for a task that has no references."""
-  from cache_dit._utils import registers as registers_mod
+  from cache_dit.cli import registers as registers_mod
 
   def _explode(*args, **kwargs):
     raise AssertionError("references must not be built for a workflow that takes none")
@@ -380,7 +380,7 @@ def test_reference_flags_are_ignored_by_a_workflow_that_takes_none(monkeypatch):
 
 def test_fl2va_defaults_skip_the_demo_asset_when_overridden(tmp_path, monkeypatch):
   """Passing both frames must not resolve (or download) the bundled pair at all."""
-  from cache_dit._utils import examples as examples_mod
+  from cache_dit.cli import examples as examples_mod
 
   def _explode(name: str):
     raise AssertionError(f"demo asset '{name}' must not be resolved when an override is given")
@@ -398,7 +398,7 @@ def test_fl2va_defaults_skip_the_demo_asset_when_overridden(tmp_path, monkeypatc
 def test_ref2va_defaults_skip_the_demo_media_when_overridden(tmp_path, monkeypatch):
   """A reference override replaces the bundled pair before it is decoded."""
   pytest.importorskip("av")
-  from cache_dit._utils import examples as examples_mod
+  from cache_dit.cli import examples as examples_mod
 
   def _explode(name: str):
     raise AssertionError(f"demo asset '{name}' must not be resolved when references are given")
@@ -413,7 +413,7 @@ def test_ref2va_defaults_skip_the_demo_media_when_overridden(tmp_path, monkeypat
 
 def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
   """`ref2va` has no `transformer`, so a compile that only looks for one would silently no-op."""
-  from cache_dit._utils import utils as utils_mod
+  from cache_dit.cli import utils as utils_mod
 
   compiled = []
   monkeypatch.setattr(utils_mod, "set_compile_configs", lambda **kwargs: None)
@@ -435,7 +435,7 @@ def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
 
 def test_quantize_targets_the_partition_the_pipeline_actually_has(monkeypatch):
   """`ref2va` has no `transformer`; quantizing must not silently leave it bf16."""
-  from cache_dit._utils import utils as utils_mod
+  from cache_dit.cli import utils as utils_mod
 
   quantized = []
   marker = torch.nn.Linear(2, 2)

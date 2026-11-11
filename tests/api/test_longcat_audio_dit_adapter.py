@@ -206,7 +206,7 @@ def test_cp_rope_processors_preserve_the_unpatched_output():
 
 
 def test_audio_output_is_written_as_a_wav(tmp_path):
-  from cache_dit._utils.registers import ExampleOutputData
+  from cache_dit.cli.registers import ExampleOutputData
 
   sf = pytest.importorskip("soundfile")
   samples = 480
@@ -229,7 +229,7 @@ def test_audio_output_is_written_as_a_wav(tmp_path):
 
 @pytest.mark.parametrize("as_tensor", [False, True])
 def test_parse_audio_output_reads_one_request(as_tensor):
-  from cache_dit._utils.registers import ExampleType, parse_audio_output
+  from cache_dit.cli.registers import ExampleType, parse_audio_output
 
   audios = np.zeros((2, 1, 32), dtype=np.float32)
   audios[0, 0, :4] = 1.0
@@ -245,7 +245,7 @@ def test_parse_audio_output_reads_one_request(as_tensor):
 
 
 def test_parse_audio_output_rejects_an_output_without_audios():
-  from cache_dit._utils.registers import ExampleType, parse_audio_output
+  from cache_dit.cli.registers import ExampleType, parse_audio_output
 
   with pytest.raises(ValueError):
     parse_audio_output(object(), ExampleType.T2A, pipe=types.SimpleNamespace(sample_rate=24000))

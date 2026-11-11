@@ -10,7 +10,7 @@ Cache-dit's `python3 -m cache_dit.generate` CLI discovers models through `Exampl
 
 ### 6.2 Implementation
 
-In `src/cache_dit/_utils/examples.py`:
+In `src/cache_dit/cli/examples.py`:
 
 ```python
 @ExampleRegister.register("my_model", default="org/my-model-on-huggingface")
@@ -57,7 +57,7 @@ def my_model_example(args: argparse.Namespace, **kwargs) -> Example:
 
 ### 6.3 Registration
 
-Add to `src/cache_dit/_utils/__init__.py`:
+Add to `src/cache_dit/cli/__init__.py`:
 
 ```python
 my_model_example = _safe_import(".examples", "my_model_example")
@@ -65,7 +65,7 @@ my_model_example = _safe_import(".examples", "my_model_example")
 
 ### 6.4 Environment Variable Mapping
 
-In `src/cache_dit/_utils/examples.py`, the `_env_path_mapping` dict maps environment variables to default HuggingFace model IDs. Add your model:
+In `src/cache_dit/cli/examples.py`, the `_env_path_mapping` dict maps environment variables to default HuggingFace model IDs. Add your model:
 
 ```python
 _env_path_mapping = {
@@ -82,4 +82,4 @@ Users then set `export MY_MODEL_DIR=/path/to/local/model` to avoid downloading f
 
 We recommend reading the following files for additional context:
 
-- example CLI source code: `src/cache_dit/_utils`
+- example CLI source code: `src/cache_dit/cli`

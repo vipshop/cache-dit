@@ -6,8 +6,8 @@ keeps a short run from spending every step in the warmup phase and reporting a z
 
 import argparse
 
-from cache_dit._utils.examples import _mova_cache_config, _env_path_mapping
-from cache_dit._utils.registers import ExampleRegister
+from cache_dit.cli.examples import _mova_cache_config, _env_path_mapping
+from cache_dit.cli.registers import ExampleRegister
 
 
 def _args(**overrides) -> argparse.Namespace:

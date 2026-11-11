@@ -13,17 +13,17 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import moss_image_base_example as public_base_example
-from cache_dit._utils import moss_image_sft_example as public_sft_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import moss_image_base_example as public_base_example
+from cache_dit.cli import moss_image_sft_example as public_sft_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _MOSS_IMAGE_PROMPT,
   _path_env_mapping,
   moss_image_base_example,
   moss_image_sft_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 from cache_dit.models.pipelines.moss_image import MOSSImagePipeline
 
 
