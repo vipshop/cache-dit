@@ -59,7 +59,7 @@ FP8 rowwise quantization can be combined with CUDA Graphs to further optimize tr
 ```python
 import torch
 from cache_dit import QuantizeConfig
-from cache_dit.quantization.torchao._scaled_mm import (
+from cache_dit.quantization.torchao.scaled_mm import (
   enable_opaque_torchao_float8_scaled_mm,
 )
 

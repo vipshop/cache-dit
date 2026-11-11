@@ -409,7 +409,7 @@ covers the 4 block stacks only: 258 linear layers (`43 blocks x 6`), 0 skipped.
 **fp8 needs compile to pay off.** fp8 alone only reaches 1.11× (4.90 s → 4.40 s) because torchao's
 rowwise `addmm_float8_unwrapped_inference` (`_scaled_mm`) runs unfused in eager; under
 `torch.compile` it is lowered into a compiled subgraph (cache-dit ships that wiring in
-`quantization/torchao/_scaled_mm.py`), and the combination reaches 2.08× — more than fp8 (1.11×)
+`quantization/torchao/scaled_mm.py`), and the combination reaches 2.08× — more than fp8 (1.11×)
 and compile (1.24×) add up to.
 
 **`--compile` is not bit-reproducible.** Two identical runs of the same config differ by

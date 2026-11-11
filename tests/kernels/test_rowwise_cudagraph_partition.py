@@ -88,7 +88,7 @@ PATCHED_MERGED_STREAM_REPRO = textwrap.dedent("""
     from torchao.quantization.granularity import PerRow
     from torchao.quantization.quantize_.common import KernelPreference
     from torchao.quantization.quantize_.workflows.float8.float8_tensor import Float8Tensor, QuantizeTensorToFloat8Kwargs
-    from cache_dit.quantization.torchao._scaled_mm import enable_opaque_torchao_float8_scaled_mm
+    from cache_dit.quantization.torchao.scaled_mm import enable_opaque_torchao_float8_scaled_mm
 
     # Pin the torch `_scaled_mm` path that Cache-DiT's wrapper patches: torchao's AUTO picks
     # mslk on any sm90+, but mslk 1.4.0 has no sm12x fp8 rowwise kernel and aborts with

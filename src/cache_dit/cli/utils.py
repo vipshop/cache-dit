@@ -2092,7 +2092,7 @@ def maybe_quantize_transformer(
   # Quantize transformer by default if quantization is enabled
   if args.quantize:
     if args.compile and args.cuda_graph and args.quantize_type == "float8_per_row":
-      from ..quantization.torchao._scaled_mm import (
+      from ..quantization.torchao.scaled_mm import (
         enable_opaque_torchao_float8_scaled_mm, )
 
       enable_opaque_torchao_float8_scaled_mm()
