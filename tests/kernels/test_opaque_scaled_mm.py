@@ -71,7 +71,7 @@ def _run_opaque_scaled_mm_smoke_test() -> None:
       granularity=PerRow(),
       mm_config=mm_config,
       act_quant_kwargs=act_quant_kwargs,
-      # Pin the torch `_scaled_mm` path: that is what Cache-DiT configures for
+      # Pin the `torch._scaled_mm` path: that is what Cache-DiT configures for
       # float8_per_row (KernelPreference.TORCH in quantization/torchao/quantize_ao.py) and
       # what enable_opaque_torchao_float8_scaled_mm() patches. torchao's AUTO picks mslk on
       # any sm90+, but mslk 1.4.0 only ships Sm90/Sm100 fp8 rowwise kernels and hands sm12x

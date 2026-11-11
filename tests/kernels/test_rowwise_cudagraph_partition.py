@@ -3,7 +3,7 @@
 The tests cover two cases:
 - raw torchao rowwise quantize + scaled_mm replay still reproduces the hang (currently
     skipped: the hang does not reproduce on torch 2.15 / torchao 0.18 with the torch
-    `_scaled_mm` path, and the mslk path aborts on sm12x -- see issue #1286),
+    `torch._scaled_mm` path, and the mslk path aborts on sm12x -- see issue #1286),
 - Cache-DiT's tagged scaled_mm wrapper keeps the call compiled while letting
     compile + CUDA Graph partition around it so the realistic merged-stream
     attention repro completes.
@@ -39,7 +39,7 @@ RAW_ROW_REPRO = textwrap.dedent("""
     from torchao.quantization.quantize_.common import KernelPreference
     from torchao.quantization.quantize_.workflows.float8.float8_tensor import Float8Tensor, QuantizeTensorToFloat8Kwargs
 
-    # Same torch `_scaled_mm` path as the tagged-wrapper case; see the module docstring.
+    # Same `torch._scaled_mm` path as the tagged-wrapper case; see the module docstring.
     _PREF = KernelPreference.TORCH
 
     M = 512
@@ -90,7 +90,7 @@ PATCHED_MERGED_STREAM_REPRO = textwrap.dedent("""
     from torchao.quantization.quantize_.workflows.float8.float8_tensor import Float8Tensor, QuantizeTensorToFloat8Kwargs
     from cache_dit.quantization.torchao.scaled_mm import enable_opaque_torchao_float8_scaled_mm
 
-    # Pin the torch `_scaled_mm` path that Cache-DiT's wrapper patches: torchao's AUTO picks
+    # Pin the `torch._scaled_mm` path that Cache-DiT's wrapper patches: torchao's AUTO picks
     # mslk on any sm90+, but mslk 1.4.0 has no sm12x fp8 rowwise kernel and aborts with
     # `RuntimeError: cutlass cannot initialize` (#1286).
     _PREF = KernelPreference.TORCH
@@ -187,7 +187,7 @@ def _run_python_snippet(code: str, timeout_seconds: int) -> subprocess.Completed
 
 _RAW_REPRO_SKIP_REASON = (
   "The raw rowwise FP8 + CUDA Graph replay hang no longer reproduces with the torch "
-  "`_scaled_mm` path on torch 2.15 / torchao 0.18, and on sm12x the mslk path aborts earlier "
+  "`torch._scaled_mm` path on torch 2.15 / torchao 0.18, and on sm12x the mslk path aborts earlier "
   "with `RuntimeError: cutlass cannot initialize`, so the hang cannot be observed at all "
   "(issue #1286). The tagged-wrapper case below stays enabled as the regression guard; "
   "re-enable this one only to re-verify the hang on SM90/SM100.")

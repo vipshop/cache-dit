@@ -424,7 +424,7 @@ class QuantizeConfig:
   # quantization is not supported for some layers. This is useful for cases when
   # tensor parallelism is applied, and some layers cannot be quantized to float8
   # per-row or per-block, e.g, layers applied RowwiseParallel may not support
-  # float8 per-row quantization currently, _scaled_mm will raise memory layout
+  # float8 per-row quantization currently, torch._scaled_mm will raise memory layout
   # mismatch error when quantized to float8 per-row, setting this flag to True
   # will fallback to float8 per tensor quantization for those layers, instead of
   # raising error. (Only support for float8 quantization for now, int8 fallback
