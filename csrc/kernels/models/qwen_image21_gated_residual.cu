@@ -38,14 +38,11 @@ __global__ void qwen_image21_gated_residual_kernel(const uint4* __restrict__ hid
     __nv_bfloat162* r = reinterpret_cast<__nv_bfloat162*>(&result);
 #pragma unroll
     for (int i = 0; i < kElemsPerThread / 2; ++i) {
-      const float2 hf = __bfloat1622float2(h[i]);
-      const float2 gf = __bfloat1622float2(g[i]);
-      const float2 uf = __bfloat1622float2(u[i]);
-      // Rounding 1: bf16(gate * update).  Rounding 2: bf16(hidden + that).
-      const float px = __bfloat162float(__float2bfloat16_rn(__fmul_rn(gf.x, uf.x)));
-      const float py = __bfloat162float(__float2bfloat16_rn(__fmul_rn(gf.y, uf.y)));
-      r[i].x = __float2bfloat16_rn(__fadd_rn(hf.x, px));
-      r[i].y = __float2bfloat16_rn(__fadd_rn(hf.y, py));
+      // Two native bf16 roundings: mul rounds to bf16, add rounds to bf16. An fma would
+      // drop the first one, so `__hfma2` must not be used here. `__hmul2`/`__hadd2` are
+      // bit-identical to torch's fp32-compute-then-round for bf16 inputs, because the exact
+      // product of two bf16 values fits in fp32.
+      r[i] = __hadd2(h[i], __hmul2(g[i], u[i]));
     }
     out[idx] = result;
   }

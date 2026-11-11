@@ -34,12 +34,13 @@ __global__ void qwen_image21_silu_mul_kernel(const uint4* __restrict__ gate,
     __nv_bfloat162* r = reinterpret_cast<__nv_bfloat162*>(&result);
 #pragma unroll
     for (int i = 0; i < kElemsPerThread / 2; ++i) {
+      // silu stays in fp32 with a real division (ATen's `silu` divides, and a reciprocal
+      // multiply differs by an ulp), then the product is one native bf16 rounding.
       const float2 gf = __bfloat1622float2(g[i]);
-      const float2 uf = __bfloat1622float2(u[i]);
-      const float sx = __bfloat162float(__float2bfloat16_rn(gf.x / (1.0f + expf(-gf.x))));
-      const float sy = __bfloat162float(__float2bfloat16_rn(gf.y / (1.0f + expf(-gf.y))));
-      r[i].x = __float2bfloat16_rn(__fmul_rn(sx, uf.x));
-      r[i].y = __float2bfloat16_rn(__fmul_rn(sy, uf.y));
+      __nv_bfloat162 silu;
+      silu.x = __float2bfloat16_rn(gf.x / (1.0f + expf(-gf.x)));
+      silu.y = __float2bfloat16_rn(gf.y / (1.0f + expf(-gf.y)));
+      r[i] = __hmul2(silu, u[i]);
     }
     out[idx] = result;
   }

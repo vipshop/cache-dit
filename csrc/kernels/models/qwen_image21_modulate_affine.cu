@@ -143,27 +143,28 @@ __global__ void qwen_image21_modulate_kernel(const __nv_bfloat162* __restrict__ 
 #pragma unroll
     for (int i = 0; i < 2; ++i) {
       const int idx = base + i;
-      const float2 xv = __bfloat1622float2(x_row[idx]);
-      const float2 sv = __bfloat1622float2(scale_row[idx]);
-      const float2 gv = __bfloat1622float2(gate_row[idx]);
+      const __nv_bfloat162 xv = x_row[idx];
+      const __nv_bfloat162 sv = scale_row[idx];
+      const __nv_bfloat162 gv = gate_row[idx];
 
-      float nx = xv.x;
-      float ny = xv.y;
+      // Normalisation is fp32 with one bf16 rounding, exactly like ATen's layer-norm
+      // epilogue; the modulation itself is then two native bf16 roundings
+      // (`1 + scale`, then the product), so `__hfma2` is not usable here.
+      __nv_bfloat162 normed;
       if (kFuseNorm) {
-        nx = __bfloat162float(__float2bfloat16_rn((xv.x - mean) * rstd));
-        ny = __bfloat162float(__float2bfloat16_rn((xv.y - mean) * rstd));
+        const float2 xf = __bfloat1622float2(xv);
+        normed.x = __float2bfloat16_rn((xf.x - mean) * rstd);
+        normed.y = __float2bfloat16_rn((xf.y - mean) * rstd);
+      } else {
+        normed = xv;
       }
-      // bf16(1 + scale) first, then a bf16 product: two rounding points, no FMA.
-      const float one_x = __bfloat162float(__float2bfloat16_rn(1.0f + sv.x));
-      const float one_y = __bfloat162float(__float2bfloat16_rn(1.0f + sv.y));
-      __nv_bfloat162 outv;
-      outv.x = __float2bfloat16_rn(__fmul_rn(nx, one_x));
-      outv.y = __float2bfloat16_rn(__fmul_rn(ny, one_y));
-      out_row[idx] = outv;
+      out_row[idx] = __hmul2(normed, __hadd2(sv, __float2bfloat162_rn(1.0f)));
 
+      // tanh only exists in fp32 here: it has to match torch's fp32 `tanh` bit for bit.
+      const float2 gvf = __bfloat1622float2(gv);
       __nv_bfloat162 gatev;
-      gatev.x = __float2bfloat16_rn(tanhf(gv.x));
-      gatev.y = __float2bfloat16_rn(tanhf(gv.y));
+      gatev.x = __float2bfloat16_rn(tanhf(gvf.x));
+      gatev.y = __float2bfloat16_rn(tanhf(gvf.y));
       gate_out_row[idx] = gatev;
     }
   }
