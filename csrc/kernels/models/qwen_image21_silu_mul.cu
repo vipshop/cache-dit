@@ -21,6 +21,8 @@ namespace {
 
 constexpr int kElemsPerThread = 8;
 
+bool is_aligned16(const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; }
+
 __global__ void qwen_image21_silu_mul_kernel(const uint4* __restrict__ gate,
                                              const uint4* __restrict__ up, uint4* __restrict__ out,
                                              int64_t vecs) {
@@ -49,15 +51,19 @@ __global__ void qwen_image21_silu_mul_kernel(const uint4* __restrict__ gate,
 }  // namespace
 
 void qwen_image21_silu_mul(at::Tensor gate, at::Tensor up, at::Tensor out) {
-  TORCH_CHECK(gate.is_cuda() && gate.scalar_type() == at::kBFloat16 && gate.is_contiguous() &&
-                gate.storage_offset() == 0,
+  // A non-zero storage offset is fine (a contiguous slice is a valid input); what the
+  // 16-byte vector loads need is pointer alignment.
+  TORCH_CHECK(gate.is_cuda() && gate.scalar_type() == at::kBFloat16 && gate.is_contiguous(),
               "qwen_image21_silu_mul: gate must be contiguous CUDA bf16");
   TORCH_CHECK(up.is_cuda() && up.scalar_type() == at::kBFloat16 && up.is_contiguous() &&
-                up.storage_offset() == 0 && up.sizes() == gate.sizes(),
+                up.sizes() == gate.sizes(),
               "qwen_image21_silu_mul: up must be contiguous CUDA bf16 with the same shape");
   TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 && out.is_contiguous() &&
-                out.storage_offset() == 0 && out.sizes() == gate.sizes(),
+                out.sizes() == gate.sizes(),
               "qwen_image21_silu_mul: out must be contiguous CUDA bf16 with the same shape");
+  TORCH_CHECK(is_aligned16(gate.const_data_ptr()) && is_aligned16(up.const_data_ptr()) &&
+                is_aligned16(out.data_ptr()),
+              "qwen_image21_silu_mul: buffers must be 16-byte aligned for the uint4 path");
   const int64_t numel = gate.numel();
   TORCH_CHECK(numel % kElemsPerThread == 0,
               "qwen_image21_silu_mul: element count must be a multiple of 8");

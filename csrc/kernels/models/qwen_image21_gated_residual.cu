@@ -22,6 +22,8 @@ namespace {
 
 constexpr int kElemsPerThread = 8;
 
+bool is_aligned16(const void* p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; }
+
 __global__ void qwen_image21_gated_residual_kernel(const uint4* __restrict__ hidden,
                                                    const uint4* __restrict__ gate,
                                                    const uint4* __restrict__ update,
@@ -52,19 +54,24 @@ __global__ void qwen_image21_gated_residual_kernel(const uint4* __restrict__ hid
 
 void qwen_image21_gated_residual(at::Tensor hidden_states, at::Tensor gate, at::Tensor update,
                                  at::Tensor out) {
+  // A non-zero storage offset is fine (a contiguous slice is a valid input); what the
+  // 16-byte vector loads need is pointer alignment.
   TORCH_CHECK(hidden_states.is_cuda() && hidden_states.scalar_type() == at::kBFloat16 &&
-                hidden_states.is_contiguous() && hidden_states.storage_offset() == 0,
+                hidden_states.is_contiguous(),
               "qwen_image21_gated_residual: hidden_states must be contiguous CUDA bf16");
   TORCH_CHECK(gate.is_cuda() && gate.scalar_type() == at::kBFloat16 && gate.is_contiguous() &&
-                gate.storage_offset() == 0 && gate.sizes() == hidden_states.sizes(),
+                gate.sizes() == hidden_states.sizes(),
               "qwen_image21_gated_residual: gate must be contiguous CUDA bf16 with the same shape");
   TORCH_CHECK(
     update.is_cuda() && update.scalar_type() == at::kBFloat16 && update.is_contiguous() &&
-      update.storage_offset() == 0 && update.sizes() == hidden_states.sizes(),
+      update.sizes() == hidden_states.sizes(),
     "qwen_image21_gated_residual: update must be contiguous CUDA bf16 with the same shape");
   TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 && out.is_contiguous() &&
-                out.storage_offset() == 0 && out.sizes() == hidden_states.sizes(),
+                out.sizes() == hidden_states.sizes(),
               "qwen_image21_gated_residual: out must be contiguous CUDA bf16 with the same shape");
+  TORCH_CHECK(is_aligned16(hidden_states.const_data_ptr()) && is_aligned16(gate.const_data_ptr()) &&
+                is_aligned16(update.const_data_ptr()) && is_aligned16(out.data_ptr()),
+              "qwen_image21_gated_residual: buffers must be 16-byte aligned for the uint4 path");
   TORCH_CHECK(
     out.data_ptr() != hidden_states.data_ptr(),
     "qwen_image21_gated_residual: out must not alias hidden_states; cache-dit derives the "

@@ -9,15 +9,22 @@
 // rotation. The rotation itself is fp32 with explicit `__fmul_rn`/`__fadd_rn` so nvcc
 // cannot contract it into an FMA that torch's complex multiply does not use.
 //
-// The mean over the 128 head channels reproduces ATen's reduction order for this shape:
-// 32 lanes, lane `t` accumulating elements [4t, 4t + 4) in order, then a 32-lane
-// butterfly tree (16/8/4/2/1), then `/ D`. This matches `torch.equal` on sm120 and is
-// re-verified at runtime by `fused_ops` before the kernel is trusted.
+// Layout. ATen reduces this shape with 32 leaves of 4 consecutive channels each, so the
+// bit-exact mean has to come from that exact leaf tree. That does not force 8-byte accesses
+// though: one lane loads 16 bytes = 8 consecutive channels, which is exactly two ATen
+// leaves, and the tree is rebuilt with physical shuffle offsets 8/4/2/1 (leaf offsets
+// 16/8/4/2) plus one final in-lane merge of the two leaves (leaf offset 1). A warp then
+// covers two rows (lanes 0-15 and 16-31), so both the load, the weight, the cos/sin table
+// and the store stay at 16 bytes per lane.
+//
+// `fused_ops.probe_rope_variant()` picks the FMA contraction pattern of the rotation once
+// per process, verified with `torch.equal`.
 
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <cuda_bf16.h>
+#include <cuda_runtime.h>
 
 #include "qwen_image21.h"
 
@@ -25,41 +32,29 @@ namespace cache_dit::models {
 namespace {
 
 constexpr int kWarpsPerBlock = 4;
-// One warp per row, 32 lanes x 4 channels = the whole 128-wide head.
+constexpr int kLanesPerRow = 16;
+constexpr int kPairsPerLane = 4;  // 4 complex pairs = 8 channels = 16 bytes
 constexpr int kPairs = 64;
 
-__device__ __forceinline__ float warp_sum_32(float v) {
-#pragma unroll
-  for (int offset = 16; offset > 0; offset >>= 1) {
-    v += __shfl_xor_sync(0xffffffffu, v, offset);
-  }
-  return v;
-}
-
-struct OutStrides {
-  int64_t dim0;
-  int64_t dim1;
-  int64_t dim2;
-};
-
 // torch's complex64 multiply is compiled with default nvcc contraction, so which product
-// gets folded into the FMA depends on the build. `fused_ops` probes the three candidates
-// once per process and passes the matching id; a wrong choice costs one bf16 ulp.
+// gets folded into the FMA depends on the build; a wrong choice costs one bf16 ulp.
 template <int kVari>
 __device__ __forceinline__ void rotate_pair(float re, float im, float c, float s,
                                             __nv_bfloat162* dst) {
+  // `if constexpr`: only the selected contraction pattern is emitted, so the dead branches
+  // can never influence instruction selection in the instantiation that actually ships.
   float out_re;
   float out_im;
-  if (kVari == 0) {
+  if constexpr (kVari == 0) {
     out_re = __fsub_rn(__fmul_rn(re, c), __fmul_rn(im, s));
     out_im = __fadd_rn(__fmul_rn(re, s), __fmul_rn(im, c));
-  } else if (kVari == 1) {
+  } else if constexpr (kVari == 1) {
     out_re = __fmaf_rn(re, c, -__fmul_rn(im, s));
     out_im = __fmaf_rn(re, s, __fmul_rn(im, c));
-  } else if (kVari == 2) {
+  } else if constexpr (kVari == 2) {
     out_re = __fmaf_rn(-im, s, __fmul_rn(re, c));
     out_im = __fmaf_rn(im, c, __fmul_rn(re, s));
-  } else if (kVari == 3) {
+  } else if constexpr (kVari == 3) {
     out_re = __fmaf_rn(re, c, -__fmul_rn(im, s));
     out_im = __fmaf_rn(im, c, __fmul_rn(re, s));
   } else {
@@ -70,6 +65,12 @@ __device__ __forceinline__ void rotate_pair(float re, float im, float c, float s
   dst->y = __float2bfloat16_rn(out_im);
 }
 
+struct OutStrides {
+  int64_t dim0;
+  int64_t dim1;
+  int64_t dim2;
+};
+
 // `out` is addressed through explicit strides so the kernel can write the target tail of a
 // persistent [prefix | target] KV buffer without an intermediate copy.
 template <int kVari>
@@ -78,61 +79,86 @@ __global__ void qwen_image21_qk_norm_rope_kernel(
   const float* __restrict__ cos, const float* __restrict__ sin, __nv_bfloat162* __restrict__ out,
   OutStrides out_strides, int64_t rows, int seq_len, int heads, float eps) {
   const int lane = threadIdx.x & 31;
+  const int row_in_pair = lane >> 4;
+  const int lid = lane & 15;
   const int warp = threadIdx.x >> 5;
-  const int64_t row = (int64_t)blockIdx.x * kWarpsPerBlock + warp;
+  const int64_t row = ((int64_t)blockIdx.x * kWarpsPerBlock + warp) * 2 + row_in_pair;
+  // A whole 16-lane group shares one row, so a group either runs entirely or not at all.
+  const unsigned group_mask = (row_in_pair == 0) ? 0x0000FFFFu : 0xFFFF0000u;
+
   if (row >= rows) {
+    // Both groups of a warp share the shuffle below, so this has to be uniform per group:
+    // a whole 16-lane group maps to one row.
     return;
   }
 
   // Flat row order is ((b * S + s) * H + h), so the head is the fastest varying index.
   const int64_t head = row % heads;
   const int64_t pos = (row / heads) % seq_len;
-  const int64_t batch = row / ((int64_t)heads * seq_len);
-
-  // Lane `t` owns channels [4t, 4t + 4) = complex pairs {2t, 2t + 1}.
-  const int pair_idx = lane << 1;
   const __nv_bfloat162* x_row = x + row * kPairs;
-  const __nv_bfloat162 v0 = x_row[pair_idx];
-  const __nv_bfloat162 v1 = x_row[pair_idx + 1];
-  const float2 e0 = __bfloat1622float2(v0);
-  const float2 e1 = __bfloat1622float2(v1);
 
-  // Squares are fp32, then summed in ATen's order: left to right inside the lane.
-  float ss = e0.x * e0.x;
-  ss += e0.y * e0.y;
-  ss += e1.x * e1.x;
-  ss += e1.y * e1.y;
-  ss = warp_sum_32(ss);
-  const float rstd = rsqrtf(ss / (float)(kPairs * 2) + eps);
+  // 16 bytes: pairs [4*lid, 4*lid + 4), i.e. channels [8*lid, 8*lid + 8).
+  uint4 xv = *reinterpret_cast<const uint4*>(x_row + (lid * kPairsPerLane));
+  const __nv_bfloat162* xq = reinterpret_cast<const __nv_bfloat162*>(&xv);
 
-  const float2 wv0 = __bfloat1622float2(weight[pair_idx]);
-  const float2 wv1 = __bfloat1622float2(weight[pair_idx + 1]);
+  // Two ATen leaves per lane: channels [8*lid, 8*lid + 4) and [8*lid + 4, 8*lid + 8).
+  const float2 a0 = __bfloat1622float2(xq[0]);
+  const float2 a1 = __bfloat1622float2(xq[1]);
+  const float2 b0 = __bfloat1622float2(xq[2]);
+  const float2 b1 = __bfloat1622float2(xq[3]);
+  // Squares are fp32, then summed in ATen's order: left to right inside the leaf.
+  float ss_a = a0.x * a0.x;
+  ss_a += a0.y * a0.y;
+  ss_a += a1.x * a1.x;
+  ss_a += a1.y * a1.y;
+  float ss_b = b0.x * b0.x;
+  ss_b += b0.y * b0.y;
+  ss_b += b1.x * b1.x;
+  ss_b += b1.y * b1.y;
 
-  // Rounding 1: bf16(x * rstd). Rounding 2: bf16(n * weight).
-  const float o0x = __bfloat162float(
-    __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e0.x * rstd)) * wv0.x));
-  const float o0y = __bfloat162float(
-    __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e0.y * rstd)) * wv0.y));
-  const float o1x = __bfloat162float(
-    __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e1.x * rstd)) * wv1.x));
-  const float o1y = __bfloat162float(
-    __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e1.y * rstd)) * wv1.y));
+  // Leaf tree: offsets 16/8/4/2 are physical 8/4/2/1 between lanes of the same row.
+#pragma unroll
+  for (int leaf_offset = 16; leaf_offset > 1; leaf_offset >>= 1) {
+    const float oa = __shfl_down_sync(group_mask, ss_a, leaf_offset >> 1, kLanesPerRow);
+    const float ob = __shfl_down_sync(group_mask, ss_b, leaf_offset >> 1, kLanesPerRow);
+    if (lid < (leaf_offset >> 1)) {
+      ss_a += oa;
+      ss_b += ob;
+    }
+  }
+  if (lid == 0) {
+    ss_a += ss_b;  // leaf offset 1: the two leaves this lane holds
+  }
+  const float total = __shfl_sync(group_mask, ss_a, 0, kLanesPerRow);
+  const float rstd = rsqrtf(total / (float)(kPairs * 2) + eps);
 
-  const float* cos_pos = cos + pos * kPairs + pair_idx;
-  const float* sin_pos = sin + pos * kPairs + pair_idx;
+  const uint4 wv = *reinterpret_cast<const uint4*>(weight + lid * kPairsPerLane);
+  const __nv_bfloat162* wq = reinterpret_cast<const __nv_bfloat162*>(&wv);
+  const float4 c4 = *reinterpret_cast<const float4*>(cos + pos * kPairs + lid * kPairsPerLane);
+  const float4 s4 = *reinterpret_cast<const float4*>(sin + pos * kPairs + lid * kPairsPerLane);
+  const float cs[4] = {c4.x, c4.y, c4.z, c4.w};
+  const float sn[4] = {s4.x, s4.y, s4.z, s4.w};
 
-  // Rounding 3: the rotation result.
-  __nv_bfloat162 r0;
-  rotate_pair<kVari>(o0x, o0y, cos_pos[0], sin_pos[0], &r0);
-  __nv_bfloat162 r1;
-  rotate_pair<kVari>(o1x, o1y, cos_pos[1], sin_pos[1], &r1);
+  uint4 rv;
+  __nv_bfloat162* rq = reinterpret_cast<__nv_bfloat162*>(&rv);
+#pragma unroll
+  for (int j = 0; j < kPairsPerLane; ++j) {
+    const float2 e = __bfloat1622float2(xq[j]);
+    const float2 w = __bfloat1622float2(wq[j]);
+    // Rounding 1: bf16(x * rstd). Rounding 2: bf16(n * weight).
+    const float o_re = __bfloat162float(
+      __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e.x * rstd)) * w.x));
+    const float o_im = __bfloat162float(
+      __float2bfloat16_rn(__bfloat162float(__float2bfloat16_rn(e.y * rstd)) * w.y));
+    // Rounding 3: the rotation result.
+    rotate_pair<kVari>(o_re, o_im, cs[j], sn[j], rq + j);
+  }
 
-  // `out_strides` are already expressed in bf16-pair units, so `pair_idx` indexes directly.
-  const int64_t base =
-    batch * out_strides.dim0 + pos * out_strides.dim1 + head * out_strides.dim2 + (int64_t)pair_idx;
-  __nv_bfloat162* out_row = out + base;
-  out_row[0] = r0;
-  out_row[1] = r1;
+  // `out_strides` are already expressed in bf16-pair units.
+  const int64_t base = (row / ((int64_t)heads * seq_len)) * out_strides.dim0 +
+                       pos * out_strides.dim1 + head * out_strides.dim2 +
+                       (int64_t)lid * kPairsPerLane;
+  *reinterpret_cast<uint4*>(out + base) = rv;
 }
 
 bool is_aligned(const void* p, uintptr_t bytes) {
@@ -143,10 +169,10 @@ bool is_aligned(const void* p, uintptr_t bytes) {
 
 void qwen_image21_qk_norm_rope(at::Tensor x, at::Tensor weight, at::Tensor cos, at::Tensor sin,
                                double eps, int64_t variant, at::Tensor out) {
-  TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && x.is_contiguous() &&
-                x.dim() == 4 && x.storage_offset() == 0,
+  // A non-zero storage offset is fine: `data_ptr()` already includes it and the kernel only
+  // needs a dense layout plus aligned 16-byte vector loads.
+  TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && x.is_contiguous() && x.dim() == 4,
               "qwen_image21_qk_norm_rope: x must be a contiguous CUDA bf16 [B,S,H,D] tensor");
-  const int64_t batch = x.size(0);
   const int64_t seq_len = x.size(1);
   const int64_t heads = x.size(2);
   const int64_t head_dim = x.size(3);
@@ -165,55 +191,51 @@ void qwen_image21_qk_norm_rope(at::Tensor x, at::Tensor weight, at::Tensor cos, 
                 out.sizes() == x.sizes() && out.stride(3) == 1,
               "qwen_image21_qk_norm_rope: out must be a dense CUDA bf16 [B,S,H,D] buffer of the "
               "same shape as x with unit innermost stride");
-  TORCH_CHECK(is_aligned(x.const_data_ptr(), 4) && is_aligned(weight.const_data_ptr(), 4) &&
-                is_aligned(cos.const_data_ptr(), 4) && is_aligned(sin.const_data_ptr(), 4) &&
-                is_aligned(out.data_ptr(), 4),
-              "qwen_image21_qk_norm_rope: inputs must be 4B-aligned");
+  TORCH_CHECK(is_aligned(x.const_data_ptr(), 16) && is_aligned(weight.const_data_ptr(), 16) &&
+                is_aligned(cos.const_data_ptr(), 16) && is_aligned(sin.const_data_ptr(), 16) &&
+                is_aligned(out.data_ptr(), 16),
+              "qwen_image21_qk_norm_rope: buffers must be 16-byte aligned for the uint4 path");
+
+  // The store is a 16-byte vector, so every outer stride has to keep it aligned.
+  TORCH_CHECK(out.stride(0) % 8 == 0 && out.stride(1) % 8 == 0 && out.stride(2) % 8 == 0,
+              "qwen_image21_qk_norm_rope: out outer strides must be multiples of 8 elements");
 
   const int64_t rows = x.numel() / head_dim;
   if (rows == 0) {
     return;
   }
 
-  // Pair-granular addressing: the outer strides have to be even, which holds for every
-  // dense [B,S,H,D] buffer with D % 2 == 0.
-  TORCH_CHECK(out.stride(0) % 2 == 0 && out.stride(1) % 2 == 0 && out.stride(2) % 2 == 0,
-              "qwen_image21_qk_norm_rope: out outer strides must be even");
-
   const c10::cuda::CUDAGuard guard(x.device());
   const auto stream = at::cuda::getCurrentCUDAStream();
-  const int64_t grid = (rows + kWarpsPerBlock - 1) / kWarpsPerBlock;
+  // Two rows per warp.
+  const int64_t warp_count = (rows + 1) / 2;
+  const int64_t grid = (warp_count + kWarpsPerBlock - 1) / kWarpsPerBlock;
   const auto* x_ptr = reinterpret_cast<const __nv_bfloat162*>(x.const_data_ptr());
   const auto* w_ptr = reinterpret_cast<const __nv_bfloat162*>(weight.const_data_ptr());
   auto* out_ptr = reinterpret_cast<__nv_bfloat162*>(out.data_ptr());
   const OutStrides strides{out.stride(0) / 2, out.stride(1) / 2, out.stride(2) / 2};
+#define CACHE_DIT_QWEN21_ROPE_LAUNCH(VARI)                                                    \
+  qwen_image21_qk_norm_rope_kernel<VARI><<<grid, kWarpsPerBlock * 32, 0, stream>>>(           \
+    x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides, \
+    rows, (int)seq_len, (int)heads, (float)eps)
   switch (variant) {
     case 1:
-      qwen_image21_qk_norm_rope_kernel<1><<<grid, kWarpsPerBlock * 32, 0, stream>>>(
-        x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides,
-        rows, (int)seq_len, (int)heads, (float)eps);
+      CACHE_DIT_QWEN21_ROPE_LAUNCH(1);
       break;
     case 2:
-      qwen_image21_qk_norm_rope_kernel<2><<<grid, kWarpsPerBlock * 32, 0, stream>>>(
-        x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides,
-        rows, (int)seq_len, (int)heads, (float)eps);
+      CACHE_DIT_QWEN21_ROPE_LAUNCH(2);
       break;
     case 3:
-      qwen_image21_qk_norm_rope_kernel<3><<<grid, kWarpsPerBlock * 32, 0, stream>>>(
-        x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides,
-        rows, (int)seq_len, (int)heads, (float)eps);
+      CACHE_DIT_QWEN21_ROPE_LAUNCH(3);
       break;
     case 4:
-      qwen_image21_qk_norm_rope_kernel<4><<<grid, kWarpsPerBlock * 32, 0, stream>>>(
-        x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides,
-        rows, (int)seq_len, (int)heads, (float)eps);
+      CACHE_DIT_QWEN21_ROPE_LAUNCH(4);
       break;
     default:
-      qwen_image21_qk_norm_rope_kernel<0><<<grid, kWarpsPerBlock * 32, 0, stream>>>(
-        x_ptr, w_ptr, cos.const_data_ptr<float>(), sin.const_data_ptr<float>(), out_ptr, strides,
-        rows, (int)seq_len, (int)heads, (float)eps);
+      CACHE_DIT_QWEN21_ROPE_LAUNCH(0);
       break;
   }
+#undef CACHE_DIT_QWEN21_ROPE_LAUNCH
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

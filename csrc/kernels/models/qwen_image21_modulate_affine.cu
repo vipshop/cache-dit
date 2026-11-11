@@ -181,8 +181,9 @@ struct Common {
 Common check_and_common(const at::Tensor& x, const at::Tensor& params,
                         const std::optional<at::Tensor>& mask, at::Tensor& x_mod,
                         at::Tensor& gate_tanh, const char* op) {
-  TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && x.is_contiguous() &&
-                x.dim() == 3 && x.storage_offset() == 0,
+  // A non-zero storage offset is fine: `data_ptr()` already includes it and the kernel only
+  // needs a dense layout plus 4-byte aligned pair loads.
+  TORCH_CHECK(x.is_cuda() && x.scalar_type() == at::kBFloat16 && x.is_contiguous() && x.dim() == 3,
               op, ": x must be a contiguous CUDA bf16 [B,S,D] tensor");
   const int64_t dim = x.size(2);
   TORCH_CHECK(dim % 128 == 0, op, ": D must be a multiple of 128, got ", dim);
