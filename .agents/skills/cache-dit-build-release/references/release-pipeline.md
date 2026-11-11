@@ -9,7 +9,7 @@
 | `tools/build_releases.sh` | 发布入口 | 解析 profile 与版本 → 准备 `base`/`cu13` 两个 workspace → base env 出纯 wheel → 逐 env 出 cu13 wheel → `repair_wheel_platform_tag.py` 归一 → `inspect_release_wheel.py` 断言 → 打印 twine/publish 命令 |
 | `tools/build_fast.sh` | 编译开关解析 + 加速 | ccache 影子 `CUDA_HOME`（只替换 `bin/nvcc` 为 `tools/nvcc` 包装器）；`MAX_JOBS` 默认 32；`CACHE_DIT_CLEAN=1` 清 `build/`；末尾 `python -m pip wheel . --no-build-isolation --no-deps -w dist` |
 | `tools/release_workspace.py` | 出树 workspace | 拷贝 `setup.py`+`src`（排除 `*.so`/`_version.py`/`__pycache__`/`*.egg-info`），软链 `csrc`、`.git` 与两个工具；setuptools-scm 在 workspace 内写 `_version.py`，不碰开发树 |
-| `tools/inspect_release_wheel.py` | 产物断言 | `--so none`（纯包不得含 `.so`）/ `--so svdquant`（CUDA 包必须含 SVDQuant、comm、attn 三个扩展）；`_version.py` 与 METADATA 版本必须一致 |
+| `tools/inspect_release_wheel.py` | 产物断言 | `--so none`（纯包不得含 `.so`）/ `--so svdquant`（CUDA 包必须含单一 `_C_ops` 扩展）；`_version.py` 与 METADATA 版本必须一致 |
 | `tools/repair_wheel_platform_tag.py` | 产物归一 | 扫 ELF 的 `GLIBC_x.y` 定 manylinux 下限（当前 2.38）→ 改文件名与 WHEEL 标签；`--set-rpath '$ORIGIN'`；重算 RECORD 重打包 |
 | `tools/make_index.py` | 索引生成 | PEP 503 三层页面（通道根 → 项目页 → landing）+ `.nojekyll`；merge 语义（按文件名覆盖，历史保留）；锚点 = Release 资产 URL + `#sha256=` |
 | `tools/publish_index.sh` | 发布编排 | `gh release create`（`--latest=false`、`--target HEAD`、notes 写安装命令）→ 资产上传（幂等）→ `make_index.py` → commit/push 站点仓库 |
@@ -71,9 +71,9 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 `setup.py`：
 
 - `_validate_release_configuration()`：cu13 flavor 必须 `CACHE_DIT_BUILD_CUDA=1` + `CACHE_DIT_CUDA_BUILD_MODE=ALL` + nvcc ≥ 13.0。
-- `CACHE_DIT_BUILD_CUDA=1` 是唯一编译开关，一次构建三个扩展（`_C_svdquant` / `_C_comm` / `_C_attn`），没有按扩展的子开关；旧的三扩展开关与 SVDQuant 专属的 arch mode 变量均已移除，现行命名只有 `CACHE_DIT_BUILD_CUDA` 与 `CACHE_DIT_CUDA_BUILD_MODE`。
+- `CACHE_DIT_BUILD_CUDA=1` 是唯一编译开关，一次构建**单一扩展** `cache_dit._C_ops`（comm / attn / svdq / models 四族链接进同一个 `.so`，`.so` 里只有 `PyInit__C_ops`），没有按扩展或按族的子开关；旧的扩展开关与 SVDQuant 专属的 arch mode 变量均已移除，现行命名只有 `CACHE_DIT_BUILD_CUDA` 与 `CACHE_DIT_CUDA_BUILD_MODE`。
 - SM 目标：`DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")` 是默认全架构集，`_default_cuda_arch_targets()` 消费该常量并按 nvcc 版本门限裁剪（sm90a ≥ 12.0，sm100 / sm120a ≥ 12.8；CUDA 13 下四个全在）。显式 arch 列表（`CACHE_DIT_CUDA_ARCH_LIST` 优先于 `TORCH_CUDA_ARCH_LIST`，空串视为未设）会覆盖默认集，且不会被默认集回落替换。
-- 三个扩展各自过滤：`_resolve_sm_targets(scope, is_supported)` 在三条分支（显式列表 / FAST 探测 / 默认集）统一套谓词——SVDQuant 走 `_is_supported_svdquant_sm_target`（≥ sm80 且剔除 sm90），comm 与 attn 走 `_is_supported_comm_sm_target`（≥ sm89、保留 sm90）；同一次构建里各扩展的 gencode 集合可以不同，这是预期行为。base flavor 下空 SM 集是「跳过该扩展 + 打印 `[cache-dit] CUDA build: skipping ...`」；cu13 flavor 下是 raise，不会静默出一个缺 `.so` 的 wheel；三个全跳过则 `_get_extensions()` 直接 `SystemExit`。
+- 单一谓词：`_resolve_sm_targets(scope, is_supported)` 在三条分支（显式列表 / FAST 探测 / 默认集）统一套 `_is_supported_cuda_sm_target`（≥ sm89 且剔除 sm90，即四族门槛的交集）——所以默认全架构集实际只剩 `89,100,120a`，`90a` 会被谓词丢掉并打一条 skip 警告。空 SM 集是硬失败：base flavor `SystemExit`、cu13 flavor `RuntimeError`，都不会产出缺 `.so` 的 wheel。
 
 `publish_index.sh`：
 

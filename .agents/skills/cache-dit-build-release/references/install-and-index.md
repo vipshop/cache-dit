@@ -5,7 +5,7 @@
 | 构建 | 内容 | 来源 |
 |---|---|---|
 | `cache-dit` | 纯 Python 源码 | [PyPI](https://pypi.org/project/cache-dit/) |
-| `cache-dit`（CUDA） | 同一份源码编译进 SVDQuant 扩展（`cache_dit._C_svdquant`） | 自建索引 `https://vipshop.github.io/cache-dit/whl/cu13/` |
+| `cache-dit`（CUDA） | 同一份源码编译进单一 CUDA 扩展（`cache_dit._C_ops`，含 SVDQuant/comm/attn/models 四族） | 自建索引 `https://vipshop.github.io/cache-dit/whl/cu13/` |
 
 两者同名同包（`cache_dit/`），靠 wheel 的 local 版本区分：CUDA 包是 `1.5.3+cu13`，纯包是 `1.5.3`。
 
@@ -63,7 +63,7 @@ curl -s "https://vipshop.github.io/cache-dit/whl/cu13/cache-dit/" | grep -o 'cac
 安装后自检（纯包 `False`，CUDA 包 `True`；版本必须与 wheel 一致）：
 
 ```bash
-python -c "import cache_dit; from cache_dit.quantization import svdq_is_available; \
+python -c "import cache_dit; from cache_dit.kernels import cuda_ext_is_available; \
 print(cache_dit.__version__, svdq_is_available())"
 ```
 

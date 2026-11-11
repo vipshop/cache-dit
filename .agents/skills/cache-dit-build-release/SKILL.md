@@ -127,7 +127,7 @@ curl -s "https://vipshop.github.io/cache-dit/whl/cu13/cache-dit/" | grep -o 'cac
 - 安装后自检（在 cdit 或目标 env 里；纯包 `False`，CUDA 包 `True`，版本必须与 wheel 一致）：
 
 ```bash
-python -c "import cache_dit; from cache_dit.quantization import svdq_is_available; \
+python -c "import cache_dit; from cache_dit.kernels import cuda_ext_is_available; \
 print(cache_dit.__version__, svdq_is_available())"
 ```
 
@@ -158,7 +158,7 @@ CACHE_DIT_SITE_URL=https://deftruth.github.io CACHE_DIT_INDEX_PREFIX=cache-dit \
 | mini 档（`.devN`、单 env、单 arch）永不发布 | 只验证流水线；`publish_index.sh` 拒收 `.dev` 与缺 `+cu13` 的 wheel |
 | cu13 flavor 必须 `CACHE_DIT_BUILD_CUDA=1` 且 `CACHE_DIT_CUDA_BUILD_MODE=ALL`，nvcc ≥ 13.0 | setup.py `_validate_release_configuration()` 校验开关与 mode，nvcc 门限由 `_require_min_cuda_for_cu13_release()` 校验 |
 | 发布 arch 必须留空，走 setup.py 默认全架构集（CUDA 13 下 `89,90a,100,120a`），不收窄 | `setup.py` 的 `DEFAULT_CUDA_ARCH_TARGETS` 即全架构集；收窄会发出只覆盖部分 GPU 的 wheel。SVDQuant 剔除 sm90a、comm 保留 sm90a 的差异由 setup.py 的 `_resolve_sm_targets()` 按扩展谓词处理 |
-| cu13 下三个扩展缺一即 fail | base flavor 是「按架构跳过 + 警告」，cu13 是「空 SM 集直接 raise」；产物侧还有 `inspect_release_wheel.py --so svdquant` 断言三个 `.so` |
+| cu13 下缺扩展即 fail | 只有一个扩展：空 SM 集（≥sm89 且排除 sm90 之外没有目标）在 base/cu13 都直接 raise，不会产出缺 `.so` 的 wheel；产物侧由 `inspect_release_wheel.py --so svdquant` 断言 `_C_ops` 存在 |
 | 索引只收 CPython + manylinux + 编译版 wheel | `publish_index.sh` 逐个断言；纯包/非 manylinux 直接拒收 |
 | 安装口径用 `--extra-index-url` 指向自建索引 | 索引只放 `cache-dit` 一个项目、不带依赖，PyPI 必须保持依赖来源 |
 

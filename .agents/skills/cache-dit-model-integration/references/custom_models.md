@@ -578,7 +578,7 @@ src/cache_dit/models/pipelines/_<model>/
   fused_ops.py                 # apply_* helpers: preconditions + literal eager fallback + switches
   attention_processor.py       # fusion installed on the QKV seam (name it after what it patches)
   functor.py                   # cache-dit PatchFunctor subclass used when enable_cache runs
-csrc/kernels/models/<model>_*.{h,cpp,cu}          # kernel family, appended to _C_models
+csrc/kernels/models/<model>_*.{h,cpp,cu}          # kernel family, linked into the single _C_ops extension
 src/cache_dit/kernels/_models/_<model>.py         # six-section bridge (see cache-dit-custom-kernel)
 ```
 
@@ -646,9 +646,10 @@ and the operator switch both need it, and it makes the "was it installed?" quest
 
 Standard shape (details in `cache-dit-custom-kernel`):
 
-* kernels live in the model family of `_C_models` (`csrc/kernels/models/`), registered through the
-  family's single `PYBIND11_MODULE`;
-* Python side is the six-section bridge: loader → availability → `_get_required_ops_module` → `_call_*`
+* kernels live in the model family (`csrc/kernels/models/`) and are linked into the single
+  `_C_ops` extension: `models.cpp` is the family registrar, each model adds a
+  `register_<model>_ops(py::module_&)` call to it;
+* Python side is the bridge: `from .._cuda_ext import _get_required_ops_module` → `_call_*`
   → `torch.library` `define` / `impl("CUDA")` / `register_fake` → public wrapper;
 * one switch for the family (`CACHE_DIT_<MODEL>_FUSED_OPS`, default on) and, if you measured a
   per-operator difference, one allow-list (`CACHE_DIT_<MODEL>_OPS=all|a,b`) — the default must be the
@@ -714,7 +715,7 @@ Two things must be checked before and after wiring kernels:
 | e2e | `{stock, fused} × {eager, compile}` **without** DBCache to isolate the operator effect, then the same with cache for the product number; report absolute ms/step, not just deltas |
 | accuracy | PSNR/SSIM between arms (peak 255 on 8-bit PNG — do not feed float [0,1] into `calculate_psnr`), and compare the operator delta against compile's own drift as the yardstick |
 | CP | CP2 output must be bit-identical to single-GPU (PSNR `inf`) with fusion enabled; if it is not, the seam bypassed the sharding |
-| guards | a test that the `_C_models` source list covers every kernel file, and one that the QKV seam installs/restores |
+| guards | a test that the model source list covers every kernel file (`tests/kernels/test_models_source_manifest.py`), and one that the QKV seam installs/restores |
 
 ### 15.11 Worked numbers (`_QwenImage21`, 1024², 40 steps, no DBCache)
 

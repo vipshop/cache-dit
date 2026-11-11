@@ -820,7 +820,7 @@ split-K producer 的 rank 流式累加从 `kChunkTiles=2` 改为 `1`：每线程
 
 ### 28.1 已落地 dispatch
 
-不再依赖环境变量；`ops.h` 在 row_major 路径按 rank 和 M 决定是否分配 FP32 scratch：
+不再依赖环境变量；`svdq.cpp`（原 `ops.h`）在 row_major 路径按 rank 和 M 决定是否分配 FP32 scratch：
 
 | rank | split-K 区间 | fused 区间 |
 |---|---|---|
@@ -857,12 +857,12 @@ split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fr
 
 - CuTe producer 已拆为 `quantize_impl.cuh` + `quantize_r32/64/128.cu`，每个 TU 只实例化一个 rank；通用路径保留在 `quantize_uni.cu`。GEMM 在 `gemm/`，producer 在 `quantize/`。
 - fused：CTA 内 FP32 D 归约；split-K：rank streaming、fragment-major FP32 scratch、`red.relaxed.gpu.add.v2.f32`、后置向量化 BF16 finalize。
-- `ops.h` 当前选择：
+- `svdq.cpp` 当前选择：
   - rank32 且 K≤3072：全部走 universal（K3072 的 2K/4K/8K 实测 universal 更快）。
   - rank32 且 K>3072：M≤8192 走 split-K，M>8192 走 fused。
   - rank64/rank128：当前生产矩阵全部走 split-K。
 - 特化 split-K：rank32/K>3072 用 K128 double-A async；rank64/K≤3072 用 K256，rank64/K>3072 用 K128 async；rank128 全 K256。
-- rank64/128 fused 实例仍编译并做过独立数值验收，但当前 `ops.h` 不会选中；不要根据旧 §26/§28 的 fused 阈值重开，除非给出新的逐格 Event 证据。
+- rank64/128 fused 实例仍编译并做过独立数值验收，但当前 `svdq.cpp` 不会选中；不要根据旧 §26/§28 的 fused 阈值重开，除非给出新的逐格 Event 证据。
 - Python 普通 CuTe 路径默认 `lora_layout="row_major"`，显式 native 与 `fused_mlp` 保持 FP32 fragment D。
 
 ### 29.2 测量口径

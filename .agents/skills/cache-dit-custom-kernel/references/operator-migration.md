@@ -108,7 +108,7 @@
 调研时问自己：
 
 1. 哪个既有域模块是合适的宿主，还是确实需要一个新域？
-2. 该算子应该进 `cache_dit._C_comm`、`cache_dit._C_attn`，还是新建/独立扩展？
+2. 该算子属于哪个家族？只有一个扩展 `cache_dit._C_ops`（comm / attn / svdq / models 四族共用），新增算子挂到对应族的 `register_<族>_ops`，**不要新建扩展**。
 3. 扩展不可用时，加载失败的形态应该是什么？
 4. `cache_dit_cuda_ops` 里这个算子家族是否已有命名约定？
 5. `test_ops_dispatch.py` 里是否已经列了本次要扩展的公开名？
@@ -167,11 +167,11 @@
    - vendored 进树
    - git submodule（目前只有 `csrc/third_party/spdlog`）
    - 依赖系统预装
-5. 算子属于哪个家族就扩展哪个 binding TU；新算子家族要自己建 `<domain>/{<domain>.h,<domain>.cpp}`，不要借用别的家族的 TU。仓内 `PYBIND11_MODULE` 入口只有 `csrc/kernels/attn/attn.cpp`、`csrc/kernels/comm/comm_ops.cpp`、`csrc/kernels/svdq/pybind.cpp` 三个。
+5. 算子属于哪个家族就扩展哪个 registrar TU（`attn/attn.cpp`、`comm/comm.cpp`、`svdq/svdq.cpp`、`models/<model>.cpp`），新算子家族要自己建 `<domain>/{<domain>.h,<domain>.cpp}`，不要借用别的家族的 TU。仓内 `PYBIND11_MODULE` 入口**只有一个**：`csrc/kernels/ops.cpp`。
 
 ### B. 域 Python 模块
 
-一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/_<domain>.py`：loader、桥、注册、fake、公开封装。loader 与算子同模块，域内的失败形态、注册和公开 API 才不会各自漂移。每个域加载自己的扩展（`_attn.py` → `cache_dit._C_attn`、`_comm.py` → `cache_dit._C_comm`、`_svdquant.py` → `cache_dit._C_svdquant`）；只有当算子确实在兄弟扩展里时才借用兄弟的 loader。
+一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/_<domain>.py`：桥、注册、fake、公开封装。扩展加载统一走 `src/cache_dit/kernels/_cuda_ext.py`（`cache_dit._C_ops`）：四个域模块都 `from ._cuda_ext import _get_required_ops_module`，**不要**再各自持有 loader 或 availability getter。
 
 模板与它强制遵守的规则：`kernel-integration-chain.md` §4.1–§4.5。
 
@@ -310,7 +310,7 @@ from ._comm import fp8_comm_per_token_quant
 comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现的 CUDA 版移植。那次迁移是后续工作的模板：
 
 - native 源文件分别落在 `csrc/kernels/comm/` 与 `csrc/kernels/attn/`
-- 每族通过自己的 pybind TU 注册：FP8 comm 是 `cache_dit._C_comm`，attention 状态合并是 `cache_dit._C_attn`（拆分前两者共用 `_C_comm`）
+- 每族通过自己的 registrar TU 注册，最终都挂到同一个 `cache_dit._C_ops.ops`：FP8 comm 来自 `comm/comm.cpp`，attention 状态合并来自 `attn/attn.cpp`
 - 它们的 Python 模块把注册与封装放在一起，取代旧的 `cuda/_ops_registery.py` + `ops.py` 组合
 - Triton 与 CuTe DSL 两棵旧目录、后端选择器及其测试被删除，现在 `tests/kernels/test_ops_dispatch.py` 只守着这些**旧目录**不复活（将来引入 CuTe DSL 按 §1 第 2 条新建结构，不是重建旧树）
 
@@ -324,9 +324,11 @@ comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现�
 - `csrc/kernels/attn/attn.cpp`
 - `csrc/kernels/attn/attn.h`
 - `csrc/kernels/attn/merge_states.cu`
-- `csrc/kernels/comm/comm_ops.cpp`
-- `csrc/kernels/comm/comm_ops.h`
-- `csrc/kernels/svdq/pybind.cpp`
+- `csrc/kernels/ops.cpp`（唯一 pybind 入口）
+- `csrc/kernels/comm/comm.cpp`
+- `csrc/kernels/comm/comm.h`
+- `csrc/kernels/svdq/svdq.cpp`
+- `csrc/kernels/svdq/svdq.h`
 - `tests/kernels/test_ops_dispatch.py`
 - `tests/kernels/test_cuda_fp8_comm_ops.py`
 - `tests/kernels/test_cuda_merge_attn_states.py`
