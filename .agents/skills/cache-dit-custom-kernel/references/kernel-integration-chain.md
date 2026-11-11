@@ -25,7 +25,7 @@
 | 3 | registrar TU `<族>/<族>.cpp` 里 `register_<族>_ops`（§3.2） | `AttributeError: module has no attribute '<op>'` |
 | 4 | `setup.py` 的 `_required_cuda_sources()` / include_dirs（§5.1） | 不编译、漏编 |
 | 5 | `src/cache_dit/kernels/<族>.py` 六段（§4.1） | `torch.ops` 未注册 |
-| 6 | `src/cache_dit/kernels/_init__.py` re-export + `__all__` | 内部调用拿不到名字 |
+| 6 | `src/cache_dit/kernels/__init__.py` re-export + `__all__` | 内部调用拿不到名字 |
 | 7 | 内部调用点：可用性门禁 + 错误信息（§6） | 用户看到与根因无关的报错 |
 | 8 | `tests/kernels/` 用例 + `test_ops_dispatch.py` 参数表（§7） | 无回归 |
 

@@ -58,8 +58,8 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 2. 声明头：`void <op>(at::Tensor ...)`，`namespace cache_dit::<族>`。
 3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("<op>", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。
 4. `setup.py`：加 `_required_<族>_sources()`、并进 `_required_cuda_sources()`、族目录加进 `_get_cuda_extension()` 的 `include_dirs`。没有 per-family extension 了；arch 谓词只有 `_is_supported_cuda_sm_target`（ref §5.1/§5.3）。
-5. `src/cache_dit/kernels/<族>.py` 五段：`from ._cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
-6. `src/cache_dit/kernels/_init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/cuda_ext.py`）；`__all__` 等于全部非下划线成员。
+5. `src/cache_dit/kernels/<族>.py` 五段：`from .cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
+6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/cuda_ext.py`）；`__all__` 等于全部非下划线**算子**成员（子模块 `attn` / `comm` / `cuda_ext` / `models` / `svdquant` 是包属性但不进 `__all__`）。
 7. 内部调用点：可用性门禁用 `cuda_ext_is_available()` 或捕获 `RuntimeError`；错误信息要带构建命令与 arch 门槛（sm89+、排除 sm90）。
 8. 测试：`test_ops_dispatch.py` 参数表条目、fake 用例、参考实现对比、`fullgraph=True` compile smoke（模板 `tests/kernels/test_cuda_fp8_comm_ops.py`）。
 
@@ -275,7 +275,7 @@ src/cache_dit/models/pipelines/<model>/
 | 声明头 / pybind TU | `{model}.h` / `{model}.cpp` | `boogu.h` / `boogu.cpp` |
 | C++ namespace | `cache_dit::models` | — |
 | 公开 torch 算子 | `{model}_{op}` | `boogu_scaled_rms_norm` |
-| Python 模块 | `kernels/models/_<model>.py` | `_boogu.py` |
+| Python 模块 | `kernels/models/<model>.py` | `boogu.py` |
 | extension | `cache_dit._C_ops`（全部四族共用） | — |
 | 融合开关 | `CACHE_DIT_{MODEL}_FUSED_OPS` | `CACHE_DIT_BOOGU_FUSED_OPS` |
 

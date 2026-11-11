@@ -98,7 +98,7 @@
 
 锚点文件：
 
-- `src/cache_dit/kernels/_init__.py` —— 公开面
+- `src/cache_dit/kernels/__init__.py` —— 公开面
 - `src/cache_dit/kernels/<domain>.py` —— 承载该算子的域模块
 - `csrc/kernels/<domain>/` —— native 侧
 - `setup.py` —— `_required_<ext>_sources()`、`_missing_<ext>_sources()`、`_get_<ext>_extension()`、`_get_extensions()`
@@ -171,16 +171,16 @@
 
 ### B. 域 Python 模块
 
-一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/<domain>.py`：桥、注册、fake、公开封装。扩展加载统一走 `src/cache_dit/kernels/cuda_ext.py`（`cache_dit._C_ops`）：四个域模块都 `from ._cuda_ext import _get_required_ops_module`，**不要**再各自持有 loader 或 availability getter。
+一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/<domain>.py`：桥、注册、fake、公开封装。扩展加载统一走 `src/cache_dit/kernels/cuda_ext.py`（`cache_dit._C_ops`）：四个域模块都 `from .cuda_ext import _get_required_ops_module`，**不要**再各自持有 loader 或 availability getter。
 
 模板与它强制遵守的规则：`kernel-integration-chain.md` §4.1–§4.5。
 
 ### C. 公开面
 
-在 `src/cache_dit/kernels/_init__.py` 里显式 re-export，并加 `__all__` 条目：
+在 `src/cache_dit/kernels/__init__.py` 里显式 re-export，并加 `__all__` 条目：
 
 ```python
-from ._comm import fp8_comm_per_token_quant
+from .comm import fp8_comm_per_token_quant
 ```
 
 默认约定：
@@ -316,7 +316,7 @@ comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现�
 
 ### 有用的 cache-dit 参考文件
 
-- `src/cache_dit/kernels/_init__.py`
+- `src/cache_dit/kernels/__init__.py`
 - `src/cache_dit/kernels/attn.py`
 - `src/cache_dit/kernels/comm.py`
 - `src/cache_dit/kernels/svdquant.py`
@@ -369,7 +369,7 @@ comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现�
 5. 冻结公开 API 与命名策略
 6. 迁 native 代码并扩展 pybind TU
 7. 在一个域模块里补齐 loader、桥、注册、fake、封装
-8. 从 `kernels/_init__.py` 导出
+8. 从 `kernels/__init__.py` 导出
 9. 接 `setup.py` 的源清单与构建门禁
 10. 需要时加上或适配上层模块代码
 11. 按 kernel、模块、端到端三层验证
