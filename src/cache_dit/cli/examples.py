@@ -110,6 +110,7 @@ __all__ = [
   "pika_h3_flex_example",
   "pika_h3_flex_fl2va_example",
   "pika_h3_flex_ref2va_example",
+  "flux3_fused_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -534,6 +535,50 @@ def flux3_example(args: argparse.Namespace, **kwargs) -> Example:
       pipeline_class=Flux3DistilledModularPipeline,
       bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
       post_init_hook=_flux3_drop_prompt_upsampler,
+      extra_optimize_kwargs={
+        "cache_config": _flux3_cache_config(args),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=(
+        'A chunky knitted diorama: three white cable-knit icebergs with tiny pale blue houses, '
+        'a cream banner embroidered "KNITTED ICEBERG VILLAGE", a giant magenta knitted whale tail '
+        "bursting from a yarn sea"),
+      height=1024,
+      width=1024,
+      num_inference_steps=16,
+    ),
+  )
+
+
+def _flux3_klein_fused_post_init_hook(pipe) -> None:
+  """Drop the prompt upsampler and install cache-dit's fused ops on the transformer.
+
+  FLUX.3 is a `ModularPipeline`, so there is no cache-dit pipeline subclass: the transformer's
+  `__class__` is swapped in place right after the weights are loaded, i.e. before
+  `enable_cache`, `maybe_compile_transformer` and any offload hook.
+
+  :param pipe: FLUX.3 modular pipeline.
+  """
+
+  from cache_dit.models.pipelines.flux3_klein.transformer_flux3_klein import upgrade_transformer
+
+  _flux3_drop_prompt_upsampler(pipe)
+  upgrade_transformer(pipe.transformer)
+
+
+@ExampleRegister.register("flux3_fused", default="black-forest-labs/flux-3-image-klein")
+def flux3_fused_example(args: argparse.Namespace, **kwargs) -> Example:
+  from diffusers import Flux3DistilledModularPipeline
+
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("black-forest-labs/flux-3-image-klein"),
+      pipeline_class=Flux3DistilledModularPipeline,
+      bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+      post_init_hook=_flux3_klein_fused_post_init_hook,
       extra_optimize_kwargs={
         "cache_config": _flux3_cache_config(args),
       },

@@ -18,6 +18,11 @@ from .models import flux2_klein_residual_ln_modulate
 from .models import flux2_klein_silu_mul
 from .models import qwen_image21_gated_residual
 from .models import qwen_image21_ln_modulate
+from .models import flux3_klein_gated_residual
+from .models import flux3_klein_gated_residual_split
+from .models import flux3_klein_ln_modulate
+from .models import flux3_klein_ln_modulate_cat
+from .models import flux3_klein_qk_norm_rope
 from .models import qwen_image21_qk_norm_rope
 from .models import qwen_image21_silu_mul
 from .svdquant import svdq_gemm_w4a4
@@ -44,6 +49,11 @@ __all__ = [
   "qwen_image21_ln_modulate",
   "qwen_image21_gated_residual",
   "qwen_image21_silu_mul",
+  "flux3_klein_qk_norm_rope",
+  "flux3_klein_ln_modulate",
+  "flux3_klein_ln_modulate_cat",
+  "flux3_klein_gated_residual",
+  "flux3_klein_gated_residual_split",
   "svdq_quantize_w4a4",
   "svdq_gemm_w4a4",
 ]

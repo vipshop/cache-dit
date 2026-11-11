@@ -40,6 +40,28 @@ def _relaxed_assert(
                    "in BlockAdapter.")
 
 
+# NOTE: The registry returns the first class-name prefix that matches, so "_Flux3Klein" must be
+# registered before "Flux3". A modular pipeline still resolves through its own class name
+# ("Flux3DistilledModularPipeline" starts with "Flux3", and `_verified_modular_pipelines` covers
+# it), so this entry is what makes the *transformer-only* path work: `get_adapter(transformer)`,
+# `has_separate_cfg(transformer)` and the `FakeDiffusionPipeline` wrapper all dispatch on
+# `_Flux3KleinTransformer2DModel`, which does not start with "Flux3" and would otherwise fall
+# through every entry.
+@BlockAdapterRegister.register("_Flux3Klein")
+def flux3_klein_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Block adapter for cache-dit's fused FLUX.3 pass.
+
+  Same blocks and pattern as `flux3_adapter`: only the joint stack is cached, and the fused
+  block forwards live on those same block instances.
+
+  :param pipe: FLUX.3 modular pipeline whose transformer was upgraded in place.
+  :param kwargs: Forwarded to `flux3_adapter`.
+  :returns: The block adapter for the fused FLUX.3 transformer.
+  """
+
+  return flux3_adapter(pipe, **kwargs)
+
+
 # NOTE: The registry returns the first class-name prefix that matches, so "Flux3" must be
 # registered before "Flux" ("Flux3*" class names also start with "Flux").
 @BlockAdapterRegister.register("Flux3")

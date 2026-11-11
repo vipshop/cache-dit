@@ -78,6 +78,17 @@ class Flux3ContextParallelismPlanner(ContextParallelismPlanner):
     return _cp_plan
 
 
+@ContextParallelismPlannerRegister.register("_Flux3KleinTransformer2DModel")
+class _Flux3KleinContextParallelismPlanner(Flux3ContextParallelismPlanner):
+  """Context parallelism for cache-dit's fused FLUX.3 pass.
+
+  The plan is unchanged: the fused seams only rewrite how a block normalizes, modulates and
+  concatenates its streams, which happens after the root sharding and therefore does not move a
+  single token between ranks. The registry matches class names by prefix, so the fused subclass
+  needs its own entry or `get_planner` raises.
+  """
+
+
 @TensorParallelismPlannerRegister.register("Flux3Transformer2DModel")
 class Flux3TensorParallelismPlanner(TensorParallelismPlanner):
   """Tensor parallelism planner for `Flux3Transformer2DModel`."""
@@ -175,3 +186,13 @@ class Flux3TensorParallelismPlanner(TensorParallelismPlanner):
         layer_plans.append(layer_plan)
 
     return transformer, layer_plans
+
+
+@TensorParallelismPlannerRegister.register("_Flux3KleinTransformer2DModel")
+class _Flux3KleinTensorParallelismPlanner(Flux3TensorParallelismPlanner):
+  """Tensor parallelism for cache-dit's fused FLUX.3 pass.
+
+  The layer plan is unchanged: the fused kernels read the already-sharded projection outputs
+  and take `head_dim` from the tensor shape, so a sharded `to_q` keeps working. The registry
+  matches class names by prefix, so the fused subclass needs its own entry.
+  """
