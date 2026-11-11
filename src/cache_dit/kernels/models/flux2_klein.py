@@ -7,7 +7,9 @@ the failure cache and the "extension missing" message are reused instead of dupl
 Every operator here is functional at the ``torch.library`` level even though the C++ entry
 points take out-params. That is deliberate: an operator declared as mutating an aliased buffer
 loses its write when it is traced into a ``fullgraph=True`` graph on this torch build
-(measured, 2.15), and these operators have to survive ``compile_repeated_blocks()``.
+(measured, 2.15). The repository's own entry point is
+``compile_repeated_blocks(fullgraph=False, ...)``; the tests additionally pin ``fullgraph=True``
+so the operators stay usable if that entry point ever tightens.
 """
 
 import torch

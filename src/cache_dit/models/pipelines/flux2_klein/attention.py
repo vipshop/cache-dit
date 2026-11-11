@@ -314,9 +314,9 @@ def install_attention_patch(transformer: torch.nn.Module) -> None:
   """
 
   if async_ulysses_is_active():
-    logger.warning("FLUX.2 Klein fused attention skipped: async Ulysses wraps the stock "
-                   "processors at class level, and a fused subclass would bypass it silently. "
-                   "Set `ulysses_async=False` to use the fused operators.")
+    logger.warning("FLUX.2 Klein: fusion disabled because async Ulysses patches the class-level "
+                   "`__call__` of the stock processors, which a fused subclass would bypass "
+                   "silently. Set `ulysses_async=False` to keep the fused operators.")
     return
 
   installed = 0

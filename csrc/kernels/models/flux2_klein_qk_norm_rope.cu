@@ -13,7 +13,8 @@
 //      `xDiT .../fused_qk_rope_flydsl.py:726-757`).
 //   2. `apply_rotary_emb` rotates in fp32 and rounds once at the end, and it consumes the
 //      *rounded* bf16 normalised value, not the fp32 one.
-// Both are verified bit-exactly against the eager expression with `torch.equal`.
+// Both are verified against the eager expression: the rounding sequence matches, and the RMS
+// reduction tree leaves roughly 0.5% of elements one bf16 ulp off (worst rel-L2 2.8e-6).
 //
 // Layout: 16 lanes cover one (token, head) row with 8 channels (4 interleaved pairs) per lane,
 // so every global access is a 16-byte vector and a GPT-J pair never straddles two lanes; a
@@ -195,6 +196,12 @@ void launch(const at::Tensor& x, const at::Tensor& weight, const at::Tensor& cos
 void flux2_klein_qk_norm_rope(at::Tensor x, at::Tensor weight, at::Tensor cos, at::Tensor sin,
                               int64_t rope_row_offset, double eps, at::Tensor out,
                               int64_t out_token_offset) {
+  // The single-stream form owns the whole buffer, so the token range is not a free parameter;
+  // stating it here keeps `check_stream`'s `out_tokens` argument meaningful (the joined form
+  // passes the two-segment total instead).
+  TORCH_CHECK(out_token_offset == 0 && out.size(0) == x.size(1), "flux2_klein_qk_norm_rope",
+              ": the single-stream form writes all ", x.size(1), " tokens at offset 0, got offset ",
+              out_token_offset, " into a buffer of ", out.size(0), " tokens");
   check_stream(x, weight, cos, sin, out, rope_row_offset, out.size(0), out_token_offset,
                "flux2_klein_qk_norm_rope");
   if (x.size(1) == 0) {

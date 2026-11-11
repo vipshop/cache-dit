@@ -14,10 +14,16 @@ import torch
 from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.models.pipelines.flux2_klein import fused_ops
 
-pytestmark = [
-  pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
-  pytest.mark.skipif(not cuda_ext_is_available(), reason="needs cache_dit._C_ops"),
-]
+
+# Marks are per test, not module wide: the switch parsing, the processor swap and the
+# precondition fallbacks do not need a GPU or the extension, and CI only runs CPU jobs, so a
+# module-level skip would hide the whole family from CI.
+def needs_gpu_ops(func):
+  """Composite mark: the parity tests need both a GPU and ``cache_dit._C_ops``."""
+
+  return pytest.mark.skipif(not torch.cuda.is_available() or not cuda_ext_is_available(),
+                            reason="needs CUDA and cache_dit._C_ops")(func)
+
 
 DEVICE = torch.device("cuda")
 DIM = 3072
@@ -29,6 +35,7 @@ def _rows(count: int = 1) -> torch.Tensor:
   return torch.randn(count, DIM, device=DEVICE, dtype=torch.bfloat16)
 
 
+@needs_gpu_ops
 def test_ln_modulate_matches_the_eager_chain():
   from cache_dit.kernels import flux2_klein_ln_modulate
 
@@ -42,6 +49,7 @@ def test_ln_modulate_matches_the_eager_chain():
   assert fused_ops.relative_l2(kernel, reference) <= fused_ops.NORM_REL_L2_TOL
 
 
+@needs_gpu_ops
 def test_residual_ln_modulate_matches_the_eager_chain():
   from cache_dit.kernels import flux2_klein_residual_ln_modulate
 
@@ -60,6 +68,7 @@ def test_residual_ln_modulate_matches_the_eager_chain():
   assert fused_ops.relative_l2(mod_out, eager_mod) <= fused_ops.NORM_REL_L2_TOL
 
 
+@needs_gpu_ops
 def test_gated_residual_is_bit_exact():
   from cache_dit.kernels import flux2_klein_gated_residual
 
@@ -72,6 +81,7 @@ def test_gated_residual_is_bit_exact():
                      fused_ops._eager_gated_residual(hidden, gate.unsqueeze(0), update))
 
 
+@needs_gpu_ops
 def test_silu_mul_matches_the_eager_chain():
   from cache_dit.kernels import flux2_klein_silu_mul
 
@@ -82,6 +92,7 @@ def test_silu_mul_matches_the_eager_chain():
                                fused_ops._eager_silu_mul(packed)) <= fused_ops.REL_L2_TOL
 
 
+@needs_gpu_ops
 def test_qk_norm_rope_matches_the_eager_chain():
   from cache_dit.kernels import flux2_klein_qk_norm_rope
 
@@ -98,6 +109,7 @@ def test_qk_norm_rope_matches_the_eager_chain():
   assert fused_ops.relative_l2(kernel, reference) <= fused_ops.NORM_REL_L2_TOL
 
 
+@needs_gpu_ops
 def test_qk_norm_rope_reads_a_fused_projection_chunk_in_place():
   """The real caller hands over `to_qkv(...).chunk(3, -1)[0]`, which is not contiguous."""
 
@@ -119,6 +131,7 @@ def test_qk_norm_rope_reads_a_fused_projection_chunk_in_place():
   assert fused_ops.relative_l2(kernel, reference.squeeze(0)) <= fused_ops.NORM_REL_L2_TOL
 
 
+@needs_gpu_ops
 def test_qk_norm_rope_join_matches_the_concat():
   from cache_dit.kernels import flux2_klein_qk_norm_rope_join
 
@@ -143,15 +156,17 @@ def test_qk_norm_rope_join_matches_the_concat():
 
 
 def test_preconditions_fall_back_to_the_eager_expression(monkeypatch):
-  """A layout the kernels cannot read must produce the eager values, not an error."""
+  """A layout the kernels cannot read must produce the eager values, not an error.
 
+  Runs on CPU too: with the extension present but the tensors on the host, every precondition
+  fails and the fallback is what the test sees - which is the coverage CI can actually run.
+  """
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   torch.manual_seed(0)
-  x = torch.randn(1, 32, DIM, device=DEVICE, dtype=torch.bfloat16)
-  one_plus = _rows()
-  shift = _rows()
-  # Transposed rows are not dense, so the fused branch must be skipped.
-  transposed = x.transpose(1, 2).transpose(1, 2)
-  assert transposed.data_ptr() == x.data_ptr()
+  x = torch.randn(1, 32, DIM, device=device, dtype=torch.bfloat16)
+  one_plus = torch.randn(1, DIM, device=device, dtype=torch.bfloat16)
+  shift = torch.randn(1, DIM, device=device, dtype=torch.bfloat16)
 
   monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
   fused_values = fused_ops.apply_ln_modulate(x, one_plus, shift, 1e-6)
@@ -159,14 +174,70 @@ def test_preconditions_fall_back_to_the_eager_expression(monkeypatch):
   eager_values = fused_ops._eager_ln_modulate(x, one_plus, shift, 1e-6)
   assert fused_ops.relative_l2(fused_values, eager_values) <= fused_ops.NORM_REL_L2_TOL
 
-  # fp16 is outside the kernels' envelope (they only read bf16), so the eager branch must run.
-  half = x.to(torch.float16)
-  result = fused_ops.apply_qk_norm_rope(
-    half.unsqueeze(1).unsqueeze(1).reshape(1, 32, 1, DIM),
-    torch.ones(DIM, device=DEVICE, dtype=torch.float16),
-    torch.zeros(32, DIM, device=DEVICE, dtype=torch.float32),
-    torch.zeros(32, DIM, device=DEVICE, dtype=torch.float32), 0, 1e-6)
+
+@needs_gpu_ops
+def test_fp16_falls_back_without_calling_the_kernel(monkeypatch):
+  """The kernels are bf16 only, so fp16 has to take the eager branch instead of raising.
+
+  The earlier version of this case passed a `[1, 32, 1, 3072]` tensor, which failed on
+  `head_dim != 128` before the dtype test was ever reached - it asserted nothing.
+  """
+
+  calls = []
+  monkeypatch.setattr("cache_dit.kernels.flux2_klein_qk_norm_rope",
+                      lambda *args, **kwargs: calls.append(args))
+
+  torch.manual_seed(0)
+  x = torch.randn(1, 8, HEADS, HEAD_DIM, device=DEVICE, dtype=torch.float16)
+  weight = torch.ones(HEAD_DIM, device=DEVICE, dtype=torch.float16)
+  cos = torch.zeros(8, HEAD_DIM, device=DEVICE, dtype=torch.float32)
+  sin = torch.zeros(8, HEAD_DIM, device=DEVICE, dtype=torch.float32)
+
+  result = fused_ops.apply_qk_norm_rope(x, weight, cos, sin, 0, 1e-6)
   assert result.dtype == torch.float16
+  assert torch.equal(result, fused_ops._eager_qk_norm_rope(x, weight, cos, sin, 0, 1e-6))
+  assert calls == []
+
+
+@needs_gpu_ops
+def test_batch_one_with_two_modulation_rows_falls_back(monkeypatch):
+  """Python must mirror the `R in {1, B}` contract, otherwise the kernel raises instead."""
+
+  calls = []
+  monkeypatch.setattr("cache_dit.kernels.flux2_klein_ln_modulate",
+                      lambda *args, **kwargs: calls.append(args))
+
+  torch.manual_seed(0)
+  x = torch.randn(1, 8, DIM, device=DEVICE, dtype=torch.bfloat16)
+  one_plus = _rows(2)
+  shift = _rows(2)
+  # `1 in (1, 2)` would accept this pair, but the kernel indexes rows by `row / seq_len`.
+  # The eager branch broadcasts instead, which is upstream's own behaviour for this shape.
+  fused_ops.apply_ln_modulate(x, one_plus, shift, 1e-6)
+  assert calls == []
+
+
+@needs_gpu_ops
+def test_ln_modulate_survives_a_shifted_activation():
+  """`var = E[x^2] - mean^2` cancels when the mean dominates; this pins the margin.
+
+  ATen accumulates around the mean (Welford), the kernel accumulates raw squares, so a strongly
+  offset activation is the case where the two could diverge. Measured on offsets up to 50 sigma:
+  rel-L2 stays at 0 to 4.7e-6, i.e. the same order as the zero-mean case, because the inputs are
+  already bf16 and the sum runs in fp32.
+  """
+
+  from cache_dit.kernels import flux2_klein_ln_modulate
+
+  torch.manual_seed(0)
+  one_plus = (1 + torch.randn(1, 1, DIM, device=DEVICE, dtype=torch.bfloat16) * 0.1).reshape(1, DIM)
+  shift = (torch.randn(1, 1, DIM, device=DEVICE, dtype=torch.bfloat16) * 0.1).reshape(1, DIM)
+  for scale, offset in ((1.0, 0.0), (10.0, 5.0), (100.0, 50.0), (1000.0, 500.0)):
+    x = (torch.randn(1, 64, DIM, device=DEVICE) * scale + offset).to(torch.bfloat16)
+    kernel = flux2_klein_ln_modulate(x, one_plus, shift, 1e-6)
+    reference = fused_ops._eager_ln_modulate(x, one_plus, shift, 1e-6)
+    error = fused_ops.relative_l2(kernel, reference)
+    assert error <= fused_ops.NORM_REL_L2_TOL, (scale, offset, error)
 
 
 def test_operator_switches_parse_from_the_environment(monkeypatch):
@@ -191,6 +262,7 @@ def test_operator_switches_parse_from_the_environment(monkeypatch):
   assert fused_ops._rope_cache_from_env() is True
 
 
+@needs_gpu_ops
 def test_fullgraph_compile_runs_the_operators():
   from cache_dit.kernels import flux2_klein_ln_modulate
 

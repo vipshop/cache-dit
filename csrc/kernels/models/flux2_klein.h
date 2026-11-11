@@ -14,8 +14,10 @@ namespace cache_dit::models {
 // use_real_unbind_dim=-1, sequence_dim=1)` chain. `torch.nn.RMSNorm` accumulates in fp32 and
 // rounds once, after the affine (`xDiT .../fused_qk_rope_flydsl.py:726-757`), while
 // `apply_rotary_emb` upcasts to fp32 for the rotation and rounds once at the end
-// (`diffusers/src/diffusers/models/embeddings.py:986-997`). Both roundings are replayed, so
-// the result is bit-identical to the eager expression.
+// (`diffusers/src/diffusers/models/embeddings.py:986-997`). Both roundings are replayed, so the
+// result follows the same schedule; the only remaining difference is the reduction tree of the
+// RMS, which shows up as roughly 0.5% of elements off by one bf16 ulp (measured worst rel-L2
+// 2.8e-6 against the eager expression).
 //
 // `cos`/`sin` are the fp32 `[rope_rows, head_dim]` tables; `rope_row_offset` selects where
 // this stream starts inside them, which is what lets the joined variant share one

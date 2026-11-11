@@ -135,10 +135,10 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
 
 
 # FLUX.2-Klein's own optimisation pass (`_Flux2KleinPipeline`) renames the transformer class, so
-# the `Flux` adapter's `startswith("Flux2")` branch no longer matches: the transformer would be
-# dispatched as a FLUX.1 stack (single block list + dummy blocks + `FluxPatchFunctor`), which
-# patches a forward the FLUX.2 layout does not have. Registering the `_` prefix keeps the FLUX.2
-# shape - two block lists, `Pattern_1`/`Pattern_3`, no patch functor.
+# no registered prefix matches it any more: `BlockAdapterRegister.get_adapter` then returns
+# `None` and `enable_cache` fails outright. Registering the `_` prefix keeps the FLUX.2 shape -
+# two block lists, `Pattern_1`/`Pattern_3`, no patch functor - and is resolved before `Flux`
+# because the registry takes the first matching prefix.
 @BlockAdapterRegister.register("_Flux2Klein")
 def flux2_klein_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import Flux2Transformer2DModel

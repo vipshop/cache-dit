@@ -113,15 +113,25 @@ class _Flux2KleinTransformer2DModel(Flux2Transformer2DModel):
     logger.info(f"FLUX.2 Klein fused ops installed on {len(self.transformer_blocks)} double and "
                 f"{len(self.single_transformer_blocks)} single blocks.")
 
-  def remove_fused_ops(self) -> None:
-    """Undo :meth:`apply_fused_ops`.
+  @property
+  def fused_ops_installed(self) -> bool:
+    """Whether :meth:`apply_fused_ops` has run on this instance."""
 
-    Used by the parity tests and the operator switch.
+    return getattr(self, "_flux2_klein_fused_installed", False)
+
+  def remove_fused_ops(self) -> None:
+    """Undo the attention half of :meth:`apply_fused_ops`.
+
+    Restores the stock processors and drops the rotation-table cache. The block forwards stay
+    rebound on purpose: they are plain Python bound methods over the same tensors, and every
+    operator behind them re-checks its preconditions at call time, so an uninstalled instance
+    keeps running the eager expressions. Use `CACHE_DIT_FLUX2_KLEIN_FUSED_OPS=0` (or
+    :func:`set_active_ops`) to switch the operators themselves.
     """
 
     from .attention import uninstall_attention_patch
 
-    if not getattr(self, "_flux2_klein_fused_installed", False):
+    if not self.fused_ops_installed:
       return
     uninstall_attention_patch(self)
     _remove_rope_cache(self.pos_embed)

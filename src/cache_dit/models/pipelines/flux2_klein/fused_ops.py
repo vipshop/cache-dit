@@ -178,6 +178,11 @@ def fused_ops_extension_available() -> bool:
   return cuda_ext_is_available()
 
 
+# Resolved once: `_enabled` runs per block per step, and calling into the loader there showed up
+# as two extra dynamo graphs in the block-level compile (5 -> 4 unique graphs, measured).
+EXTENSION_AVAILABLE = fused_ops_extension_available()
+
+
 def _fusable_tensor(x: torch.Tensor) -> bool:
   """Return whether `x` satisfies the dense layout every fused kernel assumes.
 
@@ -185,8 +190,9 @@ def _fusable_tensor(x: torch.Tensor) -> bool:
   :returns: `True` for a dense CUDA bf16 tensor with a whole number of 16-byte vectors.
   """
 
-  return (x.is_cuda and x.is_contiguous() and x.dtype in (torch.bfloat16, torch.float16)
-          and x.numel() % 8 == 0)
+  # bf16 only: every kernel is templated on `at::kBFloat16` and re-checks it, so a wider test
+  # here would turn a clean fallback into a `TORCH_CHECK` exception on fp16 pipelines.
+  return (x.is_cuda and x.is_contiguous() and x.dtype == torch.bfloat16 and x.numel() % 8 == 0)
 
 
 def _fusable_qk(x: torch.Tensor) -> bool:
@@ -201,9 +207,9 @@ def _fusable_qk(x: torch.Tensor) -> bool:
   :returns: `True` when the kernel may read it directly.
   """
 
-  return (x.is_cuda and x.dtype in (torch.bfloat16, torch.float16) and x.dim() == 4
-          and x.shape[0] == 1 and x.shape[3] == _FUSED_HEAD_DIM and x.stride(-1) == 1
-          and x.stride(-2) % 8 == 0 and x.stride(-3) % 8 == 0)
+  return (x.is_cuda and x.dtype == torch.bfloat16 and x.dim() == 4 and x.shape[0] == 1
+          and x.shape[3] == _FUSED_HEAD_DIM and x.stride(-1) == 1 and x.stride(-2) % 8 == 0
+          and x.stride(-3) % 8 == 0)
 
 
 def _fusable_rows(rows: torch.Tensor, dim: int) -> bool:
@@ -220,6 +226,20 @@ def _fusable_rows(rows: torch.Tensor, dim: int) -> bool:
           and rows.shape[-1] == dim)
 
 
+def _rows_match(rows: torch.Tensor, batch: int) -> bool:
+  """Return whether the `[R, D]` row count may serve a batch of `batch` samples.
+
+  The kernels fold the modulation into `R` rows and index them with `row / seq_len`, so they
+  accept exactly `R in {1, B}`; `1 in (1, B)` would also admit `B = 1, R = 2` and then throw.
+
+  :param rows: `[R, D]` modulation tensor.
+  :param batch: Batch size of the activation.
+  :returns: `True` when `R` is one or the batch size.
+  """
+
+  return rows.dim() == 2 and (rows.shape[0] == 1 or rows.shape[0] == batch)
+
+
 def _enabled(name: str) -> bool:
   """Return whether one operator is enabled.
 
@@ -227,7 +247,7 @@ def _enabled(name: str) -> bool:
   :returns: `True` when the operator may dispatch to CUDA.
   """
 
-  return FUSED_OPS_ENABLED and name in ACTIVE_OPS
+  return FUSED_OPS_ENABLED and name in ACTIVE_OPS and EXTENSION_AVAILABLE
 
 
 def modulation_rows(params: torch.Tensor, dim: int) -> torch.Tensor:
@@ -282,9 +302,10 @@ def apply_ln_modulate(
   """
 
   dim = x.shape[-1]
-  rows_ok = _fusable_rows(one_plus, dim) and _fusable_rows(shift, dim)
+  rows_ok = (_fusable_rows(one_plus, dim) and _fusable_rows(shift, dim)
+             and shift.shape == one_plus.shape)
   if (_enabled("ln_modulate") and rows_ok and _fusable_tensor(x) and dim % 128 == 0
-      and x.shape[0] in (1, one_plus.shape[0])):
+      and _rows_match(one_plus, x.shape[0])):
     from ....kernels import flux2_klein_ln_modulate
 
     return flux2_klein_ln_modulate(x, one_plus, shift, eps)
@@ -339,10 +360,11 @@ def apply_residual_ln_modulate(
 
   dim = hidden.shape[-1]
   rows_ok = (_fusable_rows(one_plus, dim) and _fusable_rows(shift, dim)
-             and _fusable_rows(gate, dim))
+             and _fusable_rows(gate, dim) and gate.shape == one_plus.shape
+             and shift.shape == one_plus.shape)
   if (_enabled("residual_ln_modulate") and rows_ok and _fusable_tensor(hidden)
       and _fusable_tensor(delta) and hidden.shape == delta.shape and dim % 128 == 0
-      and hidden.shape[0] in (1, one_plus.shape[0])):
+      and _rows_match(one_plus, hidden.shape[0])):
     from ....kernels import flux2_klein_residual_ln_modulate
 
     return flux2_klein_residual_ln_modulate(hidden, gate, delta, one_plus, shift, eps)
@@ -410,7 +432,7 @@ def apply_qk_norm_rope(
 
   if (_enabled("qk_norm_rope") and _fusable_qk(x) and weight.is_cuda and weight.dtype == x.dtype
       and weight.is_contiguous() and weight.shape[-1] == _FUSED_HEAD_DIM
-      and cos.dtype == torch.float32 and cos.is_cuda and cos.is_contiguous()
+      and cos.dtype == torch.float32 and cos.is_cuda and cos.is_contiguous() and cos.dim() == 2
       and sin.dtype == torch.float32 and sin.is_cuda and sin.is_contiguous()
       and cos.shape[-1] == _FUSED_HEAD_DIM and sin.shape == cos.shape):
     from ....kernels import flux2_klein_qk_norm_rope
@@ -546,6 +568,7 @@ __all__ = [
   "ACTIVE_OPS",
   "ALL_OPS",
   "DEFAULT_OPS",
+  "EXTENSION_AVAILABLE",
   "FUSED_OPS_ENABLED",
   "ROPE_CACHE_ENABLED",
   "apply_gated_residual",

@@ -69,8 +69,9 @@ void flux2_klein_gated_residual(at::Tensor hidden, at::Tensor gate, at::Tensor u
   TORCH_CHECK(update.is_cuda() && update.scalar_type() == at::kBFloat16 && update.is_contiguous() &&
                 update.sizes() == hidden.sizes(),
               op, ": update must be a contiguous CUDA bf16 tensor shaped like hidden");
-  TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 && out.sizes() == hidden.sizes(),
-              op, ": out must be a bf16 buffer shaped like hidden");
+  TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 && out.is_contiguous() &&
+                out.sizes() == hidden.sizes(),
+              op, ": out must be a contiguous bf16 buffer shaped like hidden");
   const int64_t dim = hidden.size(2);
   TORCH_CHECK(dim % kChannelsPerChunk == 0, op, ": D must be a multiple of ", kChannelsPerChunk,
               ", got ", dim);

@@ -72,10 +72,12 @@ void flux2_klein_silu_mul(at::Tensor gate_up, at::Tensor out) {
   TORCH_CHECK(packed % (2 * kChannelsPerChunk) == 0, op,
               ": the last dimension must be an even multiple of ", kChannelsPerChunk, ", got ",
               packed);
+  TORCH_CHECK(gate_up.stride(1) >= packed, op, ": gate_up rows must not overlap, got row stride ",
+              gate_up.stride(1), " for a packed width of ", packed);
   const int64_t half = packed / 2;
-  TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 &&
+  TORCH_CHECK(out.is_cuda() && out.scalar_type() == at::kBFloat16 && out.is_contiguous() &&
                 out.sizes() == at::IntArrayRef({gate_up.size(0), gate_up.size(1), half}),
-              op, ": out must be a bf16 [B,S,D] buffer matching half of gate_up");
+              op, ": out must be a contiguous bf16 [B,S,D] buffer matching half of gate_up");
   TORCH_CHECK((reinterpret_cast<uintptr_t>(gate_up.const_data_ptr()) & 15) == 0 &&
                 (reinterpret_cast<uintptr_t>(out.data_ptr()) & 15) == 0,
               op, ": buffers must be 16-byte aligned for the uint4 path");
