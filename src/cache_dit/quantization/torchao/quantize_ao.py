@@ -47,7 +47,7 @@ def _patch_torchao_zero_row_scale() -> None:
   torchao's ``_choose_scale_float8`` yields scale=0 for all-zero rows/columns
   (e.g. padded tokens or zero-initialized modulation weights). The inference
   matmul then computes ``0 / 0 = NaN`` (emulated) or ``1 / 0 = inf``
-  (``_scaled_mm``). Clamping zero scales to 1 keeps zero rows exactly zero
+  (``torch._scaled_mm``). Clamping zero scales to 1 keeps zero rows exactly zero
   without affecting other rows.
   """
   import importlib
@@ -784,7 +784,7 @@ def _basic_filter_fn(
         "float8_per_tensor",
         "float8_per_block",
     ] and not _check_if_linear_with_bias_fp8_can_support(m):
-      skip_reason = _skip_reason("_scaled_mm: DTensor + bias NOT supported")
+      skip_reason = _skip_reason("torch._scaled_mm: DTensor + bias NOT supported")
       quant_ctx.skipped_map[curr_quant_type].append(skip_reason)
       logger.debug(skip_reason)
       return False
@@ -830,7 +830,7 @@ def _fallback_filter_fn(
       return False
 
     if not _check_if_linear_with_bias_fp8_can_support(m):
-      skip_reason = _fallback_reason("_scaled_mm: DTensor + bias NOT supported")
+      skip_reason = _fallback_reason("torch._scaled_mm: DTensor + bias NOT supported")
       quant_ctx.skipped_map[fallback_quant_type].append(skip_reason)
       logger.debug(skip_reason)
       return False

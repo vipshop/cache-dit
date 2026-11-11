@@ -10,18 +10,18 @@ Why this exists:
 
 How this works:
 - We patch torchao's `addmm_float8_unwrapped_inference()` helper so that the
-    `_scaled_mm` callsite becomes a custom op tagged `cudagraph_unsafe`.
+    `torch._scaled_mm` callsite becomes a custom op tagged `cudagraph_unsafe`.
 - We also register an Inductor lowering for that custom op which lowers into a
     separately compiled Inductor subgraph.
 - That subgraph keeps Triton/template lowering enabled, but disables CUDA Graph
     capture locally so the replay-unsafe rowwise path never gets cudagraphified.
-- The result is that `_scaled_mm` still participates in `torch.compile`, but the
+- The result is that `torch._scaled_mm` still participates in `torch.compile`, but the
     tagged FX node gives Inductor a stable point to exclude from CUDA Graph
     capture.
 
 Expected impact:
 - Positive: avoids the rowwise FP8 compile + CUDA Graph replay hang.
-- Positive: keeps the `_scaled_mm` call on a compiled path instead of a Python
+- Positive: keeps the `torch._scaled_mm` call on a compiled path instead of a Python
     fallback or a forced ATen-only extern kernel path.
 - Tradeoff: this callsite is still excluded from CUDA Graph capture, so only the
     surrounding safe partitions are cudagraphified.
@@ -195,7 +195,7 @@ def _register_inductor_float8_scaled_mm_lowering() -> None:
     # This wrapper is the key bridge between two competing goals:
     # - the outer compiled graph needs a stable cudagraph_unsafe boundary so
     #   Inductor can keep this rowwise FP8 callsite out of CUDA Graph replay;
-    # - the inner `_scaled_mm` work still needs to be compiled so it can keep
+    # - the inner `torch._scaled_mm` work still needs to be compiled so it can keep
     #   using Inductor/Triton kernel selection instead of falling back to a
     #   Python custom op or a permanently forced extern kernel.
     #
@@ -247,7 +247,7 @@ def _register_inductor_float8_scaled_mm_lowering() -> None:
       try:
         # The whole point of the wrapper is to compile this region without
         # letting CUDA Graph capture it. At the same time we explicitly keep
-        # GEMM autotuning enabled so `_scaled_mm` can still choose a Triton
+        # GEMM autotuning enabled so `torch._scaled_mm` can still choose a Triton
         # template when it wins, rather than regressing to an ATen-only path.
         inductor_config.triton.cudagraphs = False
         inductor_config.max_autotune_gemm = True
