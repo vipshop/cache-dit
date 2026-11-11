@@ -6,12 +6,13 @@ the fused branch and the reference branch must agree to the tolerance stated in
 the ones built on ``rsqrtf`` are accepted at :data:`REL_L2_TOL` because the extension is
 compiled with ``--use_fast_math``.
 
-Numerical contract. The kernels keep the whole chain in fp32 and round to bf16 once, on the
-store. That is what ``torch.compile``'s inductor already does for these chains (it inlines
-``native_layer_norm`` / ``_fused_rms_norm`` and keeps the intermediate in fp32 registers), so
-the fused branch matches the *compiled* arm, not the eager chain - eager rounds to bf16 at
-every ``aten`` boundary. ``_eager_*`` below is a literal transcription of the eager chain and
-is used when a precondition fails, which keeps "precondition fails" == "the stock values".
+Numerical contract. The kernels keep the chain in fp32 and round to bf16 on the store. Where
+upstream materialises an intermediate tensor the rounding is kept: the branch sum of the gated
+residual is ``attn_output + ff_output`` (``transformer_flux3.py:284``), a real bf16 tensor that
+stock+compile emits as its own ``add_24`` kernel, so the kernel rounds it too. That makes the
+fused branch match the *compiled* arm, not the eager chain, which rounds at every ``aten``
+boundary. ``_eager_*`` below is the fallback and therefore implements the same chain as the
+kernel - a fallback that changed the numerics would make the precondition *be* the algorithm.
 
 The kernels live in :mod:`cache_dit.kernels.models` (the shared ``cache_dit._C_ops``
 extension). When the extension is missing, or a precondition fails (dtype, device, alignment,
@@ -134,6 +135,8 @@ _OP_ENTRY_POINTS = (
   "flux3_klein_gated_residual",
   "flux3_klein_gated_residual_split",
 )
+_LN_ROW_MULTIPLE = 1024  # one CTA covers a 128-thread row of 8-channel vectors
+_LN_MAX_CHANNELS = 8192  # the kernel instantiates up to 8 vectors per thread
 _ops_ready: Optional[bool] = None
 _OPS: dict = {}
 
@@ -241,8 +244,9 @@ def _fusable_tensor(x: torch.Tensor) -> bool:
 
   if torch.compiler.is_compiling():
     return True
-  return (x.is_cuda and x.is_contiguous() and x.dtype in (torch.bfloat16, torch.float16)
-          and x.numel() % 8 == 0)
+  # bf16 only: the kernels and their vector loads are written for it, and the Python gate has to
+  # be a subset of the C++ checks or a "supported" tensor raises instead of falling back.
+  return (x.is_cuda and x.is_contiguous() and x.dtype == torch.bfloat16 and x.numel() % 8 == 0)
 
 
 def _row_or_token(x: torch.Tensor, like: torch.Tensor) -> bool:
@@ -353,7 +357,7 @@ def apply_qk_norm_rope(
     return _EAGER_BYPASS["qk_norm_rope"](x, weight, cos, sin, eps)
 
   if (FUSED_OPS_ENABLED and "qk_norm_rope" in ACTIVE_OPS and _kernel_ops_ready()
-      and _fusable_tensor(x) and x.shape[-1] == _FUSED_HEAD_DIM and weight.is_cuda
+      and _fusable_tensor(x) and x.dim() == 4 and x.shape[-1] == _FUSED_HEAD_DIM and weight.is_cuda
       and weight.is_contiguous() and weight.dtype == torch.float32
       and weight.numel() == _FUSED_HEAD_DIM and cos.is_cuda and sin.is_cuda
       and cos.dtype == torch.float32 and sin.dtype == torch.float32 and cos.is_contiguous()
@@ -411,7 +415,8 @@ def apply_ln_modulate(
     return _EAGER_BYPASS["ln_modulate"](x, scale, shift, eps)
 
   fusable = (FUSED_OPS_ENABLED and "ln_modulate" in ACTIVE_OPS and _kernel_ops_ready()
-             and _fusable_tensor(x) and x.shape[-1] % 8 == 0 and _row_or_token(scale, x)
+             and _fusable_tensor(x) and x.dim() == 3 and x.shape[-1] % _LN_ROW_MULTIPLE == 0
+             and x.shape[-1] <= _LN_MAX_CHANNELS and _row_or_token(scale, x)
              and _row_or_token(shift, x) and scale.shape == shift.shape)
   if not fusable:
     _record_fallback("ln_modulate")
@@ -484,8 +489,9 @@ def apply_ln_modulate_cat(
              and _fusable_tensor(hidden_states) and _fusable_tensor(encoder_hidden_states)
              and hidden_states.shape[0] == encoder_hidden_states.shape[0]
              and hidden_states.shape[-1] == encoder_hidden_states.shape[-1]
-             and hidden_states.shape[-1] % 8 == 0 and _row_or_token(scale, hidden_states)
-             and _row_or_token(shift, hidden_states)
+             and hidden_states.dim() == 3 and hidden_states.shape[-1] % _LN_ROW_MULTIPLE == 0
+             and hidden_states.shape[-1] <= _LN_MAX_CHANNELS
+             and _row_or_token(scale, hidden_states) and _row_or_token(shift, hidden_states)
              and _row_or_token(context_scale, encoder_hidden_states)
              and _row_or_token(context_shift, encoder_hidden_states))
   if not fusable:
@@ -504,7 +510,11 @@ def _eager_gated_residual(
   attn_output: torch.Tensor,
   ff_output: torch.Tensor,
 ) -> torch.Tensor:
-  """Literal transcription of `hidden + mod_gate * (attn_output + ff_output)`.
+  """Fallback expression, numerically identical to the kernel.
+
+  Upstream materialises `attn_output + ff_output` as a bf16 tensor and then evaluates
+  `hidden + gate * output`, which stock+compile fuses into one fp32 kernel. This function does
+  the same thing explicitly, so a failed precondition cannot change the result - only the speed.
 
   :param hidden_states: Residual stream.
   :param gate:`(B, S, D)` or `(B, 1, D)` modulation gate.
@@ -513,7 +523,7 @@ def _eager_gated_residual(
   :returns: The new residual stream.
   """
 
-  return hidden_states + gate * (attn_output + ff_output)
+  return _compiled_gated_residual(hidden_states, gate, attn_output, ff_output)
 
 
 def _compiled_gated_residual(
@@ -570,8 +580,9 @@ def apply_gated_residual(
 
   if (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and _kernel_ops_ready()
       and _fusable_tensor(hidden_states) and _fusable_tensor(attn_output)
-      and _fusable_tensor(ff_output) and attn_output.shape == hidden_states.shape
-      and ff_output.shape == hidden_states.shape and _row_or_token(gate, hidden_states)):
+      and _fusable_tensor(ff_output) and hidden_states.dim() == 3
+      and attn_output.shape == hidden_states.shape and ff_output.shape == hidden_states.shape
+      and _row_or_token(gate, hidden_states)):
     _record_hit("gated_residual")
     return _OPS["gated_residual"](hidden_states, gate, attn_output, ff_output)
 
@@ -600,11 +611,8 @@ def _eager_gated_residual_split(
   :returns: `(encoder_hidden_states, hidden_states)` in that order, as upstream returns them.
   """
 
-  output = attn_output + ff_output
-  context_output, content_output = torch.split(output, [prefix_len, hidden_states.shape[1]], dim=1)
-  encoder_hidden_states = encoder_hidden_states + context_gate * context_output
-  hidden_states = hidden_states + gate * content_output
-  return encoder_hidden_states, hidden_states
+  return _compiled_gated_residual_split(hidden_states, encoder_hidden_states, gate, context_gate,
+                                        attn_output, ff_output, prefix_len)
 
 
 def _compiled_gated_residual_split(
@@ -670,7 +678,7 @@ def apply_gated_residual_split(
   fusable = (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and _kernel_ops_ready()
              and _fusable_tensor(hidden_states) and _fusable_tensor(encoder_hidden_states)
              and _fusable_tensor(attn_output) and _fusable_tensor(ff_output)
-             and attn_output.shape == ff_output.shape
+             and hidden_states.dim() == 3 and attn_output.shape == ff_output.shape
              and attn_output.shape[0] == hidden_states.shape[0]
              and attn_output.shape[2] == hidden_states.shape[-1]
              and attn_output.shape[1] == prefix_len + hidden_states.shape[1]
