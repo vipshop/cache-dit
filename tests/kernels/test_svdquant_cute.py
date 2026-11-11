@@ -43,7 +43,14 @@ def _decode_fragment_d(fragment_d: torch.Tensor) -> torch.Tensor:
   return fragment_d.flatten()[indices]
 
 
-@pytest.mark.parametrize("m,k", [(256, 128), (2304, 192), (256, 3136)])
+@pytest.mark.parametrize("m,k", [
+  (256, 64),
+  (256, 128),
+  (256, 3072),
+  (512, 3072),
+  (2304, 192),
+  (256, 3136),
+])
 @pytest.mark.parametrize("rank,scales", [(32, [0.5, 2.0]), (64, [1.0] * 4), (128, [1.0] * 8)])
 def test_row_major_quantize_producer(m: int, k: int, rank: int, scales: list[float]) -> None:
   _require_sm120()
@@ -102,6 +109,47 @@ def test_row_major_producer_matches_native_pack() -> None:
   assert torch.equal(
     sf_row_major.view(torch.uint8).flatten().sort().values,
     sf_native.view(torch.uint8).flatten().sort().values)
+
+
+def test_small_row_major_producer_uses_fused_schedule() -> None:
+  rank = 64
+  _require_sm120()
+  torch.manual_seed(20261117)
+  x = torch.randn(256, 3072, dtype=torch.bfloat16, device="cuda:0")
+  smooth = torch.ones(3072, dtype=torch.bfloat16, device="cuda:0")
+  lora_down = torch.randn(3072, rank, dtype=torch.bfloat16, device="cuda:0") * 0.02
+  native_qact, native_scales, _ = svdq_quantize_w4a4(x,
+                                                     lora_down,
+                                                     smooth,
+                                                     lora_layout="native",
+                                                     fp4=True)
+  with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
+    first = svdq_quantize_w4a4(x, lora_down, smooth, lora_layout="row_major")
+    second = svdq_quantize_w4a4(x, lora_down, smooth, lora_layout="row_major")
+    torch.cuda.synchronize()
+  kernel_names = {event.key for event in prof.key_averages()}
+  assert any("quantize_w4a4_fused_lora_kernel" in name for name in kernel_names)
+  assert not any("finalize_lora_bf16_kernel" in name for name in kernel_names)
+  for actual, expected in zip(first, second, strict=True):
+    assert torch.equal(actual, expected)
+  assert torch.equal(first[0], native_qact)
+  assert torch.equal(first[1].view(torch.uint8).flatten().sort().values,
+                     native_scales.view(torch.uint8).flatten().sort().values)
+
+
+@pytest.mark.parametrize("m,template", [(256, "<8, 8, 2, true>"), (512, "<8, 8, 4, false>")])
+def test_rank128_small_producer_uses_k128_only_at_m256(m: int, template: str) -> None:
+  _require_sm120()
+  torch.manual_seed(20261118)
+  x = torch.randn(m, 3072, dtype=torch.bfloat16, device="cuda:0")
+  smooth = torch.ones(3072, dtype=torch.bfloat16, device="cuda:0")
+  lora_down = torch.randn(3072, 128, dtype=torch.bfloat16, device="cuda:0") * 0.02
+  with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
+    svdq_quantize_w4a4(x, lora_down, smooth, lora_layout="row_major")
+    torch.cuda.synchronize()
+  kernel_names = {event.key for event in prof.key_averages()}
+  assert any(f"quantize_w4a4_split_k_kernel{template}" in name for name in kernel_names)
+  assert any("finalize_lora_bf16_kernel" in name for name in kernel_names)
 
 
 def test_row_major_producer_rejects_non_256_padded_batch() -> None:
