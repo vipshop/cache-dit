@@ -1,6 +1,6 @@
 import torch
 
-from ._cuda_ext import _get_required_ops_module
+from .cuda_ext import _get_required_ops_module
 
 
 def _call_fused_merge_attn_states(

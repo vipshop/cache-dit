@@ -566,7 +566,7 @@ def test_native_dispatch_uses_single_gemm_bridge(monkeypatch, runtime_kernel: st
                                                  precision: str) -> None:
   if not torch.cuda.is_available():
     pytest.skip("CUDA is required")
-  import cache_dit.kernels._svdquant as svdq_ops
+  import cache_dit.kernels.svdquant as svdq_ops
 
   module = SVDQW4A4Linear(128, 128, rank=0, precision=precision, runtime_kernel=runtime_kernel)
   seen: list[str] = []

@@ -14,7 +14,7 @@ user-invocable: true
 | 任务 | 判据 | 读哪里 |
 |---|---|---|
 | 接入新算子 / 新算子族 | 要新建 `csrc/kernels/<族>/` 下的文件，或要动 `setup.py` 的源清单/扩展/schema 注册 | `references/kernel-integration-chain.md` |
-| 接入**模型专属**算子族（`models`） | 算子只服务单个 vendored 模型，要动 `csrc/kernels/models/` 与 `kernels/_models/`，或要在模型侧加 `fused_ops.py` 调用点 | 本文 §9 + `references/kernel-integration-chain.md` §2 |
+| 接入**模型专属**算子族（`models`） | 算子只服务单个 vendored 模型，要动 `csrc/kernels/models/` 与 `kernels/models/`，或要在模型侧加 `fused_ops.py` 调用点 | 本文 §9 + `references/kernel-integration-chain.md` §2 |
 | 从上游仓库移植算子 | 有 nunchaku / deepcompressor / flashinfer 参照实现 | `references/operator-migration.md` |
 | 改现有算子实现 | 只改 `.cu/.cuh/.h`，schema、`setup.py`、Python 包装都不动 | 本文 §5 + 该族 Python 模块 + 对应测试 |
 | 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列三份 ref |
@@ -37,7 +37,7 @@ SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
 ```text
 内部调用点
   -> torch.ops.cache_dit_cuda_ops.<op>        Python 侧 torch.library：dispatch / fake / compile
-  -> kernels/_<族>.py  @torch.library.impl(..., "CUDA")   元数据校验 + 建输出
+  -> kernels/<族>.py  @torch.library.impl(..., "CUDA")   元数据校验 + 建输出
   -> _call_<op>()                            out-param 桥 + 签名归一化
   -> _C_ops.ops.<op>                         pybind 子模块（单扩展，四族共用）
   -> csrc/kernels/<族>/<族>.cpp -> <kernel>.cu            TORCH_CHECK + launch
@@ -58,8 +58,8 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 2. 声明头：`void <op>(at::Tensor ...)`，`namespace cache_dit::<族>`。
 3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("<op>", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。
 4. `setup.py`：加 `_required_<族>_sources()`、并进 `_required_cuda_sources()`、族目录加进 `_get_cuda_extension()` 的 `include_dirs`。没有 per-family extension 了；arch 谓词只有 `_is_supported_cuda_sm_target`（ref §5.1/§5.3）。
-5. `src/cache_dit/kernels/_<族>.py` 五段：`from ._cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
-6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/_cuda_ext.py`）；`__all__` 等于全部非下划线成员。
+5. `src/cache_dit/kernels/<族>.py` 五段：`from .cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
+6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/cuda_ext.py`）；`__all__` 等于全部非下划线**算子**成员（子模块 `attn` / `comm` / `cuda_ext` / `models` / `svdquant` 是包属性但不进 `__all__`）。
 7. 内部调用点：可用性门禁用 `cuda_ext_is_available()` 或捕获 `RuntimeError`；错误信息要带构建命令与 arch 门槛（sm89+、排除 sm90）。
 8. 测试：`test_ops_dispatch.py` 参数表条目、fake 用例、参考实现对比、`fullgraph=True` compile smoke（模板 `tests/kernels/test_cuda_fp8_comm_ops.py`）。
 
@@ -71,7 +71,7 @@ SVDQ 调用链：
 
 ```text
 SVDQW4A4Linear.quantize / forward_quant
-  -> src/cache_dit/kernels/_svdquant.py
+  -> src/cache_dit/kernels/svdquant.py
   -> torch.library schema + fake/CUDA impl
   -> svdq.cpp -> svdq.h（registrar + dispatcher 实现）
   -> svdq::native_kernels 或 svdq::cute_kernels
@@ -244,7 +244,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 **回归口径**：`test_fused_gelu_mlp_matches_the_unfused_two_step[int4|nvfp4]` 是 fused 路径的**首个执行覆盖**，同时验证 rel-L2 < 5e-3 / cosine > 0.999 与"flag 真的传下去了"（spy `fused.svdq_gemm_w4a4`）。注意 `fused_gelu_mlp` 的第二个 GEMM 走 `linear.py` 的 import，spy 只能拦到 2 次调用。
 
-## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/_models`）
+## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
 `comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。
 
@@ -257,8 +257,8 @@ csrc/kernels/models/
   <model>.cpp                # register_<model>_ops(py::module_&)：只挂 pybind，不含计算
   <model>_<op>.cu            # 一个算子一个 TU
 
-src/cache_dit/kernels/_models/
-  __init__.py                # re-export 公开包装（可用性统一走 kernels/_cuda_ext.py）
+src/cache_dit/kernels/models/
+  __init__.py                # re-export 公开包装（可用性统一走 kernels/cuda_ext.py）
   _<model>.py                # 六段模板（同 §2 第 5 步），公开名带模型前缀 <model>_<op>
 
 src/cache_dit/models/pipelines/<model>/
@@ -275,7 +275,7 @@ src/cache_dit/models/pipelines/<model>/
 | 声明头 / pybind TU | `{model}.h` / `{model}.cpp` | `boogu.h` / `boogu.cpp` |
 | C++ namespace | `cache_dit::models` | — |
 | 公开 torch 算子 | `{model}_{op}` | `boogu_scaled_rms_norm` |
-| Python 模块 | `kernels/_models/_<model>.py` | `_boogu.py` |
+| Python 模块 | `kernels/models/<model>.py` | `boogu.py` |
 | extension | `cache_dit._C_ops`（全部四族共用） | — |
 | 融合开关 | `CACHE_DIT_{MODEL}_FUSED_OPS` | `CACHE_DIT_BOOGU_FUSED_OPS` |
 

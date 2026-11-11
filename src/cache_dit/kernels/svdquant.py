@@ -18,7 +18,7 @@ complete ``SVDQW4A4Linear`` path before becoming the default. Until then, caller
 
 import torch
 
-from ._cuda_ext import _get_required_ops_module
+from .cuda_ext import _get_required_ops_module
 
 _DTYPE_TO_ID = {
   torch.float16: 0,

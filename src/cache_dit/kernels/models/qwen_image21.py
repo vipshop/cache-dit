@@ -10,7 +10,7 @@ from typing import Optional
 
 import torch
 
-from .._cuda_ext import _get_required_ops_module
+from ..cuda_ext import _get_required_ops_module
 
 __all__ = [
   "qwen_image21_gated_residual",

@@ -547,7 +547,7 @@ def qwenimage21_adapter(pipe, **kwargs) -> BlockAdapter:
 
   if pipe.__class__.__name__.startswith("_QwenImage21"):
     # cache-dit's own optimisation pass: install the fused forwards instead of the stock ones.
-    from cache_dit.models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+    from cache_dit.models.pipelines.qwen_image21.functor import _QwenImage21PatchFunctor
 
     patch_functor = _QwenImage21PatchFunctor()
   else:

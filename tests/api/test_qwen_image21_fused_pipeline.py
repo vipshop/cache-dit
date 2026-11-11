@@ -53,8 +53,8 @@ def test_cp_and_tp_planners_are_registered_for_the_underscore_names():
     QwenImage21ContextParallelismPlanner,
     QwenImage21TensorParallelismPlanner,
   )
-  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Transformer2DModel
-  from cache_dit.models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Transformer2DModel
+  from cache_dit.models.pipelines.qwen_image21.functor import _QwenImage21PatchFunctor
 
   cp_planner = ContextParallelismPlannerRegister.get_planner("_QwenImage21Transformer2DModel")
   tp_planner = TensorParallelismPlannerRegister.get_planner(_QwenImage21Transformer2DModel.__name__)
@@ -74,8 +74,8 @@ def test_stock_functor_would_skip_the_subclass_and_fused_functor_does_not():
   so the stock functor returns without patching — silently.
   """
 
-  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Transformer2DModel
-  from cache_dit.models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Transformer2DModel
+  from cache_dit.models.pipelines.qwen_image21.functor import _QwenImage21PatchFunctor
 
   transformer = _tiny_transformer()
   transformer.__class__ = _QwenImage21Transformer2DModel
@@ -93,8 +93,8 @@ def test_stock_functor_would_skip_the_subclass_and_fused_functor_does_not():
 
 
 def test_apply_fused_ops_is_idempotent_and_leaves_the_cache_patch_alone():
-  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Transformer2DModel
-  from cache_dit.models.pipelines._qwen_image21.transformer_qwen_image21 import upgrade_transformer
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Transformer2DModel
+  from cache_dit.models.pipelines.qwen_image21.transformer_qwen_image21 import upgrade_transformer
 
   transformer = _tiny_transformer()
   upgraded = upgrade_transformer(transformer)
@@ -112,7 +112,7 @@ def test_apply_fused_ops_is_idempotent_and_leaves_the_cache_patch_alone():
 def test_fused_block_forward_keeps_the_forward_pattern_signature():
   """`_check_forward_pattern` inspects names and the return-annotation tensor count."""
 
-  from cache_dit.models.pipelines._qwen_image21.block import fused_block_forward
+  from cache_dit.models.pipelines.qwen_image21.block import fused_block_forward
 
   params = set(inspect.signature(fused_block_forward).parameters)
   for required in ForwardPattern.Pattern_3.In:
@@ -122,7 +122,7 @@ def test_fused_block_forward_keeps_the_forward_pattern_signature():
 
 
 def test_fused_block_matches_stock_block_bit_exactly():
-  from cache_dit.models.pipelines._qwen_image21.block import fused_block_forward
+  from cache_dit.models.pipelines.qwen_image21.block import fused_block_forward
 
   torch.manual_seed(0)
   block = QwenImage21TransformerBlock(dim=16,
@@ -153,7 +153,7 @@ def test_fused_block_resolves_a_layer_cache_container():
 
   from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
 
-  from cache_dit.models.pipelines._qwen_image21.block import fused_block_forward
+  from cache_dit.models.pipelines.qwen_image21.block import fused_block_forward
 
   torch.manual_seed(0)
   block = QwenImage21TransformerBlock(dim=16,
@@ -183,7 +183,7 @@ def test_fused_block_resolves_a_layer_cache_container():
 
 
 def test_switch_only_turns_off_on_explicit_falsey_values(monkeypatch):
-  from cache_dit.models.pipelines._qwen_image21 import fused_ops
+  from cache_dit.models.pipelines.qwen_image21 import fused_ops
 
   for value, expected in (("0", False), ("false", False), ("off", False), ("no", False),
                           ("1", True), ("true", True), ("", True), ("yes", True)):
@@ -197,7 +197,7 @@ def test_switch_only_turns_off_on_explicit_falsey_values(monkeypatch):
 def test_ops_fall_back_to_eager_without_the_extension(monkeypatch):
   """A missing CUDA extension must degrade to the literal expression, not raise."""
 
-  from cache_dit.models.pipelines._qwen_image21 import fused_ops
+  from cache_dit.models.pipelines.qwen_image21 import fused_ops
 
   monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", True)
   monkeypatch.setattr(fused_ops, "fused_ops_extension_available", lambda: False)
@@ -226,7 +226,7 @@ def test_qkv_seam_is_patched_for_stock_flex_and_context_parallel():
 
   import importlib
 
-  from cache_dit.models.pipelines._qwen_image21 import attention_processor as ap
+  from cache_dit.models.pipelines.qwen_image21 import attention_processor as ap
 
   diffusers_module = importlib.import_module(
     "diffusers.models.transformers.transformer_qwenimage21")

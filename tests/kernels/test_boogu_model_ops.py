@@ -4,9 +4,9 @@ from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.kernels._models import boogu_fused_qk_norm_rope
-from cache_dit.kernels._models import boogu_gated_rms_norm
-from cache_dit.kernels._models import boogu_scaled_rms_norm
+from cache_dit.kernels.models import boogu_fused_qk_norm_rope
+from cache_dit.kernels.models import boogu_gated_rms_norm
+from cache_dit.kernels.models import boogu_scaled_rms_norm
 
 
 def _require_runtime() -> None:

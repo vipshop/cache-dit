@@ -4,10 +4,10 @@ This package intentionally does not import FlashInfer at import time. Cache-DiT 
 without the optional dependency; selecting a FlashInfer runtime raises a clear installation error.
 """
 
-from ._svdquant import FLASHINFER_BACKENDS
-from ._svdquant import flashinfer_available
-from ._svdquant import flashinfer_svdquant_linear
-from ._svdquant import validate_unit_wcscales
+from .svdquant import FLASHINFER_BACKENDS
+from .svdquant import flashinfer_available
+from .svdquant import flashinfer_svdquant_linear
+from .svdquant import validate_unit_wcscales
 
 __all__ = [
   "FLASHINFER_BACKENDS",

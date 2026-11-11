@@ -15,7 +15,7 @@ from cache_dit.attention.backends.register import (
   _dispatch_attention_fn,
 )
 from cache_dit.attention.backends import native, sage
-from cache_dit.attention._diffusers_bridge import (
+from cache_dit.attention.diffusers_bridge import (
   _register_cache_dit_attn_backends_to_diffusers, )
 
 

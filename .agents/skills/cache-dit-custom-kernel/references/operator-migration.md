@@ -56,7 +56,7 @@
 
 只写可移植的引用：
 
-- 引用 cache-dit 自身文件时写仓内相对路径，例如 `src/cache_dit/kernels/_comm.py`、`tests/kernels/test_cuda_fp8_comm_ops.py`。
+- 引用 cache-dit 自身文件时写仓内相对路径，例如 `src/cache_dit/kernels/comm.py`、`tests/kernels/test_cuda_fp8_comm_ops.py`。
 - 引用同级或外部仓库时写仓库相对、可被 GitHub 搜索到的路径，例如 `nunchaku/nunchaku/models/linear.py`、`deepcompressor/deepcompressor/backend/nunchaku/utils.py`。
 - 不要把 `/abs/path/to/workspace/...` 这类本机绝对路径写进 skill、配套文档，或你为 cache-dit 新增的任何错误信息。
 
@@ -99,7 +99,7 @@
 锚点文件：
 
 - `src/cache_dit/kernels/__init__.py` —— 公开面
-- `src/cache_dit/kernels/_<domain>.py` —— 承载该算子的域模块
+- `src/cache_dit/kernels/<domain>.py` —— 承载该算子的域模块
 - `csrc/kernels/<domain>/` —— native 侧
 - `setup.py` —— `_required_<ext>_sources()`、`_missing_<ext>_sources()`、`_get_<ext>_extension()`、`_get_extensions()`
 - `tests/kernels/` —— 算子测试
@@ -171,7 +171,7 @@
 
 ### B. 域 Python 模块
 
-一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/_<domain>.py`：桥、注册、fake、公开封装。扩展加载统一走 `src/cache_dit/kernels/_cuda_ext.py`（`cache_dit._C_ops`）：四个域模块都 `from ._cuda_ext import _get_required_ops_module`，**不要**再各自持有 loader 或 availability getter。
+一个域的东西全部放进单个私有模块 `src/cache_dit/kernels/<domain>.py`：桥、注册、fake、公开封装。扩展加载统一走 `src/cache_dit/kernels/cuda_ext.py`（`cache_dit._C_ops`）：四个域模块都 `from .cuda_ext import _get_required_ops_module`，**不要**再各自持有 loader 或 availability getter。
 
 模板与它强制遵守的规则：`kernel-integration-chain.md` §4.1–§4.5。
 
@@ -180,7 +180,7 @@
 在 `src/cache_dit/kernels/__init__.py` 里显式 re-export，并加 `__all__` 条目：
 
 ```python
-from ._comm import fp8_comm_per_token_quant
+from .comm import fp8_comm_per_token_quant
 ```
 
 默认约定：
@@ -290,7 +290,7 @@ from ._comm import fp8_comm_per_token_quant
 ### 不要写本机绝对路径
 
 坏：在 docstring、错误信息或 skill 引用里写 `/abs/path/to/workspace/...`。
-好：`src/cache_dit/kernels/_comm.py`、`nunchaku/nunchaku/models/linear.py`、`deepcompressor/deepcompressor/calib/smooth.py`。
+好：`src/cache_dit/kernels/comm.py`、`nunchaku/nunchaku/models/linear.py`、`deepcompressor/deepcompressor/calib/smooth.py`。
 
 ## 10. 参考案例：SVDQ / Nunchaku 移植
 
@@ -317,9 +317,9 @@ comm 与 attention-state-merge 两个算子原本是 Triton 与 CuTe DSL 实现�
 ### 有用的 cache-dit 参考文件
 
 - `src/cache_dit/kernels/__init__.py`
-- `src/cache_dit/kernels/_attn.py`
-- `src/cache_dit/kernels/_comm.py`
-- `src/cache_dit/kernels/_svdquant.py`
+- `src/cache_dit/kernels/attn.py`
+- `src/cache_dit/kernels/comm.py`
+- `src/cache_dit/kernels/svdquant.py`
 - `src/cache_dit/quantization/svdquant/linear.py`
 - `csrc/kernels/attn/attn.cpp`
 - `csrc/kernels/attn/attn.h`

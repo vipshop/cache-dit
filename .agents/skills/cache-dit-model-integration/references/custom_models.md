@@ -71,10 +71,10 @@ math, no block-loop change, no checkpoint conversion. Then do **not** absorb it 
 `PatchFunctor`s on it — subclass in place:
 
 ```python
-# src/cache_dit/models/pipelines/_<model>/pipeline_<model>.py
+# src/cache_dit/models/pipelines/<model>/pipeline_<model>.py
 class _<Model>Pipeline(<Model>Pipeline):          # diffusers class, one underscore in front
   ...
-# src/cache_dit/models/pipelines/_<model>/transformer_<model>.py
+# src/cache_dit/models/pipelines/<model>/transformer_<model>.py
 class _<Model>Transformer2DModel(<Model>Transformer2DModel):
   ...
 ```
@@ -556,7 +556,7 @@ Notes for the next custom model:
 
 ## 15. Second-pass optimization of an existing diffusers pipeline (`_NAME`)
 
-Worked example: `_QwenImage21` (`src/cache_dit/models/pipelines/_qwen_image21/`, PR #1274). Use this
+Worked example: `_QwenImage21` (`src/cache_dit/models/pipelines/qwen_image21/`, PR #1274). Use this
 chapter when the model already runs through cache-dit and the optimization is confined to seams.
 
 ### 15.1 Decide the shape first
@@ -570,7 +570,7 @@ chapter when the model already runs through cache-dit and the optimization is co
 ### 15.2 Package layout
 
 ```
-src/cache_dit/models/pipelines/_<model>/
+src/cache_dit/models/pipelines/<model>/
   __init__.py                  # lazy exports, __all__ = [] (same rule as §2)
   transformer_<model>.py       # _<Model>Transformer2DModel + apply_fused_ops()
   pipeline_<model>.py          # _<Model>Pipeline.from_pretrained -> upgrade in place
@@ -579,7 +579,7 @@ src/cache_dit/models/pipelines/_<model>/
   attention_processor.py       # fusion installed on the QKV seam (name it after what it patches)
   functor.py                   # cache-dit PatchFunctor subclass used when enable_cache runs
 csrc/kernels/models/<model>_*.{h,cpp,cu}          # kernel family, linked into the single _C_ops extension
-src/cache_dit/kernels/_models/_<model>.py         # six-section bridge (see cache-dit-custom-kernel)
+src/cache_dit/kernels/models/<model>.py          # six-section bridge (see cache-dit-custom-kernel)
 ```
 
 ### 15.3 The `from_pretrained` upgrade
@@ -619,7 +619,7 @@ Prefix registries match with `cls_name.startswith(name)` and take the **first** 
 | TP planner | `TensorParallelismPlannerRegister.register("_<Model>Transformer2DModel")` | TP falls back to a generic plan |
 | `cli/utils.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
 | `cli/examples.py` | `<model>_fused` (+ turbo variant) examples | no CLI path to the optimized pipeline |
-| `kernels/_models/__init__.py`, `kernels/__init__.py` | new `__all__` entries | `test_public_api_matches_all` fails |
+| `kernels/models/__init__.py`, `kernels/__init__.py` | new `__all__` entries | `test_public_api_matches_all` fails |
 | `setup.py` `_required_models_sources()` | every new `.cu` / `.cpp` | the file is **never compiled** (the list is explicit, not a glob) |
 
 ### 15.5 Choosing seams (the part that decides CP)
@@ -649,7 +649,7 @@ Standard shape (details in `cache-dit-custom-kernel`):
 * kernels live in the model family (`csrc/kernels/models/`) and are linked into the single
   `_C_ops` extension: `models.cpp` is the family registrar, each model adds a
   `register_<model>_ops(py::module_&)` call to it;
-* Python side is the bridge: `from .._cuda_ext import _get_required_ops_module` → `_call_*`
+* Python side is the bridge: `from ..cuda_ext import _get_required_ops_module` → `_call_*`
   → `torch.library` `define` / `impl("CUDA")` / `register_fake` → public wrapper;
 * one switch for the family (`CACHE_DIT_<MODEL>_FUSED_OPS`, default on) and, if you measured a
   per-operator difference, one allow-list (`CACHE_DIT_<MODEL>_OPS=all|a,b`) — the default must be the

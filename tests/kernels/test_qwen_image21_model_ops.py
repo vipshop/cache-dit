@@ -2,7 +2,7 @@
 
 The operators replace expressions diffusers already evaluates, so every test here asserts
 `torch.equal` against the eager transcription in
-:mod:`cache_dit.models.pipelines._qwen_image21.fused_ops` — not a tolerance. A tolerance
+:mod:`cache_dit.models.pipelines.qwen_image21.fused_ops` — not a tolerance. A tolerance
 would hide exactly the failure these kernels can have: a missing bf16 rounding point or an
 FMA that torch does not emit.
 """
@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.models.pipelines._qwen_image21 import fused_ops
+from cache_dit.models.pipelines.qwen_image21 import fused_ops
 
 pytestmark = [
   pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"),
