@@ -63,6 +63,34 @@ independent of upstream attribute names. The cost is that you now own the code a
 state-dict keys, same math), then change only what the optimization needs. Keep the file layout close
 to upstream so a re-sync stays a small diff.
 
+### 1.3 Entry point 3 — second-pass optimization by subclassing (`_NAME`)
+
+The model is in diffusers, runs through cache-dit, and the optimization touches **only seams**: the
+block forward, the FFN forward, the attention QKV preparation, the transformer forward. No attention
+math, no block-loop change, no checkpoint conversion. Then do **not** absorb it (§3) and do not pile
+`PatchFunctor`s on it — subclass in place:
+
+```python
+# src/cache_dit/models/pipelines/_<model>/pipeline_<model>.py
+class _<Model>Pipeline(<Model>Pipeline):          # diffusers class, one underscore in front
+  ...
+# src/cache_dit/models/pipelines/_<model>/transformer_<model>.py
+class _<Model>Transformer2DModel(<Model>Transformer2DModel):
+  ...
+```
+
+`_` means *"diffusers owns this model; cache-dit ships an optimized pass over it"*. The user opts in by
+naming the subclass; `from_pretrained` keeps working and the state dict is untouched (§15.3).
+
+| | Subclass in place (`_NAME`) | Absorb / vendor (§3) |
+|---|---|---|
+| Optimization lives in seams (block/FFN/QKV/transformer forward) | **yes** | overkill |
+| Changes attention math, block loop, tensor layout, or checkpoint keys | no | **yes** |
+| Drift cost | ~zero (upstream stays the implementation) | you own the code |
+| Registry work | `_NAME` prefixes everywhere (§15.4) | nothing extra |
+
+Full runbook, including the worked `_QwenImage21` case: **§15**.
+
 ## 2. Ownership decision: vendor or depend
 
 | Option | Choose when | Cost |
@@ -70,6 +98,7 @@ to upstream so a re-sync stays a small diff.
 | Vendor into `src/cache_dit/models/pipelines/<model>.py` | Entry point 1, flavour A. The release's own code is the only runnable path and the licence allows redistribution (MOSS-Image is Apache-2.0; keep the copyright line in the module docstring) | You own the code: every contract in §4 must be preserved *in the vendored copy*, and the copy drifts from upstream |
 | Absorb (fork) a diffusers model | Entry point 2 (§1.2) | You own upstream's code too: re-sync work, Apache-2.0 notice, and the whole feature matrix must be re-verified (§3.6) |
 | Depend on a third-party package | Entry point 1, flavour B. The package is already the product's stack | Extra install requirement; keep the import lazy (inside the adapter / example factory) so the rest of cache-dit works without it |
+| Subclass in place (`_<Model>Pipeline`) | Entry point 3 (§1.3): the model stays diffusers', the optimization only rebinds seams | Every prefix-keyed registry needs the `_NAME` entry (§15.4); the seam set decides whether CP / flex attention keep the fusion (§15.5) |
 | Transformer-only integration | Flavour C, or the pipeline is trivially replaceable | `BlockAdapter` wraps the bare transformer in `FakeDiffusionPipeline`; CP/TP work, pipeline-level features (offload, `summary(pipe)`) degrade |
 
 `models/__init__.py` and `models/pipelines/__init__.py` keep `__all__ = []` on purpose: the vendored
@@ -524,3 +553,194 @@ Notes for the next custom model:
 * VAE-P needs a latent larger than the VAE tile threshold (1536² here), otherwise the patch is a
   no-op that still reports success.
 * `--compile` goes block-level ("Compiling repeated blocks"), warmup 162 s, 12 steps in 1.69 s.
+
+## 15. Second-pass optimization of an existing diffusers pipeline (`_NAME`)
+
+Worked example: `_QwenImage21` (`src/cache_dit/models/pipelines/_qwen_image21/`, PR #1274). Use this
+chapter when the model already runs through cache-dit and the optimization is confined to seams.
+
+### 15.1 Decide the shape first
+
+| Question | If yes |
+|---|---|
+| Does the optimization change attention math, the block loop, tensor layout or checkpoint keys? | Absorb (§3). A subclass cannot express it without duplicating `__call__` |
+| Is it confined to elementwise chains / projection epilogues around existing modules? | Subclass (§1.3) + fused ops (§15.6) |
+| Is inductor already fusing the chain you want to replace? | Read §15.9 **before** writing a kernel: under `compile` a replacement for an already-fused pointwise chain usually loses |
+
+### 15.2 Package layout
+
+```
+src/cache_dit/models/pipelines/_<model>/
+  __init__.py                  # lazy exports, __all__ = [] (same rule as §2)
+  transformer_<model>.py       # _<Model>Transformer2DModel + apply_fused_ops()
+  pipeline_<model>.py          # _<Model>Pipeline.from_pretrained -> upgrade in place
+  block.py                     # fused block / FFN forwards + install_fused_modules()
+  fused_ops.py                 # apply_* helpers: preconditions + literal eager fallback + switches
+  attention_processor.py       # fusion installed on the QKV seam (name it after what it patches)
+  functor.py                   # cache-dit PatchFunctor subclass used when enable_cache runs
+csrc/kernels/models/<model>_*.{h,cpp,cu}          # kernel family, appended to _C_models
+src/cache_dit/kernels/_models/_<model>.py         # six-section bridge (see cache-dit-custom-kernel)
+```
+
+### 15.3 The `from_pretrained` upgrade
+
+`diffusers`' `pipeline_loading_utils` returns `cls` itself when `cls.__name__ != "DiffusionPipeline"`,
+so a plain `super().from_pretrained(...)` already yields the subclass. Then swap the transformer class
+and install the fusions:
+
+```python
+class _QwenImage21Pipeline(QwenImage21Pipeline):
+  @classmethod
+  def from_pretrained(cls, *args, **kwargs):
+    pipe = super().from_pretrained(*args, **kwargs)
+    if isinstance(pipe, cls) and not isinstance(pipe.transformer, _QwenImage21Transformer2DModel):
+      pipe.transformer.__class__ = _QwenImage21Transformer2DModel   # in place, no weight copy
+      pipe.transformer.apply_fused_ops()
+    return pipe
+```
+
+* **Why a class swap is safe here:** the subclass adds no parameters, no submodules and no `__init__`
+  arguments, so module names and state-dict keys are identical and nothing has to be transferred.
+* Do not override `register_modules` / `_optional_components` / `__init__` — there is nothing new.
+* Install **before** `enable_cache` / `maybe_compile_transformer` / offload, and keep `_old_forward`
+  in sync (accelerate hooks read it): every rewrite of `forward` must be followed by
+  `module._old_forward = module.forward`.
+
+### 15.4 Registry checklist for the `_` prefix
+
+Prefix registries match with `cls_name.startswith(name)` and take the **first** hit, so an unregistered
+`_NAME` silently falls through to the un-optimized name (or to nothing).
+
+| Site | Entry to add | Symptom when missing |
+|---|---|---|
+| `caching/block_adapters/adapters.py` | `@BlockAdapterRegister.register("_<Model>")` **above** the plain name | `enable_cache` finds no adapter → cache silently off |
+| same file | pick the fused `PatchFunctor` when `pipe.__class__.__name__.startswith("_")` | cache path installs the stock forward and drops the fusion |
+| CP planner | `ContextParallelismPlannerRegister.register("_<Model>")`, plus a `patch_functor()` hook so CP installs the *fused* functor | CP splits/gathers never installed, or installed over the fused forward |
+| TP planner | `TensorParallelismPlannerRegister.register("_<Model>Transformer2DModel")` | TP falls back to a generic plan |
+| `_utils/utils.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
+| `_utils/examples.py` | `<model>_fused` (+ turbo variant) examples | no CLI path to the optimized pipeline |
+| `kernels/_models/__init__.py`, `kernels/__init__.py` | new `__all__` entries | `test_public_api_matches_all` fails |
+| `setup.py` `_required_models_sources()` | every new `.cu` / `.cpp` | the file is **never compiled** (the list is explicit, not a glob) |
+
+### 15.5 Choosing seams (the part that decides CP)
+
+| Seam | Rebind | Notes |
+|---|---|---|
+| block forward | `block.forward = fused_block_forward.__get__(block)` | must keep the exact parameter names/count of the pattern (`check_forward_pattern`); a closure per block creates a code object per block and blows up compile |
+| FFN forward | `block.mlp.forward = fused_ffn_forward.__get__(block.mlp)` | cheap, self-contained |
+| transformer forward | leave it to the `PatchFunctor` | `enable_cache` replaces it; own it only if you need the block loop |
+| attention q/k norm + RoPE | **module-level function**, e.g. `_<model>_prepare_qkv` | see below |
+
+**Prefer patching the module-level helper over subclassing the processor.** cache-dit's CP support
+replaces `AttnProcessor.__call__` wholesale (Ulysses sharding + block-causal segments). A processor
+*subclass* either bypasses that `__call__` (CP silently loses its sharding) or delegates to it (no
+fusion at all). In `_QwenImage21` three call sites share one helper — the stock processor, the flex
+processor and cache-dit's `cp_call` — so installing the fused version on that symbol (in both module
+namespaces, since cache-dit imported it by value) keeps fusion in every mode. Verified: CP2 output is
+**bit-identical** to single-GPU, and fused-vs-stock deviation is identical with and without CP.
+
+Keep a rollback (`install_qkv_patch()` / `uninstall_qkv_patch()` / `qkv_patch_is_installed()`): tests
+and the operator switch both need it, and it makes the "was it installed?" question answerable.
+
+### 15.6 Fused-op integration
+
+Standard shape (details in `cache-dit-custom-kernel`):
+
+* kernels live in the model family of `_C_models` (`csrc/kernels/models/`), registered through the
+  family's single `PYBIND11_MODULE`;
+* Python side is the six-section bridge: loader → availability → `_get_required_ops_module` → `_call_*`
+  → `torch.library` `define` / `impl("CUDA")` / `register_fake` → public wrapper;
+* one switch for the family (`CACHE_DIT_<MODEL>_FUSED_OPS`, default on) and, if you measured a
+  per-operator difference, one allow-list (`CACHE_DIT_<MODEL>_OPS=all|a,b`) — the default must be the
+  measured winner, not "everything";
+* every `apply_*` re-checks dtype / contiguity / alignment / shape and otherwise evaluates the
+  **literal upstream expression**, so a precondition failure degrades to the same values rather than an
+  error. Put the reference transcription in the same module (`_eager_*`) so the two can be diffed and
+  tested against each other.
+
+### 15.7 Numerical contract: what can stay exact
+
+| Operator kind | Contract |
+|---|---|
+| pure `mul` / `add` / `select` (gated residual, `1+scale`, SwiGLU product) | **bit-exact** is achievable and cheap: `__fmul_rn`/`__fadd_rn`, or `__hmul2`/`__hadd2` (a bf16 product is exact in fp32, so packed bf16 == fp32-then-round). Never `__hfma2` — it drops a rounding |
+| fuses `rsqrtf` / `tanhf` / `expf` / `/` | exact **only if** the extension is built without `--use_fast_math`. cache-dit's `setup.py` enables it globally, so these operators are accepted at rel-L2 ≤ 1e-2 plus an end-to-end PSNR gate; `setup.py` documents that dropping the flag restores exactness |
+| reduction (LayerNorm/RMSNorm mean) | reproduce ATen's leaf tree if you can; if the device's layout is not reproducible, pick **one** implementation and validate it (measured `_QwenImage21` value: rel-L2 7.9e-06, one bf16 ulp). Do **not** ship a runtime probe that silently picks between implementations |
+
+Corollaries learned the hard way:
+
+* Welford merges are neither commutative nor associative: a butterfly leaves every lane with a
+  different mean. Use a `shfl_down` tree and broadcast lane 0; merge with `coef = 1/count`, and
+  precompute the reciprocals per block with `__frcp_rn` (bit-identical to `1.0f/x` under
+  `-prec-div=true`) instead of keeping a division in the serial chain.
+* A `--use_fast_math` build makes `expf`/`tanhf`/`rsqrtf` approximate, so tests must compare at a
+  tolerance and the PR must say so. `torch.equal` assertions become `rel-L2`, and only the pure
+  mul/add operators keep exact checks.
+
+### 15.8 Fold constants before writing any kernel
+
+`_QwenImage21`'s block modulation recomputed `1 + scale` and `tanh(gate)` **per token** although they
+only depend on the sample (and the target/t0 split). The kernel not only burned 4096× the arithmetic,
+it also forced a `(B, S, D)` gate tensor to exist, which the gated residual then read back.
+
+Folding it into `(R, D)` rows — and letting the residual select a row by mask — removed one full
+`(B, S, D)` write plus one full `(B, S, D)` read per block, and dropped the per-token `tanhf`. That is
+a traffic reduction, so it is the only change in the whole PR that moves the total byte count.
+
+Rule: before optimizing a kernel, ask **which inputs are constant along the token axis**. Layer
+modulation, gate rows, positional tables and masks all are.
+
+### 15.9 compile interaction
+
+Two things must be checked before and after wiring kernels:
+
+1. **Is a per-block constant inside the compiled region?** `_QwenImage21`'s functor resolved its layer
+   cache with `kv_caches.get_layer(self._idx)`. `_idx` is a per-block int, so dynamo specialised one
+   graph per block; the 9th tripped `recompile_limit` (8) and blocks 9-32 silently fell back to eager:
+   420.6 → 372.8 ms/step (+11% recovered). Wrap the resolution in `@torch.compiler.disable` and verify
+   with `torch._dynamo.utils.counters` (`unique_graphs`, `recompile limit exceeded`).
+2. **Does inductor already fuse the chain?** Measured on `_QwenImage21` (1024², compile + DBCache,
+   ms/step): off 372.9, `qk_norm_rope` only 366.5, `ln_modulate` 377.2, `gated_residual`+`silu_mul`
+   378.4, all 369.2. Three of four replacements **lose** under compile because inductor already emitted
+   one triton kernel for each pointwise chain, and an opaque op moves the fusion boundary. The one that
+   wins replaces something inductor refuses to codegen (`complex64`).
+   → Ship the measured winner as the default allow-list; keep the rest available but off.
+
+### 15.10 Validation protocol
+
+| Level | Check |
+|---|---|
+| op | kernel vs the eager transcription in the same module: `torch.equal` for mul/add operators, rel-L2 ≤ 1e-2 for fast-math ones; include mask-full / mask-partial / `mask=None`; assert fallback for CPU, non-contiguous and unsupported head_dim |
+| model | fused vs stock with identical inputs (same seed, same latent); cover `use_kv_cache` on/off and prefill/decode |
+| e2e | `{stock, fused} × {eager, compile}` **without** DBCache to isolate the operator effect, then the same with cache for the product number; report absolute ms/step, not just deltas |
+| accuracy | PSNR/SSIM between arms (peak 255 on 8-bit PNG — do not feed float [0,1] into `calculate_psnr`), and compare the operator delta against compile's own drift as the yardstick |
+| CP | CP2 output must be bit-identical to single-GPU (PSNR `inf`) with fusion enabled; if it is not, the seam bypassed the sharding |
+| guards | a test that the `_C_models` source list covers every kernel file, and one that the QKV seam installs/restores |
+
+### 15.11 Worked numbers (`_QwenImage21`, 1024², 40 steps, no DBCache)
+
+| arm | ms/step | vs stock |
+|---|---|---|
+| stock, eager (1 GPU) | 403.0 | – |
+| fused, eager (1 GPU) | **355.3** | **-11.8%** |
+| stock + compile (1 GPU) | 361.3 | – |
+| fused + compile (1 GPU) | **352.5** | **-2.4%** |
+| CP2, eager | 256.8 | – |
+| CP2 + fused, eager | **238.0** | **-7.3%** |
+| CP2 + compile | 223.8 | – |
+| CP2 + fused + compile | 222.5 | -0.6% (noise) |
+
+Accuracy: fused+compile vs stock+compile 43.74 dB / 0.9920, against compile's own drift of 44.87 dB /
+0.9935 — no accumulation. CP2 stock is bit-identical to single-GPU.
+
+### 15.12 Traps
+
+| Trap | Symptom | Fix |
+|---|---|---|
+| `PatchFunctor.is_from_diffusers()` not overridden | functor no-ops **silently**, KV cache collapses to one layer, output is noise | override to `isinstance(t, <DiffusersTransformer>)`, assert `_is_patched` and the bound function identity |
+| per-block constant inside the graph | recompile limit hit, half the blocks run eager, +11% | §15.9, point 1 |
+| processor subclass instead of the module-level seam | CP loses sharding, or CP runs un-fused | §15.5 |
+| kernels installed after `enable_cache` / `compile` | cache semantics lost, or the compiled graph keeps the old forward | install in `from_pretrained`, before any of them |
+| `storage_offset() == 0` as a precondition | the decode step passes `joint[:, prefix_len:]`; a compiled graph cannot inspect the offset, so it either falls back or raises | require **pointer alignment** in C++, keep `is_contiguous()` in Python |
+| per-token recomputation of per-sample constants | extra arithmetic **and** an extra `(B, S, D)` materialisation | §15.8 |
+| expecting a win from every fused operator under compile | several operators measure slower and still ship "because they are fused" | §15.9, point 2; default to the measured winner |
+| runtime probe to pick an implementation | host sync per step, two code paths to validate, flaky tests | pick one implementation, prove it with rel-L2 |

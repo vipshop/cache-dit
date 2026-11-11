@@ -21,9 +21,17 @@ Pick one route before reading anything else; the rest of this file is only route
    出加速比与 PSNR/SSIM，不负责解释量化后端行为。
 2. **Integrating a NEW model** — no `BlockAdapter`, no CLI example, new pipeline/transformer code
    → continue with the GATE CHECK and §0 below.
-3. **A measured speedup looks wrong, or choosing which optimizations can pay off before
+3. **Second-pass optimization of a model that is ALREADY in diffusers** — the model runs, cache/CP/TP
+   work, and the task is "wrap it as `_<Model>Pipeline` and add fused ops / kernels without vendoring"
+   (e.g. `_QwenImage21`) → read **`./references/custom_models.md` §15** (and §1.3 for the entry-point
+   decision). It owns the subclass-in-place runbook: `from_pretrained` class swap, the `_NAME` registry
+   checklist, seam selection (why a module-level QKV helper beats a processor subclass when CP replaces
+   `__call__`), the fast-math numerical contract, the "fold per-sample constants first" rule, the
+   compile traps, and the validation protocol. The GATE CHECK below does **not** apply — no new model is
+   being integrated.
+4. **A measured speedup looks wrong, or choosing which optimizations can pay off before
    benchmarking** → read `./references/perf_analysis.md` (FLOPs budget: attention vs GEMM share).
-4. **The model is audio-only** (TTS / text-to-audio: it returns a waveform, not frames) → read
+5. **The model is audio-only** (TTS / text-to-audio: it returns a waveform, not frames) → read
    `./references/audio.md` **before** the Cache chapter. It covers the latent layout and duration
    semantics, the CP obstacles specific to audio (dataclass return, per-rank RoPE, replicated text,
    duration mask), the wav output path in the CLI, and the audio metrics + their noise floor — the
@@ -45,8 +53,10 @@ Pick one route before reading anything else; the rest of this file is only route
 
 ## GATE CHECK
 
-> Scope: route 2 (integrating a new model) only. For route 1, go to `./references/perf_matrix.md` —
-> no transformer source paths and no integration plan are needed to run an acceptance matrix.
+> Scope: route 2 (integrating a new model) only. Route 1 (benchmarking an already-supported model) goes
+> to `./references/perf_matrix.md`, and route 3 (second-pass optimization of a diffusers model, `_NAME`)
+> goes to `./references/custom_models.md` §15 — neither needs transformer source paths or an
+> integration plan.
 
 Before writing any code, confirm the following:
 
@@ -234,6 +244,7 @@ flowchart TD
 | More complex structural patch (per-block forward, block-id injection, block-list merge) | `./references/cache.md` advanced PatchFunctor cases |
 | **The model is NOT in the diffusers library** (own `pipeline_<model>.py`, `trust_remote_code`, or a third-party package owns the code) | **`./references/custom_models.md`** — vendor-vs-depend decision, vendored-code contracts, `from_pretrained` contract, block-level skip state, CP identity markers, TP fused FFN, CPU tests |
 | **Moving a diffusers model's source into cache-dit** (own the model instead of patching it, for custom-kernel / deep optimization) | **`./references/custom_models.md` §3** — diffusers-detection flips, scope (what not to move), name/state-dict compatibility, fold-and-delete the patches, drift control, stricter verification |
+| **Second-pass optimization of a diffusers model without vendoring** (`_<Model>Pipeline` subclass + fused ops, e.g. `_QwenImage21`) | **`./references/custom_models.md` §15** (entry-point decision in §1.3) — `from_pretrained` class swap, `_NAME` registry checklist, seam choice (module-level QKV helper vs processor subclass under CP), fast-math numerical contract, fold-per-sample-constants rule, compile traps, validation protocol, measured expectations |
 | Adapter-only for a third-party transformer that imports from an installed package | `./references/cache.md` third-party model section |
 | Checkpoint needs dtype/fused-tensor/name conversion before `from_pretrained` can load it | `./references/loader.md` |
 | CP: choosing hook-based vs hybrid | `./references/cp.md` plus the CP chart above |
@@ -283,7 +294,7 @@ Phase 0 — Prerequisites
 ```
 - [ ] Model files downloaded to local path (`./references/model_download.md` — ModelScope first, HF fallback)
 - [ ] Test image prepared (for IE2I / I2V models)
-- [ ] [Owned-model tasks only] `./references/custom_models.md` read; entry point recorded — (a) absent from diffusers, flavour decided (vendor / third-party / importable), or (b) absorbing a diffusers model (migration runbook §3)
+- [ ] [Owned-model tasks only] `./references/custom_models.md` read; entry point recorded — (a) absent from diffusers, flavour decided (vendor / third-party / importable), (b) absorbing a diffusers model (migration runbook §3), or (c) second-pass optimization in place with a `_<Model>Pipeline` subclass (§1.3 / §15)
 - [ ] Source code read: pipeline __call__, transformer.forward(), block class (diffusers, vendored or third-party)
 - [ ] ForwardPattern identified (Pattern_0 through Pattern_5)
 - [ ] Block ModuleList name(s) confirmed
@@ -633,7 +644,7 @@ Read these only when the current phase needs them:
 
 | Phase | Reference | Read when |
 |---|---|---|
-| Custom / owned model | [`./references/custom_models.md`](./references/custom_models.md) | **Two entry points**: (a) the model is **not in the diffusers library** — vendor-vs-depend decision, dispatch contracts, `from_pretrained` contract, block-level skip/branch state, CP identity markers, TP fused-FFN rearrangement, CLI, CPU tests; (b) **absorbing a diffusers model into cache-dit** — migration runbook, diffusers-detection flips, name/state-dict compatibility, fold-and-delete patches, drift control. **Mandatory before the Cache chapter.** |
+| Custom / owned model | [`./references/custom_models.md`](./references/custom_models.md) | **Three entry points**: (a) the model is **not in the diffusers library** — vendor-vs-depend decision, dispatch contracts, `from_pretrained` contract, block-level skip/branch state, CP identity markers, TP fused-FFN rearrangement, CLI, CPU tests; (b) **absorbing a diffusers model into cache-dit** — migration runbook, diffusers-detection flips, name/state-dict compatibility, fold-and-delete patches, drift control; (c) **second-pass optimization of a diffusers model in place** (`_<Model>Pipeline` + fused ops, §15) — class swap, `_NAME` registries, seam selection, fast-math numerics, constant folding, compile traps, acceptance protocol. **Mandatory before the Cache chapter.** |
 | Modular pipeline | [`./references/modular_pipeline.md`](./references/modular_pipeline.md) | The model ships only as a diffusers `ModularPipeline` (FLUX.3): core plumbing, which block list to cache, CLI template, CP/TP status, verification checklist. |
 | Audio-only model | [`./references/audio.md`](./references/audio.md) | Integrating a TTS / text-to-audio DiT (LongCat-AudioDiT is the worked case): how audio differs from image/video, checkpoint layout for waveform-latent TTS, the Pattern_3 adapter, the T2A CLI writer, the three CP obstacles, the TP sharding pair, the VAE-P N/A rule, and the audio metrics (`si_sdr` / `snr` / `mel_psnr` / `mel_ssim`) with their measured noise floor. |
 | Cache | [`./references/cache.md`](./references/cache.md) | Implementing `BlockAdapter`, selecting `ForwardPattern`, handling third-party models, or writing `PatchFunctor`. |
