@@ -100,10 +100,10 @@ def test_modulate_affine_matches_the_eager_epilogue():
 
   torch.manual_seed(0)
   dim = 512
-  x = torch.randn(2, 7, dim, device=DEVICE, dtype=torch.bfloat16)
-  params = torch.randn(3, 2 * dim, device=DEVICE, dtype=torch.bfloat16)
-  mask = torch.zeros(7, device=DEVICE, dtype=torch.bool)
-  mask[:4] = True
+  x = torch.randn(1, 300, dim, device=DEVICE, dtype=torch.bfloat16)
+  params = torch.randn(2, 2 * dim, device=DEVICE, dtype=torch.bfloat16)
+  mask = torch.zeros(300, device=DEVICE, dtype=torch.bool)
+  mask[:150] = True
 
   scale, gate = params.chunk(2, dim=-1)
   reference = x * (1 + fused_ops._select_modulation_rows(scale, mask))
@@ -112,6 +112,22 @@ def test_modulate_affine_matches_the_eager_epilogue():
   modulated, gate_out = qwen_image21_modulate_affine(x, params, mask)
   assert torch.equal(reference, modulated)
   assert torch.equal(reference_gate, gate_out)
+
+
+def test_multi_batch_modulation_falls_back_to_eager():
+  """The 16-byte kernel is batch-1 only; larger batches must stay correct, not just fast."""
+
+  torch.manual_seed(0)
+  dim = 512
+  x = torch.randn(2, 7, dim, device=DEVICE, dtype=torch.bfloat16)
+  params = torch.randn(3, 2 * dim, device=DEVICE, dtype=torch.bfloat16)
+  mask = torch.zeros(7, device=DEVICE, dtype=torch.bool)
+  mask[:4] = True
+
+  reference, reference_gate = fused_ops._eager_ln_modulate(x, params, mask, 1e-6)
+  modulated, gate = fused_ops.apply_ln_modulate(x, params, mask, 1e-6)
+  assert torch.equal(reference, modulated)
+  assert torch.equal(reference_gate.tanh(), gate)
 
 
 def test_gated_residual_and_silu_mul_are_bit_exact():

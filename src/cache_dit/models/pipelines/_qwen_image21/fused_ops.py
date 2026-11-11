@@ -104,22 +104,19 @@ def fused_ops_extension_available() -> bool:
 
 
 def _fusable_tensor(x: torch.Tensor) -> bool:
-  """Return whether `x` satisfies the layout checks every fused kernel assumes.
+  """Return whether `x` satisfies the layout every fused kernel assumes.
 
-  `storage_offset()` cannot be read while tracing (`fullgraph=True` turns it into an
-  `Unsupported`), so under compile the check is left to the C++ `TORCH_CHECK`, which is
-  exact; eager mode short-circuits to the eager branch instead of raising.
+  A non-zero `storage_offset` is *not* a problem: `data_ptr()` already includes it, so a
+  contiguous slice such as the decode step's `joint[:, prefix_len:]` is perfectly valid
+  input. Only the dtype, the dense layout and a whole number of 16-byte vectors matter
+  here; the C++ side re-checks byte alignment, which cannot be inspected while tracing.
 
   :param x: Candidate tensor.
-  :returns: `True` for a CUDA, contiguous, 16-byte-aligned tensor of a supported dtype.
+  :returns: `True` for a dense CUDA tensor of a supported dtype and vector-friendly size.
   """
 
-  if not (x.is_cuda and x.is_contiguous() and x.dtype in (torch.bfloat16, torch.float16)
-          and x.numel() % 8 == 0):
-    return False
-  if torch.compiler.is_compiling():
-    return True
-  return x.storage_offset() == 0
+  return (x.is_cuda and x.is_contiguous() and x.dtype in (torch.bfloat16, torch.float16)
+          and x.numel() % 8 == 0)
 
 
 def rotary_cos_sin(rotary_emb: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -344,9 +341,12 @@ def apply_ln_modulate(
   """
 
   dim = x.shape[-1]
-  fusable = ("ln_modulate" in ACTIVE_OPS and FUSED_OPS_ENABLED and _fusable_tensor(x)
-             and dim % 128 == 0 and params.is_cuda and params.dtype == x.dtype
-             and params.is_contiguous()
+  # The 16-byte layout maps two rows per warp and derives the modulation row from the
+  # sample, validated for a single sample; batch > 1 keeps the eager expression rather than
+  # mis-mapping rows.
+  fusable = ("ln_modulate" in ACTIVE_OPS and FUSED_OPS_ENABLED and x.shape[0] == 1
+             and _fusable_tensor(x) and dim % 128 == 0 and params.is_cuda
+             and params.dtype == x.dtype and params.is_contiguous()
              and (target_token_mask is None or
                   (target_token_mask.is_cuda and target_token_mask.dtype == torch.bool
                    and target_token_mask.is_contiguous())))
