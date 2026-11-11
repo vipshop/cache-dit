@@ -15,7 +15,7 @@ from diffusers.models.transformers.transformer_hunyuan_video import (
   HunyuanVideoTransformer3DModel,
   HunyuanVideoAttnProcessor2_0,
 )
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelOutput,
   _ContextParallelModelPlan,

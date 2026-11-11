@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import torch
 
-import cache_dit.distributed.core._templated_usp as usp
+import cache_dit.distributed.parallel.usp as usp
 
 
 class _FakeHandle:

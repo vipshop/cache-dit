@@ -37,7 +37,7 @@ def _run_rank(rank: int, world: int, port: int) -> None:
     _maybe_register_custom_attn_backends,
     set_attn_backend,
   )
-  from cache_dit.distributed.core import _ContextParallelConfig
+  from cache_dit.distributed.parallel import _ContextParallelConfig
 
   # Register cache-dit's own backends first: without this the flash_varlen
   # name resolves to the diffusers proxy, which drops cp_gqa_strategy.

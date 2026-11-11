@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

@@ -17,7 +17,7 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

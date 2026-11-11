@@ -1,9 +1,9 @@
 from typing import Optional
 import torch
 
-from ._templated_ring import RingAttention
-from ._distributed_primitives import _All2AllComm
-from ._modeling_parallel import _ContextParallelConfig
+from ..communicate.primitives import _All2AllComm
+from .config import _ContextParallelConfig
+from .ring import RingAttention
 
 __all__ = ["USPAttention"]
 

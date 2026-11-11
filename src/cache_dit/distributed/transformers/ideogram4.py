@@ -35,7 +35,7 @@ from diffusers.models.transformers.transformer_ideogram4 import (
 from ...attention import _dispatch_attention_fn
 from ...logger import init_logger
 from ..config import ParallelismConfig
-from ..core import (
+from ..parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

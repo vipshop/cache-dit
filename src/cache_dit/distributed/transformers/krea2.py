@@ -21,7 +21,7 @@ from diffusers.models.transformers.transformer_krea2 import (
 )
 
 from ...attention import _dispatch_attention_fn
-from ...distributed.core import _ContextParallelModelPlan
+from ...distributed.parallel import _ContextParallelModelPlan
 from ...logger import init_logger
 from ..config import ParallelismConfig
 from ..utils import shard_div_attr

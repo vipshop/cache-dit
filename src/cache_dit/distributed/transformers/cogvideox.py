@@ -9,7 +9,7 @@ from diffusers.models.transformers.cogvideox_transformer_3d import (
   CogVideoXAttnProcessor2_0, )
 
 from ...attention import _dispatch_attention_fn
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

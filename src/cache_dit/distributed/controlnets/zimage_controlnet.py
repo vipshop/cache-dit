@@ -3,13 +3,13 @@ from typing import Optional
 import torch
 from diffusers.models.modeling_utils import ModelMixin
 
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
 from ...logger import init_logger
-from ..async_ulysses import AsyncUlyssesRegistry
+from ..transformers.async_ulysses import AsyncUlyssesRegistry
 from .register import (
   ControlNetContextParallelismPlanner,
   ControlNetContextParallelismPlannerRegister,

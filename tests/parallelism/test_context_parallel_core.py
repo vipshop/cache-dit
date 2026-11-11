@@ -1,7 +1,7 @@
 import torch
-import cache_dit.distributed.core._context_parallel as cp_context
+import cache_dit.distributed.parallel.context_parallel as cp_context
 
-from cache_dit.distributed.core import (
+from cache_dit.distributed.parallel import (
   _ContextParallelConfig,
   _ContextParallelInput,
   _ContextParallelOutput,
@@ -9,6 +9,14 @@ from cache_dit.distributed.core import (
   _normalize_parallel_config,
   validate_context_parallel_attention_backend,
 )
+
+
+def test_cp_split_hook_import_is_not_silently_degraded():
+  """Guard the optional import so a wrong module path cannot pass silently."""
+
+  from cache_dit.caching.cache_blocks import pattern_base
+
+  assert pattern_base._CacheDiTContextParallelSplitHook is not None
 
 
 class _DiffusersLikeContextParallelConfig:

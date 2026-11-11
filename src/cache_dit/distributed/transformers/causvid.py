@@ -18,7 +18,7 @@ from torch import nn
 from torch.distributed import DeviceMesh
 from torch.distributed.tensor.parallel import ParallelStyle
 
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

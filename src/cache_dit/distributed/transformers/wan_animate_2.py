@@ -98,7 +98,7 @@ def _patch_attn_processor_for_cp() -> None:
     # The communicator binds to one process group, so it is rebuilt whenever the config changes.
     comm = getattr(self, "_cp_comm", None)
     if comm is None or getattr(self, "_cp_comm_config", None) is not self._cp_config:
-      from ...distributed.core._distributed_primitives import _All2AllComm
+      from ...distributed.communicate.primitives import _All2AllComm
 
       comm = _All2AllComm(self._cp_config)
       self._cp_comm = comm

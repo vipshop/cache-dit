@@ -19,12 +19,12 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
-from ..async_ulysses import AsyncUlyssesRegistry
+from .async_ulysses import AsyncUlyssesRegistry
 from ...logger import init_logger
 from ...platforms import current_platform
 from ..config import ParallelismConfig

@@ -2,23 +2,24 @@ import functools
 from typing import Optional
 
 import torch
-from diffusers.models.transformers.transformer_z_image import Attention, ZSingleStreamAttnProcessor
+from diffusers.models.controlnets.controlnet_z_image import Attention, ZSingleStreamAttnProcessor
 
-from ...attention import _dispatch_attention_fn
-from ...platforms import current_platform
+from ....attention import _dispatch_attention_fn
+from ....platforms import current_platform
 from .registry import AsyncUlyssesPlanner, AsyncUlyssesRegistry, MethodPatchSpec
 from .common import require_cp_config
-from ..core import _All2AllComm
+from ...communicate import _All2AllComm
 
-__all__ = ["ZImageAsyncUlyssesPlanner"]
+__all__ = ["ZImageControlNetAsyncUlyssesPlanner"]
 
 
-@AsyncUlyssesRegistry.register(("ZImage", "ZImageTransformer2DModel", "Lumina2"))
-class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
+@AsyncUlyssesRegistry.register("ZImageControlNetModel")
+class ZImageControlNetAsyncUlyssesPlanner(AsyncUlyssesPlanner):
 
   @classmethod
   def get_method_patches(cls) -> tuple[MethodPatchSpec, ...]:
-    return (MethodPatchSpec(ZSingleStreamAttnProcessor, "__call__", cls._build_zimage_attn_patch), )
+    return (MethodPatchSpec(ZSingleStreamAttnProcessor, "__call__",
+                            cls._build_zimage_controlnet_patch), )
 
   @staticmethod
   def _apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
@@ -29,7 +30,7 @@ class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
       return x_out.type_as(x_in)
 
   @staticmethod
-  def _async_ulysses_attn_zimage(
+  def _async_ulysses_attn_zimage_controlnet(
     self: ZSingleStreamAttnProcessor,
     attn: Attention,
     hidden_states: torch.Tensor,
@@ -46,7 +47,7 @@ class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
     if attn.norm_q is not None:
       query = attn.norm_q(query)
     if freqs_cis is not None:
-      query = ZImageAsyncUlyssesPlanner._apply_rotary_emb(query, freqs_cis)
+      query = ZImageControlNetAsyncUlyssesPlanner._apply_rotary_emb(query, freqs_cis)
 
     comm = _All2AllComm(cp_config)
     query_wait = comm.send_q(query)
@@ -56,7 +57,7 @@ class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
     if attn.norm_k is not None:
       key = attn.norm_k(key)
     if freqs_cis is not None:
-      key = ZImageAsyncUlyssesPlanner._apply_rotary_emb(key, freqs_cis)
+      key = ZImageControlNetAsyncUlyssesPlanner._apply_rotary_emb(key, freqs_cis)
     key_wait = comm.send_k(key)
 
     value = attn.to_v(hidden_states)
@@ -81,17 +82,17 @@ class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
       backend=self._attention_backend,
       cp_config=None,
     )
+
     hidden_states = comm.send_o(out).wait()
     hidden_states = hidden_states.flatten(2, 3)
     hidden_states = hidden_states.to(dtype)
-
     output = attn.to_out[0](hidden_states)
     if len(attn.to_out) > 1:
       output = attn.to_out[1](output)
     return output
 
   @staticmethod
-  def _build_zimage_attn_patch(original):
+  def _build_zimage_controlnet_patch(original):
 
     @functools.wraps(original)
     def wrapper(self,
@@ -103,7 +104,7 @@ class ZImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
       cp_config = getattr(self, "_cp_config", None)
       if (cp_config is not None and cp_config.ulysses_degree > 1
           and getattr(cp_config, "ulysses_async", False)):
-        return ZImageAsyncUlyssesPlanner._async_ulysses_attn_zimage(
+        return ZImageControlNetAsyncUlyssesPlanner._async_ulysses_attn_zimage_controlnet(
           self,
           attn,
           hidden_states,
