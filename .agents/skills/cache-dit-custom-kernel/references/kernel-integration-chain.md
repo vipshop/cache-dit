@@ -10,8 +10,8 @@
 ```text
 调用方 distributed/communicate/primitives.py:802
   -> torch.ops.cache_dit_cuda_ops.fp8_comm_per_token_quant   dispatch：FakeTensor / compile / device key
-  -> kernels/_comm.py:124  @torch.library.impl(..., "CUDA")   Python impl：元数据校验 + 建输出缓冲
-  -> kernels/_comm.py:77   _call_fp8_comm_per_token_quant     桥：out-param 适配
+  -> kernels/comm.py:124  @torch.library.impl(..., "CUDA")   Python impl：元数据校验 + 建输出缓冲
+  -> kernels/comm.py:77   _call_fp8_comm_per_token_quant     桥：out-param 适配
   -> _C_ops.ops.fp8_comm_per_token_quant                      pybind submodule（单扩展，四族共用）
   -> csrc/kernels/comm/comm.cpp -> comm/fp8_comm.cu           host 校验 + kernel launch
 ```
@@ -24,8 +24,8 @@
 | 2 | 声明头 `<族>/<族>.h`（§3.1） | 链接失败 |
 | 3 | registrar TU `<族>/<族>.cpp` 里 `register_<族>_ops`（§3.2） | `AttributeError: module has no attribute '<op>'` |
 | 4 | `setup.py` 的 `_required_cuda_sources()` / include_dirs（§5.1） | 不编译、漏编 |
-| 5 | `src/cache_dit/kernels/_<族>.py` 六段（§4.1） | `torch.ops` 未注册 |
-| 6 | `src/cache_dit/kernels/__init__.py` re-export + `__all__` | 内部调用拿不到名字 |
+| 5 | `src/cache_dit/kernels/<族>.py` 六段（§4.1） | `torch.ops` 未注册 |
+| 6 | `src/cache_dit/kernels/_init__.py` re-export + `__all__` | 内部调用拿不到名字 |
 | 7 | 内部调用点：可用性门禁 + 错误信息（§6） | 用户看到与根因无关的报错 |
 | 8 | `tests/kernels/` 用例 + `test_ops_dispatch.py` 参数表（§7） | 无回归 |
 
@@ -43,10 +43,10 @@
 
 | 族 | registrar TU | 声明头 | C++ namespace | Python 模块 | schema 数 | 内部调用点 | 偏离模板处 |
 |---|---|---|---|---|---|---|---|
-| comm | `comm/comm.cpp` | `comm/comm.h` | `cache_dit::comm` | `_comm.py` | 4 | `distributed/communicate/primitives.py` | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
-| attn | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `_attn.py` | 1 | `distributed/parallel/ring.py` | impl 无 dtype 校验；fake 复刻 view 链 |
-| svdq | `svdq/svdq.cpp` | `svdq/svdq.h`（纯声明） | `cache_dit::svdq`（dispatcher）/ `svdq::native_kernels`、`svdq::cute_kernels`（实现，仍在全局 `svdq`） | `_svdquant.py` | 2（`gemm_w4a4` / `quantize_w4a4`） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | 形状/通道校验在 Python，C++ 侧无 `TORCH_CHECK`；`runtime.h` 的 `RuntimeParams`/`LoraLayout` 仍属全局 `svdq`，`svdq.cpp` 里用 `using ::svdq::...` 引入 |
-| models | `models/models.cpp`（族级 registrar，各模型 `X.cpp` 只注册） | `models/models.h` + `models/X.h` | `cache_dit::models` | `_models/_X.py` | 每模型自定（boogu: 3） | `models/pipelines/X/fused_ops.py`（模型侧 wrapper） | 多一层模型侧 wrapper + 逐位等价 eager 回退 |
+| comm | `comm/comm.cpp` | `comm/comm.h` | `cache_dit::comm` | `comm.py` | 4 | `distributed/communicate/primitives.py` | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
+| attn | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `attn.py` | 1 | `distributed/parallel/ring.py` | impl 无 dtype 校验；fake 复刻 view 链 |
+| svdq | `svdq/svdq.cpp` | `svdq/svdq.h`（纯声明） | `cache_dit::svdq`（dispatcher）/ `svdq::native_kernels`、`svdq::cute_kernels`（实现，仍在全局 `svdq`） | `svdquant.py` | 2（`gemm_w4a4` / `quantize_w4a4`） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | 形状/通道校验在 Python，C++ 侧无 `TORCH_CHECK`；`runtime.h` 的 `RuntimeParams`/`LoraLayout` 仍属全局 `svdq`，`svdq.cpp` 里用 `using ::svdq::...` 引入 |
+| models | `models/models.cpp`（族级 registrar，各模型 `X.cpp` 只注册） | `models/models.h` + `models/X.h` | `cache_dit::models` | `models/X.py` | 每模型自定（boogu: 3） | `models/pipelines/X/fused_ops.py`（模型侧 wrapper） | 多一层模型侧 wrapper + 逐位等价 eager 回退 |
 
 **文件名契约统一为 `<族>/<族>.h` + `<族>/<族>.cpp`**（`comm.h`/`comm.cpp`、`attn.h`/`attn.cpp`、`models.h`/`models.cpp`、`svdq.h`/`svdq.cpp`）：头文件只声明、`.cpp` 里给定义并挂 registrar。**定义绝不能放头文件**——`ops.cpp` 会 include 四个族头，非 inline 定义会 `multiple definition` 链接失败（2026-11-11 实测）。
 
@@ -126,7 +126,7 @@ C++ 入口**一律 `void` + out-param**（三族 100%）。
 校验现状并不统一，新增算子按前者写：
 
 - **comm / attn：`TORCH_CHECK` 是权威**——检查 `is_cuda()`、同 device、输入/输出 dtype、`is_contiguous()`、rank 与形状、`head_size` 之类整除约束（见 `comm/fp8_comm.cu`、`attn/merge_states.cu` 的入口段）。Python impl 只补能在 FakeTensor 下复现的元数据检查（dtype/rank），因为它比 C++ 早失败、报错更贴近用户。
-- **svdq：两侧都几乎没有校验**——`csrc/kernels/svdq/` 里 `TORCH_CHECK` 命中数为 0，`_svdquant.py` 只有形状/通道与输出 dtype 的检查，没有输入 dtype 校验。这是迁移遗留，**不要当模板**。
+- **svdq：两侧都几乎没有校验**——`csrc/kernels/svdq/` 里 `TORCH_CHECK` 命中数为 0，`svdquant.py` 只有形状/通道与输出 dtype 的检查，没有输入 dtype 校验。这是迁移遗留，**不要当模板**。
 
 `_call_*` 与 `ops.*` 是外部可绕过的后门，只靠 Python 层校验会漏，所以新算子要把硬约束放进 C++。
 
@@ -146,7 +146,7 @@ C++ 侧已是 out-param，真正要定的是 schema 形状：
 ### 4.1 规范模板（新算子照抄这一段）
 
 ```python
-# 共用 loader：src/cache_dit/kernels/_cuda_ext.py（四族唯一一份，不要复制）
+# 共用 loader：src/cache_dit/kernels/cuda_ext.py（四族唯一一份，不要复制）
 from ._cuda_ext import _get_required_ops_module
 
 def _call_<op>(...) -> None:                             # 桥：out-param 适配 + 签名归一化
@@ -165,7 +165,7 @@ def <op>(x: torch.Tensor) -> torch.Tensor:               # 公开包装：docstr
 __all__ = ["<op>", ...]
 ```
 
-`_cuda_ext.py` 提供 `cuda_ext_is_available()` / `cuda_ext_get_load_error()` / `_get_required_ops_module()`，其中 `_EXTENSION_MODULE_NAME = "cache_dit._C_ops"`。**不要再写 per-family loader 或 `xxx_extension_is_available`**：那 8 个名字在 2026-11-11 合并时全部删除，`tests/kernels/test_ops_dispatch.py::test_per_family_availability_getters_removed` 守着它们不再回来。
+`cuda_ext.py` 提供 `cuda_ext_is_available()` / `cuda_ext_get_load_error()` / `_get_required_ops_module()`，其中 `_EXTENSION_MODULE_NAME = "cache_dit._C_ops"`。**不要再写 per-family loader 或 `xxx_extension_is_available`**：那 8 个名字在 2026-11-11 合并时全部删除，`tests/kernels/test_ops_dispatch.py::test_per_family_availability_getters_removed` 守着它们不再回来。
 
 ### 4.2 三族现状偏离（不要把现状当模板）
 
@@ -180,12 +180,12 @@ __all__ = ["<op>", ...]
 
 ### 4.3 `_call_*` 的职责边界
 
-它只为"C++ out-param ↔ schema 函数式"而存在。可以承担**签名归一化**：dtype→整数编码、按 rank 补齐 scale 列表、`None`→默认值（见 `_svdquant.py` 的 `_encode_svdq_output_dtype`、`_normalize_svdq_lora_scales`）。**不可以**承担输出形状/dtype 的推导——那属于 impl，否则 fake 必然漂移。
+它只为"C++ out-param ↔ schema 函数式"而存在。可以承担**签名归一化**：dtype→整数编码、按 rank 补齐 scale 列表、`None`→默认值（见 `svdquant.py` 的 `_encode_svdq_output_dtype`、`_normalize_svdq_lora_scales`）。**不可以**承担输出形状/dtype 的推导——那属于 impl，否则 fake 必然漂移。
 
 ### 4.4 fake 的两条规则（条件式）
 
-- 输出由 `view`/`reshape` 从另一块缓冲派生 → **必须复刻同一条链**，否则 stride 语义不一致（`_attn.py` 的 fake 里有注释说明这一点）。
-- 逐元素同构的重排（例如尾部多几列 scale）→ `x.new_empty(最终形状, dtype=...)` 即可，不必复刻（`_comm.py` 就是这么写的）。
+- 输出由 `view`/`reshape` 从另一块缓冲派生 → **必须复刻同一条链**，否则 stride 语义不一致（`attn.py` 的 fake 里有注释说明这一点）。
+- 逐元素同构的重排（例如尾部多几列 scale）→ `x.new_empty(最终形状, dtype=...)` 即可，不必复刻（`comm.py` 就是这么写的）。
 
 两条硬要求：fake 内不得出现数据依赖分支；fake 的 shape/dtype 必须与 impl 完全一致——**不一致时 eager 全绿、`torch.compile` 才炸**。
 
@@ -243,7 +243,7 @@ python -c "from cache_dit.kernels import cuda_ext_is_available as f; print(f())"
 python -c "import cache_dit.kernels as k; print(k.<op>)"
 ```
 
-`kernels/__init__.py` re-export 的是算子包装 + 唯一的 `cuda_ext_is_available` / `cuda_ext_get_load_error`，冒烟命令直接可用。
+`kernels/_init__.py` re-export 的是算子包装 + 唯一的 `cuda_ext_is_available` / `cuda_ext_get_load_error`，冒烟命令直接可用。
 
 `build_ext` 比较源文件 mtime，`depends=` 只影响"头文件也参与 mtime 比较"。**现在 `_get_cuda_extension()` 对全 `csrc/kernels/**/*.{h,cuh}` 声明了 `depends=`**，改任何族的头都会重编（这是合并的附带收益，见 §8）。
 

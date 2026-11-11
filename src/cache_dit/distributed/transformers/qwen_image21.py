@@ -308,7 +308,7 @@ class _QwenImage21ContextParallelismPlanner(QwenImage21ContextParallelismPlanner
     :returns: The fused Qwen-Image 2.1 patch functor.
     """
 
-    from ...models.pipelines._qwen_image21.functor import _QwenImage21PatchFunctor
+    from ...models.pipelines.qwen_image21.functor import _QwenImage21PatchFunctor
 
     return _QwenImage21PatchFunctor()
 

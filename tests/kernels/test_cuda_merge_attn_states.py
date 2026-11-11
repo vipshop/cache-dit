@@ -4,7 +4,7 @@ from torch._subclasses.fake_tensor import FakeTensor
 from torch._subclasses.fake_tensor import FakeTensorMode
 
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.kernels._attn import fused_merge_attn_states
+from cache_dit.kernels.attn import fused_merge_attn_states
 
 
 def _require_runtime() -> None:

@@ -1,13 +1,14 @@
 import importlib
+import types
 
 import pytest
 
 import cache_dit.kernels as kernels
-import cache_dit.kernels._attn as attn_ops
-import cache_dit.kernels._comm as comm_ops
-import cache_dit.kernels._cuda_ext as cuda_ext
-import cache_dit.kernels._models as models_ops
-import cache_dit.kernels._svdquant as svdq_ops
+import cache_dit.kernels.attn as attn_ops
+import cache_dit.kernels.comm as comm_ops
+import cache_dit.kernels.cuda_ext as cuda_ext
+import cache_dit.kernels.models as models_ops
+import cache_dit.kernels.svdquant as svdq_ops
 
 
 @pytest.mark.parametrize(
@@ -32,8 +33,12 @@ def test_public_api_is_reexported_from_domain_module(op_name: str, source_module
 
 
 def test_public_api_matches_all() -> None:
-  assert sorted(kernels.__all__) == sorted(name for name in vars(kernels)
-                                           if not name.startswith("_") and name != "kernels")
+  # Submodules (attn / comm / cuda_ext / models / svdquant) are public attributes of the
+  # package but are not part of the operator API surface, so they are excluded here.
+  public_names = sorted(
+    name for name, value in vars(kernels).items()
+    if not name.startswith("_") and name != "kernels" and not isinstance(value, types.ModuleType))
+  assert sorted(kernels.__all__) == public_names
   assert all(getattr(kernels, name) is not None for name in kernels.__all__)
 
 

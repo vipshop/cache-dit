@@ -921,7 +921,7 @@ def qwen_image_21_example(args: argparse.Namespace, **kwargs) -> Example:
 
 @ExampleRegister.register("qwen_image_21_fused", default="Qwen/Qwen-Image-2.1")
 def qwen_image_21_fused_example(args: argparse.Namespace, **kwargs) -> Example:
-  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Pipeline
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Pipeline
 
   steps = 40 if args.num_inference_steps is None else args.num_inference_steps
   return Example(
@@ -950,7 +950,7 @@ def qwen_image_21_fused_example(args: argparse.Namespace, **kwargs) -> Example:
 
 @ExampleRegister.register("qwen_image_21_turbo_fused", default="Qwen/Qwen-Image-2.1-Turbo")
 def qwen_image_21_turbo_fused_example(args: argparse.Namespace, **kwargs) -> Example:
-  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Pipeline
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Pipeline
 
   # The checkpoint ships its own 8-point sigma grid; `num_inference_steps` does not override it.
   steps = 8

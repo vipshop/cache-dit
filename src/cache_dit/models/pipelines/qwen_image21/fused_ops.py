@@ -6,7 +6,7 @@ The eager branch is therefore written as a literal transcription of the upstream
 expression (same dtypes, same operation order, same rounding points), not as an
 "approximately equal" reference.
 
-The kernels live in :mod:`cache_dit.kernels._models` (the shared ``cache_dit._C_ops``
+The kernels live in :mod:`cache_dit.kernels.models` (the shared ``cache_dit._C_ops``
 extension). When the extension is missing, or a precondition below fails (dtype, device,
 alignment, shape, CP sharding, offload), the eager branch runs instead: that is the only
 fallback, and it is never silent on the operator-selection level because

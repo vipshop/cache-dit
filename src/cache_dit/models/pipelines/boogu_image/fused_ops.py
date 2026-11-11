@@ -30,9 +30,9 @@ import os
 import torch
 
 from ....kernels import cuda_ext_is_available
-from ....kernels._models._boogu import boogu_fused_qk_norm_rope
-from ....kernels._models._boogu import boogu_gated_rms_norm
-from ....kernels._models._boogu import boogu_scaled_rms_norm
+from ....kernels.models.boogu import boogu_fused_qk_norm_rope
+from ....kernels.models.boogu import boogu_gated_rms_norm
+from ....kernels.models.boogu import boogu_scaled_rms_norm
 from .rms_norm import RMSNorm
 
 #: Norm classes whose forward is a plain RMS (`x * rsqrt(mean(x^2) + eps) * w`).

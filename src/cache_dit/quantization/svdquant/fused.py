@@ -10,7 +10,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from ...kernels._svdquant import svdq_gemm_w4a4
+from ...kernels.svdquant import svdq_gemm_w4a4
 from .linear import SVDQW4A4Linear
 
 

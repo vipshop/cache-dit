@@ -17,7 +17,7 @@ from typing import Optional
 
 import torch
 
-from .._cuda_ext import _get_required_ops_module
+from ..cuda_ext import _get_required_ops_module
 
 
 def _call_boogu_scaled_rms_norm(
