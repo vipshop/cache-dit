@@ -9,10 +9,17 @@
 namespace svdq::cute_kernels {
 namespace {
 
+// Row-major schedule thresholds measured on BN=256/BK=128. The BN=128 fallback shares the rule but
+// was not part of the A/B matrix.
+constexpr int kMainFirstMinM = 16384;
+constexpr int kMainFirstWideM = 8192;
+constexpr int kMainFirstWideN = 6144;
+
 // Dispatches one compiled tile configuration. `LoraLayout::kNative` always runs main-first because
 // its gather reads gmem directly into MMA registers and never enters the residual inverse-scale
-// division. The row-major BF16 variant keeps the LoRA-first schedule for M < 16384, where the
-// prefetched activation A/SFA can overlap the LoRA term.
+// division. For row-major BF16, the measured split is: 16K rows always run main-first; at 8K rows,
+// N>=6144 runs main-first; all smaller row/column combinations keep LoRA-first so its term can
+// overlap the A/SFA prefetch.
 template <int kBN, int kStages, int kBK>
 void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
                              cutlass::float_ue4m3_t const *act_sf,
@@ -33,7 +40,7 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
   };
   if (lora_layout == LoraLayout::kNative) {
     launch(std::true_type{}, std::false_type{});
-  } else if (M >= 16384) {
+  } else if (M >= kMainFirstMinM || (M >= kMainFirstWideM && N >= kMainFirstWideN)) {
     launch(std::false_type{}, std::false_type{});
   } else {
     launch(std::false_type{}, std::true_type{});
