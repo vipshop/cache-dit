@@ -1,7 +1,7 @@
 from ..envs import ENV
 from ..logger import init_logger
 from .backends.register import _AttnBackend, _AttnBackendRegistry, _dispatch_attention_fn
-from ._interface import set_attn_backend
+from .interface import set_attn_backend
 
 from ..distributed.communicate import (
   _all_to_all_o_async_fn,
@@ -12,8 +12,8 @@ from ..distributed.parallel import (
   _ContextParallelConfig,
   _enable_context_parallelism,
 )
-from ._diffusers_bridge import _register_cache_dit_attn_backends_to_diffusers
-from ._backend_selector import AttnBackendSelector
+from .diffusers_bridge import _register_cache_dit_attn_backends_to_diffusers
+from .backend_selector import AttnBackendSelector
 
 logger = init_logger(__name__)
 
