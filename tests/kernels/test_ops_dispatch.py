@@ -5,6 +5,7 @@ import pytest
 import cache_dit.kernels as kernels
 import cache_dit.kernels._attn as attn_ops
 import cache_dit.kernels._comm as comm_ops
+import cache_dit.kernels._cuda_ext as cuda_ext
 import cache_dit.kernels._models as models_ops
 import cache_dit.kernels._svdquant as svdq_ops
 
@@ -17,14 +18,12 @@ import cache_dit.kernels._svdquant as svdq_ops
     ("fp8_comm_per_token_dequant", comm_ops),
     ("fp8_comm_qkv_permute_quant", comm_ops),
     ("fp8_comm_qkv_permute_dequant", comm_ops),
-    ("models_get_load_error", models_ops),
-    ("models_extension_is_available", models_ops),
+    ("cuda_ext_is_available", cuda_ext),
+    ("cuda_ext_get_load_error", cuda_ext),
     ("boogu_scaled_rms_norm", models_ops),
     ("boogu_gated_rms_norm", models_ops),
     ("boogu_fused_qk_norm_rope", models_ops),
-    ("svdq_get_load_error", svdq_ops),
     ("svdq_quantize_w4a4", svdq_ops),
-    ("svdq_is_available", svdq_ops),
     ("svdq_gemm_w4a4", svdq_ops),
   ],
 )
@@ -36,6 +35,29 @@ def test_public_api_matches_all() -> None:
   assert sorted(kernels.__all__) == sorted(name for name in vars(kernels)
                                            if not name.startswith("_") and name != "kernels")
   assert all(getattr(kernels, name) is not None for name in kernels.__all__)
+
+
+@pytest.mark.parametrize("module", [kernels, attn_ops, comm_ops, models_ops, svdq_ops])
+@pytest.mark.parametrize(
+  "symbol",
+  [
+    "comm_extension_is_available",
+    "comm_get_load_error",
+    "attn_extension_is_available",
+    "attn_get_load_error",
+    "models_extension_is_available",
+    "models_get_load_error",
+    "svdq_is_available",
+    "svdq_get_load_error",
+  ],
+)
+def test_per_family_availability_getters_removed(module, symbol: str) -> None:
+  # The package-level check alone would still pass if a domain module kept its own copy.
+  assert not hasattr(module, symbol)
+
+
+def test_single_extension_module_name() -> None:
+  assert cuda_ext._EXTENSION_MODULE_NAME == "cache_dit._C_ops"
 
 
 def test_svdq_has_single_public_gemm() -> None:

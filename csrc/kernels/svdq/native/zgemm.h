@@ -7,8 +7,8 @@
 namespace svdq::native_kernels {
 
 // The one native W4A4 GEMM shared by the INT4 and NVFP4 runtimes. Call sites must qualify it as
-// `svdq::native_kernels::gemm_w4a4`: the public dispatcher `svdq::ops::gemm_w4a4` forwards here,
-// so an unqualified call inside that dispatcher would resolve to itself.
+// `svdq::native_kernels::gemm_w4a4`: the public dispatcher `cache_dit::svdq::gemm_w4a4` forwards
+// here, so an unqualified call inside that dispatcher would resolve to itself.
 void gemm_w4a4(Tensor act,            // packed act [M, K / 2]
                Tensor wgt,            // packed wgt [N, K / 2]
                Tensor out,            // linear     [M, N]

@@ -41,22 +41,32 @@ git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 C
 CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-isolation
 ```
 
-`CACHE_DIT_BUILD_CUDA=1` is the only CUDA build switch, and it builds every optional
-extension at once: SVDQuant (`cache_dit._C_svdquant`), the communication operators used by
-FP8 Ulysses (`cache_dit._C_comm`), the attention-state merge operator used by Ring
-Attention (`cache_dit._C_attn`), and the model-specific fused operators
-(`cache_dit._C_models`). There is no per-extension switch.
+`CACHE_DIT_BUILD_CUDA=1` is the only CUDA build switch, and it builds the single
+`cache_dit._C_ops` extension, which links every operator family into one module: the
+SVDQuant W4A4 kernels, the communication operators used by FP8 Ulysses, the attention-state
+merge operator used by Ring Attention, and the model-specific fused operators. There is no
+per-family switch. Because SVDQuant is part of the same module, the spdlog and CUTLASS
+submodules are now prerequisites of the whole extension rather than of one family.
 
-An extension whose kernels cannot run on any requested SM target is skipped with a
-`[cache-dit] CUDA build: skipping ...` warning instead of failing the build. SVDQuant needs
-sm80+ and excludes Hopper (sm90), so a Hopper build ships `_C_comm`, `_C_attn` and
-`_C_models` only; `_C_comm` and `_C_attn` need sm89+, `_C_models` needs sm80+. A build where
-none of the four can run fails instead of producing an extension-less wheel.
+A build whose resolved SM targets cannot host the extension **fails** instead of producing a
+wheel that silently lacks every CUDA operator (`_warn_skipped` still reports which individual
+targets the architecture predicate dropped). The floor is the intersection of the per-family
+requirements: **sm89+ and sm90 (Hopper) excluded** -- the communication and attention kernels
+need sm89+, and the SVDQuant INT4 kernels exclude Hopper. A Hopper-only architecture list
+therefore builds nothing, and every fused/FP8/SVDQuant call site falls back to its eager path
+or raises the guided "extension is not available" error.
+
+Importing the extension successfully only means it was compiled in: the wheel ships cubins for
+the architectures it was built for, so running it on a GPU outside that set fails at the first
+kernel launch. Build with `CACHE_DIT_CUDA_ARCH_LIST` (or `CACHE_DIT_CUDA_BUILD_MODE=FAST` on
+the target machine) to cover the card you will actually use.
 
 The architecture set defaults to `89`, `90a`, `100`, and `120a` (see
-`DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`), trimmed to what the local nvcc supports.
+`DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`), trimmed to what the local nvcc supports and then
+filtered by the SM predicate -- so the effective default set is `89`, `100`, `120a` (`90a` is
+dropped with a skip notice).
 `CACHE_DIT_CUDA_ARCH_LIST` overrides it -- note that an inherited `TORCH_CUDA_ARCH_LIST` is
-what mostly decides which extensions survive, because it is only consulted when
+what mostly decides whether the extension survives, because it is only consulted when
 `CACHE_DIT_CUDA_ARCH_LIST` is unset. `CACHE_DIT_CUDA_BUILD_MODE=FAST` compiles for the
 local GPU only, which is the quickest way to build on a single machine.
 

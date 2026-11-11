@@ -2,7 +2,10 @@
 
 #include "attn.h"
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-  auto ops = m.def_submodule("ops");
-  ops.def("fused_merge_attn_states", &cache_dit::attn::fused_merge_attn_states);
+namespace cache_dit::attn {
+
+void register_attn_ops(pybind11::module_& ops) {
+  ops.def("fused_merge_attn_states", &fused_merge_attn_states);
 }
+
+}  // namespace cache_dit::attn

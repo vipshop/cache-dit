@@ -1,77 +1,6 @@
-import importlib
-from types import ModuleType
-
 import torch
 
-_EXTENSION_MODULE_NAME = "cache_dit._C_comm"
-_cached_extension_module: ModuleType | None = None
-_cached_load_error: Exception | None = None
-
-
-def _load_extension_module() -> ModuleType | None:
-  """Import the optional communication CUDA extension at most once.
-
-  :returns: The loaded extension module, or `None` when the import failed and the
-    failure was cached.
-  """
-
-  global _cached_extension_module, _cached_load_error
-
-  if _cached_extension_module is not None:
-    return _cached_extension_module
-  if _cached_load_error is not None:
-    return None
-
-  try:
-    _cached_extension_module = importlib.import_module(_EXTENSION_MODULE_NAME)
-  except Exception as exc:  # pragma: no cover - exercised in environments without the extension
-    _cached_load_error = exc
-    return None
-
-  return _cached_extension_module
-
-
-def comm_extension_is_available() -> bool:
-  """Return whether the optional communication CUDA extension can be imported.
-
-  :returns: `True` when the compiled communication extension module is available.
-  """
-
-  return _load_extension_module() is not None
-
-
-def comm_get_load_error() -> Exception | None:
-  """Return the cached import error from the optional communication CUDA extension.
-
-  :returns: The import error raised while loading the extension, or `None` when the
-    extension loaded successfully.
-  """
-
-  _load_extension_module()
-  return _cached_load_error
-
-
-def _get_required_ops_module() -> ModuleType:
-  """Return the extension's `ops` submodule used by the Python wrappers.
-
-  :returns: The `ops` submodule exported by the loaded communication extension.
-  :raises RuntimeError: If the extension is unavailable or does not expose `ops`.
-  """
-
-  extension_module = _load_extension_module()
-  if extension_module is None:
-    raise RuntimeError(
-      "The optional Cache-DiT communication CUDA extension is not available. Build the CUDA "
-      "extensions with "
-      "`CACHE_DIT_BUILD_CUDA=1 python -m pip install -e . --no-build-isolation` after "
-      "`conda activate cdit`. The communication kernels need sm89+, so a build that printed "
-      "a skipped-SM warning omits this extension.") from comm_get_load_error()
-
-  ops_module = getattr(extension_module, "ops", None)
-  if ops_module is None:
-    raise RuntimeError(
-      "The loaded Cache-DiT communication CUDA extension does not expose an `ops` submodule.")
-  return ops_module
+from ._cuda_ext import _get_required_ops_module
 
 
 def _call_fp8_comm_per_token_quant(x: torch.Tensor, y: torch.Tensor) -> None:
@@ -272,9 +201,6 @@ __all__ = [
   "_call_fp8_comm_per_token_quant",
   "_call_fp8_comm_qkv_permute_dequant",
   "_call_fp8_comm_qkv_permute_quant",
-  "_get_required_ops_module",
-  "comm_extension_is_available",
-  "comm_get_load_error",
   "fp8_comm_per_token_quant",
   "fp8_comm_per_token_dequant",
   "fp8_comm_qkv_permute_quant",

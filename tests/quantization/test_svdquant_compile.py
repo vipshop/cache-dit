@@ -4,14 +4,14 @@ import pytest
 import torch
 from torch import nn
 
-from cache_dit.kernels import svdq_is_available
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
 
 
 def _require_svdquant_compile_runtime() -> None:
   if not torch.cuda.is_available():
     pytest.skip("CUDA is required for the SVDQuant torch.compile smoke test.")
-  if not svdq_is_available():
+  if not cuda_ext_is_available():
     pytest.skip("The optional Cache-DiT SVDQuant CUDA extension is not built in this environment.")
   if not hasattr(torch, "compile"):
     pytest.skip("torch.compile is not available in this torch build.")

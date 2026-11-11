@@ -21,7 +21,7 @@ if str(SRC_ROOT) not in sys.path:
   sys.path.insert(0, str(SRC_ROOT))
 
 import cache_dit
-from cache_dit.kernels import svdq_is_available
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization import QuantizeConfig
 
 DEFAULT_MODEL_SOURCE = os.getenv("FLUX_2_KLEIN_4B_DIR", "black-forest-labs/FLUX.2-klein-4B")
@@ -196,10 +196,10 @@ def ensure_runtime_requirements() -> None:
 
   if not torch.cuda.is_available():
     raise RuntimeError("This example requires a CUDA-capable device.")
-  if not svdq_is_available():
+  if not cuda_ext_is_available():
     raise RuntimeError(
-      "The optional SVDQ extension is unavailable. Build/install cache-dit with SVDQ support first."
-    )
+      "The optional Cache-DiT CUDA extension is unavailable. Build/install cache-dit with CUDA "
+      "support first.")
 
 
 def make_cpu_generator(seed: int) -> torch.Generator:

@@ -16,10 +16,9 @@ complete ``SVDQW4A4Linear`` path before becoming the default. Until then, caller
 ``SVDQW4A4Linear``/config, where the full token count and rank are known.
 """
 
-import importlib
-from types import ModuleType
-
 import torch
+
+from ._cuda_ext import _get_required_ops_module
 
 _DTYPE_TO_ID = {
   torch.float16: 0,
@@ -27,81 +26,6 @@ _DTYPE_TO_ID = {
   torch.float32: 2,
 }
 _ID_TO_DTYPE = {value: key for key, value in _DTYPE_TO_ID.items()}
-
-_EXTENSION_MODULE_NAME = "cache_dit._C_svdquant"
-_cached_extension_module: ModuleType | None = None
-_cached_load_error: Exception | None = None
-
-
-def _load_extension_module() -> ModuleType | None:
-  global _cached_extension_module, _cached_load_error
-
-  if _cached_extension_module is not None:
-    return _cached_extension_module
-  if _cached_load_error is not None:
-    return None
-
-  try:
-    _cached_extension_module = importlib.import_module(_EXTENSION_MODULE_NAME)
-  except Exception as exc:  # pragma: no cover - exercised in environments without the extension
-    _cached_load_error = exc
-    return None
-
-  return _cached_extension_module
-
-
-def svdq_is_available() -> bool:
-  """Return whether the optional SVDQ CUDA extension can be imported.
-
-  :returns: `True` when the compiled SVDQ extension module is available.
-  """
-
-  return _load_extension_module() is not None
-
-
-def svdq_get_load_error() -> Exception | None:
-  """Return the cached import error from the optional SVDQ CUDA extension.
-
-  :returns: The import error raised while loading the extension, or `None`
-    when the extension loaded successfully.
-  """
-
-  _load_extension_module()
-  return _cached_load_error
-
-
-def _get_required_extension_module() -> ModuleType:
-  """Return the loaded SVDQ extension module or raise a guided runtime error.
-
-  :returns: The loaded Python extension module backing the SVDQ CUDA ops.
-  :raises RuntimeError: If the optional extension is unavailable.
-  """
-
-  extension_module = _load_extension_module()
-  if extension_module is None:
-    error = svdq_get_load_error()
-    raise RuntimeError(
-      "The optional Cache-DiT SVDQuant CUDA extension is not available. Build the CUDA "
-      "extensions with "
-      "`CACHE_DIT_BUILD_CUDA=1 python -m pip install -e . --no-build-isolation` after "
-      "`conda activate cdit`. The SVDQuant kernels need sm80+ and exclude sm90, so a build "
-      "that printed a skipped-SM warning omits this extension: rerun it with "
-      "CACHE_DIT_CUDA_ARCH_LIST set to a supported target.") from error
-  return extension_module
-
-
-def _get_required_ops_module() -> ModuleType:
-  """Return the extension's `ops` submodule used by the Python wrappers.
-
-  :returns: The `ops` submodule exported by the loaded SVDQ extension.
-  :raises RuntimeError: If the extension does not expose the expected module.
-  """
-
-  ops_module = getattr(_get_required_extension_module(), "ops", None)
-  if ops_module is None:
-    raise RuntimeError(
-      "The loaded Cache-DiT SVDQuant extension does not expose an `ops` submodule.")
-  return ops_module
 
 
 def _encode_svdq_output_dtype(output_dtype: torch.dtype) -> int:
@@ -814,8 +738,6 @@ def svdq_gemm_w4a4(
 
 
 __all__ = [
-  "svdq_get_load_error",
-  "svdq_is_available",
   "svdq_gemm_w4a4",
   "svdq_quantize_w4a4",
 ]

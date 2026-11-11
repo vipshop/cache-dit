@@ -3,15 +3,15 @@
 import pytest
 import torch
 
-from cache_dit.kernels import svdq_is_available
-from cache_dit.kernels import svdq_get_load_error
+from cache_dit.kernels import cuda_ext_get_load_error
+from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization.svdquant.dtensor import SVDQShardSpec
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 
 
 def test_svdquant_import_safe_without_extension() -> None:
-  available = svdq_is_available()
-  error = svdq_get_load_error()
+  available = cuda_ext_is_available()
+  error = cuda_ext_get_load_error()
 
   if available:
     assert error is None

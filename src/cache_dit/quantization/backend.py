@@ -39,11 +39,11 @@ class QuantizeBackend(Enum):
         return False
     elif backend == cls.CACHE_DIT:
       # Native quantization support in Cache-DiT is needed for SVDQuant, so we
-      # consider it supported if the SVDQuant CUDA extension is available.
+      # consider it supported if the CUDA extension is available.
       try:
-        from ..kernels import svdq_is_available
+        from ..kernels import cuda_ext_is_available
 
-        return svdq_is_available()
+        return cuda_ext_is_available()
       except ImportError:
         return False
     elif backend == cls.NONE:

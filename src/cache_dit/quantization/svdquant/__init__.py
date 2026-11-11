@@ -38,8 +38,6 @@ Notes:
     kernel layout, not to define an arbitrary checkpoint packing format.
 """
 
-from ...kernels import svdq_is_available
-from ...kernels import svdq_get_load_error
 from .dtensor import SVDQW4A4ShardLinear
 from .fused import fused_gelu_mlp
 from .fused import fused_gelu_proj
@@ -71,8 +69,6 @@ __all__ = [
   "SVDQW4A4ShardLinear",
   "SVDQW4A4Linear",
   "compute_smooth_scale",
-  "svdq_get_load_error",
-  "svdq_is_available",
   "quantize_linear_svdq_w4a4",
   "standardize_calibration_activations",
   "validate_linear_geometry",

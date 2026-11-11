@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "comm_ops.h"
+#include "comm.h"
 
 namespace cache_dit::comm {
 namespace {

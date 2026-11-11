@@ -21,7 +21,7 @@ self-consistent:
   the module's shape -- ``version_tuple`` and the rest -- in step with the tool
   that owns it.
 * The checkout's ``src/cache_dit`` may carry build residue -- a ``_version.py``
-  from some earlier build, a stale ``_C_svdquant*.so``.  Copying with an ignore
+  from some earlier build, a stale ``_C_ops*.so``.  Copying with an ignore
   list keeps that residue out of the wheel, so the metadata, the wheel's own
   ``__version__`` and its payload all describe the same build.
 * ``setup.py`` resolves its own root through ``Path(__file__).resolve()``.  Were
