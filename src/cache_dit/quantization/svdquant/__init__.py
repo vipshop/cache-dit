@@ -38,7 +38,7 @@ Notes:
     kernel layout, not to define an arbitrary checkpoint packing format.
 """
 
-from ...kernels import svdq_extension_is_available as svdq_is_available
+from ...kernels import svdq_is_available
 from ...kernels import svdq_get_load_error
 from .dtensor import SVDQW4A4ShardLinear
 from .fused import fused_gelu_mlp

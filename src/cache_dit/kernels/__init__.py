@@ -10,7 +10,7 @@ from ._models import boogu_gated_rms_norm
 from ._models import boogu_scaled_rms_norm
 from ._models import models_extension_is_available
 from ._models import models_get_load_error
-from ._svdquant import svdq_extension_is_available
+from ._svdquant import svdq_is_available
 from ._svdquant import svdq_gemm_w4a4
 from ._svdquant import svdq_get_load_error
 from ._svdquant import svdq_quantize_w4a4
@@ -27,7 +27,7 @@ __all__ = [
   "boogu_gated_rms_norm",
   "boogu_fused_qk_norm_rope",
   "svdq_get_load_error",
-  "svdq_extension_is_available",
+  "svdq_is_available",
   "svdq_quantize_w4a4",
   "svdq_gemm_w4a4",
 ]

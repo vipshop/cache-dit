@@ -20,7 +20,7 @@ import torch
 import cache_dit
 import cache_dit.quantization.svdquant.ptq as svdq_ptq
 from cache_dit.offload import layerwise_cpu_offload
-from cache_dit.kernels import svdq_extension_is_available
+from cache_dit.kernels import svdq_is_available
 from cache_dit.quantization import QuantizeConfig
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
 from tests.quantization._svdq_test_utils import compute_accuracy_metrics
@@ -72,7 +72,7 @@ _FLUX2_PROMPTS = [
 _FLUX2_FULL_PROMPTS = _FLUX2_PROMPTS[:4]
 
 pytestmark = pytest.mark.skipif(
-  not torch.cuda.is_available() or not svdq_extension_is_available(),
+  not torch.cuda.is_available() or not svdq_is_available(),
   reason="SVDQ PTQ tests require CUDA and the optional SVDQuant extension.",
 )
 

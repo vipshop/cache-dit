@@ -11,7 +11,7 @@ import torch
 from torch import nn
 
 import cache_dit.quantization.svdquant.quantizer as svdq_quantizer
-from cache_dit.kernels import svdq_extension_is_available
+from cache_dit.kernels import svdq_is_available
 from cache_dit.quantization.svdquant.lowrank import decompose_lowrank_residual
 from cache_dit.quantization.svdquant.packing import fp_quantize
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
@@ -927,7 +927,7 @@ def test_decompose_lowrank_residual_high_uses_expected_driver(
 
 
 def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
-  if not torch.cuda.is_available() or not svdq_extension_is_available():
+  if not torch.cuda.is_available() or not svdq_is_available():
     pytest.skip("CUDA runtime validation requires the optional SVDQuant extension.")
 
   device = "cuda"
@@ -1010,7 +1010,7 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
 
 
 def test_svdquant_toymodel_rank_accuracy_roundtrip_report(tmp_path: Path) -> None:
-  if not torch.cuda.is_available() or not svdq_extension_is_available():
+  if not torch.cuda.is_available() or not svdq_is_available():
     pytest.skip("CUDA runtime validation requires the optional SVDQuant extension.")
 
   device = "cuda"
