@@ -76,9 +76,11 @@ def _ops_from_env() -> frozenset[str]:
   ``gated_residual,ln_modulate`` 279.0 ms - they do not stack, because the q/k chain is most of
   the removable time. Under ``torch.compile`` the fused arm is at parity (236.4 ms against
   236.4 ms) because the blocks and the attention processor hand compiled graphs the stock
-  expression instead of the operators (see the `is_compiling` branches in :mod:`.block` and
-  :mod:`.attention`); no operator is negative in either arm, so all of them stay in the
-  default set.
+  implementation instead of the operators (see the `is_compiling` branches in :mod:`.block` and
+  :mod:`.attention`). The compiled arm is not reproducible run to run - two stock runs differ by
+  34.79 dB - and the fused-vs-stock difference of 33.48 dB sits inside that floor, so it is
+  indistinguishable rather than bit-identical. No operator is negative in either arm, so all of
+  them stay in the default set.
 
   :returns: Names of the operators allowed to dispatch to CUDA.
   """
