@@ -50,7 +50,7 @@ def _load_extension_module() -> ModuleType | None:
   return _cached_extension_module
 
 
-def svdq_extension_is_available() -> bool:
+def svdq_is_available() -> bool:
   """Return whether the optional SVDQ CUDA extension can be imported.
 
   :returns: `True` when the compiled SVDQ extension module is available.
@@ -815,7 +815,7 @@ def svdq_gemm_w4a4(
 
 __all__ = [
   "svdq_get_load_error",
-  "svdq_extension_is_available",
+  "svdq_is_available",
   "svdq_gemm_w4a4",
   "svdq_quantize_w4a4",
 ]

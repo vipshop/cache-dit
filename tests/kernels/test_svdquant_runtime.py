@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from cache_dit.kernels import svdq_extension_is_available
+from cache_dit.kernels import svdq_is_available
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
@@ -24,13 +24,13 @@ from tests.quantization._svdq_test_utils import runtime_dtype
 def _require_svdquant_runtime() -> None:
   if not torch.cuda.is_available():
     pytest.skip("CUDA is required for the SVDQuant runtime smoke test.")
-  if not svdq_extension_is_available():
+  if not svdq_is_available():
     pytest.skip("The optional Cache-DiT SVDQuant CUDA extension is not built in this environment.")
 
 
 def test_svdquant_extension_loads_on_cuda_runtime() -> None:
   _require_svdquant_runtime()
-  assert svdq_extension_is_available()
+  assert svdq_is_available()
 
 
 def test_svdquant_int4_runtime_smoke() -> None:

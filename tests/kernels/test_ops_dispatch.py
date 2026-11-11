@@ -24,7 +24,7 @@ import cache_dit.kernels._svdquant as svdq_ops
     ("boogu_fused_qk_norm_rope", models_ops),
     ("svdq_get_load_error", svdq_ops),
     ("svdq_quantize_w4a4", svdq_ops),
-    ("svdq_extension_is_available", svdq_ops),
+    ("svdq_is_available", svdq_ops),
     ("svdq_gemm_w4a4", svdq_ops),
   ],
 )
