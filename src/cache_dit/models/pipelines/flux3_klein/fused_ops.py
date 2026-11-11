@@ -71,12 +71,13 @@ def _ops_from_env() -> frozenset[str]:
   list re-enables any subset for A/B runs; the default is the measured winner set.
 
   Measured on an RTX PRO 5000 (torch 2.15, 1024x1024, 16 steps, warmup then median of
-  CUDA-event timings, one transformer forward): the eager chain is 290.3 ms and ``all`` is
-  244.7 ms; under ``torch.compile`` the stock graph is 236.1 ms and ``all`` is 233.4 ms. Per
-  operator, eager / compiled delta against the same arm: ``qk_norm_rope`` -45.4 / -2.7 ms,
-  ``gated_residual`` -6.3 / -1.1 ms, ``ln_modulate`` -6.7 / -1.1 ms. The compiled arm's per
-  operator differences sit inside the ~0.4% compilation spread, and no operator is negative,
-  so every operator stays in the default set.
+  CUDA-event timings, one transformer forward): the eager chain is 289.6 ms and ``all`` is
+  241.3 ms (-16.7%). Per operator, eager against the same arm: ``qk_norm_rope`` alone 245.7 ms,
+  ``gated_residual,ln_modulate`` 279.0 ms - they do not stack, because the q/k chain is most of
+  the removable time. Under ``torch.compile`` the fused arm is at parity (236.4 ms against
+  236.4 ms) because the operators are deliberately bypassed while tracing, see the note on
+  :data:`_EAGER_BYPASS`; no operator is negative in either arm, so all of them stay in the
+  default set.
 
   :returns: Names of the operators allowed to dispatch to CUDA.
   """
@@ -311,6 +312,7 @@ def _eager_qk_norm_rope(
   return out.to(x.dtype)
 
 
+# Literal expressions the compiled graph gets instead of the operators; see apply_*.
 _EAGER_BYPASS = {
   "qk_norm_rope":
   lambda x, weight, cos, sin, eps: _eager_qk_norm_rope(x, weight, cos, sin, eps),
