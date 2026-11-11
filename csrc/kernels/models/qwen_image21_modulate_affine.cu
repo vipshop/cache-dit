@@ -40,6 +40,8 @@ constexpr int kWarpsPerBlock = 4;
 // 16 lanes per row x 4 complex pairs = 8 channels per lane = 16 bytes per access.
 constexpr int kLanesPerRow = 16;
 constexpr int kPairsPerLane = 4;
+// Largest running count a lane can reach: 8 elements per 128-channel group, i.e. D / 16.
+constexpr int kMaxRecip = 256;
 
 struct Welford {
   float mean;
@@ -47,10 +49,14 @@ struct Welford {
   float count;
 };
 
-__device__ __forceinline__ Welford welford_online(float val, const Welford& curr) {
+// `inv_count` is the precomputed reciprocal of the running count. `__frcp_rn(x)` is the
+// IEEE correctly-rounded reciprocal, i.e. the same value as `1.0f / x` under
+// `-prec-div=true`, so the numerics are unchanged; it just moves the division out of the
+// dependency chain (the counts are 1, 2, 3, ... and are shared by every lane).
+__device__ __forceinline__ Welford welford_online(float val, const Welford& curr, float inv_count) {
   const float count = curr.count + 1.0f;
   const float delta = val - curr.mean;
-  const float new_mean = curr.mean + delta * (1.0f / count);
+  const float new_mean = curr.mean + delta * inv_count;
   const float new_sigma2 = curr.sigma2 + delta * (val - new_mean);
   return Welford{new_mean, new_sigma2, count};
 }
@@ -95,6 +101,18 @@ __global__ void qwen_image21_modulate_kernel(const __nv_bfloat162* __restrict__ 
   const int64_t row = ((int64_t)blockIdx.x * kWarpsPerBlock + warp) * 2 + row_in_pair;
   // A whole 16-lane group shares one row, so the group is uniformly active or not.
   const unsigned group_mask = (row_in_pair == 0) ? 0x0000FFFFu : 0xFFFF0000u;
+
+  // Reciprocals of 1..kMaxRecip, built once per block and before any early exit so the
+  // barrier stays uniform. Every lane walks the same count sequence, so this turns the
+  // per-element correctly-rounded division into a shared-memory hit.
+  __shared__ float s_recip[kMaxRecip];
+  if constexpr (kFuseNorm) {
+    for (int i = threadIdx.x; i < kMaxRecip; i += blockDim.x) {
+      s_recip[i] = __frcp_rn((float)(i + 1));
+    }
+    __syncthreads();
+  }
+
   if (row >= rows) {
     return;
   }
@@ -111,6 +129,7 @@ __global__ void qwen_image21_modulate_kernel(const __nv_bfloat162* __restrict__ 
     // One leaf per 8 consecutive channels, which is ATen's vectorised bf16 read; the tree
     // then runs over 16 leaves with offsets 8/4/2/1 between lanes of the same row.
     Welford wd{0.0f, 0.0f, 0.0f};
+    int count = 0;
     for (int g = 0; g < groups; ++g) {
       const int base = (g << 6) + (lid << 2);
       // One 16-byte load for the whole leaf: four scalar pair loads here were what kept this
@@ -121,14 +140,14 @@ __global__ void qwen_image21_modulate_kernel(const __nv_bfloat162* __restrict__ 
       const float2 a1 = __bfloat1622float2(xq[1]);
       const float2 b0 = __bfloat1622float2(xq[2]);
       const float2 b1 = __bfloat1622float2(xq[3]);
-      wd = welford_online(a0.x, wd);
-      wd = welford_online(a0.y, wd);
-      wd = welford_online(a1.x, wd);
-      wd = welford_online(a1.y, wd);
-      wd = welford_online(b0.x, wd);
-      wd = welford_online(b0.y, wd);
-      wd = welford_online(b1.x, wd);
-      wd = welford_online(b1.y, wd);
+      wd = welford_online(a0.x, wd, s_recip[count++]);
+      wd = welford_online(a0.y, wd, s_recip[count++]);
+      wd = welford_online(a1.x, wd, s_recip[count++]);
+      wd = welford_online(a1.y, wd, s_recip[count++]);
+      wd = welford_online(b0.x, wd, s_recip[count++]);
+      wd = welford_online(b0.y, wd, s_recip[count++]);
+      wd = welford_online(b1.x, wd, s_recip[count++]);
+      wd = welford_online(b1.y, wd, s_recip[count++]);
     }
     // Welford's merge is neither commutative nor associative in fp32, so this has to be a
     // down-tree broadcast from lane 0 rather than a butterfly.
@@ -210,6 +229,8 @@ Common check_and_common(const at::Tensor& x, const at::Tensor& params,
               op, ": x must be a contiguous CUDA bf16 [B,S,D] tensor");
   const int64_t dim = x.size(2);
   TORCH_CHECK(dim % 128 == 0, op, ": D must be a multiple of 128, got ", dim);
+  TORCH_CHECK(dim <= kMaxRecip * 16, op, ": D must not exceed ", kMaxRecip * 16,
+              " so the reciprocal table covers every running count");
   TORCH_CHECK(params.is_cuda() && params.scalar_type() == at::kBFloat16 && params.is_contiguous() &&
                 params.dim() == 2 && params.size(1) == 2 * dim && params.storage_offset() == 0,
               op, ": params must be a contiguous CUDA bf16 [R, 2*D] tensor");
