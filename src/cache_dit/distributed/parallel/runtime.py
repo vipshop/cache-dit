@@ -4,15 +4,15 @@ import torch
 from typing import Dict, Optional
 from diffusers import ModelMixin
 from ...logger import init_logger
-from ._context_parallel import _apply_context_parallel
-from ._diffusers_bridge import (
+from .config import (
+  _ContextParallelModelPlan,
+  _ContextParallelConfig,
+)
+from .context_parallel import _apply_context_parallel
+from .diffusers_bridge import (
   _normalize_parallel_config,
   get_diffusers_attention_classes,
   validate_context_parallel_attention_backend,
-)
-from ._modeling_parallel import (
-  _ContextParallelModelPlan,
-  _ContextParallelConfig,
 )
 
 logger = init_logger(__name__)

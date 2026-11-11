@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 
 from ...logger import init_logger
-from ._modeling_parallel import _ContextParallelConfig
+from .config import _ContextParallelConfig
 
 logger = init_logger(__name__)
 

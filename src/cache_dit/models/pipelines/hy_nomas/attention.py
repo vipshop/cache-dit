@@ -18,7 +18,7 @@ from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 
-from ....distributed.core._distributed_primitives import (
+from ....distributed.communicate.primitives import (
   _all_to_all_single_o_async,
   _all_to_all_single_qkv_async,
 )

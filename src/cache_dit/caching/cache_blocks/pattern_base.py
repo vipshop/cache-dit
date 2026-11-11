@@ -25,7 +25,7 @@ except ImportError:
                "pip install git+https://github.com/huggingface/diffusers.git")
 
 try:
-  from ...distributed.core._context_parallel import (
+  from ...distributed.parallel.context_parallel import (
     _ContextParallelSplitHook as _CacheDiTContextParallelSplitHook, )
 except ImportError:
   _CacheDiTContextParallelSplitHook = None

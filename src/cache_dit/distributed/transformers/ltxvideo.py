@@ -13,7 +13,7 @@ from diffusers.models.transformers.transformer_ltx import (
 )
 
 from ...attention import _dispatch_attention_fn
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

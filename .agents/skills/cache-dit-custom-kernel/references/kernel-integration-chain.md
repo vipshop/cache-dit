@@ -8,7 +8,7 @@
 一次调用真实经过的层（以 `fp8_comm_per_token_quant` 为例）：
 
 ```text
-调用方 distributed/core/_distributed_primitives.py:802
+调用方 distributed/communicate/primitives.py:802
   -> torch.ops.cache_dit_cuda_ops.fp8_comm_per_token_quant   dispatch：FakeTensor / compile / device key
   -> kernels/_comm.py:124  @torch.library.impl(..., "CUDA")   Python impl：元数据校验 + 建输出缓冲
   -> kernels/_comm.py:77   _call_fp8_comm_per_token_quant     桥：out-param 适配
@@ -43,8 +43,8 @@
 
 | 族 | registrar TU | 声明头 | C++ namespace | Python 模块 | schema 数 | 内部调用点 | 偏离模板处 |
 |---|---|---|---|---|---|---|---|
-| comm | `comm/comm.cpp` | `comm/comm.h` | `cache_dit::comm` | `_comm.py` | 4 | `distributed/core/_distributed_primitives.py` | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
-| attn | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `_attn.py` | 1 | `distributed/core/_templated_ring.py` | impl 无 dtype 校验；fake 复刻 view 链 |
+| comm | `comm/comm.cpp` | `comm/comm.h` | `cache_dit::comm` | `_comm.py` | 4 | `distributed/communicate/primitives.py` | impl 显式 dtype `ValueError`；fake 不复刻 reshape |
+| attn | `attn/attn.cpp` | `attn/attn.h` | `cache_dit::attn` | `_attn.py` | 1 | `distributed/parallel/ring.py` | impl 无 dtype 校验；fake 复刻 view 链 |
 | svdq | `svdq/svdq.cpp` | `svdq/svdq.h`（纯声明） | `cache_dit::svdq`（dispatcher）/ `svdq::native_kernels`、`svdq::cute_kernels`（实现，仍在全局 `svdq`） | `_svdquant.py` | 2（`gemm_w4a4` / `quantize_w4a4`） | `quantization/svdquant/`（`linear.py`、`fused.py` 等） | 形状/通道校验在 Python，C++ 侧无 `TORCH_CHECK`；`runtime.h` 的 `RuntimeParams`/`LoraLayout` 仍属全局 `svdq`，`svdq.cpp` 里用 `using ::svdq::...` 引入 |
 | models | `models/models.cpp`（族级 registrar，各模型 `X.cpp` 只注册） | `models/models.h` + `models/X.h` | `cache_dit::models` | `_models/_X.py` | 每模型自定（boogu: 3） | `models/pipelines/X/fused_ops.py`（模型侧 wrapper） | 多一层模型侧 wrapper + 逐位等价 eager 回退 |
 
@@ -250,7 +250,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 ## 6. 内部调用接入
 
 - **唯一有效的可用性判定**：`cuda_ext_is_available()`，或捕获 `_get_required_ops_module()` 抛出的 `RuntimeError`。单扩展下"某族可用"这种判定不存在——要么全有，要么全无。
-- **`except ImportError` 是历史写法，对"扩展没编译"无效**：`_load_extension_module()` 内部已经 `except Exception` 吞掉并缓存，`torch.library.define` 也不需要扩展，所以 `from ...kernels import <op>` 永远成功。现状 `_distributed_primitives.py:17-33` 与 `_templated_ring.py:5-9,76` 的降级分支只在"模块本身不存在（旧版本 cache-dit）"时才可能命中；缺 `.so` 时的真实行为是**调用即抛带构建命令的 RuntimeError**——Ring Attention 在无 `_C_ops` 时是硬失败，不是优雅降级。
+- **`except ImportError` 是历史写法，对"扩展没编译"无效**：`_load_extension_module()` 内部已经 `except Exception` 吞掉并缓存，`torch.library.define` 也不需要扩展，所以 `from ...kernels import <op>` 永远成功。现状 `communicate/primitives.py:16-33` 与 `parallel/ring.py:5-9,76` 的降级分支只在"模块本身不存在（旧版本 cache-dit）"时才可能命中；缺 `.so` 时的真实行为是**调用即抛带构建命令的 RuntimeError**——Ring Attention 在无 `_C_ops` 时是硬失败，不是优雅降级。
 - 错误信息必须带构建命令与 arch 门槛，照抄 `_get_required_ops_module()` 的文案；否则用户只会看到 dispatch 报错或裸 `AttributeError`。
 - **autograd**：三族都只注册了 `CUDA` key，**没有 Autograd key**。这些算子是推理专用：`requires_grad=True` 的输入走 `autograd_not_implemented` fallback（torch 2.11 实测为 `UserWarning`，并注明该行为未来会变成 error）。要可微必须显式注册 Autograd 实现（或包一层 `autograd.Function`），不要指望"能跑通就是对的"。
 - **torch.compile**：注册了 fake + fake 无数据依赖分支 + 公开包装里不出现 `.item()`/值比较，即可 `fullgraph=True`。模板见 `tests/kernels/test_cuda_merge_attn_states.py` 与 `tests/kernels/test_cuda_fp8_comm_ops.py::test_fp8_comm_compile_smoke`。

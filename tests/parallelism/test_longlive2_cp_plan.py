@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from cache_dit.distributed.config import ParallelismConfig
-from cache_dit.distributed.core import _ContextParallelConfig
+from cache_dit.distributed.parallel import _ContextParallelConfig
 from cache_dit.distributed.transformers.longlive2 import (
   LongLive2ContextParallelismPlanner,
   LongLive2TensorParallelismPlanner,

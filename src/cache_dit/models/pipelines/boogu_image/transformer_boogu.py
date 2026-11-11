@@ -72,8 +72,8 @@ def _gather_sequence(tensor: torch.Tensor, cp_config) -> torch.Tensor:
   :returns: The full tensor in rank order.
   """
 
-  from ....distributed.core._context_parallel import _EquipartitionSharder
-  from ....distributed.core._context_parallel import _PartitionAnythingSharder
+  from ....distributed.parallel.context_parallel import _EquipartitionSharder
+  from ....distributed.parallel.context_parallel import _PartitionAnythingSharder
 
   if cp_config.ulysses_anything:
     return _PartitionAnythingSharder.unshard_anything(tensor, 1, cp_config._flattened_mesh)

@@ -2,8 +2,8 @@ from typing import Optional
 
 import torch
 
-from ._distributed_primitives import _All2AllComm
-from ._modeling_parallel import _ContextParallelConfig
+from ..communicate.primitives import _All2AllComm
+from .config import _ContextParallelConfig
 
 __all__ = [
   "UlyssesAttention",

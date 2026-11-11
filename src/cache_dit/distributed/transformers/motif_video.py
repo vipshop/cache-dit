@@ -30,7 +30,7 @@ from diffusers.models.transformers.transformer_motif_video import (
   MotifVideoAttnProcessor2_0,
   MotifVideoCrossAttnProcessor2_0,
 )
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,

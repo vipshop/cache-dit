@@ -13,13 +13,13 @@ if torch.distributed.is_available():
   import torch.distributed._functional_collectives as funcol
 
 from ...logger import init_logger
-from ._distributed_primitives import _gather_size
-from ._hooks import HookRegistry, ModelHook, unwrap_module
-from ._modeling_parallel import (
+from ..communicate.primitives import _gather_size
+from .config import (
   _ContextParallelConfig,
   _ContextParallelInput,
   _ContextParallelOutput,
 )
+from .hooks import HookRegistry, ModelHook, unwrap_module
 
 logger = init_logger(__name__)
 

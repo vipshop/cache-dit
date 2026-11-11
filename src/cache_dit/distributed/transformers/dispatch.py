@@ -12,7 +12,7 @@ import torch
 from diffusers.models.modeling_utils import ModelMixin
 
 from ...attention import _maybe_register_custom_attn_backends
-from ...distributed.core import _ContextParallelConfig, _enable_context_parallelism
+from ...distributed.parallel import _ContextParallelConfig, _enable_context_parallelism
 from ...logger import init_logger
 from ..backend import ParallelismBackend
 from ..config import ParallelismConfig

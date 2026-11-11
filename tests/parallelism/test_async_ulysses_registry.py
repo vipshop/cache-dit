@@ -5,14 +5,18 @@ import pytest
 import torch
 from torch import nn
 
-from cache_dit.distributed.async_ulysses import AsyncUlyssesPlanner, AsyncUlyssesRegistry, MethodPatchSpec
-import cache_dit.distributed.async_ulysses.flux as async_flux
-import cache_dit.distributed.async_ulysses.flux2 as async_flux2
-import cache_dit.distributed.async_ulysses.qwen_image as async_qwen_image
-import cache_dit.distributed.async_ulysses.zimage as async_zimage
-import cache_dit.distributed.async_ulysses.ovis_image as async_ovis_image
-import cache_dit.distributed.async_ulysses.longcat_image as async_longcat_image
-import cache_dit.distributed.async_ulysses.zimage_controlnet as async_zimage_controlnet
+from cache_dit.distributed.transformers.async_ulysses import (
+  AsyncUlyssesPlanner,
+  AsyncUlyssesRegistry,
+  MethodPatchSpec,
+)
+import cache_dit.distributed.transformers.async_ulysses.flux as async_flux
+import cache_dit.distributed.transformers.async_ulysses.flux2 as async_flux2
+import cache_dit.distributed.transformers.async_ulysses.qwen_image as async_qwen_image
+import cache_dit.distributed.transformers.async_ulysses.zimage as async_zimage
+import cache_dit.distributed.transformers.async_ulysses.ovis_image as async_ovis_image
+import cache_dit.distributed.transformers.async_ulysses.longcat_image as async_longcat_image
+import cache_dit.distributed.transformers.async_ulysses.zimage_controlnet as async_zimage_controlnet
 from diffusers.models.controlnets.controlnet_z_image import ZSingleStreamAttnProcessor as ZImageControlNetProcessor
 from diffusers.models.transformers.transformer_flux import FluxAttnProcessor
 

@@ -50,7 +50,7 @@ from .register import (
     ContextParallelismPlanner,
     ContextParallelismPlannerRegister,
 )
-from ...distributed.core import _ContextParallelInput, _ContextParallelOutput
+from ...distributed.parallel import _ContextParallelInput, _ContextParallelOutput
 
 @ContextParallelismPlannerRegister.register("MyModelTransformer2DModel")
 class MyModelContextParallelismPlanner(ContextParallelismPlanner):
@@ -392,7 +392,7 @@ CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
     --save-path .tmp/{task}/<model_name>_ulysses_uaa.png
 ```
 
-**How it works:** UAA internally pads K/V heads and/or sequence lengths to the nearest divisible size before the all-to-all communication, then strips the padding after. The padding is transparent — no model code changes are needed. The all-to-all primitives (`_all_to_all_single_any_qkv_async` / `_all_to_all_single_any_o_async` in `src/cache_dit/distributed/core/_distributed_primitives.py`) handle the padding logic automatically.
+**How it works:** UAA internally pads K/V heads and/or sequence lengths to the nearest divisible size before the all-to-all communication, then strips the padding after. The padding is transparent — no model code changes are needed. The all-to-all primitives (`_all_to_all_single_any_qkv_async` / `_all_to_all_single_any_o_async` in `src/cache_dit/distributed/communicate/primitives.py`) handle the padding logic automatically.
 
 **When to use UAA:**
 

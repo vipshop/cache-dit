@@ -14,8 +14,8 @@ import inspect
 
 import torch
 
-from cache_dit.distributed.core._context_parallel import _ModuleForwardMetadata
-from cache_dit.distributed.core._hooks import HookRegistry, ModelHook
+from cache_dit.distributed.parallel.context_parallel import _ModuleForwardMetadata
+from cache_dit.distributed.parallel.hooks import HookRegistry, ModelHook
 
 
 class _TransformerLike(torch.nn.Module):

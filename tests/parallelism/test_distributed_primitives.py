@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-import cache_dit.distributed.core._distributed_primitives as primitives
+import cache_dit.distributed.communicate.primitives as primitives
 
 
 class _FakeMesh:

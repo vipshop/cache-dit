@@ -21,13 +21,13 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelInput,
   _ContextParallelModelPlan,
   _ContextParallelOutput,
 )
 from ...logger import init_logger
-from ..async_ulysses import AsyncUlyssesRegistry
+from .async_ulysses import AsyncUlyssesRegistry
 from ..config import ParallelismConfig
 from ..utils import shard_div_attr
 from .register import (

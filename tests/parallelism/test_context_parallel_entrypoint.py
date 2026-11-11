@@ -10,7 +10,7 @@ import cache_dit.distributed.controlnets as controlnet_entrypoints
 import cache_dit.distributed.dispatch as distributed_dispatch
 import cache_dit.distributed.transformers as transformer_entrypoints
 import cache_dit.distributed.controlnets.dispatch as controlnet_dispatch
-import cache_dit.distributed.async_ulysses.flux as async_flux
+import cache_dit.distributed.transformers.async_ulysses.flux as async_flux
 import cache_dit.distributed.transformers.flux as cp_plan_flux
 import cache_dit.distributed.transformers.dispatch as transformer_dispatch
 import cache_dit.distributed.controlnets.zimage_controlnet as cp_plan_zimage_controlnet

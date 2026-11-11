@@ -237,7 +237,7 @@ class LongLive2CausalAttnProcessor:
       self._cp_comm = None
       self._cp_comm_config = None
       return
-    from ....distributed.core._distributed_primitives import _All2AllComm
+    from ....distributed.communicate.primitives import _All2AllComm
 
     if self._cp_comm is None or self._cp_comm_config is not cp_config:
       self._cp_comm = _All2AllComm(cp_config)

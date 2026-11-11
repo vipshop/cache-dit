@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 import torch
 
 from ...logger import init_logger
-from ...distributed.core import (
+from ...distributed.parallel import (
   _ContextParallelConfig,
   _normalize_parallel_config,
   RingAttention,

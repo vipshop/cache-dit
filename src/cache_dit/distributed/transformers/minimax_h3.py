@@ -29,7 +29,7 @@ from torch.distributed.tensor.parallel import (
 
 from ...logger import init_logger
 from ..config import ParallelismConfig
-from ..core import (
+from ..parallel import (
   _ContextParallelInput,
   _ContextParallelOutput,
 )

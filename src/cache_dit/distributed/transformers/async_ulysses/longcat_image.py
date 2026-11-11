@@ -3,47 +3,47 @@ from typing import Any, Dict, Optional, Tuple
 
 try:
   import torch
-  from diffusers.models.transformers.transformer_ovis_image import (
-    OvisImageAttention,
-    OvisImageAttnProcessor,
-    OvisImageSingleTransformerBlock,
+  from diffusers.models.transformers.transformer_longcat_image import (
+    LongCatImageAttention,
+    LongCatImageAttnProcessor,
+    LongCatImageSingleTransformerBlock,
     apply_rotary_emb,
   )
 except ImportError:
-  _ovis_available = False
+  _longcat_available = False
 else:
-  _ovis_available = True
+  _longcat_available = True
 
-from ...attention import _dispatch_attention_fn
+from ....attention import _dispatch_attention_fn
 from .common import maybe_wait, require_cp_config
 from .registry import AsyncUlyssesPlanner, AsyncUlyssesRegistry, MethodPatchSpec
-from ..core import _All2AllComm
+from ...communicate import _All2AllComm
 
-__all__ = ["OvisImageAsyncUlyssesPlanner"]
+__all__ = ["LongCatImageAsyncUlyssesPlanner"]
 
-if _ovis_available:
+if _longcat_available:
 
-  @AsyncUlyssesRegistry.register("OvisImageTransformer2DModel")
-  class OvisImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
+  @AsyncUlyssesRegistry.register("LongCatImageTransformer2DModel")
+  class LongCatImageAsyncUlyssesPlanner(AsyncUlyssesPlanner):
 
     @classmethod
     def get_method_patches(cls) -> tuple[MethodPatchSpec, ...]:
       return (
-        MethodPatchSpec(OvisImageAttnProcessor, "__call__", cls._build_ovis_attn_patch),
-        MethodPatchSpec(OvisImageSingleTransformerBlock, "forward",
-                        cls._build_ovis_single_block_patch),
+        MethodPatchSpec(LongCatImageAttnProcessor, "__call__", cls._build_longcat_attn_patch),
+        MethodPatchSpec(LongCatImageSingleTransformerBlock, "forward",
+                        cls._build_longcat_single_block_patch),
       )
 
     @staticmethod
-    def _async_ulysses_attn_ovis(
-      self: OvisImageAttnProcessor,
-      attn: OvisImageAttention,
+    def _async_ulysses_attn_longcat(
+      self: LongCatImageAttnProcessor,
+      attn: LongCatImageAttention,
       hidden_states: torch.Tensor,
       encoder_hidden_states: torch.Tensor = None,
       attention_mask: Optional[torch.Tensor] = None,
       image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-      cp_config = require_cp_config(self, "OvisImageAttnProcessor")
+      cp_config = require_cp_config(self, "LongCatImageAttnProcessor")
 
       value = attn.to_v(hidden_states)
       value = value.unflatten(-1, (attn.heads, -1))
@@ -111,7 +111,7 @@ if _ovis_available:
       return comm.send_o(out)
 
     @staticmethod
-    def _build_ovis_attn_patch(original):
+    def _build_longcat_attn_patch(original):
 
       @functools.wraps(original)
       def wrapper(self,
@@ -123,7 +123,7 @@ if _ovis_available:
         cp_config = getattr(self, "_cp_config", None)
         if (cp_config is not None and cp_config.ulysses_degree > 1
             and getattr(cp_config, "ulysses_async", False)):
-          return OvisImageAsyncUlyssesPlanner._async_ulysses_attn_ovis(
+          return LongCatImageAsyncUlyssesPlanner._async_ulysses_attn_longcat(
             self,
             attn,
             hidden_states,
@@ -143,11 +143,11 @@ if _ovis_available:
       return wrapper
 
     @staticmethod
-    def _build_ovis_single_block_patch(original):
+    def _build_longcat_single_block_patch(original):
 
       @functools.wraps(original)
       def wrapper(
-        self: OvisImageSingleTransformerBlock,
+        self: LongCatImageSingleTransformerBlock,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
@@ -158,18 +158,14 @@ if _ovis_available:
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
+
         joint_attention_kwargs = joint_attention_kwargs or {}
         attn_output_wait = self.attn(
           hidden_states=norm_hidden_states,
           image_rotary_emb=image_rotary_emb,
           **joint_attention_kwargs,
         )
-        mlp_hidden_states, mlp_hidden_gate = torch.split(
-          self.proj_mlp(norm_hidden_states),
-          [self.mlp_hidden_dim, self.mlp_hidden_dim],
-          dim=-1,
-        )
-        mlp_hidden_states = self.act_mlp(mlp_hidden_gate) * mlp_hidden_states
+        mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
 
         attn_output = maybe_wait(attn_output_wait)
         attn_output = attn_output.contiguous()

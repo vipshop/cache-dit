@@ -57,7 +57,7 @@ from torch import nn
 
 from ...attention.backends.register import _dispatch_attention_fn
 from ...attention.vsa_h3 import vsa_h3_attention
-from ...distributed.core._distributed_primitives import (
+from ...distributed.communicate.primitives import (
   _all_to_all_single_o_custom_heads,
   _all_to_all_single_qkv_custom_heads,
 )

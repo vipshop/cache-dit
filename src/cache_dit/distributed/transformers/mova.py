@@ -33,7 +33,7 @@ from torch.distributed.tensor.parallel import (
 from ...attention.backends.register import _AttnBackendRegistry
 from ...logger import init_logger
 from ..config import ParallelismConfig
-from ..core import _ContextParallelInput, _ContextParallelModelPlan, _ContextParallelOutput
+from ..parallel import _ContextParallelInput, _ContextParallelModelPlan, _ContextParallelOutput
 from ..utils import _DistributedRMSNorm, shard_div_attr
 from .register import (
   ContextParallelismPlanner,

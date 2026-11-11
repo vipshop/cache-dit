@@ -302,7 +302,7 @@ def wan_animate_2_cp_comm(transformer: WanAnimate2Transformer3DModel):
   if comm is None or getattr(transformer, "_wan_animate2_cp_comm_config", None) is not cp_config:
     # The communicator binds to one process group: rebuilding the parallelism config must rebuild it
     # too, otherwise the shard size and the group disagree.
-    from ...distributed.core._distributed_primitives import _All2AllComm
+    from ...distributed.communicate.primitives import _All2AllComm
 
     comm = _All2AllComm(cp_config)
     transformer._wan_animate2_cp_comm = comm

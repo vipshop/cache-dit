@@ -9,10 +9,10 @@ from diffusers.models.transformers.transformer_flux import (
   apply_rotary_emb,
 )
 
-from ...attention import _dispatch_attention_fn
+from ....attention import _dispatch_attention_fn
 from .common import maybe_wait, require_cp_config
 from .registry import AsyncUlyssesPlanner, AsyncUlyssesRegistry, MethodPatchSpec
-from ..core import _All2AllComm
+from ...communicate import _All2AllComm
 
 __all__ = ["FluxAsyncUlyssesPlanner"]
 

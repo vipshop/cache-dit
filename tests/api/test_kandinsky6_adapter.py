@@ -197,7 +197,7 @@ def test_cp_planner_splits_the_video_stream_and_gathers_on_the_last_block():
 
 
 def test_cp_gather_hook_tolerates_a_none_stream():
-  from cache_dit.distributed.core._context_parallel import _ContextParallelGatherHook
+  from cache_dit.distributed.parallel.context_parallel import _ContextParallelGatherHook
 
   # A video-only run returns `(vis, None)`; the plan carries `None` in the audio slot, so the hook
   # must pass that slot through instead of raising on the container check.
@@ -209,8 +209,8 @@ def test_cp_gather_hook_tolerates_a_none_stream():
 
 
 def test_cp_gather_hook_rejects_a_none_stream_the_plan_expected():
-  from cache_dit.distributed.core._context_parallel import _ContextParallelGatherHook
-  from cache_dit.distributed.core import _ContextParallelOutput
+  from cache_dit.distributed.parallel.context_parallel import _ContextParallelGatherHook
+  from cache_dit.distributed.parallel import _ContextParallelOutput
 
   # The mirror case: the plan asks for a gather but the module returned nothing. Silently skipping
   # would hand a sharded tensor to the caller, so the hook has to complain.
