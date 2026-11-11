@@ -286,13 +286,38 @@ def _swap_processor(attn: torch.nn.Module, fused_cls: type, stock_cls: type) -> 
   return True
 
 
+def async_ulysses_is_active() -> bool:
+  """Report whether async Ulysses has already wrapped the stock attention processors.
+
+  `async_ulysses/flux2.py` patches `Flux2AttnProcessor.__call__` and
+  `Flux2ParallelSelfAttnProcessor.__call__` **on the class**. A fused subclass overrides that
+  method, so it would silently run the synchronous path under `--ulysses-async`: nothing would
+  fail, the overlap would just disappear.
+
+  :returns: `True` when either stock processor carries the async wrapper.
+  """
+
+  from ....distributed.transformers.async_ulysses import AsyncUlyssesRegistry
+
+  return any(
+    AsyncUlyssesRegistry.get_original_method(processor, "__call__") is not None
+    for processor in (Flux2AttnProcessor, Flux2ParallelSelfAttnProcessor))
+
+
 def install_attention_patch(transformer: torch.nn.Module) -> None:
   """Install the fused processors on every block of one transformer.
 
-  Idempotent. Instances whose processor is a KV-cache variant keep the stock path.
+  Idempotent. Instances whose processor is a KV-cache variant keep the stock path, and nothing
+  is installed once async Ulysses is active (see `async_ulysses_is_active`).
 
   :param transformer: FLUX.2-Klein transformer whose attention modules should be upgraded.
   """
+
+  if async_ulysses_is_active():
+    logger.warning("FLUX.2 Klein fused attention skipped: async Ulysses wraps the stock "
+                   "processors at class level, and a fused subclass would bypass it silently. "
+                   "Set `ulysses_async=False` to use the fused operators.")
+    return
 
   installed = 0
   skipped = 0

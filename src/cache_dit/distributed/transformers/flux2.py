@@ -53,6 +53,16 @@ class Flux2ContextParallelismPlanner(ContextParallelismPlanner):
     if parallelism_config.ulysses_async and transformer is not None:
       assert not _is_klein_kv(transformer), "Async Ulysses is not supported for Klein-KV now."
       AsyncUlyssesRegistry.apply(transformer)
+      # The patch above lands on the stock processors' class, which a fused subclass overrides.
+      # Restore the stock processors rather than silently running a non-async path.
+      from ...models.pipelines.flux2_klein.attention import (
+        attention_patch_is_installed,
+        uninstall_attention_patch,
+      )
+      if attention_patch_is_installed(transformer):
+        uninstall_attention_patch(transformer)
+        logger.warning("FLUX.2 Klein fused attention cannot run with async Ulysses; restored "
+                       "the stock attention processors.")
 
     # Use custom CP plan in cache-dit for better control and flexibility.
     if not _is_klein_kv(transformer):

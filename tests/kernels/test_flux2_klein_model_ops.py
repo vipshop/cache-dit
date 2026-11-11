@@ -246,3 +246,21 @@ def test_attention_patch_installs_and_restores():
   fused_attention.uninstall_attention_patch(transformer)
   assert not fused_attention.attention_patch_is_installed(transformer)
   assert transformer.transformer_blocks[0].attn.processor is originals[0]
+
+
+def test_install_is_skipped_under_async_ulysses(monkeypatch):
+  """The async path patches the stock class, so a fused subclass would bypass it silently."""
+  from diffusers.models.transformers.transformer_flux2 import Flux2AttnProcessor
+
+  from cache_dit.distributed.transformers.async_ulysses import AsyncUlyssesRegistry
+  from cache_dit.models.pipelines.flux2_klein import attention as fused_attention
+
+  transformer = _FakeTransformer()
+  assert not fused_attention.async_ulysses_is_active()
+
+  monkeypatch.setitem(AsyncUlyssesRegistry._original_methods, (Flux2AttnProcessor, "__call__"),
+                      Flux2AttnProcessor.__call__)
+  assert fused_attention.async_ulysses_is_active()
+
+  fused_attention.install_attention_patch(transformer)
+  assert not fused_attention.attention_patch_is_installed(transformer)
