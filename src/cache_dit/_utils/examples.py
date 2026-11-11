@@ -33,8 +33,10 @@ __all__ = [
   "qwen_image_edit_example",
   "qwen_image_layered_example",
   "qwen_image_21_example",
+  "qwen_image_21_fused_example",
   "qwen_image_21_edit_example",
   "qwen_image_21_turbo_example",
+  "qwen_image_21_turbo_fused_example",
   "qwen_image_21_turbo_edit_example",
   "qwen_image_21_modular_example",
   "qwen_image_21_turbo_modular_example",
@@ -913,6 +915,63 @@ def qwen_image_21_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=steps,
       true_cfg_scale=1.0,  # sampled without guidance by default
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_fused", default="Qwen/Qwen-Image-2.1")
+def qwen_image_21_fused_example(args: argparse.Namespace, **kwargs) -> Example:
+  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Pipeline
+
+  steps = 40 if args.num_inference_steps is None else args.num_inference_steps
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1", args),
+      pipeline_class=_QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args,
+                                                    steps,
+                                                    separate_cfg=False,
+                                                    distilled=False),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
+    ),
+  )
+
+
+@ExampleRegister.register("qwen_image_21_turbo_fused", default="Qwen/Qwen-Image-2.1-Turbo")
+def qwen_image_21_turbo_fused_example(args: argparse.Namespace, **kwargs) -> Example:
+  from cache_dit.models.pipelines._qwen_image21 import _QwenImage21Pipeline
+
+  # The checkpoint ships its own 8-point sigma grid; `num_inference_steps` does not override it.
+  steps = 8
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("Qwen/Qwen-Image-2.1-Turbo", args),
+      pipeline_class=_QwenImage21Pipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      extra_optimize_kwargs={
+        "cache_config": _qwen_image_21_cache_config(args, steps, separate_cfg=False,
+                                                    distilled=True),
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt=_QWEN_IMAGE_21_PROMPT,
+      height=1024,
+      width=1024,
+      num_inference_steps=steps,
+      true_cfg_scale=1.0,
     ),
   )
 

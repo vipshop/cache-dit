@@ -7,8 +7,10 @@
 #include <torch/extension.h>
 
 #include "boogu.h"
+#include "qwen_image21.h"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   auto ops = m.def_submodule("ops");
   cache_dit::models::register_boogu_ops(ops);
+  cache_dit::models::register_qwen_image21_ops(ops);
 }

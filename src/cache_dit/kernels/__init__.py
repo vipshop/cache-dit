@@ -10,6 +10,10 @@ from ._models import boogu_gated_rms_norm
 from ._models import boogu_scaled_rms_norm
 from ._models import models_extension_is_available
 from ._models import models_get_load_error
+from ._models import qwen_image21_gated_residual
+from ._models import qwen_image21_ln_modulate
+from ._models import qwen_image21_qk_norm_rope
+from ._models import qwen_image21_silu_mul
 from ._svdquant import svdq_is_available
 from ._svdquant import svdq_gemm_w4a4
 from ._svdquant import svdq_get_load_error
@@ -26,6 +30,10 @@ __all__ = [
   "boogu_scaled_rms_norm",
   "boogu_gated_rms_norm",
   "boogu_fused_qk_norm_rope",
+  "qwen_image21_qk_norm_rope",
+  "qwen_image21_ln_modulate",
+  "qwen_image21_gated_residual",
+  "qwen_image21_silu_mul",
   "svdq_get_load_error",
   "svdq_is_available",
   "svdq_quantize_w4a4",
