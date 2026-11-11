@@ -58,6 +58,11 @@ class _Flux3FusedAttnProcessor(Flux3AttnProcessor):
     :returns: `(B, S, D)` attention output.
     """
 
+    if torch.compiler.is_compiling():
+      # Same reasoning as the block forwards: compiled graphs get the stock processor so the
+      # fused pass cannot drift from stock while buying no speed.
+      return super().__call__(attn, hidden_states, attention_mask, image_rotary_emb)
+
     query, key, value = _get_qkv_projections(attn, hidden_states)
 
     query = query.unflatten(-1, (attn.heads, -1))

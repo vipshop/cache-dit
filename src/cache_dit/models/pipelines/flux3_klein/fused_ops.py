@@ -75,8 +75,9 @@ def _ops_from_env() -> frozenset[str]:
   241.3 ms (-16.7%). Per operator, eager against the same arm: ``qk_norm_rope`` alone 245.7 ms,
   ``gated_residual,ln_modulate`` 279.0 ms - they do not stack, because the q/k chain is most of
   the removable time. Under ``torch.compile`` the fused arm is at parity (236.4 ms against
-  236.4 ms) because the operators are deliberately bypassed while tracing, see the note on
-  :data:`_EAGER_BYPASS`; no operator is negative in either arm, so all of them stay in the
+  236.4 ms) because the blocks and the attention processor hand compiled graphs the stock
+  expression instead of the operators (see the `is_compiling` branches in :mod:`.block` and
+  :mod:`.attention`); no operator is negative in either arm, so all of them stay in the
   default set.
 
   :returns: Names of the operators allowed to dispatch to CUDA.
@@ -234,17 +235,13 @@ def _fusable_tensor(x: torch.Tensor) -> bool:
   matter here; the C++ side re-checks byte alignment, which cannot be inspected while
   tracing.
 
-  Nothing is inspected while `torch.compile` traces: `element_size()` / `is_contiguous()`
-  based branches were splitting every block into its own graph (measured: 39 graphs and a
-  whole-step regression). Under tracing the shapes are static, and the C++ entry point
-  re-checks layout and raises instead of degrading, so the check is redundant there.
+  These predicates only run on the eager path: the block forwards hand compiled graphs the
+  stock expression, so nothing here is traced.
 
   :param x: Candidate tensor.
   :returns: `True` for a dense CUDA tensor of a supported dtype and vector-friendly size.
   """
 
-  if torch.compiler.is_compiling():
-    return True
   # bf16 only: the kernels and their vector loads are written for it, and the Python gate has to
   # be a subset of the C++ checks or a "supported" tensor raises instead of falling back.
   return (x.is_cuda and x.is_contiguous() and x.dtype == torch.bfloat16 and x.numel() % 8 == 0)
@@ -261,16 +258,11 @@ def _row_or_token(x: torch.Tensor, like: torch.Tensor) -> bool:
   the eager fallback. Only the inner axis has to be dense; the row stride is passed to the
   kernel, which needs a 16-byte aligned row start.
 
-  Strides are not inspected while `torch.compile` traces, for the reason documented on
-  :func:`_fusable_tensor`.
-
   :param x: Modulation tensor, `(B, S, D)` or `(B, 1, D)`.
   :param like: Tensor the modulation is applied to, `(B, S, D)`.
   :returns: `True` when the strides can be reproduced inside the kernel.
   """
 
-  if torch.compiler.is_compiling():
-    return True
   if not (x.is_cuda and x.dtype == like.dtype and x.dim() == 3 and x.stride(-1) == 1):
     return False
   if x.shape[0] != like.shape[0] or x.shape[2] != like.shape[2]:
@@ -304,29 +296,14 @@ def _eager_qk_norm_rope(
   :returns: Rotated tensor with the same shape and dtype as `x`.
   """
 
+  from diffusers.models.embeddings import apply_rotary_emb
+
   width = x.shape[-1]
   normed = F.rms_norm(x.float(), (width, ), weight, eps)
-  x_real, x_imag = normed.reshape(*normed.shape[:-1], -1, 2).unbind(-1)
-  rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
-  out = normed * cos.unsqueeze(1).unsqueeze(0) + rotated * sin.unsqueeze(1).unsqueeze(0)
-  return out.to(x.dtype)
-
-
-# Literal expressions the compiled graph gets instead of the operators; see apply_*.
-_EAGER_BYPASS = {
-  "qk_norm_rope":
-  lambda x, weight, cos, sin, eps: _eager_qk_norm_rope(x, weight, cos, sin, eps),
-  "ln_modulate":
-  lambda x, scale, shift, eps: _eager_ln_modulate(x, scale, shift, eps),
-  "ln_modulate_cat":
-  lambda hidden, encoder, scale, shift, c_scale, c_shift, eps: _eager_ln_modulate_cat(
-    hidden, encoder, scale, shift, c_scale, c_shift, eps),
-  "gated_residual":
-  lambda hidden, gate, attn, ff: _eager_gated_residual(hidden, gate, attn, ff),
-  "gated_residual_split":
-  lambda hidden, encoder, gate, c_gate, attn, ff, prefix: _eager_gated_residual_split(
-    hidden, encoder, gate, c_gate, attn, ff, prefix),
-}
+  # The stock function, not a re-derivation of it: `CACHE_DIT_FLUX3_KLEIN_OPS=0` has to reproduce
+  # stock bit for bit, and the rotation is where a hand-rolled pair layout differs by an ulp.
+  rotated = apply_rotary_emb(normed, (cos, sin), sequence_dim=1)
+  return rotated.to(x.dtype)
 
 
 def apply_qk_norm_rope(
@@ -349,14 +326,6 @@ def apply_qk_norm_rope(
   :param eps: RMSNorm epsilon.
   :returns: The rotated tensor.
   """
-
-  if torch.compiler.is_compiling():
-    # Inductor already fuses this chain into one kernel, and an opaque custom op *blocks*
-    # the surrounding fusion: measured on FLUX.3, dispatching inside the compiled graph
-    # fragmented it into 39 graphs and made the whole step 1.9% slower than stock. Handing
-    # the compiled graph the literal expression keeps it at stock parity, while the eager
-    # path keeps the kernels.
-    return _EAGER_BYPASS["qk_norm_rope"](x, weight, cos, sin, eps)
 
   if (FUSED_OPS_ENABLED and "qk_norm_rope" in ACTIVE_OPS and _kernel_ops_ready()
       and _fusable_tensor(x) and x.dim() == 4 and x.shape[-1] == _FUSED_HEAD_DIM and weight.is_cuda
@@ -407,14 +376,6 @@ def apply_ln_modulate(
   :param eps: LayerNorm epsilon.
   :returns: The modulated normalized input.
   """
-
-  if torch.compiler.is_compiling():
-    # Inductor already fuses this chain into one kernel, and an opaque custom op *blocks*
-    # the surrounding fusion: measured on FLUX.3, dispatching inside the compiled graph
-    # fragmented it into 39 graphs and made the whole step 1.9% slower than stock. Handing
-    # the compiled graph the literal expression keeps it at stock parity, while the eager
-    # path keeps the kernels.
-    return _EAGER_BYPASS["ln_modulate"](x, scale, shift, eps)
 
   fusable = (FUSED_OPS_ENABLED and "ln_modulate" in ACTIVE_OPS and _kernel_ops_ready()
              and _fusable_tensor(x) and x.dim() == 3 and x.shape[-1] % _LN_ROW_MULTIPLE == 0
@@ -478,15 +439,6 @@ def apply_ln_modulate_cat(
   :returns: `(B, Se + Sc, D)` concatenated modulated tokens.
   """
 
-  if torch.compiler.is_compiling():
-    # Inductor already fuses this chain into one kernel, and an opaque custom op *blocks*
-    # the surrounding fusion: measured on FLUX.3, dispatching inside the compiled graph
-    # fragmented it into 39 graphs and made the whole step 1.9% slower than stock. Handing
-    # the compiled graph the literal expression keeps it at stock parity, while the eager
-    # path keeps the kernels.
-    return _EAGER_BYPASS["ln_modulate_cat"](hidden_states, encoder_hidden_states, scale, shift,
-                                            context_scale, context_shift, eps)
-
   fusable = (FUSED_OPS_ENABLED and "ln_modulate" in ACTIVE_OPS and _kernel_ops_ready()
              and _fusable_tensor(hidden_states) and _fusable_tensor(encoder_hidden_states)
              and hidden_states.shape[0] == encoder_hidden_states.shape[0]
@@ -512,11 +464,12 @@ def _eager_gated_residual(
   attn_output: torch.Tensor,
   ff_output: torch.Tensor,
 ) -> torch.Tensor:
-  """Fallback expression, numerically identical to the kernel.
+  """Literal stock expression, used whenever a kernel precondition does not hold.
 
-  Upstream materialises `attn_output + ff_output` as a bf16 tensor and then evaluates
-  `hidden + gate * output`, which stock+compile fuses into one fp32 kernel. This function does
-  the same thing explicitly, so a failed precondition cannot change the result - only the speed.
+  `hidden + gate * (attn_output + ff_output)` in the model dtype is exactly what the stock block
+  runs, so "no kernel" is provably identical to "stock" - `CACHE_DIT_FLUX3_KLEIN_OPS=0` then
+  reproduces stock bit for bit. The kernel is *not* this expression: it keeps the fp32 math the
+  compiled step uses, which is what `_compiled_*` documents and tests.
 
   :param hidden_states: Residual stream.
   :param gate:`(B, S, D)` or `(B, 1, D)` modulation gate.
@@ -525,7 +478,7 @@ def _eager_gated_residual(
   :returns: The new residual stream.
   """
 
-  return _compiled_gated_residual(hidden_states, gate, attn_output, ff_output)
+  return hidden_states + gate * (attn_output + ff_output)
 
 
 def _compiled_gated_residual(
@@ -572,14 +525,6 @@ def apply_gated_residual(
   :returns: The new residual stream.
   """
 
-  if torch.compiler.is_compiling():
-    # Inductor already fuses this chain into one kernel, and an opaque custom op *blocks*
-    # the surrounding fusion: measured on FLUX.3, dispatching inside the compiled graph
-    # fragmented it into 39 graphs and made the whole step 1.9% slower than stock. Handing
-    # the compiled graph the literal expression keeps it at stock parity, while the eager
-    # path keeps the kernels.
-    return _EAGER_BYPASS["gated_residual"](hidden_states, gate, attn_output, ff_output)
-
   if (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and _kernel_ops_ready()
       and _fusable_tensor(hidden_states) and _fusable_tensor(attn_output)
       and _fusable_tensor(ff_output) and hidden_states.dim() == 3
@@ -613,8 +558,11 @@ def _eager_gated_residual_split(
   :returns: `(encoder_hidden_states, hidden_states)` in that order, as upstream returns them.
   """
 
-  return _compiled_gated_residual_split(hidden_states, encoder_hidden_states, gate, context_gate,
-                                        attn_output, ff_output, prefix_len)
+  output = attn_output + ff_output
+  context_output, content_output = torch.split(output, [prefix_len, hidden_states.shape[1]], dim=1)
+  encoder_hidden_states = encoder_hidden_states + context_gate * context_output
+  hidden_states = hidden_states + gate * content_output
+  return encoder_hidden_states, hidden_states
 
 
 def _compiled_gated_residual_split(
@@ -667,15 +615,6 @@ def apply_gated_residual_split(
   :param prefix_len: `Se`, the number of text tokens at the front of the joint sequence.
   :returns: `(encoder_hidden_states, hidden_states)` in that order.
   """
-
-  if torch.compiler.is_compiling():
-    # Inductor already fuses this chain into one kernel, and an opaque custom op *blocks*
-    # the surrounding fusion: measured on FLUX.3, dispatching inside the compiled graph
-    # fragmented it into 39 graphs and made the whole step 1.9% slower than stock. Handing
-    # the compiled graph the literal expression keeps it at stock parity, while the eager
-    # path keeps the kernels.
-    return _EAGER_BYPASS["gated_residual_split"](hidden_states, encoder_hidden_states, gate,
-                                                 context_gate, attn_output, ff_output, prefix_len)
 
   fusable = (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and _kernel_ops_ready()
              and _fusable_tensor(hidden_states) and _fusable_tensor(encoder_hidden_states)

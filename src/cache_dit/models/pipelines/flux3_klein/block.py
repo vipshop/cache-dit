@@ -19,6 +19,9 @@ from typing import Any
 
 import torch
 
+from diffusers.models.transformers.transformer_flux3 import (Flux3ModeTransformerBlock,
+                                                             Flux3SingleTransformerBlock)
+
 from .fused_ops import (apply_gated_residual, apply_gated_residual_split, apply_ln_modulate,
                         apply_ln_modulate_cat)
 
@@ -41,6 +44,12 @@ def fused_mode_block_forward(
   :param image_rotary_emb: `(cos, sin)` fp32 tables of shape `(S, D_head)`.
   :returns: The updated residual stream.
   """
+
+  if torch.compiler.is_compiling():
+    # The stock forward, verbatim: under `torch.compile` an opaque custom op only breaks the
+    # fusion inductor already performs, and a hand-written transcription would drift from the
+    # stock graph for no speed in return.
+    return Flux3ModeTransformerBlock.forward(self, hidden_states, temb_mod, image_rotary_emb)
 
   mod_shift, mod_scale, mod_gate = torch.chunk(temb_mod, 3, dim=-1)
   norm_hidden_states = apply_ln_modulate(hidden_states, mod_scale, mod_shift, self.norm.eps)
@@ -67,6 +76,10 @@ def fused_single_block_forward(
   :param image_rotary_emb:`(cos, sin)` fp32 tables over the joint sequence.
   :returns:`(encoder_hidden_states, hidden_states)`, as upstream returns them.
   """
+
+  if torch.compiler.is_compiling():
+    return Flux3SingleTransformerBlock.forward(self, hidden_states, encoder_hidden_states, temb_mod,
+                                               temb_mod_context, image_rotary_emb)
 
   mod_shift, mod_scale, mod_gate = torch.chunk(temb_mod, 3, dim=-1)
   c_mod_shift, c_mod_scale, c_mod_gate = torch.chunk(temb_mod_context, 3, dim=-1)
