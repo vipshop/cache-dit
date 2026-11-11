@@ -1040,7 +1040,7 @@ The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down prod
 
 ### Performance comparison (native vs cute vs FlashInfer)
 
-The following benchmarks come from PR [#1259](https://github.com/vipshop/cache-dit/pull/1259), measured on an <span style="color:#c77dff;">RTX PRO 6000 Blackwell (SM120)</span> with CUDA 13.0.88, torch 2.10.0+cu130, `bench_svdquant_kernels.py`, warmup 10 / iters 50, median of CUDA events (µs). `flashinfer cute-dsl` is FlashInfer 0.7.3.dev20261106 running on its own 128x4 pack; the cache-dit rows share the native-producer pack unless marked row-major.
+The following benchmarks come from PR [#1259](https://github.com/vipshop/cache-dit/pull/1259), measured on an <span style="color:#c77dff;">RTX PRO 6000 Blackwell (SM120)</span> with CUDA 13.0.88, torch 2.10.0+cu130, `bench_svdquant.py`, warmup 10 / iters 50, median of CUDA events (µs). `flashinfer cute-dsl` is FlashInfer 0.7.3.dev20261106 running on its own 128x4 pack; the cache-dit rows share the native-producer pack unless marked row-major.
 
 **Kernel-only GEMM**
 
