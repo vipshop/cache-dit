@@ -89,6 +89,8 @@
 
 ## 5. 当前限制与优化线索
 
+> 2026-11-11 更新：最新结论与优先级见 §30。本章保留 2026-11-05 历史线索；其中 persistent、A/SFA 全 TMA、fragment-aligned pack 等已被后续证据关闭，不要直接照此开工。
+
 ### Producer
 
 - 当前仍使用手写 `mma.sync/ldmatrix`，未来用 CuTe `TiledMMA/TiledCopy` 重写时保持数值和布局不变。
@@ -351,6 +353,8 @@ top SASS 的 `LDS` 紧跟 `HMMA.16816.F32.BF16`，地址落在 D/L1 的 overlay 
 4. **canonical SW64 是正确解**：`tile_to_shape(UMMA::Layout_K_SW64_Atom<ElementLora>{}, (BM,rankTile,stages))` 不能加 `Step`；BK64 fallback 因 rankTile=16 必须改用 SW32。TMA descriptor 与 LDSM view 都由同一 canonical layout 派生后，数值正确、conflict 降到483、零 spill，M4096 约快0.45%、16K 约快0.42%。
 
 ## 14. 下一步优先级（2026-11-05）
+
+> 历史章节：已被 §30（2026-11-11）取代；当前从 producer bank conflict 与 e2e 上下文开始，GEMM 不再重复 TMA/stage/warp 级实验。
 
 按当前证据排序，前一项没有结论前不要跳到后一项：
 
@@ -913,7 +917,75 @@ kernel-only GEMM，FlashInfer 使用独立 activation pack，因此 rel-L2 不�
 
 ### 29.6 后续优先级
 
+> 已被 §30 更新：GEMM 已完成 mainloop 索引与 dispatch 优化并确认进入平台；当前优先 CuTe split-K（`quantize_impl.cuh`）bank conflict 与 producer e2e 上下文，uni 路径保持现状。
+
 1. **W4A4 GEMM shared/TMA/同步与 epilogue**：先按 `svdq-nvfp4-cute-tma-sync-analysis.md` 取 NCU，再定位 rank64/M8192 两个 e2e 回退。
 2. 不再重复 producer 的 warp 数、M 分桶、K split chunk 扫描；本轮已把 15/15 producer 做到 native 以下，重复扫参收益不足。
 3. 若继续 producer，只接受能解释 NCU 主指标的新假设；同时保持 qact/ascales bitwise golden 与 D rel-L2 验收。
 4. GEMM 达到相对 native 至少 5% 后，再讨论 NVFP4 runtime 默认从 native 切到 cute。
+
+## 30. 当前 GEMM 平台、P0/P1 负结果与 producer 优先方向（2026-11-11，RTX PRO 5000）
+
+### 30.1 落地状态
+
+- PR #1284 已 squash 合入 main（`3439fb11`）：mainloop 改为 kt 归纳变量，移除 LoRA-first 循环元数据 spill；固定输入下 15/15 GEMM bitwise。
+- dev 上 `3ad684c6` 调整 row-major 调度：`M>=16384 || (M>=8192 && N>=6144)` 用 main-first，其余 LoRA-first。受控同进程 7 轮 × 50 次交错 A/B 中 main-first 只在 6/15 格胜出，不能全局替换。
+
+### 30.2 当前官方 Event 矩阵
+
+同机三轮 median-of-3，5 shape × rank32/64/128：
+
+- producer：**1.1088×**，15/15 快，范围 1.037–1.213。
+- row-major kernel-only GEMM：**1.0248×**，12/15 快；三个回退为 8192×6144/r32 0.971、r64 0.985，16K/r32 0.998。
+- row-major e2e：**1.0553×**，14/15 快；唯一回退 8192×6144/r64 0.999。
+- cute+native-D e2e：**1.0462×**，14/15 快；唯一回退 8192×3072/r64 0.990。
+
+这是单会话结果，不能替代跨会话稳定验收。P2 自身只在 6 个 main-first 格提供约 0.7%–1.4% 纯 GEMM 收益，不能把整矩阵 geomean 全部归给 P2。
+
+### 30.3 当前 GEMM NCU（15 格 cute）
+
+| 指标 | 中位数 | 读法 |
+|---|---:|---|
+| SM / Tensor / Mem | 80.2% / **84.2%** / 57.8% | Tensor 已接近持续发射峰值 |
+| DRAM / L2 hit / L1 hit | 12.9% / 99.9% / 54.7% | 不缺带宽；A G2R 有 L1/L2 延迟 |
+| occupancy / issue / eligible | 17.75% / 15.4% / 0.224 | 单 CTA、可发射 warp 少 |
+| regs / smem / local ld+st | 168 / 85 KiB / 0 | 无 spill |
+| math_pipe_throttle + wait | **36.2% + 30.8%** | MMA 发射与依赖链 |
+| long_scoreboard | 18.4% | A/SFA G2R latency |
+| sleeping / barrier | 7.5% / 1.0% | TMA 不是主瓶颈 |
+
+即使消掉全部非张量 stall，按当前 tensor active 计算的粗略上限也只有约 `1/0.842=1.19×`，实际远小于此。当前是 G2R latency、MMA dependency 与单 CTA occupancy 的联合局部最优。
+
+### 30.4 已证伪的 GEMM 方向
+
+- **A/SFA 全 TMA+SMEM（最初实现）**：同 shape nsys 约 137.4us，hybrid G2R 117.2us，全 TMA 慢约 14.7%；shared 指令 2.654M vs 2.064M，bank conflict 1.036M vs 0.738M。long_scoreboard 从 2.923 降到 0.666，但被 smem/LDSM/barrier 税抵消。**不要把 A/SFA 重新做回 TMA。**
+- **8M×1N**：A global sectors 12.39M→7.08M，但 B/SFB fragment 翻倍并新增 local ld/st 8.63M/6.93M；纯 GEMM geomean **0.794×**，15/15 慢。SFB N=1 映射也未通过 bitwise。
+- **main-first S4 + 独立 LoRA ring**：15/15 bitwise，但 16K NSYS 0.990/0.990/0.991；long_scoreboard 降到 14%，serial LoRA 使 sleeping 升到 8.4%。让 L1 复用 B 槽并与尾段重叠后仍为 0.992/0.991/0.997。patch 保存在 `.tmp/.../p1_rejected.patch`。
+- **stage 增量回绕 / ring 对齐 unroll3**：分别增加指令 0.3%–1.8% 和 6.1M–12.7M，均回退。
+- **简单 A/SFA 前移、双缓冲、K-block prologue、persistent、light producer、Non-WS、BN128 小 tile**：均已在 §8/§9/§19/§21 记录为负结果，无新 NCU 证据不要重复。
+
+### 30.5 当前 producer NCU
+
+| 实现/类型 | CuTe 关键指标 | 结论 |
+|---|---|---|
+| `quantize_uni.cu` split-K（rank32/K≤3072，4 格） | dur 47.6us，SM 48%，LSU 55%，occ 29.7%，bank conflicts **42.9K**（native 1.5K），MIO/LG 14.1/15.1% | 手搓 MMA/ldmatrix，手写 swizzle 改造成本高，**近期保持现状** |
+| `quantize_impl.cuh` fused（rank32/16K，1 格） | dur 326us，DRAM/Mem **90.2%**，long_scoreboard 47.2%，occ 16.4% | 已到 DRAM 带宽墙，空间小 |
+| `quantize_impl.cuh` split-K（rank64/128，10 格） | dur 83.7us，SM 31%，Mem 48%，DRAM 0.4%，L2 100%，occ 16.6%，regs 198，smem 91 KiB，bank conflicts **380.9K**（native 1.9K） | CuTe 路径，L2-resident，latency/冲突主导；**后续唯一 producer 重点** |
+
+quantize kernel 相对 native：universal 1.17×、fused 1.30×、split-K 1.08×。split-K finalize 中位约 2us，不是主成本。
+
+但 split-K 的 e2e producer 总时间中位为 native 94.4us / CuTe 101.0us，而 kernel 本体 CuTe 多数更快。下一步必须先拆清 e2e 的 allocator/cache/finalize/上下文，不能只根据 isolated kernel 判断 producer 落后。
+
+### 30.6 后续优先级
+
+1. **CuTe split-K producer**（`quantize_impl.cuh`，rank64/128 十格）：先对 SFA/SFB shared copy 做 SASS/PC 定位，确认 38 万 conflict 的具体指令；只改该拷贝路径，保持 qact/ascales bitwise 与 D 误差门槛。目标先看 producer kernel 3%–8%，不要承诺 e2e 同幅。
+2. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：该路径是手搓 MMA/ldmatrix + 手写 swizzle，bank conflict 虽为 4.3 万，但改造成本和回归风险高，不作为近期优化项。
+3. **producer e2e 上下文**：对比 isolated producer 与 e2e trace 的 kernel duration、allocator 复用、finalize 与 launch gap；在 `8192×3072/rank64` 上优先解释“kernel 更快但总量更慢”。
+4. **GEMM 只做资源几何级实验**：可选方向只有降低 accumulator/寄存器以争取 2 CTA，或重做跨 warpgroup/Multi-CTA 流水；A/SFA TMA、S4、8M×1N、简单 prefetch 全部关闭。没有新资源证据时，GEMM 维持现状。
+5. **dispatch 继续用逐格 A/B**：任何 LoRA/main 规则变化必须做同进程交错多轮，不得用单轮跨进程 Event 直接改。
+
+### 30.7 验收门槛
+
+- GEMM/ producer 微优化：全矩阵 NSYS 正向约 0.1% 才保留，且不能有超过约 0.2% 的稳定回退。
+- 数值：GEMM 调度等价改动要求固定输入 bitwise；producer 改布局要求 qact/ascales bitwise，D rel-L2 <0.01。
+- NCU 只用于归因；最终性能用 NSYS/官方 Event，并记录 session 内 native 对照。
