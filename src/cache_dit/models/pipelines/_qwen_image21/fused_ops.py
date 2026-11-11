@@ -195,6 +195,9 @@ def probe_rope_variant(device: torch.device | None = None) -> int:
   if _ROPE_VARIANT is not None:
     return _ROPE_VARIANT
   if not fused_ops_extension_available() or not torch.cuda.is_available():
+    # Cache the negative outcome too: the probe must run at most once per process, never
+    # once per denoising step.
+    _ROPE_VARIANT = -1
     return -1
 
   from ....kernels import qwen_image21_qk_norm_rope
@@ -338,6 +341,8 @@ def probe_ln_tier(dim: int, device: torch.device | None = None) -> int:
   if cached is not None:
     return cached
   if not fused_ops_extension_available() or not torch.cuda.is_available():
+    # Cache the negative outcome: one probe per hidden size per process, not per step.
+    _LN_TIERS[dim] = 0
     return 0
 
   from ....kernels import qwen_image21_ln_modulate

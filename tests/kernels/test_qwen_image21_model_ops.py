@@ -214,3 +214,26 @@ def test_dispatch_entry_points_follow_the_active_op_list(monkeypatch):
 
   up = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16)
   assert _close(torch.nn.functional.silu(hidden) * up, fused_ops.apply_silu_mul(hidden, up))
+
+
+def test_probes_run_once_per_process(monkeypatch):
+  """A probe must never be re-entered from the per-step path."""
+
+  calls = {"rope": 0}
+
+  import cache_dit.kernels._models as models
+
+  real = models.qwen_image21_qk_norm_rope
+
+  def counting(*args, **kwargs):
+    calls["rope"] += 1
+    return real(*args, **kwargs)
+
+  monkeypatch.setattr(models, "qwen_image21_qk_norm_rope", counting)
+  monkeypatch.setattr(fused_ops, "_ROPE_VARIANT", None)
+
+  first = fused_ops.probe_rope_variant(DEVICE)
+  after_first = calls["rope"]
+  for _ in range(5):
+    assert fused_ops.probe_rope_variant(DEVICE) == first
+  assert calls["rope"] == after_first, "the probe ran again after being resolved"
