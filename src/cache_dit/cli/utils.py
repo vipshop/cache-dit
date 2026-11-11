@@ -1572,6 +1572,8 @@ def _force_compile_dynamic(args, pipe) -> bool:
     # `_QwenImage21Pipeline` is the cache-dit optimisation pass over `QwenImage21Pipeline`
     # and must compile with the same `dynamic` decision as the stock pipeline.
     "_QwenImage21",
+    # Same rule for `_Flux2KleinPipeline` against `Flux2KleinPipeline`.
+    "_Flux2Klein",
     "Flux2KleinKV",
   ]
   if args.force_compile_dynamic:

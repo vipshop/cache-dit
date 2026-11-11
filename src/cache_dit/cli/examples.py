@@ -5776,3 +5776,36 @@ def pika_h3_flex_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
     ])
   example.input_data = input_data
   return example
+
+
+@ExampleRegister.register("flux2_klein_fused", default="black-forest-labs/FLUX.2-klein-4B")
+def flux2_klein_fused_example(args: argparse.Namespace, **kwargs) -> Example:
+  """FLUX.2-Klein-4B through cache-dit's fused-op pipeline (`_Flux2KleinPipeline`).
+
+  Same input as `flux2_klein_4b` (4 steps, no CFG), so the two examples differ only in which
+  transformer classes run: this one binds the fused normalisation, residual and q/k operators.
+  """
+  from cache_dit.models.pipelines.flux2_klein import _Flux2KleinPipeline
+
+  params_modifiers = _flux2_params_modifiers(args)
+  return Example(
+    args=args,
+    init_config=ExampleInitConfig(
+      task_type=ExampleType.T2I,  # Text to Image
+      model_name_or_path=_path("black-forest-labs/FLUX.2-klein-4B"),
+      pipeline_class=_Flux2KleinPipeline,
+      bnb_4bit_components=["text_encoder", "transformer"],
+      # Extra init args for DBCacheConfig, ParamsModifier, etc.
+      extra_optimize_kwargs={
+        "params_modifiers": params_modifiers,
+        "enable_separate_cfg": False,
+      },
+    ),
+    input_data=ExampleInputData(
+      prompt="A cute cat sitting on the beach, watching the sunset.",
+      height=1024,
+      width=1024,
+      num_inference_steps=4,
+      guidance_scale=1.0,
+    ),
+  )

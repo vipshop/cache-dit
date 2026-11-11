@@ -246,3 +246,18 @@ class Flux2TensorParallelismPlanner(TensorParallelismPlanner):
     maybe_empty_cache()
 
     return transformer, layer_plans
+
+
+# Cache-dit's second-pass FLUX.2-Klein transformer is a subclass of the diffusers class, so its
+# name no longer starts with "Flux2Transformer2DModel" and the prefix registry above would miss
+# it entirely (a missing planner raises instead of degrading, but the failure message points at
+# the wrong thing). Both plans are inherited unchanged: the fusion only rebinds block forwards
+# and attention processors, neither of which the plans enumerate.
+@ContextParallelismPlannerRegister.register("_Flux2KleinTransformer2DModel")
+class Flux2KleinContextParallelismPlanner(Flux2ContextParallelismPlanner):
+  """Context-parallel plan for the fused FLUX.2-Klein transformer."""
+
+
+@TensorParallelismPlannerRegister.register("_Flux2KleinTransformer2DModel")
+class Flux2KleinTensorParallelismPlanner(Flux2TensorParallelismPlanner):
+  """Tensor-parallel plan for the fused FLUX.2-Klein transformer."""

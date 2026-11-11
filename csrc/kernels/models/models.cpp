@@ -8,6 +8,7 @@
 
 #include "models.h"
 #include "boogu.h"
+#include "flux2_klein.h"
 #include "qwen_image21.h"
 
 namespace cache_dit::models {
@@ -15,6 +16,7 @@ namespace cache_dit::models {
 void register_models_ops(pybind11::module_& ops) {
   register_boogu_ops(ops);
   register_qwen_image21_ops(ops);
+  register_flux2_klein_ops(ops);
 }
 
 }  // namespace cache_dit::models

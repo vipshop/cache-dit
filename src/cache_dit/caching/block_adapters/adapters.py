@@ -134,6 +134,35 @@ def flux_adapter(pipe, **kwargs) -> BlockAdapter:
     )
 
 
+# FLUX.2-Klein's own optimisation pass (`_Flux2KleinPipeline`) renames the transformer class, so
+# the `Flux` adapter's `startswith("Flux2")` branch no longer matches: the transformer would be
+# dispatched as a FLUX.1 stack (single block list + dummy blocks + `FluxPatchFunctor`), which
+# patches a forward the FLUX.2 layout does not have. Registering the `_` prefix keeps the FLUX.2
+# shape - two block lists, `Pattern_1`/`Pattern_3`, no patch functor.
+@BlockAdapterRegister.register("_Flux2Klein")
+def flux2_klein_adapter(pipe, **kwargs) -> BlockAdapter:
+  from diffusers import Flux2Transformer2DModel
+
+  transformer = pipe.transformer
+  assert isinstance(transformer, Flux2Transformer2DModel), (
+    f"_Flux2KleinPipeline expects a Flux2Transformer2DModel, got {type(transformer).__name__}")
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=transformer,
+    blocks=[
+      transformer.transformer_blocks,
+      transformer.single_transformer_blocks,
+    ],
+    forward_pattern=[
+      ForwardPattern.Pattern_1,
+      ForwardPattern.Pattern_3,
+    ],
+    check_forward_pattern=True,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("Mochi")
 def mochi_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import MochiTransformer3DModel
