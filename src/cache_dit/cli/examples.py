@@ -2925,7 +2925,7 @@ def _minimax_h3_demo_asset(name: str) -> str:
   env_dir = os.environ.get(_MINIMAX_H3_TEST_DATA_ENV)
   if env_dir:
     candidates.append(env_dir)
-  # `src/cache_dit/_utils/examples.py` -> repository root, for an editable / in-tree install.
+  # `src/cache_dit/cli/examples.py` -> repository root, for an editable / in-tree install.
   candidates.append(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..",
                  _MINIMAX_H3_ASSET_SUBDIR))
@@ -4648,7 +4648,7 @@ def _wan_s2v_reference_image(args: argparse.Namespace, model_name_or_path: str) 
   candidates = []
   if CACHE_DIT_DIR is not None:
     candidates.append(os.path.join(CACHE_DIT_DIR, "examples/data/consisid_input.png"))
-  # Editable install: this file lives at `<repo>/src/cache_dit/_utils/examples.py`.
+  # Editable install: this file lives at `<repo>/src/cache_dit/cli/examples.py`.
   repo_root = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
   candidates.append(os.path.join(repo_root, "examples/data/consisid_input.png"))

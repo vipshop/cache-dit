@@ -3,15 +3,15 @@ import argparse
 import pytest
 from PIL import Image
 
-from cache_dit._utils import ming_image_design_example as public_design_example
-from cache_dit._utils import ming_image_design_layer_example as public_layer_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import ming_image_design_example as public_design_example
+from cache_dit.cli import ming_image_design_layer_example as public_layer_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _env_path_mapping,
   ming_image_design_example,
   ming_image_design_layer_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 from cache_dit.models.pipelines.ming_image import MingImagePipeline
 
 

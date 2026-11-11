@@ -31,16 +31,16 @@ try:
 except ImportError:
   pytest.skip("diffusers without Ideogram4 support", allow_module_level=True)
 
-from cache_dit._utils import ideogram4_example as public_ideogram4_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import ideogram4_example as public_ideogram4_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _IDEOGRAM4_PROMPT,
   _IDEOGRAM4_STEPS,
   _Ideogram4Example,
   _ideogram4_guidance_schedule,
   ideogram4_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 from cache_dit.loaders import Ideogram4Loader
 from cache_dit.loaders import base as loaders_base
 

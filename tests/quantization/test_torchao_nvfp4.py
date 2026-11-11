@@ -3,7 +3,7 @@ import importlib.util
 import pytest
 import torch
 
-from cache_dit._utils.utils import get_args, maybe_postprocess_args
+from cache_dit.cli.utils import get_args, maybe_postprocess_args
 from cache_dit.quantization import QuantizeConfig, quantize
 from cache_dit.quantization.torchao.quantize_ao import _get_torchao_config
 

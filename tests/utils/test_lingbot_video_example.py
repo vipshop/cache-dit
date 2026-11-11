@@ -8,14 +8,14 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import lingbot_video_example as public_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import lingbot_video_example as public_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _path_env_mapping,
   lingbot_video_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 
 
 @pytest.fixture(autouse=True)

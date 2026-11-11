@@ -1,7 +1,7 @@
 import argparse
 import pytest
-from cache_dit._utils.utils import parse_extra_input_kwargs
-from cache_dit._utils.registers import ExampleInputData
+from cache_dit.cli.utils import parse_extra_input_kwargs
+from cache_dit.cli.registers import ExampleInputData
 
 
 class TestParseExtraInputKwargs:

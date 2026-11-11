@@ -329,7 +329,7 @@ INFO 12-17 09:10:09 [base.py:182] Image saved to flux.1024x1024.C0_Q0_DBCache_F1
 
 ## How to Add New Example
 
-It is very easy to add a new example. Please refer to the specific implementation in [examples.py](https://github.com/vipshop/cache-dit/raw/main/src/_utils/examples.py). For example:
+It is very easy to add a new example. Please refer to the specific implementation in [examples.py](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cli/examples.py). For example:
 
 ```python
 @ExampleRegister.register("flux")

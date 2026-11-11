@@ -70,7 +70,7 @@ Rules:
 - TE-P / VAE-P are **run-only** rows (user requirement: 跑通就行): record pass/fail + PSNR/SSIM,
   never quote them as a speedup.
 - `--parallel-text` / `--parallel-vae` are **no-ops without `--parallel`** — `parallelism_config` is
-  only built when `--parallel` is set (`_utils/utils.py::maybe_apply_optimization`), so always hang
+  only built when `--parallel` is set (`cli/utils.py::maybe_apply_optimization`), so always hang
   them under `--parallel tp`.
 - **Attention-dominated models** (long video sequences, see `./perf_analysis.md`): the GEMM-side rows
   above have a hard ceiling of the model's GEMM share. Add two single-GPU rows
@@ -111,7 +111,7 @@ Rules:
 - **Same workload**: identical resolution / frames / steps / seed across all rows. Video models:
   open with a small size, then run the acceptance table at the official size.
 - **Timing**: `--warmup 2 --repeat 2`; quote only `- Inference Time: X.XXs`, which is the mean over
-  `--repeat` (`_utils/registers.py::Example.summary`). Compile cost is paid once during warmup, so
+  `--repeat` (`cli/registers.py::Example.summary`). Compile cost is paid once during warmup, so
   a compiled row measured without warmup is garbage.
 - Flag disambiguation — these three are different things:
   - `--warmup N` / `--repeat N`: **timing** warmup / repeats.
@@ -165,7 +165,7 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
 ## 3. Distributed size mapping and preflight
 
 `--parallel` is resolved into (ulysses, ring, tp) sizes by
-`_utils/utils.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
+`cli/utils.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
 
 | `--parallel` | ws=2 | ws=4 | ws=8 | notes |
 |---|---|---|---|---|

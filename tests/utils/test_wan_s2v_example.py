@@ -12,13 +12,13 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import registers, wan_s2v_example as public_example
-from cache_dit._utils.examples import (
+from cache_dit.cli import registers, wan_s2v_example as public_example
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _path_env_mapping,
   wan_s2v_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 
 
 @pytest.fixture(autouse=True)
@@ -107,7 +107,7 @@ def test_audio_is_a_required_input():
 
 def test_synthetic_placeholder_covers_the_requested_chunk():
   """Without any asset the placeholder is sized from the chunk length, not from a fixed duration."""
-  from cache_dit._utils.examples import _wan_s2v_synthetic_audio
+  from cache_dit.cli.examples import _wan_s2v_synthetic_audio
 
   audio = _wan_s2v_synthetic_audio(84, 16)
   assert audio.shape[0] == 16000 * 84 // 16

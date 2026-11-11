@@ -20,7 +20,7 @@ def test_default_table_protects_embeddings():
 
 
 def test_cli_flag_extends_the_default_table():
-  from cache_dit._utils.utils import _resolve_cli_quantize_exclude_layers
+  from cache_dit.cli.utils import _resolve_cli_quantize_exclude_layers
 
   args = SimpleNamespace(quantize_exclude_layers=["adaln_proj", "norm_out"])
   merged = _resolve_cli_quantize_exclude_layers(args)
@@ -30,6 +30,6 @@ def test_cli_flag_extends_the_default_table():
 
 
 def test_absent_flag_reports_no_override():
-  from cache_dit._utils.utils import _resolve_cli_quantize_exclude_layers
+  from cache_dit.cli.utils import _resolve_cli_quantize_exclude_layers
 
   assert _resolve_cli_quantize_exclude_layers(SimpleNamespace(quantize_exclude_layers=None)) is None

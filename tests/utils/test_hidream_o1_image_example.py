@@ -13,15 +13,15 @@ import argparse
 
 import pytest
 
-from cache_dit._utils import hidream_o1_image_example as public_example
-from cache_dit._utils import registers
-from cache_dit._utils.examples import (
+from cache_dit.cli import hidream_o1_image_example as public_example
+from cache_dit.cli import registers
+from cache_dit.cli.examples import (
   _env_path_mapping,
   _HIDREAM_O1_IMAGE_PROMPT,
   _path_env_mapping,
   hidream_o1_image_example,
 )
-from cache_dit._utils.registers import ExampleRegister, ExampleType
+from cache_dit.cli.registers import ExampleRegister, ExampleType
 from cache_dit.models.pipelines.hidream_o1_image import HiDreamO1ImagePipeline
 
 

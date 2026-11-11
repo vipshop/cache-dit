@@ -319,13 +319,13 @@ Phase 1 — Cache (BlockAdapter)
 - [ ] 1.8 [STOP] Cache fully verified ── do NOT proceed until this passes
 
 Phase 2 — CLI Integration (can start in parallel with Phase 1)
-- [ ] 2.1 Add Example function in _utils/examples.py
+- [ ] 2.1 Add Example function in cli/examples.py
         - @ExampleRegister.register("<model_name>", default="<hf-id>")
         - ExampleType (T2I / IE2I / T2V / I2V / ...)
         - prompt, height, width, num_inference_steps, guidance_scale, image (for IE2I)
 - [ ] 2.2 Add env var mapping in _env_path_mapping dict
 - [ ] 2.3 Add to __all__ list in examples.py
-- [ ] 2.4 Register in _utils/__init__.py
+- [ ] 2.4 Register in cli/__init__.py
 - [ ] 2.5 VERIFY: python3 -m cache_dit.generate list | grep <model_name>
 
 Phase 3 — CP: Context Parallelism
@@ -602,11 +602,11 @@ All paths are relative to the cache-dit repository root.
 
 | Module                       | File                                  | Purpose                                                                                        |
 | ---------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Example implementations      | `src/cache_dit/_utils/examples.py`  | Model example factory functions                                                                |
-| Example registration         | `src/cache_dit/_utils/__init__.py`  | `_safe_import` of all examples                                                               |
-| Example/ExampleRegister base | `src/cache_dit/_utils/registers.py` | `Example`, `ExampleRegister`, `ExampleInitConfig`, `ExampleInputData`, `ExampleType` |
-| CLI entry point              | `src/cache_dit/_utils/generate.py`  | CLI argument parsing and dispatch                                                              |
-| CLI argument definitions     | `src/cache_dit/_utils/utils.py`     | `get_base_args()` — all CLI flags                                                           |
+| Example implementations      | `src/cache_dit/cli/examples.py`  | Model example factory functions                                                                |
+| Example registration         | `src/cache_dit/cli/__init__.py`  | `_safe_import` of all examples                                                               |
+| Example/ExampleRegister base | `src/cache_dit/cli/registers.py` | `Example`, `ExampleRegister`, `ExampleInitConfig`, `ExampleInputData`, `ExampleType` |
+| CLI entry point              | `src/cache_dit/cli/generate.py`  | CLI argument parsing and dispatch                                                              |
+| CLI argument definitions     | `src/cache_dit/cli/utils.py`     | `get_base_args()` — all CLI flags                                                           |
 | Metrics CLI                  | `src/cache_dit/metrics/metrics.py`  | PSNR, SSIM, LPIPS, FID computation and CLI                                                     |
 
 ### Documentation & Examples

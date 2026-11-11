@@ -268,7 +268,7 @@ def test_cli_offload_kwargs_use_the_declared_subtree_filter():
   216 GiB OOM this model avoids by declaring its own filter.
   """
 
-  from cache_dit._utils.utils import _declared_offload_owner, _layerwise_kwargs_for, get_args
+  from cache_dit.cli.utils import _declared_offload_owner, _layerwise_kwargs_for, get_args
 
   transformer = tiny_transformer()
   args = get_args(parse=False).parse_args([])
@@ -289,7 +289,7 @@ def test_cli_offload_kwargs_use_the_declared_subtree_filter():
 def test_cli_offload_keeps_the_non_streamed_parts_resident():
   """The adapters run every step, so the CLI path has to move them onto the compute device."""
 
-  from cache_dit._utils.utils import _apply_declared_residency
+  from cache_dit.cli.utils import _apply_declared_residency
 
   transformer = tiny_transformer()
   calls = []
@@ -308,7 +308,7 @@ def test_resident_components_are_not_streamed(tmp_path):
   only in the *synchronous* offload mode, which is why the declaration is asserted here.
   """
 
-  from cache_dit._utils.utils import _resolve_generic_offload_targets
+  from cache_dit.cli.utils import _resolve_generic_offload_targets
 
   pipe = _pipeline(tmp_path)
   pipe.text_encoder = torch.nn.Linear(2, 2)

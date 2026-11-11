@@ -4,13 +4,13 @@ from types import SimpleNamespace
 import torch
 from PIL import Image
 
-from cache_dit._utils import registers as example_registers
-from cache_dit._utils.registers import Example
-from cache_dit._utils.registers import ExampleInitConfig
-from cache_dit._utils.registers import ExampleInputData
-from cache_dit._utils.registers import ExampleType
-from cache_dit._utils.utils import get_args
-from cache_dit._utils.utils import maybe_postprocess_args
+from cache_dit.cli import registers as example_registers
+from cache_dit.cli.registers import Example
+from cache_dit.cli.registers import ExampleInitConfig
+from cache_dit.cli.registers import ExampleInputData
+from cache_dit.cli.registers import ExampleType
+from cache_dit.cli.utils import get_args
+from cache_dit.cli.utils import maybe_postprocess_args
 
 
 def test_examples_cli_accepts_warmup_seed() -> None:

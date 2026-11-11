@@ -14,7 +14,7 @@ import argparse
 import pytest
 import torch
 
-import cache_dit._utils.utils as cli_utils
+import cache_dit.cli.utils as cli_utils
 from cache_dit.offload import (
   get_layerwise_offload_handles,
   layerwise_offload,

@@ -186,7 +186,7 @@ def ideogram4_example(args, **kwargs):
   )
 ```
 
-`_utils` modules are imported through `_safe_import`. A failing top-level import can degrade every example to the import-error stub, so keep the loader import and application inside the factory.
+`cli` modules are imported through `_safe_import`. A failing top-level import can degrade every example to the import-error stub, so keep the loader import and application inside the factory.
 
 ---
 
@@ -302,7 +302,7 @@ A loader is accepted only when all of the following hold:
 | Ideogram 4 FP8 loader | `src/cache_dit/loaders/ideogram4.py` |
 | Public exports | `src/cache_dit/loaders/__init__.py` |
 | Top-level API | `src/cache_dit/__init__.py` |
-| CLI activation | `src/cache_dit/_utils/examples.py` |
+| CLI activation | `src/cache_dit/cli/examples.py` |
 | Loader tests | `tests/loaders/test_ideogram4_loader.py` |
 | CLI regression tests | `tests/utils/test_ideogram4_example.py` |
 
