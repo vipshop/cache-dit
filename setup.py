@@ -34,11 +34,12 @@ WHEEL_PLATFORM_TAG_ENV = "CACHE_DIT_WHEEL_PLATFORM_TAG"
 # release build runs in.
 SPDLOG_SUBMODULE_PATH = ROOT_DIR / "csrc" / "third_party" / "spdlog"
 SPDLOG_HEADER_PATH = SPDLOG_SUBMODULE_PATH / "include" / "spdlog" / "spdlog.h"
-# Default builds cover Ada (89), Hopper architecture-specific (90a), Blackwell
-# datacenter (100), and Blackwell consumer architecture-specific (120a). The single
-# `_C_ops` extension filters out Hopper because its SVDQuant INT4 kernels exclude sm90;
-# its FP4 kernels still require sm120a or newer at runtime.
-DEFAULT_CUDA_ARCH_TARGETS = ("89", "90a", "100", "120a")
+# Default builds cover Ada (89) and Blackwell consumer architecture-specific (120a) only:
+# every extra target multiplies the compile time of the single `_C_ops` extension, and the
+# Hopper (90a) / Blackwell datacenter (100) targets are not worth it by default. Hopper is
+# rejected by the predicate anyway (the SVDQuant INT4 kernels exclude sm90), and an explicit
+# CACHE_DIT_CUDA_ARCH_LIST still lets you add 100 (or anything else >= sm89).
+DEFAULT_CUDA_ARCH_TARGETS = ("89", "120a")
 CUDA_ARCH_ALIASES = {
   "maxwell": "50",
   "pascal": "60",
@@ -59,25 +60,17 @@ def _normalize_sm_target(sm: str, *, support_sm120: bool, support_sm121: bool) -
   return sm
 
 
-def _default_cuda_arch_targets(
-  *,
-  support_sm90a: bool,
-  support_sm100: bool,
-  support_sm120: bool,
-) -> list[str]:
+def _default_cuda_arch_targets(*, support_sm120: bool) -> list[str]:
   """Return the default CUDA targets supported by the active nvcc toolchain.
 
-  :param support_sm90a: Whether nvcc supports the Hopper architecture-specific target.
-  :param support_sm100: Whether nvcc supports the Blackwell datacenter target.
   :param support_sm120: Whether nvcc supports the Blackwell consumer architecture-specific
     target.
-  :returns: The supported subset of `DEFAULT_CUDA_ARCH_TARGETS`.
+  :returns: The supported subset of `DEFAULT_CUDA_ARCH_TARGETS`, i.e. `["89"]`, `["120a"]`
+    or `["89", "120a"]`.
   """
 
   support = {
     "89": True,
-    "90a": support_sm90a,
-    "100": support_sm100,
     "120a": support_sm120,
   }
   return [sm for sm in DEFAULT_CUDA_ARCH_TARGETS if support.get(sm, False)]
@@ -448,20 +441,19 @@ def _validate_release_configuration() -> None:
 
 
 def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list[str]:
-  """Resolve the CUDA SM targets one optional extension compiles for.
+  """Resolve the CUDA SM targets the `cache_dit._C_ops` extension compiles for.
 
-  Every branch applies `is_supported` to the candidates, so an extension never receives a
+  Every branch applies `is_supported` to the candidates, so the extension never receives a
   `-gencode` flag its kernels cannot host: the predicate is the only gate, and there is no
-  post-hoc validation that could be forgotten when a branch is edited. An explicit arch
-  list stays authoritative -- it is never replaced by the default set -- so an extension
-  whose targets all fail the predicate resolves to an empty list, and the caller decides
-  between skipping it and failing.
+  post-hoc validation that could be forgotten when a branch is edited. An explicit arch list
+  stays authoritative -- it is never replaced by the default set -- so a list whose targets
+  all fail the predicate resolves to an empty list, and the caller fails the build.
 
-  :param scope: Extension label used in the build messages, e.g. `"Comm"` or `"Attn"`.
+  :param scope: Label used in the build messages, e.g. `"CUDA"`.
   :param is_supported: Predicate deciding whether a normalized SM target can host the
     extension's kernels.
-  :returns: The resolved SM targets, e.g. `["89", "90a", "120a"]`, or an empty list when
-    no candidate qualifies.
+  :returns: The resolved SM targets, e.g. `["89", "120a"]`, or an empty list when no
+    candidate qualifies.
   """
 
   assert packaging_version is not None
@@ -469,8 +461,6 @@ def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list
   assert torch is not None
 
   nvcc_version = _get_nvcc_version(CUDA_HOME)
-  support_sm90a = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.0")
-  support_sm100 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm120 = packaging_version.parse(nvcc_version) >= packaging_version.parse("12.8")
   support_sm121 = packaging_version.parse(nvcc_version) >= packaging_version.parse("13.0")
 
@@ -503,11 +493,7 @@ def _resolve_sm_targets(scope: str, is_supported: Callable[[str], bool]) -> list
         ))
     source = "detected on this machine"
   else:
-    candidates = _default_cuda_arch_targets(
-      support_sm90a=support_sm90a,
-      support_sm100=support_sm100,
-      support_sm120=support_sm120,
-    )
+    candidates = _default_cuda_arch_targets(support_sm120=support_sm120)
     source = ""
 
   sm_targets = list(dict.fromkeys(sm for sm in candidates if is_supported(sm)))

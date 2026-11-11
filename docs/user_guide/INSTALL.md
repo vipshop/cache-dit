@@ -61,10 +61,10 @@ the architectures it was built for, so running it on a GPU outside that set fail
 kernel launch. Build with `CACHE_DIT_CUDA_ARCH_LIST` (or `CACHE_DIT_CUDA_BUILD_MODE=FAST` on
 the target machine) to cover the card you will actually use.
 
-The architecture set defaults to `89`, `90a`, `100`, and `120a` (see
-`DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`), trimmed to what the local nvcc supports and then
-filtered by the SM predicate -- so the effective default set is `89`, `100`, `120a` (`90a` is
-dropped with a skip notice).
+The architecture set defaults to `89` (Ada) and `120a` (Blackwell consumer) only -- see
+`DEFAULT_CUDA_ARCH_TARGETS` in `setup.py`; every extra target multiplies the compile time of
+the single extension. `CACHE_DIT_CUDA_ARCH_LIST` can add more (e.g. `100` for Blackwell
+datacenter), while Hopper (`sm90`) is always dropped by the SM predicate.
 `CACHE_DIT_CUDA_ARCH_LIST` overrides it -- note that an inherited `TORCH_CUDA_ARCH_LIST` is
 what mostly decides whether the extension survives, because it is only consulted when
 `CACHE_DIT_CUDA_ARCH_LIST` is unset. `CACHE_DIT_CUDA_BUILD_MODE=FAST` compiles for the
