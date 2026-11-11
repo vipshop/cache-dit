@@ -25,7 +25,7 @@ user-invocable: true
 | `src/cache_dit/quantization/config.py` | `QuantizeConfig` 全部字段 + `svdq_kwargs` 的集中校验（`_resolve_svdq_*`）、`DEFAULT_EXCLUDE_LAYERS` |
 | `src/cache_dit/quantization/backend.py` | `QuantizeBackend` 枚举（`AUTO`/`TORCHAO`/`CACHE_DIT`/`NONE`）与字符串别名解析 |
 | `src/cache_dit/quantization/dispatch.py` | 公共 `quantize()` / `load()` / `remove_quantization_stats()`，按 backend 分派 |
-| `src/cache_dit/quantization/torchao/` | TorchAO online 路径：`quantize_ao.py`（quant_type → AO config、过滤与 fallback）、`_scaled_mm.py` |
+| `src/cache_dit/quantization/torchao/` | TorchAO online 路径：`quantize_ao.py`（quant_type → AO config、过滤与 fallback）、`scaled_mm.py` |
 | `src/cache_dit/quantization/svdquant/` | SVDQuant：`ptq.py`（校准 + 序列化 + load）、`quantizer.py`（DQ/PTQ 量化数学）、`linear.py`/`fused.py`（运行模块）、`packing.py`/`lowrank.py`/`passes.py`/`dtensor.py` |
 | `src/cache_dit/quantization/observers.py` | 逐层精度观察器（默认关闭） |
 | `src/cache_dit/quantization/converter.py` | 独立转换 CLI（`cache-dit-convert`，只支持 SVDQ `_dq`） |

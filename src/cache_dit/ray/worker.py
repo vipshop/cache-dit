@@ -15,8 +15,8 @@ from ..logger import init_logger
 from ..patches import maybe_patch_nucleus_moe_grouped_mm_offsets
 from ..quantization import QuantizeConfig
 from ..utils import assign_transformer, resolve_transformer
-from ._tree import cpu_tensor_tree
-from ._tree import device_tensor_tree
+from .tree import cpu_tensor_tree
+from .tree import device_tensor_tree
 from .dist import destroy_worker_process_group
 from .dist import init_worker_process_group
 

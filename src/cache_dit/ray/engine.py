@@ -20,9 +20,9 @@ from ..distributed import ParallelismConfig
 from ..logger import init_logger
 from ..quantization import QuantizeConfig
 from ..utils import maybe_empty_cache
-from ._tree import cpu_tensor_tree
-from ._tree import device_tensor_tree
-from ._tree import first_tensor_device
+from .tree import cpu_tensor_tree
+from .tree import device_tensor_tree
+from .tree import first_tensor_device
 from .worker import RayTransformerWorker
 from .worker import RayPipelineWorker
 
