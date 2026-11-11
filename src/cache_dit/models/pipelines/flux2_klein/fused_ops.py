@@ -32,6 +32,7 @@ logger = init_logger(__name__)
 _ENV_SWITCH = "CACHE_DIT_FLUX2_KLEIN_FUSED_OPS"
 _ENV_OPS = "CACHE_DIT_FLUX2_KLEIN_OPS"
 _ENV_ROPE_CACHE = "CACHE_DIT_FLUX2_KLEIN_ROPE_CACHE"
+_ENV_JOIN = "CACHE_DIT_FLUX2_KLEIN_JOIN"
 _FALSEY = ("0", "false", "off", "no")
 ALL_OPS = ("ln_modulate", "residual_ln_modulate", "qk_norm_rope", "gated_residual", "silu_mul")
 # The measured winners under `compile` (see `.tmp/klein2-flux2/`): the two normalisation
@@ -79,6 +80,28 @@ def _rope_cache_from_env() -> bool:
 
 
 ROPE_CACHE_ENABLED = _rope_cache_from_env()
+
+
+def _join_from_env() -> bool:
+  """Read the joined-stream switch once.
+
+  The double block normalises a text and an image stream and then concatenates them; the
+  joined operator writes both into one buffer so the concatenation never runs. Measured against
+  two calls plus `torch.cat` on the compiled arm it is neutral: -0.41 ms/step with one build
+  order and +0.11 ms with the other, and in both cases whichever pipeline was built *second* in
+  the process ran 0.3-0.5 ms faster. The comparison was therefore measuring the process, not the
+  copy. It ships disabled so there is one path to reason about, not because the copy is free.
+
+  :returns: Whether the joined variant is used.
+  """
+
+  value = os.environ.get(_ENV_JOIN)
+  if value is None:
+    return False
+  return value.strip().lower() not in _FALSEY
+
+
+JOIN_ENABLED = _join_from_env()
 
 
 def _ops_from_env() -> frozenset[str]:

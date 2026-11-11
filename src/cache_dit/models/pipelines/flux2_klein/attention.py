@@ -28,7 +28,7 @@ from diffusers.models.transformers.transformer_flux2 import (
 )
 
 from ....logger import init_logger
-from .fused_ops import apply_qk_norm_rope, apply_qk_norm_rope_join, apply_silu_mul
+from .fused_ops import JOIN_ENABLED, apply_qk_norm_rope, apply_qk_norm_rope_join, apply_silu_mul
 
 logger = init_logger(__name__)
 
@@ -85,8 +85,11 @@ class _FusedFlux2AttnProcessor(Flux2AttnProcessor):
       encoder_value = encoder_value.unflatten(-1, (-1, head_dim))
       if cos is not None:
         # The joined operator needs one epsilon for both streams; the model builds all four
-        # norms from the same value, but check instead of assuming it.
-        if attn.norm_q.eps == attn.norm_added_q.eps and attn.norm_k.eps == attn.norm_added_k.eps:
+        # norms from the same value, but check instead of assuming it. It is off by default:
+        # against two calls plus one `cat` it measured neutral (-0.41 ms in one build order,
+        # +0.11 ms in the other), so there is one path to reason about rather than two.
+        if (JOIN_ENABLED and attn.norm_q.eps == attn.norm_added_q.eps
+            and attn.norm_k.eps == attn.norm_added_k.eps):
           query = apply_qk_norm_rope_join(query,
                                           attn.norm_q.weight,
                                           encoder_query,
