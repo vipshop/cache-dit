@@ -48,6 +48,7 @@ def _run_opaque_scaled_mm_smoke_test() -> None:
 
   from torchao.float8.inference import Float8MMConfig
   from torchao.quantization.granularity import PerRow
+  from torchao.quantization.quantize_.common import KernelPreference
   from torchao.quantization.quantize_.workflows.float8.float8_tensor import (
     Float8Tensor,
     QuantizeTensorToFloat8Kwargs,
@@ -70,6 +71,12 @@ def _run_opaque_scaled_mm_smoke_test() -> None:
       granularity=PerRow(),
       mm_config=mm_config,
       act_quant_kwargs=act_quant_kwargs,
+      # Pin the torch `_scaled_mm` path: that is what Cache-DiT configures for
+      # float8_per_row (KernelPreference.TORCH in quantization/torchao/quantize_ao.py) and
+      # what enable_opaque_torchao_float8_scaled_mm() patches. torchao's AUTO picks mslk on
+      # any sm90+, but mslk 1.4.0 only ships Sm90/Sm100 fp8 rowwise kernels and hands sm12x
+      # the Sm90 ones, which abort with `RuntimeError: cutlass cannot initialize` (#1286).
+      kernel_preference=KernelPreference.TORCH,
     )
     inputs = torch.randn(4, 64, device=device, dtype=torch.bfloat16)
 
