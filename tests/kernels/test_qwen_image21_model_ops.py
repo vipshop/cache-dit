@@ -93,7 +93,7 @@ def test_ln_modulate_matches_the_eager_chain():
   modulated, gate = fused_ops.apply_ln_modulate(x, params, mask, 1e-6)
 
   assert _close(reference, modulated)
-  assert _close(reference_gate.tanh(), gate)
+  assert _close(reference_gate, gate)
 
 
 def test_ln_modulate_without_a_mask_broadcasts_the_sample_row():
@@ -106,26 +106,7 @@ def test_ln_modulate_without_a_mask_broadcasts_the_sample_row():
   modulated, gate = fused_ops.apply_ln_modulate(x, params, None, 1e-6)
 
   assert _close(reference, modulated)
-  assert _close(reference_gate.tanh().expand_as(gate), gate)
-
-
-def test_modulate_affine_matches_the_eager_epilogue():
-  from cache_dit.kernels import qwen_image21_modulate_affine
-
-  torch.manual_seed(0)
-  dim = 512
-  x = torch.randn(1, 300, dim, device=DEVICE, dtype=torch.bfloat16)
-  params = torch.randn(2, 2 * dim, device=DEVICE, dtype=torch.bfloat16)
-  mask = torch.zeros(300, device=DEVICE, dtype=torch.bool)
-  mask[:150] = True
-
-  scale, gate = params.chunk(2, dim=-1)
-  reference = x * (1 + fused_ops._select_modulation_rows(scale, mask))
-  reference_gate = fused_ops._select_modulation_rows(gate, mask).tanh()
-
-  modulated, gate_out = qwen_image21_modulate_affine(x, params, mask)
-  assert _close(reference, modulated)
-  assert _close(reference_gate, gate_out)
+  assert _close(reference_gate, gate)
 
 
 def test_multi_batch_modulation_falls_back_to_eager():
@@ -141,7 +122,7 @@ def test_multi_batch_modulation_falls_back_to_eager():
   reference, reference_gate = fused_ops._eager_ln_modulate(x, params, mask, 1e-6)
   modulated, gate = fused_ops.apply_ln_modulate(x, params, mask, 1e-6)
   assert _close(reference, modulated)
-  assert _close(reference_gate.tanh(), gate)
+  assert _close(reference_gate, gate)
 
 
 def test_gated_residual_and_silu_mul_match_the_eager_expression():
@@ -150,7 +131,12 @@ def test_gated_residual_and_silu_mul_match_the_eager_expression():
   gate = torch.randn(1, 64, 4096, device=DEVICE, dtype=torch.bfloat16).tanh()
   update = torch.randn(1, 64, 4096, device=DEVICE, dtype=torch.bfloat16)
 
-  assert _close(hidden + gate * update, fused_ops.apply_gated_residual(hidden, gate, update))
+  # Two rows, because a mask selects between the sample row and the `t = 0` row.
+  gate_rows = gate[:, 0].repeat(2, 1).contiguous()
+  mask = torch.zeros(hidden.shape[1], device=DEVICE, dtype=torch.bool)
+  mask[:] = True
+  assert _close(hidden + gate[:, :1] * update,
+                fused_ops.apply_gated_residual(hidden, gate_rows, mask, update))
 
   up_gate = torch.randn(1, 64, 12288, device=DEVICE, dtype=torch.bfloat16) * 3
   up = torch.randn(1, 64, 12288, device=DEVICE, dtype=torch.bfloat16)
@@ -208,7 +194,12 @@ def test_dispatch_entry_points_follow_the_active_op_list(monkeypatch):
   hidden = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16)
   gate = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16).tanh()
   update = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16)
-  assert _close(hidden + gate * update, fused_ops.apply_gated_residual(hidden, gate, update))
+  # Two rows, because a mask selects between the sample row and the `t = 0` row.
+  gate_rows = gate[:, 0].repeat(2, 1).contiguous()
+  mask = torch.zeros(hidden.shape[1], device=DEVICE, dtype=torch.bool)
+  mask[:] = True
+  assert _close(hidden + gate[:, :1] * update,
+                fused_ops.apply_gated_residual(hidden, gate_rows, mask, update))
 
   up = torch.randn(1, 8, 512, device=DEVICE, dtype=torch.bfloat16)
   assert _close(torch.nn.functional.silu(hidden) * up, fused_ops.apply_silu_mul(hidden, up))

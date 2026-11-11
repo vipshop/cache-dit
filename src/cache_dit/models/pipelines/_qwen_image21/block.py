@@ -98,11 +98,12 @@ def fused_block_forward(
     # Only the context-parallel processor accepts it; the stock one would raise on the kwarg.
     attn_kwargs["cp_meta"] = cp_meta
   attn_output = self.attn(hidden_states=img_modulated, **attn_kwargs)
-  hidden_states = apply_gated_residual(hidden_states, img_gate1, attn_output)
+  hidden_states = apply_gated_residual(hidden_states, img_gate1, target_token_mask, attn_output)
 
   img_modulated2, img_gate2 = apply_ln_modulate(hidden_states, mod2, target_token_mask,
                                                 self.img_norm2.eps)
-  hidden_states = apply_gated_residual(hidden_states, img_gate2, self.img_mlp(img_modulated2))
+  hidden_states = apply_gated_residual(hidden_states, img_gate2, target_token_mask,
+                                       self.img_mlp(img_modulated2))
 
   if hidden_states.dtype == torch.float16:
     hidden_states = hidden_states.clip(-65504, 65504)
@@ -126,41 +127,26 @@ def fused_swiglu_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
 
 
 def install_fused_modules(transformer: torch.nn.Module) -> None:
-  """Bind the fused forwards on every block, SwiGLU branch and attention processor.
+  """Bind the fused forwards on every block and SwiGLU branch, and patch the QKV seam.
 
-  Idempotent. The attention processor is only swapped when the fused q/k norm + RoPE is both
-  enabled and useful: a flex processor builds its own `BlockMask` and is left alone, and the
-  fused processor hands context-parallel calls back to the stock implementation.
+  Idempotent. The attention processors are *not* replaced: the fused q/k norm + RoPE is
+  installed on the module-level `_qwenimage21_prepare_qkv` that the stock processor, the flex
+  processor and cache-dit's context-parallel `cp_call` all call, so fusion composes with flex
+  attention, context parallelism and tensor parallelism instead of bypassing them.
 
   :param transformer: Qwen-Image 2.1 transformer whose modules should be rebound.
   """
 
-  from diffusers.models.transformers.transformer_qwenimage21 import (
-    QwenImage21AttnProcessor,
-    QwenImage21FlexAttnProcessor,
-  )
+  from .attention_processor import install_qkv_patch
+  from .fused_ops import ACTIVE_OPS, FUSED_OPS_ENABLED
 
-  from ....logger import init_logger
-  from .attention_processor import FusedQwenImage21AttnProcessor
-  from .fused_ops import ACTIVE_OPS
-
-  logger = init_logger(__name__)
-  flex_blocks = 0
   for index, block in enumerate(transformer.transformer_blocks):
     block._idx = index
     block.forward = fused_block_forward.__get__(block)
     block.img_mlp.forward = fused_swiglu_forward.__get__(block.img_mlp)
 
-    processor = block.attn.processor
-    if isinstance(processor, QwenImage21FlexAttnProcessor):
-      flex_blocks += 1
-      continue
-    if "qk_norm_rope" in ACTIVE_OPS and type(processor) is QwenImage21AttnProcessor:
-      block.attn.processor = FusedQwenImage21AttnProcessor()
-
-  if flex_blocks:
-    logger.info(f"Qwen-Image 2.1 fused attention keeps {flex_blocks} flex attention processors "
-                "on the stock implementation (they own their prefill BlockMask).")
+  if FUSED_OPS_ENABLED and "qk_norm_rope" in ACTIVE_OPS:
+    install_qkv_patch()
 
 
 __all__ = ["fused_block_forward", "fused_swiglu_forward", "install_fused_modules"]

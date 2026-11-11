@@ -17,7 +17,6 @@ from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21Fle
 
 from ....logger import init_logger
 from .block import install_fused_modules
-from .fused_ops import probe_ln_tier
 
 logger = init_logger(__name__)
 
@@ -40,17 +39,9 @@ class _QwenImage21Transformer2DModel(QwenImage21Transformer2DModel):
     if getattr(self, "_qwen21_fused_installed", False):
       return
 
+    # No runtime probing: every operator has exactly one implementation, and the ones that
+    # depend on `expf` / `tanhf` / `rsqrtf` are validated end to end instead.
     install_fused_modules(self)
-
-    # Bit-exactness cannot be assumed: ATen's reduction layout is a property of the kernel
-    # it selects on this device, and which product nvcc folds into an FMA depends on the
-    # build. Both probes run here, before `torch.compile`, so the compiled graph never sees
-    # a probe (they sync the host) and the fallbacks are decided once per process.
-    hidden_size = getattr(self.config, "attention_head_dim", 128) * getattr(
-      self.config, "num_attention_heads", 32)
-    device = next(self.parameters()).device if any(True for _ in self.parameters()) else None
-    if device is not None and device.type == "cuda":
-      probe_ln_tier(hidden_size, device)
 
     if getattr(self, "_old_forward", None) is not None:
       self._old_forward = self.forward

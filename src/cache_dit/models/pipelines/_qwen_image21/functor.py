@@ -18,7 +18,6 @@ from diffusers import QwenImage21Transformer2DModel
 from ....caching.patch_functors.functor_qwen_image_21 import QwenImage21PatchFunctor
 from ....logger import init_logger
 from .block import install_fused_modules
-from .fused_ops import probe_ln_tier
 
 logger = init_logger(__name__)
 
@@ -53,13 +52,6 @@ class _QwenImage21PatchFunctor(QwenImage21PatchFunctor):
     transformer = super()._apply(transformer, blocks=blocks, **kwargs)
 
     install_fused_modules(transformer)
-
-    hidden_size = getattr(transformer.config, "attention_head_dim", 128) * getattr(
-      transformer.config, "num_attention_heads", 32)
-    device = next(transformer.parameters()).device if any(
-      True for _ in transformer.parameters()) else None
-    if device is not None and device.type == "cuda":
-      probe_ln_tier(hidden_size, device)
 
     if getattr(transformer, "_old_forward", None) is not None:
       # accelerate hooks captured the pre-patch forward and `mock_transformer` prefers

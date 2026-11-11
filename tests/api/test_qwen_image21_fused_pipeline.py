@@ -213,4 +213,40 @@ def test_ops_fall_back_to_eager_without_the_extension(monkeypatch):
   modulated, gate = fused_ops.apply_ln_modulate(hidden, params, None, 1e-6)
   expected, expected_gate = fused_ops._eager_ln_modulate(hidden, params, None, 1e-6)
   assert torch.equal(modulated, expected)
-  assert torch.equal(gate, expected_gate.tanh())
+  # `gate` is the folded `(R, D)` row, not an expanded `(B, S, D)` tensor.
+  assert torch.equal(gate, expected_gate)
+
+
+def test_qkv_seam_is_patched_for_stock_flex_and_context_parallel():
+  """Fusion must be installed on the function every processor variant calls, not on a class.
+
+  Subclassing the processor was the alternative and it silently disabled fusion under context
+  parallelism, because cache-dit replaces `QwenImage21AttnProcessor.__call__` wholesale.
+  """
+
+  import importlib
+
+  from cache_dit.models.pipelines._qwen_image21 import attention_processor as ap
+
+  diffusers_module = importlib.import_module(
+    "diffusers.models.transformers.transformer_qwenimage21")
+  cp_module = importlib.import_module("cache_dit.distributed.transformers.qwen_image21")
+
+  # Start from a clean state: another test in this file may have installed the patch already.
+  ap.uninstall_qkv_patch()
+  original = diffusers_module._qwenimage21_prepare_qkv
+  assert original is not ap._fused_prepare_qkv
+  try:
+    ap.install_qkv_patch()
+    assert diffusers_module._qwenimage21_prepare_qkv is ap._fused_prepare_qkv
+    # The CP path imported the symbol into its own module namespace, so it needs the same patch.
+    if hasattr(cp_module, "_qwenimage21_prepare_qkv"):
+      assert cp_module._qwenimage21_prepare_qkv is ap._fused_prepare_qkv
+    assert ap.qkv_patch_is_installed()
+
+    ap.uninstall_qkv_patch()
+    assert diffusers_module._qwenimage21_prepare_qkv is original
+    assert not ap.qkv_patch_is_installed()
+  finally:
+    ap.uninstall_qkv_patch()
+    diffusers_module._qwenimage21_prepare_qkv = original

@@ -77,7 +77,6 @@ def _ops_from_env() -> frozenset[str]:
 ACTIVE_OPS = _ops_from_env()
 
 # `None` = not probed yet, `-1` = probed and unusable, otherwise the selected variant/tier.
-_LN_TIERS: dict[int, int] = {}
 _PROBE_SEQ = 8
 # `c10::complex<float>::operator*` is `a*c - b*d` / `a*d + b*c`, and nvcc contracts one of
 # those products into an FMA. Which one is a property of the ATen build, so the kernel ships
@@ -233,6 +232,24 @@ def _select_modulation_rows(params: torch.Tensor,
   return torch.where(target_token_mask.view(1, -1, 1), real, zero)
 
 
+def _align_mask(mask: torch.Tensor | None, seq_len: int) -> torch.Tensor | None:
+  """Drop a mask that belongs to a shorter/longer sequence than `x`.
+
+  On the cached decode step the block receives the joint-sequence mask while `hidden_states`
+  has already been sliced down to the target tokens, and every remaining row *is* a target
+  token. Returning `None` then means "row 0 for every token", which is exactly the sliced
+  mask's content.
+
+  :param mask: Candidate mask, or `None`.
+  :param seq_len: Sequence length of the tensor it will be applied to.
+  :returns: The mask when it matches `seq_len`, else `None`.
+  """
+
+  if mask is None:
+    return None
+  return mask if mask.numel() == seq_len else None
+
+
 def _eager_ln_modulate(
   x: torch.Tensor,
   params: torch.Tensor,
@@ -241,65 +258,20 @@ def _eager_ln_modulate(
 ) -> tuple[torch.Tensor, torch.Tensor]:
   """Literal transcription of the block's `_modulate(img_norm(x), mod)`.
 
+  The gate is returned as the `(B (+ 1), D)` rows it is derived from, not expanded per token:
+  it is constant across tokens, and expanding it is the traffic this operator exists to avoid.
+
   :param x: `(B, S, D)` block input.
   :param params: `(B (+ 1), 2D)` modulation chunk holding `scale | gate`.
   :param target_token_mask: `(S,)` bool mask or `None`.
   :param eps: LayerNorm epsilon.
-  :returns: `(x * (1 + scale), gate)`.
+  :returns: `(x * (1 + scale), tanh(gate))`, the second one as `(B (+ 1), D)` rows.
   """
 
   scale, gate = params.chunk(2, dim=-1)
-  scale = _select_modulation_rows(scale, target_token_mask)
-  gate = _select_modulation_rows(gate, target_token_mask)
+  one_plus = 1 + scale
   normed = F.layer_norm(x, (x.shape[-1], ), None, None, eps)
-  return normed * (1 + scale), gate
-
-
-def probe_ln_tier(dim: int, device: torch.device | None = None) -> int:
-  """Decide whether the fused LayerNorm reproduces ATen's Welford tree on this device.
-
-  ATen's layer-norm reduction is a 32-lane Welford tree with `coef = 1 / count` merges; the
-  kernel replicates it, but the layout is a property of ATen's kernel selection rather than
-  of the math, so it is verified per hidden size instead of assumed.
-
-  :param dim: Hidden size the block will actually run with.
-  :param device: CUDA device to probe on; defaults to the current device.
-  :returns: `2` when LayerNorm can be fused, `1` when only the modulation epilogue may be
-    fused (LayerNorm stays in ATen), or `0` when neither is safe.
-  """
-
-  cached = _LN_TIERS.get(dim)
-  if cached is not None:
-    return cached
-  if not fused_ops_extension_available() or not torch.cuda.is_available():
-    # Cache the negative outcome: one probe per hidden size per process, not per step.
-    _LN_TIERS[dim] = 0
-    return 0
-
-  from ....kernels import qwen_image21_ln_modulate
-
-  dev = device or torch.device("cuda", torch.cuda.current_device())
-  torch.manual_seed(0)
-  # Enough rows that a 1-ulp difference in the fp32 statistics shows up as a flipped bf16
-  # rounding: with a handful of rows every formula looks exact.
-  rows = 512
-  x = torch.randn(1, rows, dim, device=dev, dtype=torch.bfloat16)
-  params = torch.randn(2, 2 * dim, device=dev, dtype=torch.bfloat16)
-  mask = torch.zeros(rows, device=dev, dtype=torch.bool)
-  mask[:rows // 2] = True
-  reference = _eager_ln_modulate(x, params, mask, 1e-6)
-  modulated, gate = qwen_image21_ln_modulate(x, params, mask, 1e-6)
-
-  # `tanhf` is approximated under `--use_fast_math`, so the tier is decided on rel-L2.
-  tier = 2 if (relative_l2(modulated, reference[0]) <= REL_L2_TOL
-               and relative_l2(gate, reference[1].tanh()) <= REL_L2_TOL) else 1
-  _LN_TIERS[dim] = tier
-  if tier == 2:
-    logger.info(f"Qwen-Image 2.1 fused LayerNorm+modulation is bit-exact at D={dim}.")
-  else:
-    logger.info(f"Qwen-Image 2.1 fused LayerNorm does not reproduce ATen's Welford tree at "
-                f"D={dim}; keeping ATen's LayerNorm and fusing only the modulation epilogue.")
-  return tier
+  return normed * _select_modulation_rows(one_plus, target_token_mask), gate.tanh()
 
 
 def apply_ln_modulate(
@@ -310,14 +282,18 @@ def apply_ln_modulate(
 ) -> tuple[torch.Tensor, torch.Tensor]:
   """Apply LayerNorm, the `1 + scale` modulation and the row-select in one kernel when possible.
 
+  `1 + scale` and `tanh(gate)` are folded into `(B (+ 1), D)` rows here, once per call, instead
+  of being recomputed - and materialised as a `(B, S, D)` tensor - for every token.
+
   :param x: `(B, S, D)` block input.
   :param params: `(B (+ 1), 2D)` modulation chunk holding `scale | gate`.
   :param target_token_mask: `(S,)` bool mask or `None`.
   :param eps: LayerNorm epsilon.
-  :returns: `(x * (1 + scale), tanh(gate))`.
+  :returns: `(x * (1 + scale), tanh(gate))`, the second one as `(B (+ 1), D)` rows.
   """
 
   dim = x.shape[-1]
+  target_token_mask = _align_mask(target_token_mask, x.shape[1])
   # The 16-byte layout maps two rows per warp and derives the modulation row from the
   # sample, validated for a single sample; batch > 1 keeps the eager expression rather than
   # mis-mapping rows.
@@ -327,45 +303,55 @@ def apply_ln_modulate(
              and (target_token_mask is None or
                   (target_token_mask.is_cuda and target_token_mask.dtype == torch.bool
                    and target_token_mask.is_contiguous())))
-  if fusable:
-    tier = _LN_TIERS.get(dim)
-    if tier is None and not torch.compiler.is_compiling():
-      tier = probe_ln_tier(dim, x.device)
-    if tier == 2:
-      from ....kernels import qwen_image21_ln_modulate
+  if not fusable:
+    return _eager_ln_modulate(x, params, target_token_mask, eps)
 
-      return qwen_image21_ln_modulate(x, params, target_token_mask, eps)
-    if tier == 1:
-      from ....kernels import qwen_image21_modulate_affine
+  scale, gate = params.chunk(2, dim=-1)
+  one_plus = (1 + scale).contiguous()
+  gate_rows = gate.tanh().contiguous()
 
-      normed = F.layer_norm(x, (dim, ), None, None, eps)
-      return qwen_image21_modulate_affine(normed, params, target_token_mask)
+  from ....kernels import qwen_image21_ln_modulate
 
-  modulated, gate = _eager_ln_modulate(x, params, target_token_mask, eps)
-  return modulated, gate.tanh()
+  # One kernel for LayerNorm + modulation. Measured against the eager expression this is
+  # rel-L2 7.9e-06 at D=4096 (a single bf16 ulp), so no runtime decision is needed.
+  return qwen_image21_ln_modulate(x, one_plus, target_token_mask, eps), gate_rows
 
 
-def apply_gated_residual(hidden_states: torch.Tensor, gate: torch.Tensor,
-                         update: torch.Tensor) -> torch.Tensor:
+def apply_gated_residual(
+  hidden_states: torch.Tensor,
+  gate_rows: torch.Tensor,
+  target_token_mask: torch.Tensor | None,
+  update: torch.Tensor,
+) -> torch.Tensor:
   """Compute `hidden_states + gate * update` without touching `hidden_states` in place.
+
+  `gate_rows` stays `(B (+ 1), D)`: the selection happens per token inside the kernel, so a
+  full `(B, S, D)` gate tensor never has to exist.
 
   Out-of-place is a hard requirement: cache-dit derives a block's residual as
   `output - input`, so an in-place add corrupts the cache.
 
   :param hidden_states: Residual stream.
-  :param gate: Already `tanh`-ed gate, same shape as `hidden_states`.
+  :param gate_rows: `(B (+ 1), D)` already `tanh`-ed gate rows.
+  :param target_token_mask: `(S,)` bool mask or `None`.
   :param update: Block output to be gated.
   :returns: The new residual stream.
   """
 
-  if (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and _fusable_tensor(hidden_states)
-      and _fusable_tensor(gate) and _fusable_tensor(update) and gate.shape == hidden_states.shape
-      and update.shape == hidden_states.shape):
+  target_token_mask = _align_mask(target_token_mask, hidden_states.shape[1])
+  if (FUSED_OPS_ENABLED and "gated_residual" in ACTIVE_OPS and hidden_states.shape[0] == 1
+      and _fusable_tensor(hidden_states) and _fusable_tensor(update) and gate_rows.is_cuda
+      and gate_rows.dtype == hidden_states.dtype and gate_rows.is_contiguous()
+      and gate_rows.shape[-1] == hidden_states.shape[-1] and update.shape == hidden_states.shape
+      and (target_token_mask is None or
+           (target_token_mask.is_cuda and target_token_mask.dtype == torch.bool
+            and target_token_mask.is_contiguous()))):
     from ....kernels import qwen_image21_gated_residual
 
-    return qwen_image21_gated_residual(hidden_states, gate, update)
+    return qwen_image21_gated_residual(hidden_states, gate_rows, target_token_mask, update,
+                                       hidden_states.shape[1])
 
-  return hidden_states + gate * update
+  return hidden_states + _select_modulation_rows(gate_rows, target_token_mask) * update
 
 
 def apply_silu_mul(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
@@ -392,7 +378,6 @@ __all__ = [
   "apply_qk_norm_rope",
   "apply_silu_mul",
   "fused_ops_extension_available",
-  "probe_ln_tier",
   "rotary_cos_sin",
   "set_qwen_image21_fused_ops_enabled",
 ]
