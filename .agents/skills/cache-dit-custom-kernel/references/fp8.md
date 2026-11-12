@@ -152,13 +152,35 @@ Per-block WS wins all 19 shapes in the operator matrix (median 0.912x vs TorchAO
 
 Every launch rebuilds three TMA descriptors on the host. Single-layer compiled timing shows `host + launch` about 36.9 us for per-row vs 27.9 us for TorchAO at `4096x3072x3072`; the exact split between descriptor construction, pybind dispatch and graph entry has not been isolated. CUDA Graph removes it from replay; eager/custom-op E2E does not.
 
+## Convergence target
+
+The task is converged only when, for every supported FP8 mode, cache-dit's full
+**quantize + GEMM** chain is equal to or faster than TorchAO under `torch.compile`, with
+equivalent qdata/scale semantics. Optimizing an isolated kernel is not sufficient; report
+the compiled per-layer and E2E numbers together.
+
+Custom quantize vs the fused `fp8_quantize_torch` compiled kernel (device time,
+`4096x3072x3072`):
+
+| mode | custom quantize kernel | Torch compile fused | conclusion |
+|---|---:|---:|---|
+| per_row | 16.18 us | 10.18 us | custom is slower |
+| per_tensor | ~20.4 us (3 kernels) | 20.83 us (3 fused kernels) | device parity; custom loses on host/launch in the full chain |
+| per_block | 15.27 us | 30.35 us | custom is faster |
+
+So the custom quantize kernel is a real optimization target for per_row/per_tensor
+(especially full-chain wall time), but per_block must not be replaced blindly: its custom
+kernel is still ahead of the fused pure-Torch path.
+
 ## Current optimization priority (2026-11-12, converged)
 
-This is the agreed order after the 19-shape and compiled-linear decomposition. Do not reorder without new measurements.
+This is the agreed order after the 19-shape and compiled-linear decomposition. Do not
+reorder without new measurements.
 
 1. **Per-row GEMM tile/occupancy (primary).** Per-row is behind `_scaled_mm` in 17/19 shapes, median 1.066x. At `4096x3072x3072` the device GEMM is 198.3 vs 183.5 us; NCU shows SM 72%, occupancy 16.3%, 255 regs/thread, 1 CTA/SM. Start with tile/CTA selection and register pressure, not quantization. Target: match `_scaled_mm` without regressing production shapes.
-2. **Per-launch TMA descriptor and custom-op overhead.** Compiled per-layer wall time is 36.9 us above device kernels (vs 27.9 us for TorchAO) for per-row. Attack descriptor construction/reuse, pybind/dispatcher overhead, and graph entry; measure host/device separately before changing ABI. Do not attribute the small-M regression to host overhead: at M=128/512 the 128x256 tile leaves too few CTAs, which belongs to priority 1.
-3. **Per-block: no optimization work now.** Quantize is at parity after the pure-Torch compile path; GEMM is already faster than TorchAO on 19/19 shapes. Only revisit with an E2E trace showing a concrete per-block hotspot.
+2. **Custom quantize kernel for per_row/per_tensor.** Close the gap to the fused Torch path: per-row kernel 16.18 vs 10.18 us; per-tensor is device-parity but loses through extra launches/host work. Optimize reduction/launch structure and host overhead; keep the eager custom path fast. Do not change per-block without evidence, where custom is already 15.27 vs 30.35 us.
+3. **Per-launch TMA descriptor and custom-op overhead.** Compiled per-layer wall time is 36.9 us above device kernels (vs 27.9 us for TorchAO) for per-row. Attack descriptor construction/reuse, pybind/dispatcher overhead, and graph entry; measure host/device separately before changing ABI. Do not attribute the small-M regression to host overhead: at M=128/512 the 128x256 tile leaves too few CTAs, which belongs to priority 1.
+4. **Per-block: no optimization work now.** Quantize is at parity after the pure-Torch compile path; GEMM is already faster than TorchAO on 19/19 shapes. Only revisit with an E2E trace showing a concrete per-block hotspot.
 
 ## Deferred optimization directions
 
