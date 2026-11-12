@@ -144,25 +144,33 @@ Production shapes and kernel-only runs show a consistent 5%-6% deficit. Possible
 - epilogue (scale lookup, BF16 convert, STSM, TMA store) is a larger fraction at 3072-wide N;
 - missing cluster/L2 swizzle or persistent scheduling compared with CUTLASS.
 
-### 4. Per-block is shape-sensitive
+### 4. Per-block is not a current priority
 
-WS beats non-WS and TorchAO on several production shapes, but at `4096x3072x3072` kernel-only it is still behind TorchAO's Triton kernel (241.69 vs 224.58 us). Do not claim per-block is universally faster; report the shape matrix.
+Per-block WS wins all 19 shapes in the operator matrix (median 0.912x vs TorchAO), but the single-shape kernel-only number remains mixed: cache-dit 241.69 us vs TorchAO Triton 224.58 us at `4096x3072x3072`. Treat per-block as "do not optimize now": the compiled per-layer total is roughly at parity (quantize 30.4 vs 28.7 us; GEMM+bias 248.7 vs 244.4 us on `4096x3072`), and the remaining E2E delta needs graph-level evidence before changing kernels.
 
 ### 5. Host-side fixed costs
 
-Every launch rebuilds three TMA descriptors on the host. At ~0.2 ms per GEMM this is part of the measured gap, but its exact contribution has not been isolated. CUDA Graph removes it from replay; eager/custom-op E2E does not.
+Every launch rebuilds three TMA descriptors on the host. Single-layer compiled timing shows `host + launch` about 36.9 us for per-row vs 27.9 us for TorchAO at `4096x3072x3072`; the exact split between descriptor construction, pybind dispatch and graph entry has not been isolated. CUDA Graph removes it from replay; eager/custom-op E2E does not.
+
+## Current optimization priority (2026-11-12, converged)
+
+This is the agreed order after the 19-shape and compiled-linear decomposition. Do not reorder without new measurements.
+
+1. **Per-row GEMM tile/occupancy (primary).** Per-row is behind `_scaled_mm` in 17/19 shapes, median 1.066x. At `4096x3072x3072` the device GEMM is 198.3 vs 183.5 us; NCU shows SM 72%, occupancy 16.3%, 255 regs/thread, 1 CTA/SM. Start with tile/CTA selection and register pressure, not quantization. Target: match `_scaled_mm` without regressing production shapes.
+2. **Per-launch TMA descriptor and custom-op overhead.** Compiled per-layer wall time is 36.9 us above device kernels (vs 27.9 us for TorchAO) for per-row. Attack descriptor construction/reuse, pybind/dispatcher overhead, and graph entry; measure host/device separately before changing ABI. Do not attribute the small-M regression to host overhead: at M=128/512 the 128x256 tile leaves too few CTAs, which belongs to priority 1.
+3. **Per-block: no optimization work now.** Quantize is at parity after the pure-Torch compile path; GEMM is already faster than TorchAO on 19/19 shapes. Only revisit with an E2E trace showing a concrete per-block hotspot.
 
 ## Deferred optimization directions
 
 Priority is evidence-driven and deliberately not implemented yet.
 
-1. **Fuse activation quantization into the GEMM prologue.** Highest expected value for E2E. Let the kernel consume BF16 A directly, compute row/block scales while TMA stages A, and avoid qdata/scale global round-trips. This also removes one opaque op boundary from Inductor.
+1. **Fuse activation quantization into the GEMM prologue.** Let the kernel consume BF16 A directly, compute row/block scales while TMA stages A, and avoid qdata/scale global round-trips. This is a longer-term follow-up, not ahead of per-row GEMM tuning.
 2. **Pure-Torch quantize under `torch.compile` (implemented 2026-11-12).** `fp8_quantize_torch` is selected by `torch.compiler.is_compiling()`; eager keeps the custom kernel. E2E measurements for all three modes are in the table above. Remaining work is to decide whether graph-break/resume paths should force the custom kernel (currently they can execute the unfused pure-Torch version).
 3. **Per-row WS epilogue split by N.** Process the epilogue in two 128-column groups, reducing peak live registers below the 168 ceiling and eliminating the 144 B/thread spill. Verify with `cuobjdump -res-usage` (`STACK:0`) before claiming a gain.
-4. **Per-row tile/occupancy sweep.** Use NCU to test 128x128/s3, 256x128/s2, register caps, and stage counts. Target: match `_scaled_mm` at 181 us on `4096x3072x3072` without regressing production shapes.
-5. **Per-block rescale reduction.** Prefetch/broadcast scale values per N block, avoid redundant scalar loads inside the K-tile rescale loop, and consider a fused two-accumulator epilogue.
-6. **TMA descriptor reuse.** Cache weight descriptors per module and use CUDA Graph or descriptor update for dynamic activations; measure host time separately with nsys before changing ABI.
-7. **Compile path with one fused custom op.** If items 1-2 are insufficient, expose a single `quantized_linear_bf16` custom op so Inductor sees one graph node instead of two; benchmark eager and CUDA Graph separately.
+4. **Per-row tile/occupancy sweep details.** Use NCU to test 128x128/s3, 256x128/s2, register caps, and stage counts; this supports current priority 1.
+5. **Per-block rescale reduction.** Deferred; do not start until per-block shows a measured regression.
+6. **TMA descriptor reuse.** Cache weight descriptors per module and use CUDA Graph or descriptor update for dynamic activations; supports current priority 2.
+7. **Compile path with one fused custom op.** Deferred follow-up to priority 2: one `quantized_linear_bf16` graph node instead of two, benchmarked separately.
 
 ## Reproduction checklist
 
