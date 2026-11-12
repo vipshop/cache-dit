@@ -5,6 +5,7 @@ from torch import nn
 
 from ...kernels import fp8_gemm
 from ...kernels import fp8_quantize
+from ...kernels.fp8 import fp8_quantize_torch
 from ...logger import init_logger
 
 logger = init_logger(__name__)
@@ -161,7 +162,11 @@ class CacheDitFP8Linear(nn.Module):
                          "`.to(dtype)` on a quantized module.")
     leading_shape = x.shape[:-1]
     flat = x.reshape(-1, self.in_features)
-    qx, sx = fp8_quantize(flat, mode=self.mode)
+    if torch.compiler.is_compiling():
+      # Let Inductor fuse activation quantization around the opaque FP8 GEMM.
+      qx, sx = fp8_quantize_torch(flat, mode=self.mode)
+    else:
+      qx, sx = fp8_quantize(flat, mode=self.mode)
     out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
     return out.reshape(*leading_shape, self.out_features)
 

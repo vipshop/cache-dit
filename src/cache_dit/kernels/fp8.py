@@ -87,6 +87,8 @@ def _validate_quantize_metadata(x: torch.Tensor, mode: int) -> None:
     raise ValueError(f"cache-dit FP8 quantization expects bfloat16, got {x.dtype}.")
   if x.dim() != 2:
     raise ValueError(f"cache-dit FP8 quantization expects a 2D tensor, got {tuple(x.shape)}.")
+  if x.shape[0] == 0 or x.shape[1] == 0:
+    raise ValueError("cache-dit FP8 quantization does not accept empty tensors.")
   if x.shape[1] % 16 != 0:
     raise ValueError("cache-dit FP8 quantization requires the last dimension to be a multiple "
                      f"of 16, got {x.shape[1]}.")
@@ -225,6 +227,59 @@ def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_sc
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
 
+def fp8_quantize_torch(x: torch.Tensor,
+                       mode: str = "per_row",
+                       is_weight: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+  """Pure-PyTorch FP8 quantizer used when ``torch.compile`` traces the module.
+
+  For finite inputs the math and qdata are bit-identical to :func:`fp8_quantize`:
+  ``scale = amax / 448``, zero tensors produce scale zero and quantized zero.
+  NaN inputs differ by design: CUDA ``fmaxf`` ignores NaNs, while torch ``amax``
+  propagates them. Keeping this path in ordinary pointwise/reduction ops lets
+  Inductor fuse it around the FP8 GEMM instead of materializing an opaque
+  custom-op boundary.
+
+  :param x: 2D BF16 tensor ``[M, K]``; non-contiguous inputs are copied.
+  :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
+  :param is_weight: Whether ``x`` is an ``[N, K]`` linear weight.
+  :returns: ``(quantized, scale)``.
+  """
+
+  mode_id = _resolve_mode(mode)
+  _validate_quantize_metadata(x, mode_id)
+  x = x.contiguous()
+  rows, cols = x.shape
+  fp32 = x.float()
+  if mode_id == _MODE_TO_ID["per_row"]:
+    scale = fp32.abs().amax(dim=1) / 448.0
+    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
+    quantized = (fp32 / safe_scale[:, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+    return quantized, scale
+  if mode_id == _MODE_TO_ID["per_tensor"]:
+    scale = fp32.abs().amax().reshape(1) / 448.0
+    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
+    quantized = (fp32 / safe_scale[0]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+    return quantized, scale
+
+  num_k_blocks = (cols + 127) // 128
+  if not is_weight:
+    amax = fp32.reshape(rows, num_k_blocks, 128).abs().amax(dim=2)
+    scale = amax / 448.0
+    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
+    quantized = (fp32.reshape(rows, num_k_blocks, 128) / safe_scale[:, :, None]).clamp(
+      -448.0, 448.0).to(torch.float8_e4m3fn)
+    return quantized.reshape(rows, cols), scale
+
+  num_n_blocks = (rows + 127) // 128
+  padded = torch.nn.functional.pad(fp32,
+                                   (0, num_k_blocks * 128 - cols, 0, num_n_blocks * 128 - rows))
+  blocks = padded.reshape(num_n_blocks, 128, num_k_blocks, 128)
+  scale = blocks.abs().amax(dim=(1, 3)) / 448.0
+  safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
+  quantized = (blocks / safe_scale[:, None, :, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+  return quantized.reshape(num_n_blocks * 128, num_k_blocks * 128)[:rows, :cols], scale
+
+
 def fp8_quantize(x: torch.Tensor,
                  mode: str = "per_row",
                  is_weight: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
@@ -269,4 +324,4 @@ def fp8_gemm(a: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id, use_ws)
 
 
-__all__ = ["fp8_gemm", "fp8_quantize"]
+__all__ = ["fp8_gemm", "fp8_quantize", "fp8_quantize_torch"]

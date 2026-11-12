@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
+from cache_dit.kernels.fp8 import fp8_quantize_torch
 
 pytestmark = pytest.mark.skipif(
   not torch.cuda.is_available() or torch.cuda.get_device_capability() < (10, 0),
@@ -69,6 +70,38 @@ def test_quantize_dequantize_matches_torch_reference(mode: str) -> None:
                 scale_ref[:, :, None]).reshape(17, 256)
     assert torch.allclose(scale, scale_ref)
   assert _relative_l2(_dequantize(q, scale, mode, False), expected) < 2e-3
+
+
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+def test_compiled_torch_quantize_matches_custom(mode: str) -> None:
+  torch.manual_seed(9)
+  x = torch.randn(257, 3072, dtype=torch.bfloat16, device="cuda")
+  x[0].zero_()
+  compiled = torch.compile(lambda value: fp8_quantize_torch(value, mode), fullgraph=True)
+  q_compiled, s_compiled = compiled(x)
+  q_custom, s_custom = fp8_quantize(x, mode)
+  assert torch.equal(q_compiled, q_custom)
+  assert torch.equal(s_compiled, s_custom)
+
+
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+def test_torch_quantize_matches_custom(mode: str) -> None:
+  torch.manual_seed(6)
+  x = torch.randn(33, 384, dtype=torch.bfloat16, device="cuda")
+  x[0].zero_()
+  q_custom, s_custom = fp8_quantize(x, mode)
+  q_torch, s_torch = fp8_quantize_torch(x, mode)
+  assert torch.equal(q_custom, q_torch)
+  assert torch.equal(s_custom, s_torch)
+
+
+def test_torch_quantize_weight_per_block_with_output_tail() -> None:
+  torch.manual_seed(7)
+  weight = torch.randn(136, 256, dtype=torch.bfloat16, device="cuda")
+  q_custom, s_custom = fp8_quantize(weight, "per_block", is_weight=True)
+  q_torch, s_torch = fp8_quantize_torch(weight, "per_block", is_weight=True)
+  assert torch.equal(q_custom, q_torch)
+  assert torch.equal(s_custom, s_torch)
 
 
 @pytest.mark.parametrize("use_ws", [True, False])
@@ -215,3 +248,53 @@ def test_fake_and_fullgraph_compile(use_ws: bool) -> None:
   expected = run(a, w)
   actual = compiled(a, w)
   assert _relative_l2(actual, expected) < 1e-4
+
+
+def test_empty_quantize_is_rejected() -> None:
+  x = torch.empty(0, 256, dtype=torch.bfloat16, device="cuda")
+  with pytest.raises(ValueError, match="empty"):
+    fp8_quantize(x, "per_row")
+  with pytest.raises(ValueError, match="empty"):
+    fp8_quantize_torch(x, "per_row")
+
+
+def test_eager_linear_uses_custom_quantize() -> None:
+  from torch.profiler import ProfilerActivity
+  from torch.profiler import profile
+
+  from cache_dit.quantization.fp8 import CacheDitFP8Linear
+
+  torch.manual_seed(10)
+  linear = torch.nn.Linear(256, 256, device="cuda", dtype=torch.bfloat16)
+  packed = CacheDitFP8Linear.from_linear(linear, "per_row")
+  x = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  packed(x)
+  torch.cuda.synchronize()
+  with profile(activities=[ProfilerActivity.CUDA]) as prof:
+    packed(x)
+    torch.cuda.synchronize()
+  names = [event.key for event in prof.key_averages()]
+  assert any("quantize_per_row_kernel" in name for name in names), names
+
+
+def test_compiled_linear_uses_fusible_torch_quantize() -> None:
+  from torch.profiler import ProfilerActivity
+  from torch.profiler import profile
+
+  from cache_dit.quantization.fp8 import CacheDitFP8Linear
+
+  torch.manual_seed(8)
+  linear = torch.nn.Linear(256, 256, device="cuda", dtype=torch.bfloat16)
+  packed = CacheDitFP8Linear.from_linear(linear, "per_row")
+  x = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  compiled = torch.compile(lambda value: packed(value), fullgraph=True)
+  expected = packed(x)
+  actual = compiled(x)
+  assert _relative_l2(actual, expected) < 1e-4
+  torch.cuda.synchronize()
+  with profile(activities=[ProfilerActivity.CUDA]) as prof:
+    compiled(x)
+    torch.cuda.synchronize()
+  names = [event.key for event in prof.key_averages()]
+  assert not any("quantize_per_row_kernel" in name for name in names), names
+  assert any("fp8_gemm_scale_kernel" in name for name in names), names

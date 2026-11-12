@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
 import statistics
 import subprocess
 from dataclasses import dataclass
@@ -26,6 +27,28 @@ DEFAULT_SHAPES = (
   (4608, 3072, 3072, "single_attn"),
   (4608, 3072, 15360, "single_proj_out"),
   (4608, 12288, 3072, "single_mlp"),
+)
+
+SWEEP_SHAPES = (
+  (128, 3072, 3072, "m128"),
+  (512, 3072, 3072, "m512"),
+  (1024, 3072, 3072, "m1024"),
+  (2048, 3072, 3072, "m2048"),
+  (4096, 3072, 3072, "m4096"),
+  (4608, 3072, 3072, "m4608"),
+  (8192, 3072, 3072, "m8192"),
+  (4096, 12288, 3072, "ff_up"),
+  (4096, 3072, 12288, "ff_down"),
+  (4608, 12288, 3072, "mlp"),
+  (4608, 3072, 15360, "proj_out"),
+  (4096, 15360, 3072, "wide_out"),
+  (4096, 3072, 15360, "wide_in"),
+  (4032, 3072, 3072, "m_tail"),
+  (4096, 3200, 3072, "n_tail"),
+  (4096, 3072, 3328, "k_blocks"),
+  (1024, 4096, 4096, "square1k"),
+  (4096, 4096, 4096, "square4k"),
+  (8192, 8192, 8192, "square8k"),
 )
 
 
@@ -82,6 +105,7 @@ def _metadata() -> dict:
     "capability": list(torch.cuda.get_device_capability()),
     "torch": torch.__version__,
     "torchao": torchao_version,
+    "triton_default_fp_fusion": os.environ.get("TRITON_DEFAULT_FP_FUSION", "unset"),
     "python": subprocess.check_output(["python", "--version"], text=True).strip(),
   }
 
@@ -354,7 +378,8 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
         "max_ms": timing["max_ms"],
       }
       if "gemm" in arm:
-        row["rel_l2_vs_dequant"] = _relative_l2(actual, reference)
+        row["rel_l2_vs_dequant"] = _relative_l2(actual, reference.to(torch.bfloat16))
+        row["max_abs_err"] = float((actual.float() - reference.float()).abs().max())
       rows.append(row)
     except Exception as exc:
       impl = "cache_dit" if arm.startswith("cache_dit") else "torchao"
@@ -391,7 +416,8 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
         "median_ms": timing["median_ms"],
         "min_ms": timing["min_ms"],
         "max_ms": timing["max_ms"],
-        "rel_l2_vs_dequant": _relative_l2(out, reference),
+        "rel_l2_vs_dequant": _relative_l2(out, reference.to(torch.bfloat16)),
+        "max_abs_err": float((out.float() - reference.float()).abs().max()),
       })
     except Exception as exc:
       rows.append({
@@ -435,7 +461,11 @@ def main() -> None:
   parser.add_argument("--shapes",
                       nargs="*",
                       default=None,
-                      help="MxNxK[:name] entries; defaults to FLUX layer shapes.")
+                      help="MxNxK[:name] entries; overrides --suite.")
+  parser.add_argument("--suite",
+                      choices=["flux", "sweep"],
+                      default="flux",
+                      help="flux: six production shapes; sweep: 16-shape matrix.")
   parser.add_argument("--modes", nargs="+", default=list(MODES), choices=MODES)
   parser.add_argument("--impls",
                       nargs="+",
@@ -450,9 +480,11 @@ def main() -> None:
 
   if not torch.cuda.is_available():
     raise RuntimeError("bench_fp8.py requires CUDA.")
-  torch.backends.cuda.matmul.allow_tf32 = True
+  torch.backends.cuda.matmul.allow_tf32 = False
   api = _torchao_api()
-  shapes = _parse_shapes(args.shapes)
+  shapes = (_parse_shapes(args.shapes) if args.shapes else [
+    Shape(*shape) for shape in (SWEEP_SHAPES if args.suite == "sweep" else DEFAULT_SHAPES)
+  ])
   rows = []
   for shape in shapes:
     for mode in args.modes:
