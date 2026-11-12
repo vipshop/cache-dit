@@ -121,6 +121,10 @@ class SVDQW4A4ShardLinear(SVDQW4A4Linear):
 
   def __init__(self, *args, tp_spec: SVDQShardSpec, **kwargs) -> None:
     super().__init__(*args, **kwargs)
+    if self.runtime_kernel == "flashinfer":
+      raise NotImplementedError(
+        "runtime_kernel='flashinfer' does not support tensor parallelism; use 'native' or "
+        "'cute' for SVDQ TP shards.")
     self._tp_spec = tp_spec
     self._tp_output_replicate = tp_spec.output_replicate
     self._tp_mesh = tp_spec.mesh

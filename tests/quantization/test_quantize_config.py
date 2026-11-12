@@ -33,6 +33,39 @@ def test_quantize_config_rejects_deprecated_runtime_kernel() -> None:
     )
 
 
+def test_quantize_config_accepts_the_flashinfer_runtime() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r32_dq",
+    svdq_kwargs={"runtime_kernel": "flashinfer"},
+  )
+
+  assert config.svdq_kwargs["runtime_kernel"] == "flashinfer"
+  # The default runtime stays native.
+  assert QuantizeConfig(quant_type="svdq_nvfp4_r32_dq").svdq_kwargs["runtime_kernel"] is None
+
+
+@pytest.mark.parametrize("quant_type,match", [
+  ("svdq_int4_r32_dq", "only supported for NVFP4"),
+  ("svdq_nvfp4_r48_dq", "requires rank > 0 and a multiple of 32"),
+  ("svdq_nvfp4_r0_dq", "requires rank > 0 and a multiple of 32"),
+])
+def test_quantize_config_rejects_unsupported_flashinfer_shapes(quant_type: str, match: str) -> None:
+  with pytest.raises(ValueError, match=match):
+    QuantizeConfig(quant_type=quant_type, svdq_kwargs={"runtime_kernel": "flashinfer"})
+
+
+@pytest.mark.parametrize("option", [{"fused_mlp": True}, {"layerwise_offload": True}])
+def test_quantize_config_rejects_flashinfer_with_native_only_options(option: dict) -> None:
+  with pytest.raises(ValueError, match="runtime_kernel.*flashinfer"):
+    QuantizeConfig(
+      quant_type="svdq_nvfp4_r32_dq",
+      svdq_kwargs={
+        "runtime_kernel": "flashinfer",
+        **option
+      },
+    )
+
+
 def test_quantize_config_resolves_default_lora_layout() -> None:
   config = QuantizeConfig(
     quant_type="svdq_nvfp4_r128_dq",

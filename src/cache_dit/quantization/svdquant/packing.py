@@ -6,15 +6,22 @@ import typing as tp
 
 import torch
 
+from ...logger import init_logger
+
+logger = init_logger(__name__)
+
 __all__ = [
   "MmaWeightPacker",
   "SVDQWeightPacker",
   "adapt_svdq_module_state_dict",
   "ceil_divide",
   "convert_svdq_nvfp4_pack_to_cute",
+  "convert_svdq_nvfp4_pack_to_flashinfer",
   "export_raw_svdq_w4a4_state_dict",
   "fp_quantize",
   "pad",
+  "swizzle_fp4_scales",
+  "unswizzle_fp4_scales",
 ]
 
 
@@ -118,15 +125,8 @@ def convert_svdq_nvfp4_pack_to_cute(
   kg = wscales.shape[0]
   scales = wscales.view(n // 128, k // 64, 1, 8, 4, 4, 4)
   scales = scales.permute(0, 2, 5, 4, 3, 1, 6).contiguous().view(n, kg)
-  scales = scales.view(torch.uint8)
-  rows, cols = n, kg
-  row = torch.arange(rows, device=scales.device).view(-1, 1).expand(rows, cols)
-  col = torch.arange(cols, device=scales.device).view(1, -1).expand(rows, cols)
-  offset = ((row // 128) * (cols * 128) + (col // 4) * 512 + 16 * (row % 32) + 4 *
-            ((row // 32) % 4) + col % 4)
-  flat_scales = torch.empty_like(scales).reshape(-1)
-  flat_scales[offset.reshape(-1)] = scales.reshape(-1)
-  flat_scales = flat_scales.view(torch.float8_e4m3fn)
+  row_major_scales = scales.view(torch.float8_e4m3fn)
+  flat_scales = swizzle_fp4_scales(row_major_scales).view(torch.float8_e4m3fn)
 
   rank = proj_up.shape[1]
   packed_up = proj_up.view(n // 16, rank // 16, 8, 4, 2, 2, 1, 2)
@@ -151,6 +151,115 @@ def convert_svdq_nvfp4_pack_to_cute(
 
   return (row_major_qweight, flat_scales, row_major_proj_up, row_major_proj_down,
           unpack_vector(bias, n), unpack_vector(wcscales, n), unpack_vector(smooth_factor, k))
+
+
+def _fp4_scale_swizzle_offsets(rows: int, cols: int, device: torch.device) -> torch.Tensor:
+  """Return the 128x4 block-scale permutation shared by cache-dit and FlashInfer.
+
+  :param rows: Logical row count of the scale matrix.
+  :param cols: Logical column count of the scale matrix.
+  :param device: Device of the returned index tensor.
+  :returns: Flat offsets with shape `[rows, cols]` into the padded swizzled buffer.
+  """
+  row = torch.arange(rows, device=device).view(-1, 1).expand(rows, cols)
+  col = torch.arange(cols, device=device).view(1, -1).expand(rows, cols)
+  return ((row // 128) * (cols * 128) + (col // 4) * 512 + 16 * (row % 32) + 4 * ((row // 32) % 4) +
+          col % 4)
+
+
+def _padded_fp4_scale_size(rows: int, cols: int) -> int:
+  return ceil_divide(rows, 128) * 128 * ceil_divide(cols, 4) * 4
+
+
+def swizzle_fp4_scales(scales: torch.Tensor) -> torch.Tensor:
+  """Pack `[rows, cols]` FP8 block scales into the flat 128x4 swizzled buffer.
+
+  :param scales: Block scales with shape `[rows, cols]`, dtype `float8_e4m3fn`.
+  :returns: Flat contiguous `uint8` buffer of
+    `ceil(rows / 128) * 128 * ceil(cols / 4) * 4` bytes, which is the layout FlashInfer's
+    `_view_128x4_sf` slices back out.
+  """
+  rows, cols = scales.shape
+  flat = torch.zeros(_padded_fp4_scale_size(rows, cols), dtype=torch.uint8, device=scales.device)
+  offsets = _fp4_scale_swizzle_offsets(rows, cols, scales.device).reshape(-1)
+  flat[offsets] = scales.contiguous().view(torch.uint8).reshape(-1)
+  return flat
+
+
+def unswizzle_fp4_scales(flat: torch.Tensor, rows: int, cols: int) -> torch.Tensor:
+  """Invert :func:`swizzle_fp4_scales`.
+
+  :param flat: Flat 128x4 swizzled `uint8` buffer.
+  :param rows: Logical row count of the scale matrix.
+  :param cols: Logical column count of the scale matrix.
+  :returns: Block scales with shape `[rows, cols]`, dtype `float8_e4m3fn`.
+  """
+  if flat.numel() < _padded_fp4_scale_size(rows, cols):
+    raise ValueError(f"swizzled scale buffer is too small: {flat.numel()} elements for "
+                     f"[{rows}, {cols}], need {_padded_fp4_scale_size(rows, cols)}.")
+  offsets = _fp4_scale_swizzle_offsets(rows, cols, flat.device).reshape(-1)
+  scales = flat.reshape(-1)[offsets].view(rows, cols)
+  return scales.view(torch.float8_e4m3fn)
+
+
+def convert_svdq_nvfp4_pack_to_flashinfer(
+  qweight: torch.Tensor,
+  wscales: torch.Tensor,
+  proj_up: torch.Tensor,
+  proj_down: torch.Tensor,
+  bias: torch.Tensor | None,
+  wcscales: torch.Tensor | None,
+  smooth_factor: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None,
+           torch.Tensor]:
+  """Derive FlashInfer's SVDQuant pack from cache-dit's native NVFP4 pack.
+
+  This is a one-time load-time conversion, mirroring `convert_svdq_nvfp4_pack_to_cute`.
+  FlashInfer carries a single per-tensor weight global scale plus per-16-block FP8
+  scales, while cache-dit stores a per-output-channel `wcscales` times per-block
+  `wscales`; folding the two into one FP8 block scale costs a single `e4m3`
+  re-encode. The derived pack is never serialized.
+
+  :param qweight: Native fragment-packed E2M1 weight `[N, K / 2]`.
+  :param wscales: Native fragment-packed group scales `[K / 16, N]`, FP8.
+  :param proj_up: Native fragment-packed LoRA-up weight `[N, R]`.
+  :param proj_down: Native fragment-packed LoRA-down weight `[K, R]`.
+  :param bias: Optional native packed bias `[N]`.
+  :param wcscales: Optional native packed per-channel scales `[N]`.
+  :param smooth_factor: Native packed smooth vector `[K]`.
+  :returns: `(qweight, w_sf, proj_up, proj_down, bias, pre_quant_scale)` where the first
+    two are FlashInfer's row-major packed E2M1 weight and flat 128x4 scale buffer (both
+    `uint8`), `proj_up` / `proj_down` / `bias` are the plain BF16 rows, and
+    `pre_quant_scale` is `1 / smooth_factor` because cache-dit stores the weight
+    pre-multiplied by `smooth_factor` and FlashInfer divides the activation instead.
+  """
+  if wcscales is None:
+    raise ValueError("FlashInfer needs per-output-channel wcscales for NVFP4.")
+
+  (row_major_qweight, flat_scales, row_major_proj_up, row_major_proj_down, plain_bias,
+   plain_wcscales, plain_smooth) = convert_svdq_nvfp4_pack_to_cute(qweight, wscales, proj_up,
+                                                                   proj_down, bias, wcscales,
+                                                                   smooth_factor)
+  n, k2 = row_major_qweight.shape
+  k = k2 * 2
+  block_scales = unswizzle_fp4_scales(flat_scales.view(torch.uint8).reshape(-1), n, k // 16)
+  product = block_scales.float() * plain_wcscales.float().unsqueeze(1)
+  folded = product.to(torch.float8_e4m3fn)
+  # E4M3 cannot represent every product: values below the smallest subnormal round to zero, which
+  # drops a whole 16-element block. Report it once per layer instead of losing it silently.
+  lost = int(((folded.float() == 0) & (product != 0)).sum())
+  if lost:
+    logger.debug(
+      "SVDQ -> FlashInfer pack: %d of %d block scales underflow to zero in the e4m3 "
+      "fold (%.3f%% of the weight blocks).", lost, product.numel(), 100.0 * lost / product.numel())
+  return (
+    row_major_qweight.view(torch.uint8).contiguous(),
+    swizzle_fp4_scales(folded).contiguous(),
+    row_major_proj_up.contiguous(),
+    row_major_proj_down.contiguous(),
+    None if plain_bias is None else plain_bias.contiguous(),
+    (1.0 / plain_smooth.float()).to(plain_smooth.dtype).contiguous(),
+  )
 
 
 class MmaWeightPacker:

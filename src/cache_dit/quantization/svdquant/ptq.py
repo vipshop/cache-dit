@@ -1700,6 +1700,21 @@ def load_svdq(
         logger.info("Overriding the serialized SVDQ %s=%r with the requested %r.", runtime_key,
                     serialized_value, requested_value)
       svdq_kwargs[runtime_key] = requested_value
+    # The override above can pair a runtime with a serialized option it forbids (for example
+    # `runtime_kernel="flashinfer"` with a serialized `fused_mlp=True`), so the merged dictionary
+    # has to clear the same cross-checks as a freshly built config.
+    if svdq_kwargs.get("runtime_kernel") == "flashinfer":
+      if rank == 0 or rank % 32 != 0:
+        raise ValueError(
+          "svdq_kwargs['runtime_kernel'] = 'flashinfer' requires rank > 0 and a multiple of 32; "
+          f"got rank={rank}.")
+      if svdq_kwargs.get("fused_mlp"):
+        raise ValueError(
+          "svdq_kwargs['runtime_kernel'] = 'flashinfer' is not supported with "
+          "svdq_kwargs['fused_mlp'] = True; the fused MLP passes consume the native packs.")
+      if svdq_kwargs.get("layerwise_offload"):
+        raise ValueError("svdq_kwargs['runtime_kernel'] = 'flashinfer' is not supported with "
+                         "svdq_kwargs['layerwise_offload'] = True.")
 
   load_device = _infer_module_execution_device(module)
   was_training = module.training

@@ -1,86 +1,31 @@
-"""Lazy, optional adapter for FlashInfer's complete SVDQuant linear path.
+"""Lazy, optional adapter for FlashInfer's complete SVDQuant linear chain.
 
-This module currently exposes only an operator-level adapter. The full `SVDQW4A4Linear`
-backend integration is intentionally deferred; see the future-contract note below before
-wiring it back into the runtime.
+The adapter runs FlashInfer's `svdquant_linear` on the derived pack described in
+`cache_dit.quantization.svdquant.packing.convert_svdq_nvfp4_pack_to_flashinfer`, which folds
+cache-dit's per-output-channel subscale into FlashInfer's per-block FP8 scale. The derived pack
+costs one `e4m3` re-encode of the weight scale, so this runtime is a numerical approximation of
+the native/cute runtimes, not their equivalent: use it to compare end-to-end performance against
+FlashInfer's own SVDQuant chain, not as the default runtime.
 """
 
 from __future__ import annotations
 
 import torch
 
-FLASHINFER_BACKENDS = {
-  "flashinfer+cute-dsl": "cute-dsl",
-  "flashinfer+cutlass-sm120": "cutlass-sm120",
-}
+# FlashInfer's `svdquant_linear` autotunes across several SM120 chains (`cute-dsl`,
+# `cute-dsl-unfused`, `cutlass-sm120`, fused/separate preprocessing). The runtime pins the CuTe
+# chain so a layer keeps one implementation per shape, matching the profile this runtime exists
+# to compare against.
+SVDQUANT_BACKEND = "cute-dsl"
+
+# `448 * 6` maps the FP8-E4M3 block scale maximum (448) onto the E2M1 mantissa maximum (6).
+NVFP4_GLOBAL_SCALE = 448.0 * 6.0
+
+_AMAX_CHUNK_ROWS = 1024
 
 _INSTALL_HINT = (
-  "FlashInfer is optional. Install it with `pip install flashinfer-python` (or the matching "
-  "source tree) before selecting runtime_kernel='flashinfer+cute-dsl' or "
-  "'flashinfer+cutlass-sm120'.")
-
-# -------------------------------------------------------------------------------------------------
-# Future SVDQuant backend contract (design note, not implemented yet)
-# -------------------------------------------------------------------------------------------------
-# `runtime_kernel` must be selected at quantisation/export time, not only at inference dispatch.
-# The checkpoint stores exactly one weight pack and a lightweight format tag; never store both a
-# cache-dit native/cute pack and a FlashInfer pack, and never store the original BF16/FP32 weight.
-#
-# pseudocode:
-#
-#   def quantize_linear_for_runtime(linear, calibration, runtime_kernel):
-#       shared = {
-#           "pack_format": runtime_kernel,
-#           "proj_up": ...,          # [N, R] BF16
-#           "proj_down": ...,        # [K, R] BF16
-#           "smooth_factor": ...,    # [K] BF16
-#           "bias": ...,             # [N] BF16 or None
-#           "rank": R,
-#       }
-#       if runtime_kernel in {"native", "cute"}:
-#           pack = cache_dit_native_nvfp4_pack(linear.weight)
-#           return shared | {
-#               "qweight": pack.qweight,
-#               "wscales": pack.wscales,
-#               "wcscales": pack.per_output_channel_subscale,
-#           }
-#       if runtime_kernel in FLASHINFER_BACKENDS:
-#           gw = (448 * 6) / linear.weight.abs().amax()
-#           wq, w_sf = flashinfer.nvfp4_quantize(
-#               linear.weight, gw, sfLayout=layout_128x4, do_shuffle=False)
-#           return shared | {
-#               "flashinfer_qweight": wq,       # [N, K/2] uint8
-#               "flashinfer_wscales": w_sf,     # 128x4 FP8
-#               "flashinfer_weight_scale": gw,  # scalar, needed by alpha
-#           }
-#       raise ValueError(runtime_kernel)
-#
-#   def forward(x, state, runtime_kernel):
-#       assert state["pack_format"] == runtime_kernel
-#       if runtime_kernel in {"native", "cute"}:
-#           return cache_dit_pack_forward(x, state)
-#       if runtime_kernel in FLASHINFER_BACKENDS:
-#           gs = (448 * 6) / (x * state.smooth).abs().amax()
-#           alpha = 1 / (gs * state.flashinfer_weight_scale)
-#           return flashinfer.svdquant_linear(
-#               x, state.flashinfer_qweight, state.flashinfer_wscales, alpha,
-#               state.smooth, state.smooth[:, None] * state.proj_down,
-#               state.proj_up / alpha, gs, state.bias,
-#               backend=FLASHINFER_BACKENDS[runtime_kernel])
-#
-#   def load_checkpoint(state, requested_runtime):
-#       if state["pack_format"] != requested_runtime:
-#           raise ValueError(
-#               "checkpoint pack does not match runtime_kernel; re-quantize from the "
-#               "original BF16 model with the requested backend")
-#
-# Consequences:
-#   * `wcscales` belongs only to the native/cute pack. A FlashInfer pack quantises the BF16
-#     weight directly, so per-output-channel magnitude is already absorbed into `gw`/`w_sf`.
-#   * Switching an existing cache-dit checkpoint to FlashInfer is not supported; re-quantize
-#     from the source BF16 model instead. No lossy native-pack -> FlashInfer conversion.
-#   * FlashInfer remains an optional dependency and is imported only when its pack/runtime is
-#     actually requested.
+  "FlashInfer is optional. Install it with `pip install flashinfer-python` before selecting "
+  "runtime_kernel='flashinfer'.")
 
 
 def flashinfer_available() -> bool:
@@ -92,73 +37,88 @@ def flashinfer_available() -> bool:
   return True
 
 
+_SVDQUANT_LINEAR = None
+
+
 def _load_svdquant_linear():
+  """Resolve FlashInfer's `svdquant_linear` once and reuse the callable."""
+  global _SVDQUANT_LINEAR
+  if _SVDQUANT_LINEAR is not None:
+    return _SVDQUANT_LINEAR
   try:
     from flashinfer.gemm.gemm_svdquant import svdquant_linear
   except Exception as exc:
-    raise ImportError(_INSTALL_HINT) from exc
-  return svdquant_linear
+    raise ImportError(f"{_INSTALL_HINT} Original error: {exc}") from exc
+  _SVDQUANT_LINEAR = svdquant_linear
+  return _SVDQUANT_LINEAR
 
 
-def validate_unit_wcscales(wcscales: torch.Tensor | None) -> None:
-  """Reject per-column weight scales that FlashInfer's public path cannot represent."""
-  if wcscales is None:
-    return
-  if not torch.allclose(wcscales, torch.ones_like(wcscales), rtol=0.0, atol=0.0):
-    raise ValueError("FlashInfer SVDQuant does not support non-unit per-column wcscales; "
-                     "use runtime_kernel='native' or 'cute' for this checkpoint.")
+def activation_global_scale(x: torch.Tensor, pre_quant_scale: torch.Tensor) -> torch.Tensor:
+  """Compute FlashInfer's FP32 activation global scale for one forward.
+
+  The scale only has to keep the per-block FP8 scales inside the E4M3 range, but it is a per-tensor
+  value, so it must be recomputed for every activation batch.
+
+  :param x: BF16 activation `[M, K]`.
+  :param pre_quant_scale: Per-input-channel smoothing scale `[K]`, BF16.
+  :returns: FP32 device tensor of shape `[1]` holding `448 * 6 / max|x * pre_quant_scale|`.
+  """
+  peak = torch.zeros((), dtype=torch.float32, device=x.device)
+  for start in range(0, x.shape[0], _AMAX_CHUNK_ROWS):
+    chunk = x[start:start + _AMAX_CHUNK_ROWS]
+    peak = torch.maximum(peak, (chunk * pre_quant_scale).abs().amax().float())
+  return (NVFP4_GLOBAL_SCALE / peak.clamp_min(1e-12)).reshape(1)
 
 
 def flashinfer_svdquant_linear(
   x: torch.Tensor,
-  qweight: torch.Tensor,
-  wscales: torch.Tensor,
-  proj_up: torch.Tensor,
-  proj_down: torch.Tensor,
-  bias: torch.Tensor | None,
-  wcscales: torch.Tensor | None,
-  smooth: torch.Tensor,
-  alpha: float,
-  backend: str,
+  weight_fp4: torch.Tensor,
+  weight_sf: torch.Tensor,
+  l2t_smoothed: torch.Tensor,
+  l1_weight: torch.Tensor,
+  pre_quant_scale: torch.Tensor,
+  bias: torch.Tensor | None = None,
 ) -> torch.Tensor:
-  """Run FlashInfer's full SVDQuant chain on standard row-major packs.
+  """Run FlashInfer's fused SVDQuant linear with cache-dit's derived pack.
+
+  Mirrors `flashinfer.gemm.svdquant_linear` but takes the un-divided LoRA-up weight and derives
+  the per-forward `global_scale` / `alpha` pair itself, so callers never have to keep the two
+  mutually inverse by hand.
 
   :param x: BF16 activation `[M, K]`.
-  :param qweight: standard row-major E2M1 weight `[N, K/2]`, uint8.
-  :param wscales: standard 128x4 weight scales, flat uint8.
-  :param proj_up: row-major LoRA-up weight `[N, R]`, BF16.
-  :param proj_down: row-major LoRA-down weight `[K, R]`, BF16.
-  :param bias: optional BF16 bias `[N]`.
-  :param wcscales: optional per-column scales; must be unit or None.
-  :param smooth: per-input-channel smoothing scale `[K]`, BF16.
-  :param alpha: FP4 residual dequantization scale.
-  :param backend: cache-dit runtime string.
+  :param weight_fp4: Row-major packed E2M1 weight `[N, K / 2]`, `uint8`.
+  :param weight_sf: Flat 128x4 swizzled weight block scales, `uint8`.
+  :param l2t_smoothed: LoRA-down matrix `[K, R]`, BF16. cache-dit stores `proj_down` with the
+    smoothing compensation already folded in, so `x @ proj_down` is the LoRA-down activation the
+    native runtime produces; pass it unscaled. (`smooth` applies to the residual GEMM only.)
+  :param l1_weight: LoRA-up weight `[N, R]`, BF16, at its own scale (not pre-divided by alpha).
+  :param pre_quant_scale: `1 / smooth_factor` `[K]`, BF16.
+  :param bias: Optional BF16 bias `[N]`.
   :returns: BF16 output `[M, N]`.
   """
-  if backend not in FLASHINFER_BACKENDS:
-    raise ValueError(f"Unknown FlashInfer SVDQuant backend {backend!r}.")
-  validate_unit_wcscales(wcscales)
-  svdquant_linear = _load_svdquant_linear()
-
-  device = x.device
-  # FlashInfer uses an activation global scale to map the smoothed input into E2M1. The
-  # checkpoint's wtscale is the weight-side dequant scale, so the fused residual alpha is the
-  # ratio of the two. l1 must use the same effective alpha to avoid scaling the LoRA term twice.
-  amax = (x.float() * smooth.float().unsqueeze(0)).abs().amax().clamp_min(1e-12)
-  global_scale = (448.0 * 6.0 / amax).to(torch.float32)
-  alpha_eff = float(alpha) / float(global_scale.item())
-  alpha_tensor = torch.tensor([alpha_eff], dtype=torch.float32, device=device)
-  l2t_smoothed = (smooth.float().unsqueeze(1) * proj_down.float()).to(torch.bfloat16)
-  l1_scaled = (proj_up.float() / alpha_eff).to(torch.bfloat16)
-  return svdquant_linear(
+  global_scale = activation_global_scale(x, pre_quant_scale)
+  # The fused residual epilogue emits `alpha * (a @ b^T + d @ l1^T)`, and `l1` must carry
+  # `1 / alpha` so the LoRA term lands at its original scale.
+  alpha = (1.0 / global_scale).reshape(1)
+  l1_scaled = (l1_weight.float() * global_scale).to(l1_weight.dtype).contiguous()
+  return _load_svdquant_linear()(
     x,
-    qweight,
-    wscales,
-    alpha_tensor,
-    smooth,
+    weight_fp4,
+    weight_sf,
+    alpha,
+    pre_quant_scale,
     l2t_smoothed,
     l1_scaled,
     global_scale,
     bias,
-    backend=FLASHINFER_BACKENDS[backend],
+    backend=SVDQUANT_BACKEND,
   )
+
+
+__all__ = [
+  "NVFP4_GLOBAL_SCALE",
+  "SVDQUANT_BACKEND",
+  "activation_global_scale",
+  "flashinfer_available",
+  "flashinfer_svdquant_linear",
+]

@@ -84,8 +84,9 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     "--svdq-runtime-kernel",
     type=str,
     default=None,
-    choices=("native", "cute"),
-    help="SVDQ GEMM family. Default: auto (native for INT4 and NVFP4).",
+    choices=("native", "cute", "flashinfer"),
+    help=("SVDQ GEMM family. Default: auto (native for INT4 and NVFP4). 'flashinfer' is a "
+          "comparison runtime that derives its pack from the checkpoint at load time."),
   )
   parser.add_argument(
     "--verbose",

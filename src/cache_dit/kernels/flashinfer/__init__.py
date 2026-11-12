@@ -1,17 +1,18 @@
-"""Optional FlashInfer SVDQuant backend.
+"""Optional FlashInfer SVDQuant runtime.
 
 This package intentionally does not import FlashInfer at import time. Cache-DiT remains usable
-without the optional dependency; selecting a FlashInfer runtime raises a clear installation error.
+without the optional dependency; selecting the `flashinfer` runtime raises a clear installation
+error at the first forward.
 """
 
-from .svdquant import FLASHINFER_BACKENDS
+from .svdquant import SVDQUANT_BACKEND
+from .svdquant import activation_global_scale
 from .svdquant import flashinfer_available
 from .svdquant import flashinfer_svdquant_linear
-from .svdquant import validate_unit_wcscales
 
 __all__ = [
-  "FLASHINFER_BACKENDS",
+  "SVDQUANT_BACKEND",
+  "activation_global_scale",
   "flashinfer_available",
   "flashinfer_svdquant_linear",
-  "validate_unit_wcscales",
 ]
