@@ -331,6 +331,11 @@ def _required_models_sources() -> list[str]:
     "csrc/kernels/models/qwen_image21_modulate_affine.cu",
     "csrc/kernels/models/qwen_image21_gated_residual.cu",
     "csrc/kernels/models/qwen_image21_silu_mul.cu",
+    "csrc/kernels/models/flux2_klein.cpp",
+    "csrc/kernels/models/flux2_klein_qk_norm_rope.cu",
+    "csrc/kernels/models/flux2_klein_ln_modulate.cu",
+    "csrc/kernels/models/flux2_klein_gated_residual.cu",
+    "csrc/kernels/models/flux2_klein_silu_mul.cu",
   ]
 
 

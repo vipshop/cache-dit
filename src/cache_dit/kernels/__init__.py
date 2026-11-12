@@ -10,6 +10,12 @@ from .cuda_ext import cuda_ext_is_available
 from .models import boogu_fused_qk_norm_rope
 from .models import boogu_gated_rms_norm
 from .models import boogu_scaled_rms_norm
+from .models import flux2_klein_gated_residual
+from .models import flux2_klein_ln_modulate
+from .models import flux2_klein_qk_norm_rope
+from .models import flux2_klein_qk_norm_rope_join
+from .models import flux2_klein_residual_ln_modulate
+from .models import flux2_klein_silu_mul
 from .models import qwen_image21_gated_residual
 from .models import qwen_image21_ln_modulate
 from .models import qwen_image21_qk_norm_rope
@@ -28,6 +34,12 @@ __all__ = [
   "boogu_scaled_rms_norm",
   "boogu_gated_rms_norm",
   "boogu_fused_qk_norm_rope",
+  "flux2_klein_qk_norm_rope",
+  "flux2_klein_qk_norm_rope_join",
+  "flux2_klein_ln_modulate",
+  "flux2_klein_residual_ln_modulate",
+  "flux2_klein_gated_residual",
+  "flux2_klein_silu_mul",
   "qwen_image21_qk_norm_rope",
   "qwen_image21_ln_modulate",
   "qwen_image21_gated_residual",
