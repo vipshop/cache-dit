@@ -1,6 +1,6 @@
 ---
 name: cache-dit-quantization
-description: 'Use when choosing, using, extending, or debugging Cache-DiT quantization: TorchAO online quantization (fp8/int8/int4/nvfp4), SVDQuant W4A4 PTQ (calibration + checkpoint) and DQ (no calibration), QuantizeConfig / regional quantize / precision plan / per_tensor_fallback, per-layer accuracy observers, the SVDQ converter CLI, and the user docs in docs/user_guide/QUANTIZATION.md.'
+description: 'Use when choosing, using, extending, or debugging Cache-DiT quantization: TorchAO online quantization (fp8/int8/int4/nvfp4), cache-dit native online FP8 (E4M3 quantize + CuTe GEMM), SVDQuant W4A4 PTQ (calibration + checkpoint) and DQ (no calibration), QuantizeConfig / backend selection / regional quantize / precision plan / per_tensor_fallback, per-layer accuracy observers, the SVDQ converter CLI, and the user docs in docs/user_guide/QUANTIZATION.md.'
 argument-hint: 'Describe the target model and GPU, the quantization type or backend, the accuracy/memory/latency goal, and whether serialization, observers, or a new backend is involved.'
 user-invocable: true
 ---
@@ -26,6 +26,7 @@ user-invocable: true
 | `src/cache_dit/quantization/backend.py` | `QuantizeBackend` 枚举（`AUTO`/`TORCHAO`/`CACHE_DIT`/`NONE`）与字符串别名解析 |
 | `src/cache_dit/quantization/dispatch.py` | 公共 `quantize()` / `load()` / `remove_quantization_stats()`，按 backend 分派 |
 | `src/cache_dit/quantization/torchao/` | TorchAO online 路径：`quantize_ao.py`（quant_type → AO config、过滤与 fallback）、`scaled_mm.py` |
+| `src/cache_dit/quantization/fp8/` | cache-dit 自有 online FP8：`quantize.py`（regional/exclude/precision plan/observer）、`linear.py`（`CacheDitFP8Linear`、权重离线量化） |
 | `src/cache_dit/quantization/svdquant/` | SVDQuant：`ptq.py`（校准 + 序列化 + load）、`quantizer.py`（DQ/PTQ 量化数学）、`linear.py`/`fused.py`（运行模块）、`packing.py`/`lowrank.py`/`passes.py`/`dtensor.py` |
 | `src/cache_dit/quantization/observers.py` | 逐层精度观察器（默认关闭） |
 | `src/cache_dit/quantization/converter.py` | 独立转换 CLI（`cache-dit-convert`，只支持 SVDQ `_dq`） |
@@ -35,16 +36,18 @@ user-invocable: true
 
 ## 2. 支持面（quant_type）
 
-两条互不相干的路径，**不要混用**：
+三条互不相干的路径，**不要混用**：
 
 - **TorchAO online quantization**（`quant_type` 直接是 torchao 类型）：`float8_per_row`（推荐）、`float8_per_tensor`、`float8_per_block`、`float8_weight_only`、`int8_per_row`、`int8_per_tensor`、`int8_weight_only`、`int4_weight_only`、`nvfp4`、`nvfp4_weight_only`。
+- **cache-dit native online FP8**（`backend="cache_dit"` + 三种 `float8_*`）：自有 E4M3 量化与 CuTe GEMM；`per_row` = 激活 per-token + 权重 per-output-channel，`per_block` = 激活 `(1,128)` + 权重 `(128,128)` 且逐 K block 重标定。无 torchao runtime 依赖，不支持 TP/DTensor 或 FP8 序列化；`per_tensor_fallback` 对该后端无效。
 - **SVDQuant W4A4**（`quant_type` 形如 `svdq_{int4,nvfp4}_r{rank}[_dq]`）：有 `_dq` 后缀是 DQ（无校准），无后缀是 PTQ（需要校准 + 可序列化）。
 
 门槛与依赖（细节与最新版本要求见 `QUANTIZATION.md` 的 Overview）：
 
 | 类型 | GPU | 额外依赖 |
 |---|---|---|
-| float8_* | >=sm89 | torchao>=0.17 |
+| float8_*（TorchAO，默认） | >=sm89 | torchao>=0.17 |
+| float8_*（显式 `backend="cache_dit"`） | >=sm100 | 统一 `cache_dit._C_ops` 扩展 |
 | int8_* | >=sm80 | torchao（int8 kernel 走 mslk，需另装） |
 | int4_weight_only | >=sm90（w4a16 需要 TMA） | torchao（int4 kernel 走 mslk，需另装） |
 | nvfp4 / nvfp4_weight_only | >=sm100 | torchao（nvfp4 kernel 走 mslk，需另装；Triton 激活量化 + 动态 per-tensor scale） |
@@ -67,7 +70,7 @@ restored = cache_dit.load(module, "path/to/checkpoint")      # 仅 CACHE_DIT（S
 
 | 字段 | 作用 |
 |---|---|
-| `backend` | `AUTO`（`quant_type` 以 `svdq` 开头 → `CACHE_DIT`，其余 → `TORCHAO`）/`TORCHAO`/`CACHE_DIT`/`NONE` |
+| `backend` | `AUTO`（`quant_type` 以 `svdq` 开头 → `CACHE_DIT`，其余 → `TORCHAO`）/`TORCHAO`/`CACHE_DIT`/`NONE`；显式 `CACHE_DIT` + 三种 `float8_*` 进入自有 FP8，其他组合配置期报错 |
 | `quant_type` | 见 §2 |
 | `exclude_layers` | 按 state_dict 名排除（默认带 `DEFAULT_EXCLUDE_LAYERS`） |
 | `regional_quantize` | 只量化 repeated blocks（默认 True） |
@@ -81,7 +84,7 @@ restored = cache_dit.load(module, "path/to/checkpoint")      # 仅 CACHE_DIT（S
 | `observer` | `QuantizationObserverConfig`，默认 `None` = 关闭 |
 | `verbose` | 打印逐层量化信息 |
 
-CLI：`--quantize` / `--quantize-type` / 预设（如 `--svdq-int4-r32-dq`、`--svdq-nvfp4-r32-dq`）/ `--quantize-exclude-layers` / `--quantize-text-encoder` / `--quantize-text-type` / `--quantize-controlnet` / `--quantize-controlnet-type` / `--quantize-verbose`。转换独立模型用 `cache-dit-convert`（§5.4）。
+CLI：`--quantize` / `--quantize-type` / `--quantize-backend torchao|cache_dit`（省略 = AUTO）/ 预设（如 `--svdq-int4-r32-dq`、`--svdq-nvfp4-r32-dq`）/ `--quantize-exclude-layers` / `--quantize-text-encoder` / `--quantize-text-type` / `--quantize-controlnet` / `--quantize-controlnet-type` / `--quantize-verbose`。转换独立模型用 `cache-dit-convert`（§5.4）。
 
 ## 4. TorchAO online 路径
 

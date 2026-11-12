@@ -247,6 +247,9 @@ cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥t
 ```bash
 # please also enable torch.compile if the quantation is using.
 python3 -m cache_dit.generate flux --cache --quantize-type float8 --compile
+# cache-dit's own FP8 kernels (sm100+), instead of the default TorchAO backend
+python3 -m cache_dit.generate flux --cache --quantize-type float8_per_row \
+  --quantize-backend cache_dit --compile
 python3 -m cache_dit.generate flux --cache --quantize-type int8 --compile
 python3 -m cache_dit.generate flux --cache --quantize-type float8_weight_only --compile
 python3 -m cache_dit.generate flux --cache --quantize-type int8_weight_only --compile

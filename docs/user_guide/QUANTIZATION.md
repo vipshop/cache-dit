@@ -8,9 +8,9 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 |Quantization Types| Description|Devices|
 |:---|:---|:---| 
-|<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
-|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization weights and activations (<span style="color:green;">dynamic quantization</span>) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
+|<span style="color:#c77dff;">float8_per_row</span> |quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with rowwise method. (**<span style="color:#c77dff;">recommended</span>**)|TorchAO: <span style="color:#c77dff;">>=sm89</span>; cache-dit: <span style="color:#c77dff;">>=sm100</span>|
+|<span style="color:#c77dff;">float8_per_tensor</span>|quantize weights and activations to float8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|TorchAO: <span style="color:#c77dff;">>=sm89</span>; cache-dit: <span style="color:#c77dff;">>=sm100</span>|
+|<span style="color:#c77dff;">float8_per_block</span>|block-wise quantization weights and activations (<span style="color:green;">dynamic quantization</span>) to float8, which can provide better precision, activations's blocksize: (1, 128), weight's blocksize: (128, 128) |TorchAO: <span style="color:#c77dff;">>=sm89</span>; cache-dit: <span style="color:#c77dff;">>=sm100</span>|
 |<span style="color:#c77dff;">float8_weight_only</span>|quantize <span style="color:green;">only weights</span> to float8, keep activations in full precision|<span style="color:#c77dff;">>=sm89</span>, Ada, Hopper or newer|
 |<span style="color:#c77dff;">int8_per_row</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with rowwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
@@ -24,9 +24,35 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
+## Quantization Backends
+
+The three online FP8 types can run on two independent backends:
+
+- <span style="color:#c77dff;">torchao</span>: the historical path, using TorchAO's Float8Tensor. `per_row` and `per_tensor` use `torch._scaled_mm`; `per_block` uses TorchAO's Triton blockwise GEMM. Requires torchao and works on <span style="color:#c77dff;">>=sm89</span>.
+- <span style="color:#c77dff;">cache_dit</span>: Cache-DiT's own E4M3 quantize and CuTe FP8 GEMM kernels. It has no torchao runtime dependency, supports the same three granularities, and currently requires <span style="color:#c77dff;">sm100 or newer</span>. CUDA Graph-safe, but TP/DTensor sharding and serialized FP8 checkpoints are not supported. `per_tensor_fallback` is a TorchAO/TP compatibility switch and has no effect on this backend.
+
+`QuantizeConfig(backend=...)` defaults to `AUTO`. AUTO keeps the existing routing: `svdq*` uses the cache-dit SVDQuant path and every other type uses TorchAO. Passing `backend="cache_dit"` with `float8_per_row`, `float8_per_tensor`, or `float8_per_block` selects the native FP8 path; unsupported combinations raise instead of silently falling back. The CLI equivalent is `--quantize-backend torchao|cache_dit`.
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="float8_per_row", backend="cache_dit"),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
+  --quantize-type float8_per_row --quantize-backend cache_dit --compile
+```
+
+The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements.
+
 ## FP8 Quantization
 
-Currently, Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types via TorchAo backend (<span style="color:green;">torchao>=0.17.0</span> required). Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Please make sure to install the latest version of torchao before using quantization features.
+Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types. The default TorchAO backend requires <span style="color:green;">torchao>=0.17.0</span>; the optional cache-dit backend uses the bundled `cache_dit._C_ops` extension. Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Install torchao before using the default backend.
 
 ```bash
 # stable: torchao (change cu130 to cu129 if using CUDA 12.9)

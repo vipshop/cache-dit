@@ -39,21 +39,25 @@ def quantize(
                      "quantize_config is specified, please use QuantizeConfig to "
                      "specify quantization configurations.")
 
-  # Dispatch to different quantization backends according to the quantize_config.
-  # Currently we only support torchao as the quantization backend, and we may
-  # support more backends in the future.
+  # Dispatch to the TorchAO, native SVDQuant, or native FP8 implementation according
+  # to the resolved backend and quant_type.
   if quantize_config.backend == QuantizeBackend.TORCHAO:
     from .torchao import quantize_ao
 
     module = quantize_ao(module, quantize_config, **kwargs)
   elif quantize_config.backend == QuantizeBackend.CACHE_DIT:
-    from .svdquant.ptq import quantize_svdq_dq
-    from .svdquant.ptq import quantize_svdq_ptq
+    if quantize_config.is_svdq():
+      from .svdquant.ptq import quantize_svdq_dq
+      from .svdquant.ptq import quantize_svdq_ptq
 
-    if quantize_config.is_svdq_dq():
-      module = quantize_svdq_dq(module, quantize_config)
+      if quantize_config.is_svdq_dq():
+        module = quantize_svdq_dq(module, quantize_config)
+      else:
+        module = quantize_svdq_ptq(module, quantize_config)
     else:
-      module = quantize_svdq_ptq(module, quantize_config)
+      from .fp8 import quantize_fp8
+
+      module = quantize_fp8(module, quantize_config)
   else:
     raise ValueError(f"backend: {quantize_config.backend} is not supported now!")
 
@@ -83,6 +87,10 @@ def load(
       f"got {type(quantize_config_or_path)}.")
 
   if backend == QuantizeBackend.CACHE_DIT:
+    if isinstance(quantize_config_or_path,
+                  QuantizeConfig) and not (quantize_config_or_path.is_svdq()):
+      raise ValueError("cache-dit native FP8 is online-only and has no serialized checkpoint "
+                       "format; load() only supports SVDQuant.")
     from .svdquant.ptq import load_svdq
 
     return load_svdq(module, quantize_config_or_path)
@@ -123,6 +131,10 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
       del module._svdq_runtime_quantize_time_s
     if hasattr(module, "_svdq_runtime_quantized_after_forwards"):
       del module._svdq_runtime_quantized_after_forwards
+    if hasattr(module, "_fp8_quantized_layers"):
+      del module._fp8_quantized_layers
+    if hasattr(module, "_fp8_skipped_layers"):
+      del module._fp8_skipped_layers
 
   _remove_quantization_stats(module)
 
