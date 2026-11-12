@@ -254,8 +254,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                            const float* __restrict__ a_scale, const float* __restrict__ b_scale,
                            const __nv_bfloat16* __restrict__ bias, int M, int N, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(CUDA_CTA_RECONFIG_ACTIVATED)
   static_assert(CUDA_CTA_RECONFIG_ACTIVATED,
                 "FP8 warp specialization requires an architecture-specific -arch=sm_*a build.");
+#endif
   using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
   using CtaBarrier = cutlass::arch::ClusterBarrier;
   using NamedBarrier = cutlass::arch::NamedBarrier;
@@ -585,8 +587,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                            const __nv_bfloat16* __restrict__ bias, int M, int N, int K,
                            int num_k_blocks) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(CUDA_CTA_RECONFIG_ACTIVATED)
   static_assert(CUDA_CTA_RECONFIG_ACTIVATED,
                 "FP8 warp specialization requires an architecture-specific -arch=sm_*a build.");
+#endif
   using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
   using CtaBarrier = cutlass::arch::ClusterBarrier;
   using NamedBarrier = cutlass::arch::NamedBarrier;
