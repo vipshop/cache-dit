@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
-from cache_dit.quantization.fp8.linear import CacheDitFP8Linear
+from cache_dit.quantization.fp8.linear import QW8A8Linear
 
 MODES = ("per_row", "per_tensor", "per_block")
 
@@ -287,7 +287,7 @@ def _compiled_cache_linear(w: torch.Tensor, bias: torch.Tensor | None, mode: str
     linear.weight.copy_(w)
     if bias is not None:
       linear.bias.copy_(bias)
-  cache_module = CacheDitFP8Linear.from_linear(linear, mode)
+  cache_module = QW8A8Linear.from_linear(linear, mode)
   return torch.compile(lambda x: cache_module(x), fullgraph=False)
 
 

@@ -262,11 +262,11 @@ def test_eager_linear_uses_custom_quantize() -> None:
   from torch.profiler import ProfilerActivity
   from torch.profiler import profile
 
-  from cache_dit.quantization.fp8 import CacheDitFP8Linear
+  from cache_dit.quantization.fp8 import QW8A8Linear
 
   torch.manual_seed(10)
   linear = torch.nn.Linear(256, 256, device="cuda", dtype=torch.bfloat16)
-  packed = CacheDitFP8Linear.from_linear(linear, "per_row")
+  packed = QW8A8Linear.from_linear(linear, "per_row")
   x = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
   packed(x)
   torch.cuda.synchronize()
@@ -281,11 +281,11 @@ def test_compiled_linear_uses_fusible_torch_quantize() -> None:
   from torch.profiler import ProfilerActivity
   from torch.profiler import profile
 
-  from cache_dit.quantization.fp8 import CacheDitFP8Linear
+  from cache_dit.quantization.fp8 import QW8A8Linear
 
   torch.manual_seed(8)
   linear = torch.nn.Linear(256, 256, device="cuda", dtype=torch.bfloat16)
-  packed = CacheDitFP8Linear.from_linear(linear, "per_row")
+  packed = QW8A8Linear.from_linear(linear, "per_row")
   x = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
   compiled = torch.compile(lambda value: packed(value), fullgraph=True)
   expected = packed(x)

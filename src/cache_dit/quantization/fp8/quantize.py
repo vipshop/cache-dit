@@ -6,7 +6,7 @@ from torch import nn
 from ...logger import init_logger
 from ..config import QuantizeConfig
 from ..observers import QuantizeObserver
-from .linear import CacheDitFP8Linear
+from .linear import QW8A8Linear
 
 logger = init_logger(__name__)
 
@@ -75,7 +75,7 @@ def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Modul
   :param module: Transformer or other module to quantize in place.
   :param quantize_config: Validated quantization configuration.
   :returns: The same module with supported linear layers replaced by
-    :class:`CacheDitFP8Linear`.
+    :class:`QW8A8Linear`.
   """
 
   if not isinstance(module, nn.Module):
@@ -139,7 +139,7 @@ def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Modul
         skipped_layers[full_name] = reason
         logger.warning("[FP8] skipping %s: %s", full_name, reason)
         continue
-      replacement = CacheDitFP8Linear.from_linear(child, mode)
+      replacement = QW8A8Linear.from_linear(child, mode)
       _replace_module(region, local_name, replacement)
       quantized_layers.append(full_name)
 
@@ -180,4 +180,4 @@ def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Modul
   return module
 
 
-__all__ = ["CacheDitFP8Linear", "quantize_fp8"]
+__all__ = ["QW8A8Linear", "quantize_fp8"]

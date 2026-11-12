@@ -82,13 +82,13 @@ def test_native_fp8_quantizes_only_supported_repeated_blocks(mode: str) -> None:
       exclude_layers=["modulation"],
     ),
   )
-  assert all(type(block.proj).__name__ == "CacheDitFP8Linear" for block in out.blocks)
+  assert all(type(block.proj).__name__ == "QW8A8Linear" for block in out.blocks)
   assert isinstance(out.modulation, nn.Linear)
   if mode == "per_block":
     assert all(isinstance(block.bad_shape, nn.Linear) for block in out.blocks)
     assert len(out._fp8_skipped_layers) == 2
   else:
-    assert all(type(block.bad_shape).__name__ == "CacheDitFP8Linear" for block in out.blocks)
+    assert all(type(block.bad_shape).__name__ == "QW8A8Linear" for block in out.blocks)
   assert out._quantize_type == f"float8_{mode}"
   assert len(out._fp8_quantized_layers) == (2 if mode == "per_block" else 4)
   assert out._quantize_config.backend == QuantizeBackend.CACHE_DIT
@@ -119,9 +119,9 @@ def test_native_fp8_forward_tracks_bf16_reference() -> None:
 def test_fp8_weight_dequantize_matches_quantized_linear() -> None:
   torch.manual_seed(2)
   linear = nn.Linear(128, 128).cuda().to(torch.bfloat16)
-  from cache_dit.quantization.fp8.linear import CacheDitFP8Linear
+  from cache_dit.quantization.fp8.linear import QW8A8Linear
 
-  packed = CacheDitFP8Linear.from_linear(linear, "per_row")
+  packed = QW8A8Linear.from_linear(linear, "per_row")
   dense = packed.dequantize_weight()
   assert dense.shape == linear.weight.shape
   assert dense.dtype == torch.bfloat16

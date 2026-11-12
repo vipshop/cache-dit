@@ -1,4 +1,4 @@
-"""Online FP8 linear layer backed by cache-dit's native CUDA operators."""
+"""Online quantize + W8A8 linear layer backed by cache-dit's native operators."""
 
 import torch
 from torch import nn
@@ -46,13 +46,14 @@ def _expand_block_scale(scale: torch.Tensor, rows: int, cols: int, is_weight: bo
   return expanded[:, :cols]
 
 
-class CacheDitFP8Linear(nn.Module):
-  """Linear layer running cache-dit's native FP8 quantize and GEMM operators.
+class QW8A8Linear(nn.Module):
+  """Linear layer running cache-dit's native quantize + W8A8 operators.
 
-  The FP8 weight and its scale are derived buffers: they are not persistent, so
+  The 8-bit weight and its scale are derived buffers: they are not persistent, so
   a float checkpoint cannot accidentally round-trip an unlabelled quantized
-  state. Bias stays a BF16 parameter. Callers must not cast the quantized
-  module to another floating dtype; device moves are supported.
+  state. Only E4M3 FP8 is implemented today; the class name leaves room for INT8
+  once a matching W8A8 GEMM exists. Bias stays a BF16 parameter. Callers must not
+  cast the quantized module to another floating dtype; device moves are supported.
   """
 
   def __init__(
@@ -76,7 +77,7 @@ class CacheDitFP8Linear(nn.Module):
 
     super().__init__()
     if dtype != torch.bfloat16:
-      raise ValueError(f"CacheDitFP8Linear requires bfloat16, got {dtype}.")
+      raise ValueError(f"QW8A8Linear requires bfloat16, got {dtype}.")
     self.in_features = in_features
     self.out_features = out_features
     self.mode = mode
@@ -104,7 +105,7 @@ class CacheDitFP8Linear(nn.Module):
     mode: str,
     *,
     quantize_device: torch.device | str | None = None,
-  ) -> "CacheDitFP8Linear":
+  ) -> "QW8A8Linear":
     """Quantize a float ``nn.Linear`` weight once and build the runtime module.
 
     :param linear: Source linear layer. Its weight must be a BF16 2D tensor.
@@ -115,7 +116,7 @@ class CacheDitFP8Linear(nn.Module):
     """
 
     if not isinstance(linear, nn.Linear):
-      raise TypeError(f"CacheDitFP8Linear.from_linear expects nn.Linear, got {type(linear)}.")
+      raise TypeError(f"QW8A8Linear.from_linear expects nn.Linear, got {type(linear)}.")
     weight = linear.weight.detach()
     if weight.dim() != 2:
       raise ValueError("FP8 quantization requires a 2D linear weight.")
@@ -156,9 +157,9 @@ class CacheDitFP8Linear(nn.Module):
     """
 
     if x.dtype != torch.bfloat16:
-      raise ValueError(f"CacheDitFP8Linear expects bfloat16 activations, got {x.dtype}.")
+      raise ValueError(f"QW8A8Linear expects bfloat16 activations, got {x.dtype}.")
     if self.qweight.dtype != torch.float8_e4m3fn or self.wscales.dtype != torch.float32:
-      raise RuntimeError("CacheDitFP8Linear buffers were cast after quantization; do not call "
+      raise RuntimeError("QW8A8Linear buffers were cast after quantization; do not call "
                          "`.to(dtype)` on a quantized module.")
     leading_shape = x.shape[:-1]
     flat = x.reshape(-1, self.in_features)

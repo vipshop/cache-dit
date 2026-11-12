@@ -5,6 +5,6 @@ from .observers import QuantizeObserver
 from .dispatch import load
 from .dispatch import quantize
 from .dispatch import remove_quantization_stats
-from .fp8 import CacheDitFP8Linear
+from .fp8 import QW8A8Linear
 from .svdquant import SVDQW4A4Linear
 from .svdquant import quantize_linear_svdq_w4a4
