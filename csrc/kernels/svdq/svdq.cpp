@@ -132,9 +132,11 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     const int64_t M = K > 0 ? input->numel() / K : 0;
     torch::Tensor lora_scratch_t;
     if (input && lora_down && input->dim() > 0 && lora_down->dim() > 0) {
-      // Rank32 crosses to fused above 8K; rank64/128 use split-K throughout the measured matrix.
-      const bool use_split_k =
-        ::svdq::cute_kernels::is_specialized_rank(rank) && (rank != 32 || M <= 8192);
+      // Small rank64 producers use the fused schedule to avoid scratch/finalize overhead and
+      // launch more CTAs. Long-K keeps split-K for its additional K-dimension parallelism.
+      const bool use_small_fused = rank == 64 && M <= 512 && K <= 3072;
+      const bool use_split_k = ::svdq::cute_kernels::is_specialized_rank(rank) &&
+                               (rank != 32 || M <= 8192) && !use_small_fused;
       if (use_split_k) {
         lora_scratch_t = at::empty({M, rank}, input->options().dtype(at::kFloat));
       }

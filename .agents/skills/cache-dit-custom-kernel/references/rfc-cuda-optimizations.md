@@ -19,7 +19,7 @@
 | 编号 | 项目 | 状态 | 验收标准 |
 |---|---|---|---|
 | CDK-1 | 独立 CuTe producer 与 hybrid GEMM 工作流 | 已完成 | producer 输出 native qact/ascales + row-major BF16 D；fused 无 scratch，split-K 使用内部 FP32 scratch/finalize；A/SFA G2R，B/SFB/D/L1 TMA |
-| CDK-2 | Producer kernel 性能追平/略优 | 已完成 | PRO 5000 官方 bench 5 shape × rank32/64/128：producer geomean 1.128× vs native，15/15 快（1.060×–1.212×）；证据见 `svdq-nvfp4-cute.md` §29 |
+| CDK-2 | Producer kernel 性能追平/略优 | 已完成 | PRO 5000 官方 bench 5 shape × rank32/64/128：本次会话回归 geomean 1.1344×，15/15 快（各格均不进入小 M 新分支）；小 M 收益另见 `svdq-nvfp4-cute.md` §31 |
 | CDK-3 | Producer 改用 CuTe TiledMMA/TiledCopy | 已完成 | rank32/64/128 拆分 TU，fused + K128 async split-K + K256 split-K；qact/ascales bitwise golden 通过 |
 | CDK-4 | GEMM 稳态快于 native 至少 5% | 进行中 | 官方 bench 三轮中位 kernel-only geomean **1.0248×**，12/15；NCU Tensor 84.2%、DRAM 12.9%、local=0，已接近单 CTA 资源几何上限，现实剩余约 1%–2% |
 | CDK-5 | 完整 CuTe 工作流 e2e 快至少 5% | 进行中 | 单会话 row-major e2e geomean **1.0553×**（14/15），cute+native-D **1.0462×**（14/15）；尚需跨会话/FLUX 稳定性验收 |
@@ -30,7 +30,7 @@
 ## 3. 完成状态清单
 
 - [x] CDK-1：独立 CuTe producer + A/SFA G2R、B/SFB/D/L1 TMA GEMM；fused 和 split-K 均输出 native qact/ascales 与 row-major BF16 D。
-- [x] CDK-2：producer 官方 bench 5 shape × 3 rank 全格快于 native，geomean 1.128×；rank32/64/128 无回退点。
+- [x] CDK-2：producer 官方 bench 5 shape × 3 rank 全格快于 native；本次会话回归 geomean 1.1344×，这些格不进入小 M 新分支，不把会话间增量归因于本项改动。
 - [x] CDK-3：`quantize_impl.cuh` + `quantize_r32/64/128.cu`，TiledMMA/TiledCopy/swizzle、K128 double-A async、K256 split-K、rank32 大 M fused；K64/192/3136 tail 与 golden 已验证。
 - [ ] CDK-4：GEMM 快于 native 至少 5%。kernel-only geomean 1.0248×；Tensor 84.2%、DRAM 12.9%、无 spill，已到当前 TMA/G2R + 单 CTA 结构的局部最优。
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。row-major e2e 1.0553×、cute+native-D 1.0462×（单会话）；需重复会话与 FLUX 稳定验收后才能关闭。
@@ -75,10 +75,11 @@ GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验
 
 ### 6.2 Producer 优先项
 
-1. **CuTe split-K bank conflict**（`quantize_impl.cuh`，rank64/128 十格）：380.9K（native 1.9K），occupancy 16.6%、198 regs、91 KiB smem、L2-resident。先用 SASS/PC sampling 定位 SFA/SFB shared copy，再改单一路径；目标 producer kernel 3%–8%，不承诺 e2e 同幅。
-2. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：手搓 MMA/ldmatrix + 手写 swizzle，42.9K conflict、occupancy 29.7% 虽可改，但改造与回归成本高，不作为近期项。
-3. **fused 不再优化**：DRAM/Mem 已 90.2%，是带宽墙。
-4. **producer e2e 上下文**：NSYS 总 producer 中位 native 94.4us / CuTe 101.0us，而 NCU kernel 本体 CuTe 多数更快；finalize 约 2us。先拆 allocator/cache/finalize/launch，不能只看 isolated kernel。
+1. **小 M dispatch（已完成）**：rank64、M≤512、K≤3072 走 fused，NCU 20.58→18.18us、真实形状加权 producer 52.92→51.01ms/step；rank128、M≤256、K≤3072 走 K128 async split-K，NCU 24.80→12.77us、官方 Event 36.74→29.98us。rank128/M512 保持 K256，长 K 和大 M 不变，证据见 `svdq-nvfp4-cute.md` §31。
+2. **split-K bank-conflict 路线关闭**：B CACHEGLOBAL 将 LDGSTS 冲突 282.9K→0，但 NCU 57.25→57.66us；64-bit copy 将冲突升至 603.8K 且更慢。不要再做仅以降低冲突计数为目标的 B layout/copy 微调。
+3. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：手搓 MMA/ldmatrix + 手写 swizzle，42.9K conflict、occupancy 29.7% 虽可改，但改造与回归成本高，不作为近期项。
+4. **大 M fused 不再优化**：rank32/16K 的 DRAM/Mem 已 90.2%，是带宽墙；小 M fused dispatch 不改变这个结论。
+5. **剩余小 M 差距**：M=1 的 producer 仍比 native 慢。若继续，先研究低 CTA 并行度与调用开销；完整 FLUX e2e 稳定性仍属 CDK-5，不能用本项替代。
 
 ### 6.3 调度与验收
 

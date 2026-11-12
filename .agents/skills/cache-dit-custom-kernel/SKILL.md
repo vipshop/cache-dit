@@ -181,14 +181,14 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 ### 8.1 最新状态（2026-11-11，RTX PRO 5000）
 
 - `main` 已合入 PR #1284（mainloop 索引简化）；`dev` 在其上包含 P2 dispatch commit `3ad684c6`。P0 8M×1N、P1 S4/独立 LoRA ring 均已实测失败并回退，证据见 `references/svdq-nvfp4-cute.md` §30。
-- 官方 `bench/kernels/bench_svdquant.py`，5 shape × rank32/64/128，三轮中位：producer geomean **1.1088×**（15/15），row-major kernel-only GEMM **1.0248×**（12/15），row-major e2e **1.0553×**（14/15），cute+native-D e2e **1.0462×**（14/15）。这是单会话结果，不能替代跨会话稳定验收。
+- 官方 `bench/kernels/bench_svdquant.py`，5 shape × rank32/64/128：本次会话复测 producer geomean **1.1344×**（15/15，1.0784×–1.2129×）；这些格均不进入小 M fused 新分支，属于无关回归检查，不能把相对历史会话的增量归因于本项改动。既有三轮中位的 row-major kernel-only GEMM **1.0248×**（12/15）、row-major e2e **1.0553×**（14/15）、cute+native-D e2e **1.0462×**（14/15）仍是独立历史口径，不与本次 producer 数字拼接收益。
 - 当前 row-major dispatch：`M>=16384 || (M>=8192 && N>=6144)` 走 main-first，其余 LoRA-first；受控 7 轮交错 A/B 中 main-first 只在 6/15 格胜出。native fragment D 始终 main-first。
 - GEMM NCU（15 格当前 dispatch）：Tensor **84.2%**、SM 80.2%、DRAM 12.9%、L2 hit 99.9%、occupancy 17.75%、regs 168、smem 85 KiB、local load/store=0。stall：math_pipe_throttle 36.2% + wait 30.8%，long_scoreboard 18.4%，sleeping 7.5%。
 - GEMM 已接近当前架构局部最优。A/SFA 全 TMA+SMEM 是最初实现，已被 hybrid G2R 击败（同 shape nsys 约 137.4us vs 117.2us）；不要再把 A/SFA TMA 作为优化方向。8M×1N 慢 20.6%，S4/独立 LoRA ring 慢约 1%，均已证伪。
-- producer 的后续重点只保留 **CuTe split-K**（`quantize_impl.cuh`，rank64/128）：bank conflicts 380.9K（native 1.9K）、occupancy 16.6%、regs 198、smem 91 KiB。`quantize_uni.cu` 的 universal/split-K（rank32/K≤3072）是手搓 MMA/ldmatrix + 手写 swizzle，保持现状；fused 已 DRAM 90.2%，到带宽墙。
-- split-K 还有 e2e 上下文问题：NSYS 总 producer 中位 native 94.4us / CuTe 101.0us，而 NCU quantize kernel CuTe 多数更快；finalize 中位约 2us。优化 producer kernel 前先拆清 allocator/cache/finalize。
+- producer 仅对 **rank64、M≤512、K≤3072** 使用 fused，对 **rank128、M≤256、K≤3072** 使用 K128 async split-K，其余保持原 dispatch。rank64 NCU 20.58→18.18us，真实 FLUX 形状加权 producer 52.92→51.01ms/step；rank128/M256 NCU 24.80→12.77us，官方 Event 36.74→29.98us，M512 保持 K256。M=1 仍慢于 native，不能宣称小 M 已全面追平。
+- split-K bank-conflict 路线已证伪：B CACHEGLOBAL 将 LDGSTS 冲突 282.9K→0，但 NCU 57.25→57.66us；64-bit copy 将冲突升至 603.8K 且更慢。不要再以冲突计数下降作为保留改动的理由。`quantize_uni.cu` 保持现状；rank32/16K fused 已到 DRAM 90.2% 带宽墙。
 - 结论适用 PRO 5000；未在 PRO 6000/H800 复测前不要外推绝对阈值。split-K D 使用 relaxed FP32 atomics，不保证逐位可复现，D 用误差门槛。
-- 后续优先级、精确 NCU 数值和禁止重复清单见 `references/svdq-nvfp4-cute.md` §30 与 `references/rfc-cuda-optimizations.md` §6。
+- 后续优先级、精确 NCU 数值和禁止重复清单见 `references/svdq-nvfp4-cute.md` §31 与 `references/rfc-cuda-optimizations.md` §6。
 
 ### 8.2 历史基线（截至 2026-11-05，M=4096/N=K=3072/rank=32）
 

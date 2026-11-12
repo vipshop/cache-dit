@@ -860,9 +860,9 @@ split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fr
 - `svdq.cpp` 当前选择：
   - rank32 且 K≤3072：全部走 universal（K3072 的 2K/4K/8K 实测 universal 更快）。
   - rank32 且 K>3072：M≤8192 走 split-K，M>8192 走 fused。
-  - rank64/rank128：当前生产矩阵全部走 split-K。
-- 特化 split-K：rank32/K>3072 用 K128 double-A async；rank64/K≤3072 用 K256，rank64/K>3072 用 K128 async；rank128 全 K256。
-- rank64/128 fused 实例仍编译并做过独立数值验收，但当前 `svdq.cpp` 不会选中；不要根据旧 §26/§28 的 fused 阈值重开，除非给出新的逐格 Event 证据。
+  - rank64/rank128：本节测量时全部走 split-K；小 M 例外已于 §31 落地。
+- 特化 split-K：rank32/K>3072 用 K128 double-A async；rank64/K≤3072 用 K256，rank64/K>3072 用 K128 async；rank128 在本节测量时全 K256，M≤256/K≤3072 的 K128 例外见 §31。
+- rank64/128 fused 实例仍编译并做过独立数值验收；本节测量时 `svdq.cpp` 未选中，rank64 小 M 的新实测与启用条件见 §31。
 - Python 普通 CuTe 路径默认 `lora_layout="row_major"`，显式 native 与 `fused_mlp` 保持 FP32 fragment D。
 
 ### 29.2 测量口径
@@ -989,3 +989,67 @@ quantize kernel 相对 native：universal 1.17×、fused 1.30×、split-K 1.08×
 - GEMM/ producer 微优化：全矩阵 NSYS 正向约 0.1% 才保留，且不能有超过约 0.2% 的稳定回退。
 - 数值：GEMM 调度等价改动要求固定输入 bitwise；producer 改布局要求 qact/ascales bitwise，D rel-L2 <0.01。
 - NCU 只用于归因；最终性能用 NSYS/官方 Event，并记录 session 内 native 对照。
+
+## 31. 小 M dispatch 与 split-K 冲突路线证伪（2026-11-11，RTX PRO 5000）
+
+### 31.1 问题重定性
+
+当前官方 15 格 isolated producer 已全部快于 native，不能把旧“producer 比 native 慢”概括到整个矩阵。真实 FLUX 形状测量显示回退集中在小 M/短 K：rank64 的 M512 为 native 26.3us / CuTe 31.4us，M=1（pad 到 256）为 23.2/40.9us；rank128 对应为 26.5/30.7us 和 26.1/39.8us。大 M producer 总体已经领先。
+
+小 M split-K 的核心问题是 CTA 并行度与额外调度开销，不是 shared 冲突。最终只保留两条阈值明确的改动：
+
+- **rank64、M≤512、K≤3072**：使用 fused，去掉 scratch/memset/finalize；其他 rank64 形状不变。
+- **rank128、M≤256、K≤3072**：使用 K128 double-A async split-K，CTA 数翻倍；M≥512 恢复原 K256，长 K 不变。
+- rank32、native layout 与所有大 M dispatch 完全不变。
+
+### 31.2 rank64 fused
+
+`M=256/K=3072/rank64` NCU：
+
+| 指标 | split-K | fused | 变化 |
+|---|---:|---:|---:|
+| duration | 20.576us | 18.176us | −11.7% |
+| CTA / waves | 12 / 0.11 | 16 / 0.15 | +4 CTA |
+| SM / Mem | 2.75% / 8.09% | 4.28% / 8.60% | 并行度提高 |
+| regs / dynamic smem | 198 / 64 KiB | 191 / 80.5 KiB | 无 local spill |
+| bank conflicts | 9.676K | 28.338K | 冲突增加但更快 |
+
+真实 FLUX 形状、warmup10/iters50、批量 CUDA Event median：M512 从 31.4 降至 25.5us（−18.8%，native 26.3），M=1 从 40.9 降至 34.7us（−15.2%，native 23.2）。两轮加权 producer 为 51.01/51.27ms/step，旧路径 52.92。官方逐次同步 Event 口径也保留约 2%–4% 收益：M512 从 33.056 降至 32.272us；M768 不进入新分支，33.136→33.152us，属噪声。
+
+M512 已略快于 native；M=1 仍慢，不能宣称小 M 全面追平。加权数字只覆盖 producer，不把 GEMM 波动归入收益。
+
+### 31.3 rank128 小 M K128
+
+`M=256/K=3072/rank128` 同形状 NCU：
+
+| 指标 | K256 sync | K128 async | 变化 |
+|---|---:|---:|---:|
+| duration | 24.800us | 12.768us | −48.5% |
+| CTA / waves | 12 / 0.11 | 24 / 0.22 | 2× |
+| SM / Mem | 3.04% / 8.18% | 5.92% / 15.62% | 并行度提高 |
+| regs / dynamic smem | 198 / 96 KiB | 124 / 96 KiB | shared 不变 |
+| bank conflicts | 24.066K | 33.609K | 冲突增加但更快 |
+
+官方逐次同步 Event：M256 从 36.736 降至 29.984us（−18.4%）；M512 保持 K256，37.312→37.232us，确认未改原路径。真实形状批量 Event 中 M=1 从 39.8 降至约 39.2us；不宣称 rank128 全矩阵或加权收益。
+
+rank128 fused 在官方 M512 从 37.312 回到 39.088/39.424us，K128 在 M512 的真实批量口径也回退约 3%，因此两者都没有保留到 M512。最终阈值是实测折中，不是重新扫全矩阵。
+
+### 31.4 已证伪的冲突优化
+
+`4096×3072×3072/rank128` 基线 NCU 57.248us、375,626 conflicts：其中 `op_ldgsts=282,904`、`op_ld=86,067`、`op_st=209`。SASS/PC 将最高 16-way excessive wavefront 定位到 `quantize_impl.cuh:378` 的 B tile G2S，而不是 B LDSM_T。
+
+| 实验 | LDGSTS conflicts | NCU duration | 结论 |
+|---|---:|---:|---|
+| 128-bit CACHEALWAYS 基线 | 282,904 | 57.248us | 基线 |
+| 64-bit CACHEALWAYS | 603,766 | 58.080us | 指令增加、冲突翻倍，回退 |
+| 128-bit CACHEGLOBAL/BYPASS | 0 | 57.664us | 冲突消失但无性能收益，回退 |
+
+CACHEGLOBAL 的总 conflicts 降至 95,802，总 shared wavefront 从 2.292M 降至 1.876M，但仍未变快。这再次证明 conflict 绝对值不是关键路径；不要重试仅以降冲突为目标的 B layout/copy 微调。两项实验均保持 14 项 focused 数值测试通过，未进入最终代码。
+
+### 31.5 回归与边界
+
+- 官方 5 shape × 3 rank 全 15 格单会话复测：producer geomean **1.1344×**，15/15 快，范围 1.0784×–1.2129×；不含 16K 为 1.1308×。这些格不进入新 dispatch，属于无关回归检查，不把会话间增量归因于本项改动。
+- 158 项 SVDQ 回归通过，覆盖 K64/128/192/3072/3136、M256/512、非单位 rank scale、长 K、高层 Linear、INT4 隔离。
+- profiler 测试精确检查 rank64 fused、rank128 M256 K128 async 与 M512 K256；rank64 还验证 identity-smooth qact/ascales 对 native bitwise、重复输出 bitwise。
+- 小 M 官方复现命令：`python bench/kernels/bench_svdquant.py --shape 256x3072x3072 --shape 512x3072x3072 --shape 768x3072x3072 --rank 64 --rank 128 --impl quantize,quantize-row-major --warmup 10 --iterations 50`。
+- 当前只完成独立 producer 与真实形状测量；未据此关闭 CDK-5 的完整 FLUX e2e 稳定验收。M=1 仍慢于 native，后续先研究调用开销与低 CTA 并行度，不再回到 bank-conflict 计数。
