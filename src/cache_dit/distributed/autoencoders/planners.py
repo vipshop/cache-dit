@@ -47,6 +47,9 @@ def _activate_auto_encoder_dp_planners():
     ".autoencoder_kl_hunyuanvideo", "AutoencoderKLHunyuanVideoDataParallelismPlanner")
   AutoencoderKLFlux2DataParallelismPlanner = _safe_import(  # noqa: F841
     ".autoencoder_kl_flux2", "AutoencoderKLFlux2DataParallelismPlanner")
+  # Registered under its full class name; the auto-encoder planner registry matches exactly.
+  AutoencoderKLMiniMaxH3ImageDataParallelismPlanner = _safe_import(  # noqa: F841
+    ".autoencoder_kl_minimax_h3_image", "AutoencoderKLMiniMaxH3ImageDataParallelismPlanner")
 
 
 __all__ = ["_activate_auto_encoder_dp_planners"]

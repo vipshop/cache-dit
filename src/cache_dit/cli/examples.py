@@ -110,6 +110,8 @@ __all__ = [
   "pika_h3_flex_example",
   "pika_h3_flex_fl2va_example",
   "pika_h3_flex_ref2va_example",
+  "minimax_h3_image_example",
+  "minimax_h3_image_edit_example",
   "flux3_fused_example",
 ]
 
@@ -173,6 +175,7 @@ _env_path_mapping = {
   "ANY_FLOW_DIR": "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers",
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
+  "MINIMAX_H3_IMAGE_DIR": "MiniMaxAI/MiniMax-H3-Image",
   "FASTH3_DIR": "FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree",
   "FASTH3_V2_DIR": "FastVideo/FastVideo-FastH3-8-Step-V2",
   "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
@@ -5852,5 +5855,328 @@ def flux2_klein_fused_example(args: argparse.Namespace, **kwargs) -> Example:
       width=1024,
       num_inference_steps=4,
       guidance_scale=1.0,
+    ),
+  )
+
+
+# MiniMax-H3-Image samples on a fixed 6-step sigma grid and applies one output head per step, so it
+# takes no `num_inference_steps`: every preset below is keyed on this constant instead of on the CLI
+# flag, which the example therefore never forwards.
+_MINIMAX_H3_IMAGE_STEPS = 6
+
+# The checkpoint is guidance-distilled and predates no conditioning stage: a long, complete
+# description is what it was trained on (a 6-step distilled sampler has no room to invent layout).
+_MINIMAX_H3_IMAGE_PROMPT = (
+  "The image is an overhead, top-down photograph of a rustic farm-to-table feast spread across a "
+  "weathered, dark brown wooden table with visible grain, knots and a worn finish. In the center a "
+  "large woven basket holds a freshly baked rustic loaf of bread with a cracked golden-brown crust "
+  "and scattered flour, alongside a halved loaf. To the left, a large dark ceramic plate presents "
+  "seasonal vegetables: bright orange carrots, deep red heirloom tomatoes, purple cabbage and a "
+  "mound of green kale. On the right a wooden board displays artisanal cheeses - a wedge of aged "
+  "cheddar, a round of creamy brie with its rind and a soft blue cheese - with scattered almonds "
+  "and walnuts. Warm directional daylight rakes in from the upper left, casting soft shadows; "
+  "editorial food photography, shallow depth of field, fine texture detail.")
+
+_MINIMAX_H3_IMAGE_EDIT_PROMPT = (
+  "Keep the astronaut of <Picture 1> exactly as it is: the same white suit, the same visor "
+  "reflection, the same pose and camera angle. Replace the lunar surface, the lander and the "
+  "earthrise with a field of red poppies at golden hour, and light the figure with the same warm "
+  "low sun raking in from the left so that the long soft shadow behind it now falls on grass and "
+  "flowers instead of regolith. Photographic, shallow depth of field, fine detail in the suit "
+  "fabric and in the poppy petals, clear evening sky.")
+
+# Per-workflow starting point for the residual threshold. `image_conditioned` pins its reference
+# rows at t = 0.999 for every step, and those rows contribute ~nothing to the residual mean DBCache
+# compares against, so the same threshold accepts more steps than it does for `text2image`.
+_MINIMAX_H3_IMAGE_CACHE_THRESHOLDS = {
+  "text2image": DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+  "image_conditioned": DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+}
+
+
+def _minimax_h3_image_quantize_exclusions(args: argparse.Namespace) -> None:
+  """Install the MiniMax-H3-Image default quantization exclusions on ``args``.
+
+  `token_refiner` is deliberately kept: it only sees the text stream and is a small share of the
+  weights. Pass `--quantize-exclude-layers` with `token_refiner` appended to trade speed for
+  accuracy if a checkpoint turns out to be sensitive there.
+
+  :param args: CLI arguments, updated in place when the user did not pass the flag.
+  """
+  if not args.quantize or getattr(args, "quantize_exclude_layers", None):
+    return
+  args.quantize_exclude_layers = [
+    # The checkpoint ships these in float32 (`_keep_in_fp32_modules`), which torchao's per-row
+    # float8 path rejects, and they are a rounding-error guard rather than a memory cost.
+    "proj_in",
+    "pdd_proj_out",
+    "time_embedder",
+    "rope",
+    # Every token of every step reads the same per-block AdaLN table, so a quantization error there
+    # is applied coherently across the whole sampling trajectory instead of averaging out. The
+    # output norm modulates the sequence the same way.
+    "adaln_proj",
+    "norm_out",
+  ]
+
+
+def _minimax_h3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
+  """Resolve the fixed 6-step computation mask of a MiniMax-H3-Image run.
+
+  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
+  """
+  if not args.cache:
+    return None
+  if args.mask_policy is not None:
+    # `--mask-policy` asserts on a step count (`--num-inference-steps`), which this pipeline does
+    # not take: the schedule is the checkpoint. Fill it in so the CLI's mask bookkeeping passes;
+    # `use_num_inference_steps=False` keeps it out of the pipeline call.
+    if args.num_inference_steps is None:
+      args.num_inference_steps = _MINIMAX_H3_IMAGE_STEPS
+    return steps_mask(mask_policy=args.mask_policy, total_steps=_MINIMAX_H3_IMAGE_STEPS)
+  if not args.steps_mask:
+    return None
+  # One skipped step in the middle, everything else computed. The last step always computes: it is
+  # the one whose velocity lands on the image, and the grid's widest sigma jumps sit at the end.
+  return steps_mask(
+    compute_bins=[2, 3],
+    cache_bins=[1],
+    total_steps=_MINIMAX_H3_IMAGE_STEPS,
+  )
+
+
+def _minimax_h3_image_cache_config(
+  args: argparse.Namespace,
+  workflow: str = "text2image",
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the six-step, guidance-distilled MiniMax-H3-Image transformer.
+
+  Only the block stack is cached; the per-step output head is chosen after it, so a skipped step
+  still runs its own head. Six steps leave very little room for a warmup: `max_warmup_steps` is
+  capped at 2 instead of the usual half of the schedule, because a warmup of 3 would pin the cached
+  steps to the widest sigma jumps of the grid (0.75 -> 0.53 -> 0.23 -> 0), which are exactly the
+  ones that have to be recomputed.
+
+  A `--steps-mask` / `--mask-policy` run switches to `steps_computation_policy="static"`, and the
+  static policy caches every masked step unconditionally, so `max_cached_steps` and
+  `max_continuous_cached_steps` do not apply to it.
+
+  :param args: CLI arguments.
+  :param workflow: `text2image` or `image_conditioned`; selects the default threshold.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  if workflow not in _MINIMAX_H3_IMAGE_CACHE_THRESHOLDS:
+    raise ValueError(f"No MiniMax-H3-Image cache preset for workflow '{workflow}'; expected one of "
+                     f"{sorted(_MINIMAX_H3_IMAGE_CACHE_THRESHOLDS)}.")
+  threshold = args.residual_diff_threshold
+  if threshold == DEFAULT_RESIDUAL_DIFF_THRESHOLD:
+    threshold = _MINIMAX_H3_IMAGE_CACHE_THRESHOLDS[workflow]
+  steps_mask_of_run = _minimax_h3_image_steps_mask(args)
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, 2),
+    num_inference_steps=_MINIMAX_H3_IMAGE_STEPS,
+    # guidance is distilled into the weights: one forward pass per step, no uncond branch
+    enable_separate_cfg=False,
+    residual_diff_threshold=threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=1,
+    steps_computation_mask=steps_mask_of_run,
+    # A masked step must actually reuse the cache: under the default "dynamic" policy the masked
+    # step is re-decided by the residual threshold, which on this model rejects every step and
+    # silently turns the mask into a no-op.
+    steps_computation_policy="static" if steps_mask_of_run is not None else "dynamic",
+  )
+
+
+# With `--prompt-enhancer` the canvas follows the ratio MiniMax-H3-Image-PE recommends, at the
+# 4 megapixel floor the checkpoint documents; without it the examples stay at 1024x1024.
+_MINIMAX_H3_IMAGE_PE_AREA = 2048 * 2048
+
+
+def _snap_canvas(side: float) -> int:
+  """Round one canvas side to the generator's multiple of 32 and keep it in range.
+
+  :param side: Unrounded side in pixels.
+  :returns: The side rounded to a multiple of 32, within `[32, 4096]`.
+  """
+  return max(32, min(4096, int(round(side / 32)) * 32))
+
+
+def _minimax_h3_image_request(
+  args: argparse.Namespace,
+  prompt: str,
+  images: Optional[List[Any]] = None,
+) -> Tuple[str, int, int, int]:
+  """Resolve the prompt, canvas and `min_generation_area` of one MiniMax-H3-Image request.
+
+  The prompt enhancer is a separate checkpoint (`MiniMax-H3-Image-PE`) that rewrites a short request
+  into the long description the DiT was distilled on and recommends an aspect ratio. It stays off by
+  default: it changes the encoded prompt and its own latency dwarfs any DiT-side optimization.
+
+  :param args: CLI arguments, `--prompt-enhancer` in particular.
+  :param prompt: Prompt to send, or to expand.
+  :param images: Reference images of an editing request, in prompt order.
+  :returns: `(prompt, height, width, min_generation_area)`.
+  """
+  height = width = 1024
+  min_generation_area = 1024
+  enhancer = getattr(args, "prompt_enhancer", None)
+  if not enhancer:
+    return prompt, height, width, min_generation_area
+
+  if int(os.environ.get("WORLD_SIZE", "1") or 1) > 1:
+    raise ValueError(
+      "--prompt-enhancer loads a second, ~19 GiB model, and an example is built before the process "
+      "group exists, so under torchrun it would load once per rank (and could diverge between them). "
+      "Expand the prompt on one GPU first, pass the result as `--prompt`, and drop the flag.")
+
+  from ..models.pipelines.minimax_h3_image import aspect_ratio_to_size, expand_prompt
+
+  # `--prompt` replaces the built-in demo prompt, and the expanded caption is written back into it:
+  # `ExampleInputData.data()` re-applies `args.prompt` over whatever this factory stores, so keeping
+  # the caption anywhere else would silently drop the expansion.
+  source = args.prompt if args.prompt else prompt
+  prompt, aspect_ratio = expand_prompt(enhancer, source, images=images)
+  args.prompt = prompt
+  if not aspect_ratio:
+    return prompt, height, width, min_generation_area
+
+  ratio_height, ratio_width = aspect_ratio_to_size(aspect_ratio)
+  if args.height is None and args.width is None:
+    height, width = ratio_height, ratio_width
+    # The canvas now sits at the checkpoint's 4 MP floor, so `min_generation_area` must not ask for
+    # the 1024-pixel canvas the default examples use.
+    min_generation_area = _MINIMAX_H3_IMAGE_PE_AREA
+  elif args.height is not None and args.width is None:
+    height = args.height
+    width = _snap_canvas(args.height * ratio_width / ratio_height)
+  elif args.width is not None and args.height is None:
+    width = args.width
+    height = _snap_canvas(args.width * ratio_height / ratio_width)
+  logger.info("MiniMax-H3-Image-PE recommended %s: generating at %dx%d.", aspect_ratio, height,
+              width)
+  return prompt, height, width, min_generation_area
+
+
+def _minimax_h3_image_init_config(
+  args: argparse.Namespace,
+  task_type: ExampleType,
+  workflow: str,
+) -> ExampleInitConfig:
+  """Build the pipeline-loading config shared by the two MiniMax-H3-Image workflows.
+
+  The 62 GiB transformer and the 63 GiB Qwen3-VL conditioner do not fit on one 72 GiB device
+  together, so every single-GPU run needs one of cache-dit's streaming switches, or
+  `--parallel tp` / `ulysses` across several devices. `--adaln-online` is the one to use: the AdaLN
+  tables are a pure function of the fixed 6-step grid, so they are memoized once (a few MiB) and the
+  24 GiB of projections are parked on the host instead of being streamed on every step — that
+  removes ~3 s per step and is bit-exact. `--adaln-host-residency` streams the same tables and is the
+  fallback when the sampling grid is not a fixed one.
+
+  :param args: CLI arguments.
+  :param task_type: Task the example drives.
+  :param workflow: Modular workflow to prune the blocks to.
+  :returns: The init config.
+  """
+  from diffusers import MiniMaxH3ImageModularPipeline
+
+  if args.num_inference_steps not in (None, _MINIMAX_H3_IMAGE_STEPS):
+    logger.warning(
+      "MiniMax-H3-Image samples on the checkpoint's fixed %d-step grid and takes no "
+      "`num_inference_steps`: ignoring --num-inference-steps %d.", _MINIMAX_H3_IMAGE_STEPS,
+      args.num_inference_steps)
+
+  return ExampleInitConfig(
+    task_type=task_type,
+    model_name_or_path=_path("MiniMaxAI/MiniMax-H3-Image", args=args),
+    pipeline_class=MiniMaxH3ImageModularPipeline,
+    bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+    modular_workflow=workflow,
+    # The VAE ships float32 and its encoder is pinned to it; only the conditioner and the
+    # transformer are bfloat16.
+    modular_component_dtypes={
+      "transformer": torch.bfloat16,
+      "text_encoder": torch.bfloat16,
+      "default": torch.float32,
+    },
+    post_init_hook=_minimax_h3_drop_lm_head,
+    extra_optimize_kwargs={"cache_config": _minimax_h3_image_cache_config(args, workflow)},
+  )
+
+
+@ExampleRegister.register("minimax_h3_image", default="MiniMaxAI/MiniMax-H3-Image")
+def minimax_h3_image_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Text-to-image with MiniMax-H3-Image.
+
+  MiniMax-H3-Image is MiniMax-H3's image partition: the same transformer without the audio stream,
+  guidance distilled into the weights and distilled again onto a fixed 6-step grid with one output
+  head per step. There is no guider, no `negative_prompt`, no `guidance_scale` and no
+  `num_inference_steps`.
+
+  The pipeline generates at 4 megapixels or more: a smaller request is generated on a larger canvas
+  of the same aspect ratio and resized back. This example generates at the requested 1024x1024 by
+  passing `min_generation_area=1024`; drop that (it defaults to 2048x2048) or override it through
+  `--extra-input-kwargs` to sample on the recommended 4096x4096 / 4736x3552 canvases.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3-Image text2image example.
+  """
+  _minimax_h3_image_quantize_exclusions(args)
+
+  prompt, height, width, min_generation_area = _minimax_h3_image_request(
+    args, _MINIMAX_H3_IMAGE_PROMPT)
+
+  return Example(
+    args=args,
+    init_config=_minimax_h3_image_init_config(args, ExampleType.T2I, "text2image"),
+    input_data=ExampleInputData(
+      prompt=prompt,
+      height=height,
+      width=width,
+      # The schedule is the checkpoint, not a request parameter.
+      use_num_inference_steps=False,
+      extra_input_kwargs={"min_generation_area": min_generation_area},
+    ),
+  )
+
+
+@ExampleRegister.register("minimax_h3_image_edit", default="MiniMaxAI/MiniMax-H3-Image")
+def minimax_h3_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Reference-image editing with MiniMax-H3-Image.
+
+  Passing `image` selects the `image_conditioned` workflow: the prompt addresses the references as
+  `<Picture 1>`, `<Picture 2>`, ... and the pipeline packs their rows in front of the generated
+  rows. Each reference keeps its own size (it is only resampled when its short edge falls outside
+  1024-2048), so `skip_image_resize` leaves the geometry to the pipeline; resizing here as well
+  would resample twice and change the number of packed reference rows.
+
+  :param args: CLI arguments.
+  :returns: The MiniMax-H3-Image image_conditioned example.
+  """
+  _minimax_h3_image_quantize_exclusions(args)
+
+  # A default reference is only decoded when the caller did not bring one: the flag replaces the
+  # whole list, and a checkout-less install would otherwise download artwork it never uses.
+  reference = (None if args.image_path is not None else load_image(
+    _minimax_h3_demo_asset("first_frame.png")).convert("RGB"))
+  prompt, height, width, min_generation_area = _minimax_h3_image_request(
+    args, _MINIMAX_H3_IMAGE_EDIT_PROMPT, images=[reference] if reference is not None else None)
+
+  return Example(
+    args=args,
+    init_config=_minimax_h3_image_init_config(args, ExampleType.IE2I, "image_conditioned"),
+    input_data=ExampleInputData(
+      prompt=prompt,
+      image=reference,
+      skip_image_resize=True,
+      height=height,
+      width=width,
+      use_num_inference_steps=False,
+      extra_input_kwargs={"min_generation_area": min_generation_area},
     ),
   )
