@@ -52,8 +52,15 @@ def _tiny_transformer():
 
 
 def _no_kernels(monkeypatch):
-  """Force the fallback branch, which is what CI (no `_C_ops`) does anyway."""
+  """Force the fallback branch, which is what CI (no `_C_ops`) does anyway.
 
+  The family starts disabled, so `_ops_ready` alone would not be what the assertions below
+  measure: the switch would short-circuit first and `apply_*` would equal `_eager_*` for a reason
+  that has nothing to do with the extension. Turn the family on so the entry-point check is the
+  only thing standing between the call and the kernel.
+  """
+
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", True)
   monkeypatch.setattr(fused_ops, "_ops_ready", False)
 
 
@@ -153,24 +160,39 @@ def test_operators_fall_back_to_the_stock_expression_without_the_extension(monke
   assert stats["fallbacks"]["ln_modulate"] == 1 and stats["fallbacks"]["gated_residual"] == 1
 
 
-def test_the_switch_parses_only_explicit_falsey_values(monkeypatch):
-  for value in ("0", "false", "off", "no", " OFF "):
-    monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_FUSED_OPS", value)
-    assert fused_ops._switch_from_env() is False
-  for value in ("1", "on", "yes", "", "true"):
-    monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_FUSED_OPS", value)
-    assert fused_ops._switch_from_env() is True
+def test_install_turns_the_operators_on_except_when_the_switch_is_off(monkeypatch):
+  """FLUX.3 has no cache-dit pipeline class, so `apply_fused_ops` is the whole opt-in.
+
+  `tests/api/test_env.py` pins the parsing; this pins that the install is what enables the family,
+  and that `CACHE_DIT_FUSED_OPS=0` survives it.
+  """
+
+  from cache_dit.models.pipelines import env
+
+  monkeypatch.delenv(env.FUSED_OPS_ENV, raising=False)
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  transformer = _tiny_transformer()
+  transformer.__class__ = _Flux3KleinTransformer2DModel
+  transformer.apply_fused_ops()
+  assert fused_ops.FUSED_OPS_ENABLED is True
+
+  monkeypatch.setenv(env.FUSED_OPS_ENV, "0")
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  disabled = _tiny_transformer()
+  disabled.__class__ = _Flux3KleinTransformer2DModel
+  disabled.apply_fused_ops()
+  assert fused_ops.FUSED_OPS_ENABLED is False
 
 
-def test_the_allow_list_defaults_to_every_operator(monkeypatch):
-  monkeypatch.delenv("CACHE_DIT_FLUX3_KLEIN_OPS", raising=False)
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.ALL_OPS)
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "all")
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.ALL_OPS)
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "0")
-  assert fused_ops._ops_from_env() == frozenset()
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "gated_residual, qk_norm_rope")
-  assert fused_ops._ops_from_env() == frozenset({"gated_residual", "qk_norm_rope"})
+def test_the_allow_list_is_a_code_constant_not_a_variable():
+  """`CACHE_DIT_FUSED_OPS` is the only variable; the shipped subset is the measured winner set.
+
+  The dispatch side of the same claim (a narrowed allow-list really skips the kernel) needs a GPU
+  and lives in `tests/kernels/test_flux3_klein_model_ops.py`.
+  """
+
+  assert fused_ops.ACTIVE_OPS == frozenset(fused_ops.ALL_OPS)
+  assert set(fused_ops.ALL_OPS) == {"qk_norm_rope", "ln_modulate", "gated_residual"}
 
 
 def test_adapter_and_planners_resolve_for_the_fused_transformer():

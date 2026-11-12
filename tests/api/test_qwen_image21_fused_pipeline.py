@@ -182,16 +182,49 @@ def test_fused_block_resolves_a_layer_cache_container():
   assert caches.get_layer(1).k.shape[1] == 3
 
 
-def test_switch_only_turns_off_on_explicit_falsey_values(monkeypatch):
+def test_install_turns_the_operators_on_except_when_the_switch_is_off(monkeypatch):
+  """Both install entries enable the family; `CACHE_DIT_FUSED_OPS=0` is the only opt-out.
+
+  `tests/api/test_env.py` pins the parsing. This pins the entry that does *not* go
+  through `apply_fused_ops`: the patch functor, which `enable_cache` runs on a pipeline that was
+  built elsewhere. Missing it leaves block forwards rebound but the qkv seam uninstalled, i.e. a
+  half-installed transformer that never says so.
+  """
+
+  from cache_dit.models.pipelines import env
+  from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Transformer2DModel
   from cache_dit.models.pipelines.qwen_image21 import fused_ops
+  from cache_dit.models.pipelines.qwen_image21.attention_processor import (qkv_patch_is_installed,
+                                                                           uninstall_qkv_patch)
+  from cache_dit.models.pipelines.qwen_image21.functor import _QwenImage21PatchFunctor
+  from cache_dit.models.pipelines.qwen_image21.transformer_qwen_image21 import upgrade_transformer
 
-  for value, expected in (("0", False), ("false", False), ("off", False), ("no", False),
-                          ("1", True), ("true", True), ("", True), ("yes", True)):
-    monkeypatch.setenv("CACHE_DIT_QWEN_IMAGE21_FUSED_OPS", value)
-    assert fused_ops._switch_from_env() is expected
+  monkeypatch.delenv(env.FUSED_OPS_ENV, raising=False)
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  upgrade_transformer(_tiny_transformer())
+  assert fused_ops.FUSED_OPS_ENABLED is True
 
-  monkeypatch.delenv("CACHE_DIT_QWEN_IMAGE21_FUSED_OPS")
-  assert fused_ops._switch_from_env() is True
+  # The qkv seam is a process-global replacement, and the install above already made it. Undo it,
+  # otherwise the assertion below would restate that install instead of proving that the functor
+  # installs the seam too.
+  uninstall_qkv_patch()
+  assert qkv_patch_is_installed() is False
+
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  patched = _tiny_transformer()
+  patched.__class__ = _QwenImage21Transformer2DModel
+  _QwenImage21PatchFunctor().apply(patched)
+  assert fused_ops.FUSED_OPS_ENABLED is True
+  assert qkv_patch_is_installed() is True
+
+  monkeypatch.setenv(env.FUSED_OPS_ENV, "0")
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  uninstall_qkv_patch()
+  disabled = _tiny_transformer()
+  disabled.__class__ = _QwenImage21Transformer2DModel
+  _QwenImage21PatchFunctor().apply(disabled)
+  assert fused_ops.FUSED_OPS_ENABLED is False
+  assert qkv_patch_is_installed() is False
 
 
 def test_ops_fall_back_to_eager_without_the_extension(monkeypatch):

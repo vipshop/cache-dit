@@ -20,6 +20,13 @@ pytestmark = [
 
 DEVICE = torch.device("cuda")
 
+# These tests cover the kernels, and the family starts disabled: `install_fused_modules()` is what
+# turns it on, and it is not run here. Force it on at import - a module-level `pytestmark` skip
+# never executes a fixture, so an autouse one would silently not run - or every `apply_*` assertion
+# (including the `out=` buffer test, whose eager branch also copies into `out`) compares the eager
+# expression with itself. `tests/api/test_env.py` pins the switch.
+fused_ops.FUSED_OPS_ENABLED = True
+
 
 def _close(actual: torch.Tensor, expected: torch.Tensor) -> bool:
   """Kernel-vs-eager comparison at the fast-math tolerance.

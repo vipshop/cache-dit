@@ -137,15 +137,21 @@ def install_fused_modules(transformer: torch.nn.Module) -> None:
   :param transformer: Qwen-Image 2.1 transformer whose modules should be rebound.
   """
 
+  from . import fused_ops
   from .attention_processor import install_qkv_patch
-  from .fused_ops import ACTIVE_OPS, FUSED_OPS_ENABLED
+
+  # This is the only place the operators are reached from, so it is also the only place that
+  # turns them on. Both install entries land here: `_QwenImage21Pipeline.apply_fused_ops` and
+  # `_QwenImage21PatchFunctor` from `enable_cache`.
+  fused_ops.activate_fused_ops()
 
   for index, block in enumerate(transformer.transformer_blocks):
     block._idx = index
     block.forward = fused_block_forward.__get__(block)
     block.img_mlp.forward = fused_swiglu_forward.__get__(block.img_mlp)
 
-  if FUSED_OPS_ENABLED and "qk_norm_rope" in ACTIVE_OPS:
+  # Read through the module, not a local binding: `activate_fused_ops()` has just written it.
+  if fused_ops.FUSED_OPS_ENABLED and "qk_norm_rope" in fused_ops.ACTIVE_OPS:
     install_qkv_patch()
 
 

@@ -5,13 +5,15 @@ key stay exactly as diffusers defines them, which is what keeps `from_pretrained
 parallelism (dotted module paths), layerwise casting patterns and checkpoint compatibility
 untouched.
 
-`apply_fused_ops` is idempotent and installs three things:
+`apply_fused_ops` is idempotent and installs two things:
 
 * the fused block forwards (see :mod:`.block`),
-* the fused attention processors (see :mod:`.attention`),
-* the rotation-table cache, which is the only change outside the kernels: `Flux2PosEmbed`
-  rebuilds the float64 `cos`/`sin` tables on every forward although `img_ids`/`txt_ids` do not
-  change between denoising steps.
+* the fused attention processors (see :mod:`.attention`).
+
+It can also install the rotation-table cache, the only change outside the kernels: `Flux2PosEmbed`
+rebuilds the float64 `cos`/`sin` tables on every forward although `img_ids`/`txt_ids` do not change
+between denoising steps. That cache measured neutral, so it currently ships disabled
+(:data:`.fused_ops.ROPE_CACHE_ENABLED` is `False`).
 """
 
 import torch
@@ -91,7 +93,7 @@ class _Flux2KleinTransformer2DModel(Flux2Transformer2DModel):
   """Diffusers' FLUX.2 transformer with cache-dit's fused memory-bound operators."""
 
   def apply_fused_ops(self) -> None:
-    """Bind the fused forwards, processors and rotation cache.
+    """Bind the fused forwards and processors, plus the rotation cache when it is enabled.
 
     Safe to call twice.
     """
@@ -123,10 +125,10 @@ class _Flux2KleinTransformer2DModel(Flux2Transformer2DModel):
     """Undo the attention half of :meth:`apply_fused_ops`.
 
     Restores the stock processors and drops the rotation-table cache. The block forwards stay
-    rebound on purpose: they are plain Python bound methods over the same tensors, and every
-    operator behind them re-checks its preconditions at call time, so an uninstalled instance
-    keeps running the eager expressions. Use `CACHE_DIT_FLUX2_KLEIN_FUSED_OPS=0` (or
-    :func:`set_active_ops`) to switch the operators themselves.
+    rebound on purpose - they are plain Python bound methods over the same tensors - so this does
+    **not** stop the operators: every one of them still dispatches to its kernel. To switch the
+    operators themselves off, set `CACHE_DIT_FUSED_OPS=0` before the first fused pipeline is built
+    or call :func:`set_flux2_klein_fused_ops_enabled` (see :mod:`.fused_ops`).
     """
 
     from .attention import uninstall_attention_patch

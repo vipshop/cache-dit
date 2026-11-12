@@ -162,15 +162,21 @@ def install_fused_modules(transformer: torch.nn.Module) -> None:
   :param transformer: FLUX.2-Klein transformer whose modules should be rebound.
   """
 
+  from . import fused_ops
   from .attention import install_attention_patch
-  from .fused_ops import ACTIVE_OPS, FUSED_OPS_ENABLED
+
+  # This is the only place the operators are reached from, so it is also the only place that
+  # turns them on: `CACHE_DIT_FUSED_OPS=0` is the sole opt-out, and a later
+  # `set_flux2_klein_fused_ops_enabled()` call overrides the install.
+  fused_ops.activate_fused_ops()
 
   for block in transformer.transformer_blocks:
     block.forward = fused_double_block_forward.__get__(block)
   for block in transformer.single_transformer_blocks:
     block.forward = fused_single_block_forward.__get__(block)
 
-  if FUSED_OPS_ENABLED and "qk_norm_rope" in ACTIVE_OPS:
+  # Read through the module, not a local binding: `activate_fused_ops()` has just written it.
+  if fused_ops.FUSED_OPS_ENABLED and "qk_norm_rope" in fused_ops.ACTIVE_OPS:
     install_attention_patch(transformer)
 
 

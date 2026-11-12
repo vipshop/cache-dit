@@ -113,7 +113,12 @@ def install_fused_modules(transformer: torch.nn.Module) -> None:
   :param transformer: FLUX.3 transformer whose modules should be rebound.
   """
 
+  from . import fused_ops
   from .attention import install_fused_processors
+
+  # This is the only place the operators are reached from, so it is also the only place that
+  # turns them on: `CACHE_DIT_FUSED_OPS=0` is the sole opt-out.
+  fused_ops.activate_fused_ops()
 
   for stack in _mode_blocks(transformer):
     for block in stack:

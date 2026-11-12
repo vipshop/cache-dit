@@ -26,6 +26,12 @@ pytestmark = [
                      reason="needs the FLUX.3 Klein entry points in cache_dit._C_ops"),
 ]
 
+# These tests cover the kernels, and the family starts disabled: `install_fused_modules()` is what
+# turns it on, and it is not run here. Force it on at import - a module-level `pytestmark` skip
+# never executes a fixture, so an autouse one would silently not run - or every `apply_*` assertion
+# would compare the eager expression with itself. `tests/api/test_env.py` pins the switch.
+fused_ops.FUSED_OPS_ENABLED = True
+
 DEVICE = torch.device("cuda")
 HEAD_DIM = 128
 
@@ -199,24 +205,24 @@ def test_dispatch_is_counted_so_installed_never_implies_ran():
   assert stats["fallbacks"]["ln_modulate"] == 1
 
 
-def test_the_switch_parses_only_explicit_falsey_values(monkeypatch):
-  for value in ("0", "false", "off", "no", " OFF "):
-    monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_FUSED_OPS", value)
-    assert fused_ops._switch_from_env() is False
-  for value in ("1", "on", "yes", "", "true"):
-    monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_FUSED_OPS", value)
-    assert fused_ops._switch_from_env() is True
+def test_narrowing_the_allow_list_really_skips_the_kernel(monkeypatch):
+  """The subset is a code constant, and the dispatch paths read it - not just a list somewhere."""
 
+  assert fused_ops.ACTIVE_OPS == frozenset(fused_ops.ALL_OPS)
 
-def test_the_allow_list_defaults_to_every_operator(monkeypatch):
-  monkeypatch.delenv("CACHE_DIT_FLUX3_KLEIN_OPS", raising=False)
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.ALL_OPS)
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "all")
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.ALL_OPS)
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "0")
-  assert fused_ops._ops_from_env() == frozenset()
-  monkeypatch.setenv("CACHE_DIT_FLUX3_KLEIN_OPS", "gated_residual, qk_norm_rope")
-  assert fused_ops._ops_from_env() == frozenset({"gated_residual", "qk_norm_rope"})
+  dim = 1024
+  x = torch.randn(1, 8, dim, device=DEVICE, dtype=torch.bfloat16)
+  scale = torch.zeros(1, 8, dim, device=DEVICE, dtype=torch.bfloat16)
+  shift = torch.zeros(1, 8, dim, device=DEVICE, dtype=torch.bfloat16)
+
+  monkeypatch.setattr(fused_ops, "ACTIVE_OPS", frozenset())
+  fused_ops.reset_fused_ops_stats()
+  assert torch.equal(fused_ops.apply_ln_modulate(x, scale, shift, 1e-6),
+                     fused_ops._eager_ln_modulate(x, scale, shift, 1e-6))
+  stats = fused_ops.fused_ops_stats()
+  assert stats["hits"]["ln_modulate"] == 0
+  # Counted, so "the operator was listed" can never be mistaken for "the kernel ran".
+  assert stats["fallbacks"]["ln_modulate"] == 1
 
 
 def _tiny_transformer():

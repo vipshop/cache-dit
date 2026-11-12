@@ -19,21 +19,24 @@ extension). When the extension is missing, or a precondition fails (dtype, devic
 shape, CP sharding, offload), the eager branch runs instead: that is the only fallback, and it
 is never silent on the operator-selection level because :data:`FUSED_OPS_ENABLED` and the
 per-operator preconditions are asserted in the tests.
+
+The family as a whole is switched by the shared ``CACHE_DIT_FUSED_OPS`` (see
+:mod:`..env`): it starts off, and :func:`install_fused_modules` turns it on when the
+``flux3_fused`` entry point installs this transformer. That is the only variable the family reads;
+the per-operator subset is :data:`ACTIVE_OPS`, a code constant that an A/B run narrows by
+assignment.
 """
 
-import os
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 
 from ....logger import init_logger
+from ..env import fused_ops_default, fused_ops_enabled_on_install
 
 logger = init_logger(__name__)
 
-_ENV_SWITCH = "CACHE_DIT_FLUX3_KLEIN_FUSED_OPS"
-_ENV_OPS = "CACHE_DIT_FLUX3_KLEIN_OPS"
-_FALSEY = ("0", "false", "off", "no")
 ALL_OPS = (
   "qk_norm_rope",
   "ln_modulate",
@@ -48,55 +51,39 @@ _FUSED_HEAD_DIM = 128
 REL_L2_TOL = 1e-2
 
 
-def _switch_from_env() -> bool:
-  """Read the operator switch once, treating only explicit falsey values as "off".
+def activate_fused_ops() -> None:
+  """Turn the operator family on for an installed fused transformer.
 
-  :returns: Whether fused operators are enabled.
+  Called from :func:`install_fused_modules`, the only place these operators are reached from, so
+  the FLUX.3 CLI example's `post_init_hook` gets them without the user setting anything.
+
+  An explicit ``CACHE_DIT_FUSED_OPS=0`` wins over this, and a later
+  :func:`set_flux3_klein_fused_ops_enabled` call wins over the install.
   """
 
-  value = os.environ.get(_ENV_SWITCH)
-  if value is None:
-    return True
-  return value.strip().lower() not in _FALSEY
+  global FUSED_OPS_ENABLED
+  if fused_ops_enabled_on_install():
+    FUSED_OPS_ENABLED = True
 
 
-FUSED_OPS_ENABLED = _switch_from_env()
+FUSED_OPS_ENABLED = fused_ops_default()
 
-
-def _ops_from_env() -> frozenset[str]:
-  """Return the per-operator allow-list.
-
-  A pointwise chain that inductor already fuses can be *slower* as an opaque custom op,
-  because the fusion boundary moves. ``CACHE_DIT_FLUX3_KLEIN_OPS=all`` or a comma separated
-  list re-enables any subset for A/B runs; the default is the measured winner set.
-
-  Measured on an RTX PRO 5000 (torch 2.15, 1024x1024, 16 steps, warmup then median of
-  CUDA-event timings, one transformer forward): the eager chain is 289.6 ms and ``all`` is
-  241.3 ms (-16.7%). Per operator, eager against the same arm: ``qk_norm_rope`` alone 245.7 ms,
-  ``gated_residual,ln_modulate`` 279.0 ms - they do not stack, because the q/k chain is most of
-  the removable time. Under ``torch.compile`` the fused arm is at parity (236.4 ms against
-  236.4 ms) because the blocks and the attention processor hand compiled graphs the stock
-  implementation instead of the operators (see the `is_compiling` branches in :mod:`.block` and
-  :mod:`.attention`). The compiled arm is not reproducible run to run - two stock runs differ by
-  34.79 dB - and the fused-vs-stock difference of 33.48 dB sits inside that floor, so it is
-  indistinguishable rather than bit-identical. No operator is negative in either arm, so all of
-  them stay in the default set.
-
-  :returns: Names of the operators allowed to dispatch to CUDA.
-  """
-
-  raw = os.environ.get(_ENV_OPS)
-  if raw is None:
-    return frozenset(ALL_OPS)
-  value = raw.strip().lower()
-  if value in ("", "all"):
-    return frozenset(ALL_OPS)
-  if value in _FALSEY:
-    return frozenset()
-  return frozenset(part.strip() for part in value.split(",") if part.strip())
-
-
-ACTIVE_OPS = _ops_from_env()
+# Every operator stays enabled: none of them measured negative in either arm. A pointwise chain
+# that inductor already fuses can be *slower* as an opaque custom op, because the fusion boundary
+# moves, so this set is a measurement and not a preference - narrow it by assignment for an A/B
+# run, there is no environment variable for the subset.
+#
+# Measured on an RTX PRO 5000 (torch 2.15, 1024x1024, 16 steps, warmup then median of CUDA-event
+# timings, one transformer forward): the eager chain is 289.6 ms and all three are 241.3 ms
+# (-16.7%). Per operator, eager against the same arm: `qk_norm_rope` alone 245.7 ms,
+# `gated_residual,ln_modulate` 279.0 ms - they do not stack, because the q/k chain is most of the
+# removable time. Under `torch.compile` the fused arm is at parity (236.4 ms against 236.4 ms)
+# because the blocks and the attention processor hand compiled graphs the stock implementation
+# instead of the operators (see the `is_compiling` branches in :mod:`.block` and :mod:`.attention`).
+# The compiled arm is not reproducible run to run - two stock runs differ by 34.79 dB - and the
+# fused-vs-stock difference of 33.48 dB sits inside that floor, so it is indistinguishable rather
+# than bit-identical.
+ACTIVE_OPS = frozenset(ALL_OPS)
 
 
 def relative_l2(actual: torch.Tensor, expected: torch.Tensor) -> float:
@@ -302,7 +289,7 @@ def _eager_qk_norm_rope(
 
   width = x.shape[-1]
   normed = F.rms_norm(x.float(), (width, ), weight, eps)
-  # The stock function, not a re-derivation of it: `CACHE_DIT_FLUX3_KLEIN_OPS=0` has to reproduce
+  # The stock function, not a re-derivation of it: `CACHE_DIT_FUSED_OPS=0` has to reproduce
   # stock bit for bit, and the rotation is where a hand-rolled pair layout differs by an ulp.
   rotated = apply_rotary_emb(normed, (cos, sin), sequence_dim=1)
   return rotated.to(x.dtype)
@@ -469,7 +456,7 @@ def _eager_gated_residual(
   """Literal stock expression, used whenever a kernel precondition does not hold.
 
   `hidden + gate * (attn_output + ff_output)` in the model dtype is exactly what the stock block
-  runs, so "no kernel" is provably identical to "stock" - `CACHE_DIT_FLUX3_KLEIN_OPS=0` then
+  runs, so "no kernel" is provably identical to "stock" - `CACHE_DIT_FUSED_OPS=0` then
   reproduces stock bit for bit. The kernel is *not* this expression: it keeps the fp32 math the
   compiled step uses, which is what `_compiled_*` documents and tests.
 
@@ -643,6 +630,7 @@ __all__ = [
   "ALL_OPS",
   "FUSED_OPS_ENABLED",
   "REL_L2_TOL",
+  "activate_fused_ops",
   "apply_gated_residual",
   "apply_gated_residual_split",
   "apply_ln_modulate",

@@ -30,7 +30,8 @@ from diffusers.models.transformers.transformer_flux3 import (
 )
 
 from ....logger import init_logger
-from .fused_ops import ACTIVE_OPS, apply_qk_norm_rope
+from . import fused_ops
+from .fused_ops import apply_qk_norm_rope
 
 logger = init_logger(__name__)
 
@@ -59,9 +60,10 @@ class _Flux3FusedAttnProcessor(Flux3AttnProcessor):
     """
 
     # The stock processor runs whenever this one cannot use the kernel: compiled graphs (see the
-    # block forwards) and configurations that disabled `qk_norm_rope`. A transcription that only
-    # reproduces the chain approximately would drift from stock for no speed in return.
-    if torch.compiler.is_compiling() or "qk_norm_rope" not in ACTIVE_OPS:
+    # block forwards) and an allow-list narrowed to drop `qk_norm_rope`. A transcription that only
+    # reproduces the chain approximately would drift from stock for no speed in return. Read the
+    # allow-list through the module, so narrowing it for an A/B run takes effect here too.
+    if torch.compiler.is_compiling() or "qk_norm_rope" not in fused_ops.ACTIVE_OPS:
       return super().__call__(attn, hidden_states, attention_mask, image_rotary_emb)
 
     query, key, value = _get_qkv_projections(attn, hidden_states)
