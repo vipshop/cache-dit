@@ -133,35 +133,13 @@ def test_boogu_gated_rms_norm_rejects_mismatched_residual() -> None:
     boogu_gated_rms_norm(x, weight, 1e-5, gate, x[:, :4], False)
 
 
-def test_boogu_fused_ops_switch_is_model_scoped() -> None:
-  from cache_dit.models.pipelines.boogu_image import fused_ops
+def _tiny_boogu_transformer():
+  """A Boogu transformer small enough to construct on a CPU-sized budget."""
 
-  assert fused_ops._BOOGU_FUSED_OPS_ENV == "CACHE_DIT_BOOGU_FUSED_OPS"
-  assert fused_ops._BOOGU_FUSED_OPS_ENABLED is True
-
-
-def test_boogu_fused_ops_env_parsing(monkeypatch) -> None:
-  from cache_dit.models.pipelines.boogu_image import fused_ops
-
-  name = fused_ops._BOOGU_FUSED_OPS_ENV
-  for raw, expected in (("0", False), ("off", False), ("false", False), ("1", True), ("on", True),
-                        ("nonsense", True)):
-    monkeypatch.setenv(name, raw)
-    assert fused_ops._env_enabled(name, True) is expected, raw
-  monkeypatch.delenv(name)
-  assert fused_ops._env_enabled(name, True) is True
-
-
-def test_boogu_model_fused_path_matches_eager_chain() -> None:
-  _require_runtime()
-  from cache_dit.models.pipelines.boogu_image import fused_ops
-  from cache_dit.models.pipelines.boogu_image.rope import BooguImageRotaryPosEmbed
   from cache_dit.models.pipelines.boogu_image.transformer_boogu import (
     BooguImageTransformer2DModel, )
 
-  torch.manual_seed(0)
-  device, dtype = "cuda", torch.bfloat16
-  model = BooguImageTransformer2DModel(
+  return BooguImageTransformer2DModel(
     patch_size=2,
     in_channels=4,
     hidden_size=96,
@@ -176,7 +154,38 @@ def test_boogu_model_fused_path_matches_eager_chain() -> None:
     instruction_feature_configs=dict(instruction_feat_dim=32,
                                      reduce_type="mean",
                                      num_instruction_feat_layers=1),
-  ).to(device=device, dtype=dtype).eval()
+  )
+
+
+def test_constructing_the_transformer_activates_the_family(monkeypatch) -> None:
+  """Boogu has no install step, so its own transformer's `__init__` is the activation point.
+
+  The switch itself is pinned in `tests/api/test_env.py`; this file only pins the Boogu-specific
+  entry, which is the one path that does not go through `install_fused_modules()`.
+  """
+
+  from cache_dit.models.pipelines import env
+  from cache_dit.models.pipelines.boogu_image import fused_ops
+
+  monkeypatch.delenv(env.FUSED_OPS_ENV, raising=False)
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  _tiny_boogu_transformer()
+  assert fused_ops.FUSED_OPS_ENABLED is True
+
+  monkeypatch.setenv(env.FUSED_OPS_ENV, "0")
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+  _tiny_boogu_transformer()
+  assert fused_ops.FUSED_OPS_ENABLED is False
+
+
+def test_boogu_model_fused_path_matches_eager_chain() -> None:
+  _require_runtime()
+  from cache_dit.models.pipelines.boogu_image import fused_ops
+  from cache_dit.models.pipelines.boogu_image.rope import BooguImageRotaryPosEmbed
+
+  torch.manual_seed(0)
+  device, dtype = "cuda", torch.bfloat16
+  model = _tiny_boogu_transformer().to(device=device, dtype=dtype).eval()
 
   freqs = [
     f.to(device) for f in BooguImageRotaryPosEmbed.get_freqs_cis((8, 8, 8), (64, 64, 64), 10000)

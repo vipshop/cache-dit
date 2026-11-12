@@ -30,6 +30,13 @@ DIM = 3072
 HEAD_DIM = 128
 HEADS = 24
 
+# These tests cover the kernels, and the family starts disabled: `install_fused_modules()` is what
+# turns it on, and it is not run here. Force it on at import, otherwise every `apply_*` assertion
+# compares the eager expression with itself. `tests/api/test_env.py` pins the switch.
+# `ACTIVE_OPS` is left alone: every operator this file dispatches through `apply_*` is in the
+# shipped winner set.
+fused_ops.FUSED_OPS_ENABLED = True
+
 
 def _rows(count: int = 1) -> torch.Tensor:
   return torch.randn(count, DIM, device=DEVICE, dtype=torch.bfloat16)
@@ -240,26 +247,25 @@ def test_ln_modulate_survives_a_shifted_activation():
     assert error <= fused_ops.NORM_REL_L2_TOL, (scale, offset, error)
 
 
-def test_operator_switches_parse_from_the_environment(monkeypatch):
-  monkeypatch.delenv("CACHE_DIT_FLUX2_KLEIN_OPS", raising=False)
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.DEFAULT_OPS)
+def test_the_operator_selection_is_a_code_constant(monkeypatch):
+  """No environment variable selects operators any more; only `CACHE_DIT_FUSED_OPS` exists.
 
-  monkeypatch.setenv("CACHE_DIT_FLUX2_KLEIN_OPS", "all")
-  assert fused_ops._ops_from_env() == frozenset(fused_ops.ALL_OPS)
+  The measured default is a subset, never "everything", and an A/B run narrows or widens it by
+  assignment.
+  """
 
-  monkeypatch.setenv("CACHE_DIT_FLUX2_KLEIN_OPS", "0")
-  assert fused_ops._ops_from_env() == frozenset()
-
-  monkeypatch.setenv("CACHE_DIT_FLUX2_KLEIN_OPS", "qk_norm_rope, gated_residual")
-  assert fused_ops._ops_from_env() == frozenset({"qk_norm_rope", "gated_residual"})
-
-  # The measured default is a subset, never "everything".
+  assert fused_ops.ACTIVE_OPS == frozenset(fused_ops.DEFAULT_OPS)
   assert set(fused_ops.DEFAULT_OPS) < set(fused_ops.ALL_OPS)
 
-  monkeypatch.delenv("CACHE_DIT_FLUX2_KLEIN_ROPE_CACHE", raising=False)
-  assert fused_ops._rope_cache_from_env() is False
-  monkeypatch.setenv("CACHE_DIT_FLUX2_KLEIN_ROPE_CACHE", "1")
-  assert fused_ops._rope_cache_from_env() is True
+  fused_ops.set_flux2_klein_active_ops({"qk_norm_rope", "gated_residual"})
+  try:
+    assert fused_ops.ACTIVE_OPS == frozenset({"qk_norm_rope", "gated_residual"})
+  finally:
+    fused_ops.set_flux2_klein_active_ops(fused_ops.DEFAULT_OPS)
+
+  # The two sub-features that once had variables of their own ship off as constants.
+  assert fused_ops.ROPE_CACHE_ENABLED is False
+  assert fused_ops.JOIN_ENABLED is False
 
 
 @needs_gpu_ops

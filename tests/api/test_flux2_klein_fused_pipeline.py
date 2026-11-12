@@ -155,6 +155,25 @@ def test_fused_double_block_matches_the_stock_block_bit_exactly():
     assert torch.equal(expected_tensor, got_tensor)
 
 
+def test_upgrade_transformer_turns_the_operators_on(monkeypatch):
+  """`_Flux2KleinPipeline.from_pretrained` only calls `upgrade_transformer`, so that is the opt-in.
+
+  `tests/api/test_env.py` pins the parsing and both directions of the switch; this pins that the
+  FLUX.2 install is what enables the family, without the user setting anything.
+  """
+
+  from cache_dit.models.pipelines import env
+  from cache_dit.models.pipelines.flux2_klein import fused_ops
+  from cache_dit.models.pipelines.flux2_klein.transformer_flux2_klein import upgrade_transformer
+
+  monkeypatch.delenv(env.FUSED_OPS_ENV, raising=False)
+  monkeypatch.setattr(fused_ops, "FUSED_OPS_ENABLED", False)
+
+  upgrade_transformer(_tiny_transformer())
+
+  assert fused_ops.FUSED_OPS_ENABLED is True
+
+
 def test_ops_fall_back_to_eager_without_the_extension(monkeypatch):
   """A missing extension has to degrade to the literal expression, not raise."""
 

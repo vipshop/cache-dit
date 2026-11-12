@@ -15,17 +15,16 @@ kernel path when all shape/dtype/alignment preconditions hold, so an unsupported
 input (fp32 weights, DTensor shards, batch > 1, non-complex RoPE table, missing
 extension, ...) silently produces the same numbers as before the fusion.
 
-``CACHE_DIT_BOOGU_FUSED_OPS`` is the model-scoped escape hatch, read once at
-import. Boogu is the first model to ship its own kernel family, not the last, so
-the switch carries the model name instead of being a generic process-wide flag;
-each future ``{MODEL}`` family gets its own ``CACHE_DIT_{MODEL}_*`` variable. It
-**defaults to on** — the kernels are the intended production path, and the
-variable only exists to bisect a suspected kernel problem (or to reproduce the
-pre-fusion chain) without editing code. ``set_boogu_fused_ops_enabled()`` is the
-in-process equivalent used by the parity test.
+``CACHE_DIT_FUSED_OPS`` is the single switch (see :mod:`..env`), the same one the
+FLUX and Qwen-Image families read. This family has no separate install step: the
+helpers are called straight from the vendored transformer, so constructing
+:class:`~.transformer_boogu.BooguImageTransformer2DModel` - which only cache-dit's
+own ``BooguImagePipeline`` does - is the activation point. ``unset`` therefore
+leaves the kernels on for every Boogu pipeline user, and ``0`` is the escape hatch
+that bisects a suspected kernel problem (or reproduces the pre-fusion chain)
+without editing code. ``set_boogu_fused_ops_enabled()`` stays as the in-process
+handle used by the parity test.
 """
-
-import os
 
 import torch
 
@@ -33,6 +32,7 @@ from ....kernels import cuda_ext_is_available
 from ....kernels.models.boogu import boogu_fused_qk_norm_rope
 from ....kernels.models.boogu import boogu_gated_rms_norm
 from ....kernels.models.boogu import boogu_scaled_rms_norm
+from ..env import fused_ops_default, fused_ops_enabled_on_install
 from .rms_norm import RMSNorm
 
 #: Norm classes whose forward is a plain RMS (`x * rsqrt(mean(x^2) + eps) * w`).
@@ -47,42 +47,35 @@ try:  # diffusers always ships this, but keep the import defensive.
 except ImportError:  # pragma: no cover - diffusers is a hard dependency
   pass
 
-_BOOGU_FUSED_OPS_ENV = "CACHE_DIT_BOOGU_FUSED_OPS"
-
 # The kernels pack 8 bf16 lanes per vec unit and cap the per-row channel count.
 _MAX_FUSED_CHANNELS = 8192
 
 
-def _env_enabled(name: str, default: bool) -> bool:
-  """Read a boolean environment switch.
+def activate_fused_ops() -> None:
+  """Turn the operator family on for a constructed Boogu transformer.
 
-  :param name: Environment variable name.
-  :param default: Value used when the variable is unset or unparsable.
-  :returns: The parsed flag.
+  Called from `BooguImageTransformer2DModel.__init__`, the cache-dit-owned object these helpers
+  are reached from, so a `BooguImagePipeline` gets the kernels without the user setting anything.
+
+  An explicit ``CACHE_DIT_FUSED_OPS=0`` wins over this, and a later
+  :func:`set_boogu_fused_ops_enabled` call wins over the construction.
   """
 
-  raw = os.environ.get(name)
-  if raw is None:
-    return default
-  value = raw.strip().lower()
-  if value in ("1", "true", "on", "yes"):
-    return True
-  if value in ("0", "false", "off", "no"):
-    return False
-  return default
+  global FUSED_OPS_ENABLED
+  if fused_ops_enabled_on_install():
+    FUSED_OPS_ENABLED = True
 
 
-_BOOGU_FUSED_OPS_ENABLED = _env_enabled(_BOOGU_FUSED_OPS_ENV, default=True)
+FUSED_OPS_ENABLED = fused_ops_default()
 
 
 def _boogu_kernels_usable() -> bool:
   """Return whether the Boogu fused path may run in this process.
 
-  :returns: `True` when the model switch is on and `cache_dit._C_ops` is
-    importable.
+  :returns: `True` when the family switch is on and `cache_dit._C_ops` is importable.
   """
 
-  return _BOOGU_FUSED_OPS_ENABLED and cuda_ext_is_available()
+  return FUSED_OPS_ENABLED and cuda_ext_is_available()
 
 
 def set_boogu_fused_ops_enabled(enabled: bool) -> None:
@@ -91,8 +84,8 @@ def set_boogu_fused_ops_enabled(enabled: bool) -> None:
   :param enabled: Whether the Boogu kernels may be used.
   """
 
-  global _BOOGU_FUSED_OPS_ENABLED
-  _BOOGU_FUSED_OPS_ENABLED = enabled
+  global FUSED_OPS_ENABLED
+  FUSED_OPS_ENABLED = enabled
 
 
 def _aligned16(t: torch.Tensor) -> bool:

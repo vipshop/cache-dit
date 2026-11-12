@@ -11,70 +11,53 @@ extension). When the extension is missing, or a precondition below fails (dtype,
 alignment, shape, CP sharding, offload), the eager branch runs instead: that is the only
 fallback, and it is never silent on the operator-selection level because
 :data:`FUSED_OPS_ENABLED` and the per-op preconditions are asserted in the tests.
-"""
 
-import os
+The family as a whole is switched by the shared ``CACHE_DIT_FUSED_OPS`` (see
+:mod:`..env`): it starts off, and :func:`install_fused_modules` turns it on when
+``_QwenImage21Pipeline`` (or its patch functor) installs this transformer. That is the only
+variable the family reads; the per-operator subset is :data:`ACTIVE_OPS`, a code constant that an
+A/B run narrows by assignment.
+"""
 
 import torch
 import torch.nn.functional as F
 
 from ....logger import init_logger
+from ..env import fused_ops_default, fused_ops_enabled_on_install
 
 logger = init_logger(__name__)
 
-_ENV_SWITCH = "CACHE_DIT_QWEN_IMAGE21_FUSED_OPS"
-_ENV_OPS = "CACHE_DIT_QWEN_IMAGE21_OPS"
-_FALSEY = ("0", "false", "off", "no")
 ALL_OPS = ("ln_modulate", "qk_norm_rope", "gated_residual", "silu_mul")
 # Qwen-Image 2.1 rotates every head with the interleaved (complex) layout, so the fused
 # qk-norm+RoPE kernel only exists for the checkpoint's head width.
 _FUSED_HEAD_DIM = 128
 
 
-def _switch_from_env() -> bool:
-  """Read the operator switch once, treating only explicit falsey values as "off".
+def activate_fused_ops() -> None:
+  """Turn the operator family on for an installed fused transformer.
 
-  :returns: Whether fused operators are enabled.
+  Called from :func:`install_fused_modules`, the only place these operators are reached from.
+  That covers both install entries: ``_QwenImage21Pipeline.from_pretrained`` through
+  `apply_fused_ops`, and `_QwenImage21PatchFunctor` through `enable_cache`.
+
+  An explicit ``CACHE_DIT_FUSED_OPS=0`` wins over this, and a later
+  :func:`set_qwen_image21_fused_ops_enabled` call wins over the install.
   """
 
-  value = os.environ.get(_ENV_SWITCH)
-  if value is None:
-    return True
-  return value.strip().lower() not in _FALSEY
+  global FUSED_OPS_ENABLED
+  if fused_ops_enabled_on_install():
+    FUSED_OPS_ENABLED = True
 
 
-FUSED_OPS_ENABLED = _switch_from_env()
+FUSED_OPS_ENABLED = fused_ops_default()
 
-
-def _ops_from_env() -> frozenset[str]:
-  """Return the per-operator allow-list.
-
-  A pointwise chain that inductor already fuses can be *slower* as an opaque custom op,
-  because the fusion boundary moves. The default therefore only enables the operators that
-  measured faster on this model; `CACHE_DIT_QWEN_IMAGE21_OPS=all` or a comma separated list
-  (`ln_modulate,gated_residual,...`) re-enables any subset for A/B runs.
-
-  :returns: Names of the operators allowed to dispatch to CUDA.
-  """
-
-  raw = os.environ.get(_ENV_OPS)
-  if raw is None:
-    # Every operator is on by default: turning the family off is what
-    # `CACHE_DIT_QWEN_IMAGE21_FUSED_OPS=0` is for, and per-operator selection stays
-    # available for A/B runs (`CACHE_DIT_QWEN_IMAGE21_OPS=gated_residual,silu_mul`).
-    # Measured on an RTX PRO 5000 (torch 2.11, 1024x1024, 8 steps, cache+compile): all 369.2,
-    # qk_norm_rope only 365.6, off 372.9 ms/step -- inductor already fuses the pointwise
-    # chains, so the per-operator choice is a tuning knob, not a correctness one.
-    return frozenset(ALL_OPS)
-  value = raw.strip().lower()
-  if value in ("", "all"):
-    return frozenset(ALL_OPS)
-  if value in _FALSEY:
-    return frozenset()
-  return frozenset(part.strip() for part in value.split(",") if part.strip())
-
-
-ACTIVE_OPS = _ops_from_env()
+# Every operator is enabled: turning the family off is what `CACHE_DIT_FUSED_OPS=0` is for, and the
+# per-operator subset is a tuning knob, not a correctness one - narrow it by assignment for an A/B
+# run, there is no environment variable for it.
+#
+# Measured on an RTX PRO 5000 (torch 2.11, 1024x1024, 8 steps, cache+compile): all 369.2,
+# qk_norm_rope only 365.6, off 372.9 ms/step -- inductor already fuses the pointwise chains.
+ACTIVE_OPS = frozenset(ALL_OPS)
 
 # `None` = not probed yet, `-1` = probed and unusable, otherwise the selected variant/tier.
 _PROBE_SEQ = 8
@@ -373,6 +356,7 @@ def apply_silu_mul(gate: torch.Tensor, up: torch.Tensor) -> torch.Tensor:
 
 __all__ = [
   "FUSED_OPS_ENABLED",
+  "activate_fused_ops",
   "apply_gated_residual",
   "apply_ln_modulate",
   "apply_qk_norm_rope",

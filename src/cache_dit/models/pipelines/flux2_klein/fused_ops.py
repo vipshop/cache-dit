@@ -8,9 +8,14 @@ modulation chain is the literal sequence of bf16 tensor ops the block performs.
 
 Which operators actually ship enabled is a measured decision, not a stylistic one: under
 `torch.compile` inductor already fuses most of these chains, and NCU showed two of them sitting
-at the DRAM ceiling with the traffic of the theoretical minimum. :data:`ACTIVE_OPS` therefore
-defaults to the operators that measured faster, and the rest stay available behind
-`CACHE_DIT_FLUX2_KLEIN_OPS` for A/B runs.
+at the DRAM ceiling with the traffic of the theoretical minimum. :data:`ACTIVE_OPS` is therefore
+the measured winner set, and the rest are re-enabled with
+:func:`set_flux2_klein_active_ops` for an A/B run - the subset has no environment variable.
+
+``CACHE_DIT_FUSED_OPS`` is the only switch this family reads (see :mod:`..env`): unset
+keeps the operators off until :func:`install_fused_modules` installs this transformer, `1` forces
+them on and `0` forces them off. The rotation-table cache and the joined q/k stream measured
+neutral, so they are code constants rather than variables of their own.
 
 The kernels live in :mod:`cache_dit.kernels.models` (the shared ``cache_dit._C_ops``
 extension). When the extension is missing or a precondition fails (dtype, device, alignment,
@@ -19,21 +24,16 @@ never silent at the operator-selection level, because :data:`FUSED_OPS_ENABLED` 
 per-operator preconditions are asserted by the tests.
 """
 
-import os
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 
 from ....logger import init_logger
+from ..env import fused_ops_default, fused_ops_enabled_on_install
 
 logger = init_logger(__name__)
 
-_ENV_SWITCH = "CACHE_DIT_FLUX2_KLEIN_FUSED_OPS"
-_ENV_OPS = "CACHE_DIT_FLUX2_KLEIN_OPS"
-_ENV_ROPE_CACHE = "CACHE_DIT_FLUX2_KLEIN_ROPE_CACHE"
-_ENV_JOIN = "CACHE_DIT_FLUX2_KLEIN_JOIN"
-_FALSEY = ("0", "false", "off", "no")
 ALL_OPS = ("ln_modulate", "residual_ln_modulate", "qk_norm_rope", "gated_residual", "silu_mul")
 # The measured winners under `compile` (see `.tmp/klein2-flux2/`): the two normalisation
 # operators remove a full read of the residual stream and of the normalised tensor, and the
@@ -44,88 +44,44 @@ DEFAULT_OPS = ("ln_modulate", "residual_ln_modulate", "qk_norm_rope")
 _FUSED_HEAD_DIM = 128
 
 
-def _switch_from_env() -> bool:
-  """Read the operator switch once, treating only explicit falsey values as "off".
+def activate_fused_ops() -> None:
+  """Turn the operator family on for an installed fused transformer.
 
-  :returns: Whether fused operators are enabled.
+  Called from :func:`install_fused_modules`, the only place these operators are reached from, so
+  every entry point that binds the fused block forwards (`_Flux2KleinPipeline`, a direct
+  `upgrade_transformer`) gets the operators without the user setting anything.
+
+  An explicit ``CACHE_DIT_FUSED_OPS=0`` wins over this, and a later
+  :func:`set_flux2_klein_fused_ops_enabled` call wins over the install.
   """
 
-  value = os.environ.get(_ENV_SWITCH)
-  if value is None:
-    return True
-  return value.strip().lower() not in _FALSEY
+  global FUSED_OPS_ENABLED
+  if fused_ops_enabled_on_install():
+    FUSED_OPS_ENABLED = True
 
 
-FUSED_OPS_ENABLED = _switch_from_env()
+FUSED_OPS_ENABLED = fused_ops_default()
 
+# Measured neutral under `compile_repeated_blocks()` (189.43 ms/step with the cache, 189.45
+# without, i.e. inside the noise of the run), so it does not ship enabled: the cache keys on the
+# position-id tensor's address, and a feature that buys nothing while it can hold a tensor alive is
+# not worth it. No environment variable gates it - flip this constant (or `monkeypatch.setattr`)
+# for an A/B run.
+ROPE_CACHE_ENABLED = False
 
-def _rope_cache_from_env() -> bool:
-  """Read the rotation-table cache switch once.
+# The double block normalises a text and an image stream and then concatenates them; the joined
+# operator writes both into one buffer so the concatenation never runs. Measured against two calls
+# plus `torch.cat` on the compiled arm it is neutral: -0.41 ms/step with one build order and
+# +0.11 ms with the other, and in both cases whichever pipeline was built *second* in the process
+# ran 0.3-0.5 ms faster. The comparison was therefore measuring the process, not the copy. It ships
+# disabled so there is one path to reason about, not because the copy is free.
+JOIN_ENABLED = False
 
-  `Flux2PosEmbed` rebuilds its float64 `cos`/`sin` tables on every forward; `img_ids` and
-  `txt_ids` do not change between denoising steps, so the tables can be reused. Cache-dit
-  measured that chain at 0.58 ms/step under compile, which is a pure constant-folding win.
-
-  :returns: Whether the tables are cached per position-id tensor.
-  """
-
-  value = os.environ.get(_ENV_ROPE_CACHE)
-  if value is None:
-    # Measured neutral under `compile_repeated_blocks()` (189.43 ms/step with the cache,
-    # 189.45 without, i.e. inside the noise of the run), so it does not ship enabled: the cache
-    # keys on the position-id tensor's address, and keeping a feature that buys nothing while
-    # it can hold a tensor alive is not worth it.
-    return False
-  return value.strip().lower() not in _FALSEY
-
-
-ROPE_CACHE_ENABLED = _rope_cache_from_env()
-
-
-def _join_from_env() -> bool:
-  """Read the joined-stream switch once.
-
-  The double block normalises a text and an image stream and then concatenates them; the
-  joined operator writes both into one buffer so the concatenation never runs. Measured against
-  two calls plus `torch.cat` on the compiled arm it is neutral: -0.41 ms/step with one build
-  order and +0.11 ms with the other, and in both cases whichever pipeline was built *second* in
-  the process ran 0.3-0.5 ms faster. The comparison was therefore measuring the process, not the
-  copy. It ships disabled so there is one path to reason about, not because the copy is free.
-
-  :returns: Whether the joined variant is used.
-  """
-
-  value = os.environ.get(_ENV_JOIN)
-  if value is None:
-    return False
-  return value.strip().lower() not in _FALSEY
-
-
-JOIN_ENABLED = _join_from_env()
-
-
-def _ops_from_env() -> frozenset[str]:
-  """Return the per-operator allow-list.
-
-  The default is the measured winner set, because an opaque custom operator that replaces a
-  chain inductor already fuses usually loses: the fusion boundary moves and the traffic does
-  not. `all` or a comma separated list re-enables any subset for A/B runs.
-
-  :returns: Names of the operators allowed to dispatch to CUDA.
-  """
-
-  raw = os.environ.get(_ENV_OPS)
-  if raw is None:
-    return frozenset(DEFAULT_OPS)
-  value = raw.strip().lower()
-  if value in ("", "all"):
-    return frozenset(ALL_OPS)
-  if value in _FALSEY:
-    return frozenset()
-  return frozenset(part.strip() for part in value.split(",") if part.strip())
-
-
-ACTIVE_OPS = _ops_from_env()
+# The measured winner set, because an opaque custom operator that replaces a chain inductor already
+# fuses usually loses: the fusion boundary moves and the traffic does not.
+# `set_flux2_klein_active_ops` widens or narrows it for an A/B run; there is no environment
+# variable for the subset.
+ACTIVE_OPS = frozenset(DEFAULT_OPS)
 
 # The kernels are built with `--use_fast_math`, so the one operator that needs a transcendental
 # (`silu`'s sigmoid) cannot be bit-identical to the eager expression and is gated here. The
@@ -576,6 +532,7 @@ __all__ = [
   "apply_qk_norm_rope",
   "apply_qk_norm_rope_join",
   "apply_residual_ln_modulate",
+  "activate_fused_ops",
   "apply_silu_mul",
   "fused_ops_extension_available",
   "modulation_rows",

@@ -651,9 +651,17 @@ Standard shape (details in `cache-dit-custom-kernel`):
   `register_<model>_ops(py::module_&)` call to it;
 * Python side is the bridge: `from ..cuda_ext import _get_required_ops_module` → `_call_*`
   → `torch.library` `define` / `impl("CUDA")` / `register_fake` → public wrapper;
-* one switch for the family (`CACHE_DIT_<MODEL>_FUSED_OPS`, default on) and, if you measured a
-  per-operator difference, one allow-list (`CACHE_DIT_<MODEL>_OPS=all|a,b`) — the default must be the
-  measured winner, not "everything";
+* one switch for **every** family (`CACHE_DIT_FUSED_OPS`, parsed only in
+  `models/pipelines/env.py`), tri-state: unset = off until the family's install point calls
+  `activate_fused_ops()` (`install_fused_modules()` for the transformer-subclass families, the
+  transformer's own `__init__` for a vendored model like Boogu-Image), `1` = on, `0` = off. That is
+  what makes the operators default on through cache-dit's own entry points only. Never add a
+  `CACHE_DIT_<MODEL>_*` variable. If you measured a per-operator difference, encode it in the module's
+  `ACTIVE_OPS` constant — the shipped set must be the measured winner, not "everything", and an A/B
+  run narrows it by assignment rather than by an env;
+* expectation setting: measured on torch 2.15 these operators are at parity with `torch.compile` and only
+  win against the eager arm (-13~17% there), because inductor already fuses the same pointwise chains at
+  the DRAM ceiling. Never promise a compiled-arm speedup from this family;
 * every `apply_*` re-checks dtype / contiguity / alignment / shape and otherwise evaluates the
   **literal upstream expression**, so a precondition failure degrades to the same values rather than an
   error. Put the reference transcription in the same module (`_eager_*`) so the two can be diffed and
