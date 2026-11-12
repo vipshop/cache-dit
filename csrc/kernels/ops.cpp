@@ -12,6 +12,7 @@
 
 #include "attn/attn.h"
 #include "comm/comm.h"
+#include "fp8/fp8.h"
 #include "models/models.h"
 #include "svdq/svdq.h"
 
@@ -19,6 +20,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
   auto ops = module.def_submodule("ops");
   cache_dit::attn::register_attn_ops(ops);
   cache_dit::comm::register_comm_ops(ops);
+  cache_dit::fp8::register_fp8_ops(ops);
   cache_dit::models::register_models_ops(ops);
   cache_dit::svdq::register_svdq_ops(ops);
 }

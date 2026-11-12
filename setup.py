@@ -305,6 +305,16 @@ def _required_svdquant_sources() -> list[str]:
   ]
 
 
+def _required_fp8_sources() -> list[str]:
+  return [
+    "csrc/kernels/fp8/fp8.cpp",
+    "csrc/kernels/fp8/quantize.cu",
+    "csrc/kernels/fp8/gemm_per_row.cu",
+    "csrc/kernels/fp8/gemm_per_tensor.cu",
+    "csrc/kernels/fp8/gemm_per_block.cu",
+  ]
+
+
 def _required_comm_sources() -> list[str]:
   return [
     "csrc/kernels/comm/comm.cpp",
@@ -364,6 +374,7 @@ def _required_cuda_sources() -> list[str]:
     "csrc/kernels/ops.cpp",
     *_required_svdquant_sources(),
     *_required_comm_sources(),
+    *_required_fp8_sources(),
     *_required_attn_sources(),
     *_required_models_sources(),
   ]
@@ -571,6 +582,7 @@ def _get_cuda_extension():
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
     "-DBUILD_CACHE_DIT_COMM=1",
+    "-DBUILD_CACHE_DIT_FP8=1",
     "-DBUILD_CACHE_DIT_ATTN=1",
     "-DBUILD_CACHE_DIT_MODELS=1",
     "-fvisibility=hidden",
@@ -581,6 +593,7 @@ def _get_cuda_extension():
     "/DENABLE_BF16=1",
     "/DBUILD_CACHE_DIT_SVDQUANT=1",
     "/DBUILD_CACHE_DIT_COMM=1",
+    "/DBUILD_CACHE_DIT_FP8=1",
     "/DBUILD_CACHE_DIT_ATTN=1",
     "/DBUILD_CACHE_DIT_MODELS=1",
     "/O2",
@@ -592,6 +605,7 @@ def _get_cuda_extension():
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
     "-DBUILD_CACHE_DIT_COMM=1",
+    "-DBUILD_CACHE_DIT_FP8=1",
     "-DBUILD_CACHE_DIT_ATTN=1",
     "-DBUILD_CACHE_DIT_MODELS=1",
     "-O3",
@@ -628,6 +642,7 @@ def _get_cuda_extension():
       str(ROOT_DIR / "csrc" / "kernels"),
       str(ROOT_DIR / "csrc" / "kernels" / "svdq"),
       str(ROOT_DIR / "csrc" / "kernels" / "comm"),
+      str(ROOT_DIR / "csrc" / "kernels" / "fp8"),
       str(ROOT_DIR / "csrc" / "kernels" / "attn"),
       str(ROOT_DIR / "csrc" / "kernels" / "models"),
       str(ROOT_DIR / "csrc" / "third_party" / "spdlog" / "include"),

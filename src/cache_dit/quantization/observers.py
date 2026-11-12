@@ -141,6 +141,10 @@ def _dequantized_weight(module):
   :param module: Quantized linear module.
   :returns: Dense weight tensor, or None when the backend keeps it packed.
   """
+
+  dequantize_weight = getattr(module, "dequantize_weight", None)
+  if callable(dequantize_weight):
+    return dequantize_weight()
   weight = getattr(module, "weight", None)
   if weight is None:
     return None

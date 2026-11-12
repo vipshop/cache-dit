@@ -27,6 +27,7 @@ ENTRY = "csrc/kernels/ops.cpp"
 _HELPERS = (
   "_required_svdquant_sources",
   "_required_comm_sources",
+  "_required_fp8_sources",
   "_required_attn_sources",
   "_required_models_sources",
   "_required_cuda_sources",
@@ -130,6 +131,7 @@ def test_cuda_sources_are_the_union_of_the_family_lists():
   families = (
     "_required_svdquant_sources",
     "_required_comm_sources",
+    "_required_fp8_sources",
     "_required_attn_sources",
     "_required_models_sources",
   )
@@ -147,6 +149,7 @@ def test_pybind_entry_point_registers_every_family():
   for registrar in (
       "cache_dit::attn::register_attn_ops",
       "cache_dit::comm::register_comm_ops",
+      "cache_dit::fp8::register_fp8_ops",
       "cache_dit::models::register_models_ops",
       "cache_dit::svdq::register_svdq_ops",
   ):

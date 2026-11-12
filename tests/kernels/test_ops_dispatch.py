@@ -7,6 +7,7 @@ import cache_dit.kernels as kernels
 import cache_dit.kernels.attn as attn_ops
 import cache_dit.kernels.comm as comm_ops
 import cache_dit.kernels.cuda_ext as cuda_ext
+import cache_dit.kernels.fp8 as fp8_ops
 import cache_dit.kernels.models as models_ops
 import cache_dit.kernels.svdquant as svdq_ops
 
@@ -19,6 +20,8 @@ import cache_dit.kernels.svdquant as svdq_ops
     ("fp8_comm_per_token_dequant", comm_ops),
     ("fp8_comm_qkv_permute_quant", comm_ops),
     ("fp8_comm_qkv_permute_dequant", comm_ops),
+    ("fp8_quantize", fp8_ops),
+    ("fp8_gemm", fp8_ops),
     ("cuda_ext_is_available", cuda_ext),
     ("cuda_ext_get_load_error", cuda_ext),
     ("boogu_scaled_rms_norm", models_ops),

@@ -37,6 +37,7 @@ from ..offload import _parse_byte_size_arg
 from ..offload import layerwise_cpu_offload
 from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
+from ..quantization.backend import QuantizeBackend
 from ..quantization.config import DEFAULT_EXCLUDE_LAYERS
 
 from ..summary import strify as summary_strify
@@ -495,6 +496,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "svdq_nvfp4_r256_dq",
       "bitsandbytes_4bit",
     ],
+  )
+  parser.add_argument(
+    "--quantize-backend",
+    "--q-backend",
+    type=str,
+    default=None,
+    choices=[None, "torchao", "cache_dit"],
+    help=("Quantization backend. Default None keeps AUTO routing: svdq* uses cache-dit "
+          "SVDQuant and every other type uses TorchAO. Pass cache_dit with one of the three "
+          "float8 types to use cache-dit's own FP8 kernels."),
   )
   parser.add_argument(
     "--disable-regional-quantize",
@@ -1394,6 +1405,8 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
 
   if args.quantize_type is not None:
     args.quantize = True
+  if getattr(args, "quantize_backend", None) is not None:
+    args.quantize = True
 
   # Handle alias for quantize_type
   if args.quantize and args.quantize_type is None:
@@ -2052,6 +2065,17 @@ def _resolve_cli_quantize_exclude_layers(args) -> Optional[List[str]]:
   return merged
 
 
+def _resolve_cli_quantize_backend(args) -> QuantizeBackend:
+  """Resolve the CLI backend flag, mapping an omitted value to AUTO.
+
+  :param args: Parsed CLI namespace.
+  :returns: Resolved backend enum.
+  """
+
+  value = getattr(args, "quantize_backend", None)
+  return QuantizeBackend.AUTO if value is None else QuantizeBackend.from_str(value)
+
+
 def maybe_quantize_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
@@ -2093,7 +2117,9 @@ def maybe_quantize_transformer(
 
   # Quantize transformer by default if quantization is enabled
   if args.quantize:
-    if args.compile and args.cuda_graph and args.quantize_type == "float8_per_row":
+    backend = _resolve_cli_quantize_backend(args)
+    if (args.compile and args.cuda_graph and args.quantize_type == "float8_per_row"
+        and backend == QuantizeBackend.TORCHAO):
       from ..quantization.torchao.scaled_mm import (
         enable_opaque_torchao_float8_scaled_mm, )
 
@@ -2121,11 +2147,13 @@ def maybe_quantize_transformer(
       logger.warning("Cannot quantize %s: %s is not a torch.nn.Module.", transformer_name,
                      transformer.__class__.__name__)
     else:
-      logger.info("Quantizing transformer module '%s' (%s) to %s ...", transformer_name,
-                  transformer.__class__.__name__, args.quantize_type)
+      logger.info("Quantizing transformer module '%s' (%s) to %s (backend=%s) ...",
+                  transformer_name, transformer.__class__.__name__, args.quantize_type,
+                  backend.name)
       transformer = quantize(
         transformer,
         quantize_config=QuantizeConfig(
+          backend=backend,
           quant_type=args.quantize_type,
           regional_quantize=not args.disable_regional_quantize,
           per_tensor_fallback=not args.disable_per_tensor_fallback,
@@ -2138,11 +2166,12 @@ def maybe_quantize_transformer(
 
     for secondary_name, secondary in iter_transformer_modules(pipe)[1:]:
       declare_repeated_blocks(secondary)
-      logger.info("Quantizing transformer module '%s' (%s) to %s ...", secondary_name,
-                  secondary.__class__.__name__, args.quantize_type)
+      logger.info("Quantizing transformer module '%s' (%s) to %s (backend=%s) ...", secondary_name,
+                  secondary.__class__.__name__, args.quantize_type, backend.name)
       secondary = quantize(
         secondary,
         quantize_config=QuantizeConfig(
+          backend=backend,
           quant_type=args.quantize_type,
           regional_quantize=not args.disable_regional_quantize,
           per_tensor_fallback=not args.disable_per_tensor_fallback,
@@ -2162,6 +2191,7 @@ def maybe_quantize_text_encoder(
 ) -> DiffusionPipeline | BlockAdapter:
   # Quantize text encoder by default if quantize_text_encoder is enabled
   if args.quantize_text_encoder:
+    backend = _resolve_cli_quantize_backend(args)
     if args.quantize_text_type in ("bitsandbytes_4bit", "bnb_4bit"):
       logger.debug("bitsandbytes_4bit quantization should be handled by"
                    " PipelineQuantizationConfig in from_pretrained.")
@@ -2182,6 +2212,7 @@ def maybe_quantize_text_encoder(
         text_encoder = quantize(
           text_encoder,
           quantize_config=QuantizeConfig(
+            backend=backend,
             quant_type=args.quantize_text_type,
             regional_quantize=not args.disable_regional_quantize,
             per_tensor_fallback=not args.disable_per_tensor_fallback,
@@ -2203,6 +2234,7 @@ def maybe_quantize_controlnet(
 ) -> DiffusionPipeline | BlockAdapter:
   # Quantize controlnet by default if quantize_controlnet is enabled
   if args.quantize_controlnet:
+    backend = _resolve_cli_quantize_backend(args)
     if args.quantize_controlnet_type in ("bitsandbytes_4bit", "bnb_4bit"):
       logger.debug("bitsandbytes_4bit quantization should be handled by"
                    " PipelineQuantizationConfig in from_pretrained.")
@@ -2224,6 +2256,7 @@ def maybe_quantize_controlnet(
           controlnet = quantize(
             controlnet,
             quantize_config=QuantizeConfig(
+              backend=backend,
               quant_type=args.quantize_controlnet_type,
               regional_quantize=not args.disable_regional_quantize,
               per_tensor_fallback=not args.disable_per_tensor_fallback,

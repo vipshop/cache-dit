@@ -369,6 +369,12 @@ DEFAULT_EXCLUDE_LAYERS = (
   "mod",
 )
 
+_CACHE_DIT_FP8_TYPES = frozenset({
+  "float8_per_row",
+  "float8_per_tensor",
+  "float8_per_block",
+})
+
 
 @dataclasses.dataclass
 class QuantizeConfig:
@@ -380,11 +386,10 @@ class QuantizeConfig:
   blocks, while `svdq_kwargs` contains backend-specific controls for the SVDQ path.
   """
 
-  # Quantization backend, only "ao" (torchao) is supported for now, more backends
-  # will be supported in the future. The AUTO option will automatically select the
-  # backend based on the hardware and quantization type, etc. Currently it will be
-  # resolved to TORCHAO since it's the only supported backend for now.
-  backend: str | QuantizeBackend = QuantizeBackend.AUTO
+  # Quantization backend. AUTO keeps the historical routing (`svdq*` uses the native
+  # CACHE_DIT path, every other type uses TORCHAO). An explicit CACHE_DIT with one of
+  # the three float8 types selects cache-dit's own FP8 kernels.
+  backend: str | QuantizeBackend | None = QuantizeBackend.AUTO
   # Quantization type, currently support "float8_weight_only" and "float8_per_row",
   # "float8_per_tensor", "float8_per_block", "int8_per_row", "int8_per_tensor",
   # "int8_weight_only", "int4_weight_only", "nvfp4", "nvfp4_weight_only", etc.
@@ -520,6 +525,8 @@ class QuantizeConfig:
     if isinstance(self.quant_type, str):
       self.quant_type = self.quant_type.lower()
     # Resolve backend if it's in string format, and validate the backend.
+    if self.backend is None:
+      self.backend = QuantizeBackend.AUTO
     if isinstance(self.backend, str):
       self.backend = QuantizeBackend.from_str(self.backend)
     if self.backend == QuantizeBackend.AUTO:
@@ -529,6 +536,17 @@ class QuantizeConfig:
         self.backend = QuantizeBackend.TORCHAO
     assert QuantizeBackend.is_supported(
       self.backend), f"Quantization backend {self.backend} is not supported in this environment."
+    if self.backend == QuantizeBackend.TORCHAO and self.is_svdq():
+      raise ValueError("SVDQuant quant_type requires backend='cache_dit' or backend='auto'.")
+    if self.backend == QuantizeBackend.CACHE_DIT and not self.is_svdq():
+      if self.quant_type not in _CACHE_DIT_FP8_TYPES:
+        raise ValueError(
+          "The cache-dit quantization backend supports SVDQuant and the three FP8 types "
+          f"{sorted(_CACHE_DIT_FP8_TYPES)}; got {self.quant_type!r}. Use "
+          "--quantize-backend torchao for other quantization types.")
+      if self.calibrate_fn is not None or self.serialize_to is not None:
+        raise ValueError("cache-dit native FP8 is online-only; calibrate_fn and serialize_to "
+                         "are not supported.")
 
     # Validate SVDQuant PTQ workflow configuration
     if self.is_svdq():
@@ -670,11 +688,8 @@ class QuantizeConfig:
     """
 
     for key, value in kwargs.items():
-      if hasattr(self, key):
-        if value is not None:
-          setattr(self, key, value)
-    if "backend" not in kwargs:
-      self.backend = QuantizeBackend.AUTO
+      if hasattr(self, key) and value is not None:
+        setattr(self, key, value)
     self.__post_init__()
     return self
 
@@ -684,8 +699,11 @@ class QuantizeConfig:
     :returns: A compact summary string suitable for logs and artifact names.
     """
 
-    def _stringify_quant_type(quant_type: str) -> str:
+    def _stringify_quant_type(quant_type: str, backend=None) -> str:
       quant_type = quant_type.lower()
+      resolved_backend = self.backend if backend is None else backend
+      if not isinstance(resolved_backend, QuantizeBackend):
+        resolved_backend = QuantizeBackend.from_str(resolved_backend)
       if quant_type.startswith("svdq"):
         svdq_kwargs = self.get_svdq_kwargs()
         if quant_type.endswith("_dq"):
@@ -697,6 +715,8 @@ class QuantizeConfig:
               quant_type = f"{quant_type}_{relax_strategy}"
         if svdq_kwargs.get("fused_mlp", False):
           quant_type = f"{quant_type}_fused_mlp"
+      elif (quant_type in _CACHE_DIT_FP8_TYPES and resolved_backend == QuantizeBackend.CACHE_DIT):
+        quant_type = f"{quant_type}_cache_dit"
       return quant_type
 
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
@@ -705,7 +725,10 @@ class QuantizeConfig:
       quant_str = ""
       if isinstance(self.components_to_quantize, dict):
         for component, d in self.components_to_quantize.items():
-          quant_str += f"<{component}:{_stringify_quant_type(d.get('quant_type', self.quant_type))}>"
+          quant_str += (
+            f"<{component}:"
+            f"{_stringify_quant_type(d.get('quant_type', self.quant_type), d.get('backend', self.backend))}>"
+          )
       return quant_str
 
   def component_quant_types(self) -> Dict[str, str]:
