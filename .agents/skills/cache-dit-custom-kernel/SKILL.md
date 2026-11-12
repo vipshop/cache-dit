@@ -277,15 +277,23 @@ src/cache_dit/models/pipelines/<model>/
 | 公开 torch 算子 | `{model}_{op}` | `boogu_scaled_rms_norm` |
 | Python 模块 | `kernels/models/<model>.py` | `boogu.py` |
 | extension | `cache_dit._C_ops`（全部四族共用） | — |
-| 融合开关 | `CACHE_DIT_{MODEL}_FUSED_OPS` | `CACHE_DIT_BOOGU_FUSED_OPS` |
+| 融合开关 | `CACHE_DIT_FUSED_OPS`（三态，全部模型族共用） | — |
 
-开关随模型命名，不写无前缀的全局开关：模型专属算子会越来越多，`_FUSED_OPS_ENABLED` 这类名字一次就撞车。
+开关统一为 `CACHE_DIT_FUSED_OPS`，解析点只有 `models/pipelines/env.py`。三态：未设置 = 关，
+由 `install_fused_modules()`（唯一安装漏斗，4 个调用点都走它）调 `activate_fused_ops()` 打开，因此只有走
+cache-dit 自有入口（`_XxxPipeline`、`flux3_fused` CLI、`upgrade_transformer()`、qwen21 的 patch functor）
+才会生效；`1` = 开；`0` = 关。**不要再新增 `CACHE_DIT_{MODEL}_*`**——唯一历史遗留是
+`boogu_image` 的 `CACHE_DIT_BOOGU_FUSED_OPS`（默认 on）。逐算子白名单是代码常量 `ACTIVE_OPS`
+（一个模型的算子集合一个元组），A/B 时用赋值收窄，不要再给它配 env。
+
+实测预期（torch 2.15，RTX PRO 5000）：eager 臂 −13~17%，compile 臂持平（inductor 已把同一条点式链融到
+DRAM 墙，图内 opaque op 反而碎图）。给新模型写这一族时，不要承诺 compile 臂提速。
 
 ### 9.3 模型侧 `fused_ops.py` 是契约的一部分
 
 1. 每个算子一个 `apply_<语义>()`，函数体就是 `if 前置条件: kernel else: 融合前的表达式`；**回退分支必须与融合前字面等价**（同 dtype、同运算顺序、同 `unsqueeze` 位置），否则 CPU / 非 bf16 / DTensor / offload 场景会静默改数。
 2. 前置条件必须覆盖 C++ 侧全部 `TORCH_CHECK`：dtype、contiguous、`storage_offset()==0`、`is_cuda`、形状、8 元素/16B 对齐、通道上限；再叠加模型语义限制（`B==1`、norm 无 bias、只认自己的 RMSNorm 标记，不能顺手把 `nn.LayerNorm` 也当成 RMSNorm）。
-3. 开关默认 **on**，import 时读一次，只有显式 falsey（`0/false/off/no`）才关闭，乱值按默认处理；另留 `set_<model>_fused_ops_enabled()` 给 parity 测试。
+3. 开关是统一的 `CACHE_DIT_FUSED_OPS`（三态）：模块级 `FUSED_OPS_ENABLED = fused_ops_default()`（未设置=False），由 `install_fused_modules()` 首行 `activate_fused_ops()` 打开，只有显式 falsey（`0/false/off/no`）能挡住这次激活；另留 `set_<model>_fused_ops_enabled()` 给 parity 测试。生效时机：必须在本进程第一个 fused pipeline 之前设置——激活只写 True，而 qwen21 的 qkv seam 是进程级模块替换。
 4. `weight.is_cuda` 这类检查不是冗余：layerwise offload 期间 norm 权重可能还在 CPU，漏掉就从「优雅回退」变成 kernel 里硬报错。
 
 ### 9.4 构建与测试
