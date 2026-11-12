@@ -11,11 +11,14 @@ logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
-_SVDQ_RUNTIME_KERNELS = ("native", "cute")
+_SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer")
 _SVDQ_QUANTIZE_DEVICES = ("auto", "cpu", "cuda")
 _SVDQ_SMOOTH_STRATEGIES = ("activation", "identity", "weight", "weight_inv", "few_shot")
 _SVDQ_FEW_SHOT_RELAX_STRATEGIES = ("fixed", "top", "auto", "stable_auto", "power", "log", "rank")
 _SVDQ_FEW_SHOT_RELAX_WARN_THRESHOLD = 3.0
+# FlashInfer's fused SVDQuant GEMM infers the LoRA rank from the residual operands and requires a
+# positive multiple of this granularity.
+_FLASHINFER_LORA_RANK_GRANULARITY = 32
 _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # If streaming is set to True, Cache-DiT will quantize the model in a streaming manner,
   # which means it will quantize the model using the calibration samples one by one, and
@@ -33,6 +36,10 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # - None: automatic selection; INT4 and NVFP4 both use the native runtime.
   # - native: native INT4 or NVFP4 implementation.
   # - cute: SM120 CuTe NVFP4 path with fused BF16 LoRA-up; invalid for INT4.
+  # - flashinfer: FlashInfer's own NVFP4 SVDQuant chain on a pack derived from this
+  #   checkpoint. Comparison runtime only: folding the per-channel subscale into one
+  #   FP8 block scale costs an extra e4m3 re-encode, so it is not bit-equivalent to
+  #   native/cute, and it requires rank > 0 with rank % 32 == 0.
   # The old v1/v2 selectors are deprecated and intentionally not accepted here.
   "runtime_kernel": None,
   # Layout of the LoRA-down term D produced by the activation quantizer and
@@ -187,12 +194,13 @@ def _resolve_svdq_runtime_kernel(key: str, value: Any) -> str | None:
   if value is None:
     return None
   if not isinstance(value, str):
-    raise TypeError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', or None, got {type(value)}.")
+    raise TypeError(f"svdq_kwargs[{key!r}] must be 'native', 'cute', 'flashinfer', or None, "
+                    f"got {type(value)}.")
   normalized = value.lower()
   if normalized not in _SVDQ_RUNTIME_KERNELS:
-    raise ValueError(f"svdq_kwargs[{key!r}] must be one of 'native', 'cute', or None; got "
-                     f"{value!r}. The deprecated per-implementation selectors are rejected; the "
-                     "native runtime now has a single W4A4 GEMM.")
+    raise ValueError(f"svdq_kwargs[{key!r}] must be one of 'native', 'cute', 'flashinfer', or "
+                     f"None; got {value!r}. The deprecated per-implementation selectors are "
+                     "rejected; the native runtime now has a single W4A4 GEMM.")
   return normalized
 
 
@@ -559,8 +567,24 @@ class QuantizeConfig:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
       if (_get_svdq_precision(self.quant_type) == "int4"
-          and self.svdq_kwargs["runtime_kernel"] == "cute"):
-        raise ValueError("svdq_kwargs['runtime_kernel'] = 'cute' is only supported for NVFP4.")
+          and self.svdq_kwargs["runtime_kernel"] in {"cute", "flashinfer"}):
+        raise ValueError(f"svdq_kwargs['runtime_kernel'] = "
+                         f"{self.svdq_kwargs['runtime_kernel']!r} is only supported for NVFP4.")
+      if self.svdq_kwargs["runtime_kernel"] == "flashinfer":
+        _, svdq_rank, _ = _parse_svdq_quant_type(self.quant_type)
+        if svdq_rank == 0 or svdq_rank % _FLASHINFER_LORA_RANK_GRANULARITY != 0:
+          raise ValueError(
+            "svdq_kwargs['runtime_kernel'] = 'flashinfer' requires rank > 0 and a multiple of "
+            f"{_FLASHINFER_LORA_RANK_GRANULARITY}; got rank={svdq_rank}.")
+        if self.svdq_kwargs["fused_mlp"]:
+          raise ValueError(
+            "svdq_kwargs['runtime_kernel'] = 'flashinfer' is not supported with "
+            "svdq_kwargs['fused_mlp'] = True; the fused MLP passes consume the native packs.")
+        if self.svdq_kwargs["layerwise_offload"]:
+          raise ValueError(
+            "svdq_kwargs['runtime_kernel'] = 'flashinfer' is not supported with "
+            "svdq_kwargs['layerwise_offload'] = True; the derived FlashInfer pack cannot follow "
+            "the offload mirror.")
       if (self.svdq_kwargs["lora_layout"] == "row_major"
           and self.svdq_kwargs["runtime_kernel"] != "cute"):
         raise ValueError(

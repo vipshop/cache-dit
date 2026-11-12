@@ -55,12 +55,12 @@ def _resolve_svdq_group_size(precision: str) -> int:
 
 def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str | None) -> None:
   precision = _normalize_svdq_precision(precision)
-  if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
-    raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
+  if runtime_kernel is not None and runtime_kernel not in {"native", "cute", "flashinfer"}:
+    raise ValueError("runtime_kernel must be 'native', 'cute', 'flashinfer', or None; "
                      f"got {runtime_kernel!r}. The deprecated per-implementation selectors are "
                      "rejected; the native runtime now has a single W4A4 GEMM.")
-  if precision == "int4" and runtime_kernel == "cute":
-    raise ValueError("runtime_kernel='cute' is only supported for SVDQ NVFP4.")
+  if precision == "int4" and runtime_kernel in {"cute", "flashinfer"}:
+    raise ValueError(f"runtime_kernel={runtime_kernel!r} is only supported for SVDQ NVFP4.")
 
 
 def _validate_svdq_lora_layout(runtime_kernel: str | None, lora_layout: str | None) -> None:

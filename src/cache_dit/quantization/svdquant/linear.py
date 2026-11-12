@@ -5,6 +5,7 @@ from torch import nn
 
 from ...kernels import svdq_gemm_w4a4
 from ...kernels import svdq_quantize_w4a4
+from ..config import _FLASHINFER_LORA_RANK_GRANULARITY
 
 
 class SVDQW4A4Linear(nn.Module):
@@ -50,7 +51,10 @@ class SVDQW4A4Linear(nn.Module):
     :param runtime_kernel: Packed GEMM family. `None` selects the native W4A4
       GEMM for both INT4 and NVFP4. `cute` is an NVFP4-only validation opt-in;
       it is not enabled by default until its GEMM and end-to-end performance
-      meet the release gate.
+      meet the release gate. `flashinfer` runs FlashInfer's own NVFP4 SVDQuant
+      chain on a pack derived from this checkpoint; it is a comparison runtime
+      (one extra `e4m3` scale re-encode, so it is not numerically equivalent to
+      `native`/`cute`) and never a default.
     :param lora_layout: Layout of the LoRA-down term produced by the
       activation quantizer and consumed by the GEMM. With `runtime_kernel="cute"`,
       `None` defaults to `row_major`, the row-major BF16 `D` emitted by the CuTe
@@ -68,17 +72,23 @@ class SVDQW4A4Linear(nn.Module):
       device = torch.device("cpu")
     if rank < 0:
       raise ValueError(f"rank must be non-negative, got {rank}.")
-    if runtime_kernel is not None and runtime_kernel not in {"native", "cute"}:
-      raise ValueError("runtime_kernel must be 'native', 'cute', or None; "
+    if runtime_kernel is not None and runtime_kernel not in {"native", "cute", "flashinfer"}:
+      raise ValueError("runtime_kernel must be 'native', 'cute', 'flashinfer', or None; "
                        f"got {runtime_kernel!r}. The deprecated per-implementation selectors are "
                        "rejected; the native runtime now has a single W4A4 GEMM.")
     resolved_runtime_kernel = runtime_kernel
     if resolved_runtime_kernel is None:
       resolved_runtime_kernel = "native"
-    if resolved_runtime_kernel == "cute" and precision != "nvfp4":
-      raise ValueError("runtime_kernel='cute' is only supported for precision='nvfp4'.")
-    if resolved_runtime_kernel == "cute" and torch_dtype != torch.bfloat16:
-      raise ValueError("runtime_kernel='cute' currently requires torch_dtype=torch.bfloat16.")
+    if resolved_runtime_kernel in {"cute", "flashinfer"} and precision != "nvfp4":
+      raise ValueError(f"runtime_kernel={resolved_runtime_kernel!r} is only supported for "
+                       "precision='nvfp4'.")
+    if resolved_runtime_kernel in {"cute", "flashinfer"} and torch_dtype != torch.bfloat16:
+      raise ValueError(f"runtime_kernel={resolved_runtime_kernel!r} currently requires "
+                       "torch_dtype=torch.bfloat16.")
+    if (resolved_runtime_kernel == "flashinfer"
+        and (rank == 0 or rank % _FLASHINFER_LORA_RANK_GRANULARITY != 0)):
+      raise ValueError("runtime_kernel='flashinfer' requires rank > 0 and a multiple of "
+                       f"{_FLASHINFER_LORA_RANK_GRANULARITY}; got rank={rank}.")
     if lora_layout is not None and lora_layout not in {"native", "row_major"}:
       raise ValueError("lora_layout must be 'native', 'row_major', or None; "
                        f"got {lora_layout!r}.")
@@ -112,6 +122,13 @@ class SVDQW4A4Linear(nn.Module):
     self._cute_smooth = None
     self._cute_bias = None
     self._cute_wcscales = None
+    self._flashinfer_pack_ready = False
+    self._fi_qweight = None
+    self._fi_w_sf = None
+    self._fi_proj_up = None
+    self._fi_proj_down = None
+    self._fi_bias = None
+    self._fi_pre_quant_scale = None
 
     padded_in = ((in_features + 127) // 128) * 128
     padded_out = ((out_features + 127) // 128) * 128
@@ -199,7 +216,8 @@ class SVDQW4A4Linear(nn.Module):
     :param x: Input activations with shape `[..., in_features]`.
     :param output: Optional destination buffer. The method accepts either the
       logical `[..., out_features]` shape or the padded 2D shape produced by
-      the fused activation quantizer.
+      the fused activation quantizer. `runtime_kernel='flashinfer'` only accepts
+      the logical shape, because its chain produces the logical rows directly.
     :returns: The output activations with shape `[..., out_features]`.
     """
 
@@ -220,17 +238,24 @@ class SVDQW4A4Linear(nn.Module):
     if self._needs_k_pad:
       x = F.pad(x, (0, self._padded_in_features - self.in_features))
 
-    quantized_x, ascales, lora_act_out = self.quantize(x)
-    use_direct_output = output is not None and output.shape == (
-      quantized_x.shape[0],
-      self._padded_out_features,
-    )
-    padded_output = self.forward_quant(
-      quantized_x,
-      ascales,
-      lora_act_out,
-      output if use_direct_output else None,
-    )
+    if self.runtime_kernel == "flashinfer":
+      # FlashInfer runs quantization, the LoRA-down GEMM, and the fused W4A4 GEMM as one call, so
+      # it replaces the quantize/forward_quant pair instead of consuming their outputs. The dense
+      # result is already `[tokens, padded_out]`, so the shared epilogue below still applies.
+      use_direct_output = False
+      padded_output = self._flashinfer_gemm(x)
+    else:
+      quantized_x, ascales, lora_act_out = self.quantize(x)
+      use_direct_output = output is not None and output.shape == (
+        quantized_x.shape[0],
+        self._padded_out_features,
+      )
+      padded_output = self.forward_quant(
+        quantized_x,
+        ascales,
+        lora_act_out,
+        output if use_direct_output else None,
+      )
 
     logical_output = padded_output[:token_count]
     if self._needs_n_strip:
@@ -258,6 +283,11 @@ class SVDQW4A4Linear(nn.Module):
     :returns: A tuple `(quantized_x, ascales, lora_act_out)` ready for
       `forward_quant`.
     """
+
+    if self.runtime_kernel == "flashinfer":
+      raise RuntimeError(
+        "runtime_kernel='flashinfer' runs the whole quantize + LoRA-down + GEMM chain inside "
+        "FlashInfer's `svdquant_linear`; call `forward` instead of `quantize`/`forward_quant`.")
 
     if self.lora_layout == "row_major":
       # The CuTe row-major producer consumes the converted pack (`_cute_proj_down` in row-major
@@ -289,24 +319,31 @@ class SVDQW4A4Linear(nn.Module):
 
   def _load_from_state_dict(self, *args, **kwargs) -> None:
     super()._load_from_state_dict(*args, **kwargs)
-    # The CuTe pack is a pure function of the loaded checkpoint, so it is rebuilt here, once per
-    # load, and never on the forward path.
+    # The converted packs are pure functions of the loaded checkpoint, so they are rebuilt here,
+    # once per load, and never on the forward path.
     self._cute_pack_ready = False
+    self._flashinfer_pack_ready = False
     if self.runtime_kernel == "cute":
       self._prepare_cute_pack()
+    elif self.runtime_kernel == "flashinfer":
+      self._prepare_flashinfer_pack()
 
   def _apply(self, fn, *args, **kwargs):
-    """Rebuild the cached CuTe pack across device or dtype conversions.
+    """Rebuild the cached packs across device or dtype conversions.
 
-    The `_cute_*` tensors are plain attributes, so `Module.to`/`.cuda()` would otherwise leave a
-    stale pack behind on the previous device.
+    The `_cute_*` / `_fi_*` tensors are plain attributes, so `Module.to`/`.cuda()` would
+    otherwise leave a stale pack behind on the previous device.
     """
 
-    rebuild = self._cute_pack_ready
+    rebuild_cute = self._cute_pack_ready
+    rebuild_flashinfer = self._flashinfer_pack_ready
     self._cute_pack_ready = False
+    self._flashinfer_pack_ready = False
     module = super()._apply(fn, *args, **kwargs)
-    if rebuild and self.runtime_kernel == "cute":
+    if rebuild_cute and self.runtime_kernel == "cute":
       self._prepare_cute_pack()
+    elif rebuild_flashinfer and self.runtime_kernel == "flashinfer":
+      self._prepare_flashinfer_pack()
     return module
 
   def _prepare_cute_pack(self) -> None:
@@ -331,6 +368,52 @@ class SVDQW4A4Linear(nn.Module):
                                                           self.smooth_factor)
     self._cute_pack_ready = True
 
+  def _prepare_flashinfer_pack(self, force: bool = False) -> None:
+    """Derive the FlashInfer pack from the native checkpoint parameters.
+
+    The native parameters stay the only state-dict entries, so FlashInfer never adds a second
+    serialized weight pack. Folding `wcscales` into the per-block FP8 scale costs one `e4m3`
+    re-encode, which is why this runtime is an approximation of `native`/`cute`.
+
+    :param force: Rebuild even when a pack is already cached, used when the parameters moved to
+      another device without going through `Module._apply`.
+    :returns: None. The derived tensors are stored on `_fi_*` attributes.
+    """
+    if self._flashinfer_pack_ready and not force:
+      return
+
+    from .packing import convert_svdq_nvfp4_pack_to_flashinfer
+
+    (self._fi_qweight, self._fi_w_sf, self._fi_proj_up, self._fi_proj_down, self._fi_bias,
+     self._fi_pre_quant_scale) = convert_svdq_nvfp4_pack_to_flashinfer(
+       self.qweight, self.wscales, self.proj_up, self.proj_down, self.bias, self.wcscales,
+       self.smooth_factor)
+    self._flashinfer_pack_ready = True
+
+  @torch.compiler.disable
+  def _flashinfer_gemm(self, x: torch.Tensor) -> torch.Tensor:
+    """Run FlashInfer's fused SVDQuant chain on `[tokens, padded_in]` activations.
+
+    Kept out of `torch.compile` for the same reason `fused_gelu_mlp` is: FlashInfer resolves its
+    chain through a JIT cache at call time, which a captured graph cannot represent.
+
+    :param x: Smoothed-input activations `[tokens, padded_in]`, BF16.
+    :returns: Dense output `[tokens, padded_out]`, BF16.
+    """
+    from ...kernels.flashinfer import flashinfer_svdquant_linear
+
+    if not self._flashinfer_pack_ready or self._fi_qweight.device != x.device:
+      self._prepare_flashinfer_pack(force=True)
+    return flashinfer_svdquant_linear(
+      x,
+      weight_fp4=self._fi_qweight,
+      weight_sf=self._fi_w_sf,
+      l2t_smoothed=self._fi_proj_down,
+      l1_weight=self._fi_proj_up,
+      pre_quant_scale=self._fi_pre_quant_scale,
+      bias=self._fi_bias,
+    )
+
   def forward_quant(
     self,
     quantized_x: torch.Tensor,
@@ -348,6 +431,11 @@ class SVDQW4A4Linear(nn.Module):
     :returns: The padded 2D output tensor produced by the selected packed
       GEMM runtime kernel.
     """
+
+    if self.runtime_kernel == "flashinfer":
+      raise RuntimeError(
+        "runtime_kernel='flashinfer' runs the whole quantize + LoRA-down + GEMM chain inside "
+        "FlashInfer's `svdquant_linear`; call `forward` instead of `quantize`/`forward_quant`.")
 
     if self.runtime_kernel == "cute":
       if not self._cute_pack_ready:
