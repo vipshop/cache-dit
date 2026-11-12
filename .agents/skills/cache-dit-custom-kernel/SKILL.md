@@ -26,6 +26,11 @@ SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
 - `references/rfc-cuda-optimizations.md`：优化门槛、待办、状态更新规则。
 - `references/svdq-nvfp4-cute-tma-sync-analysis.md`：TMA/mbarrier、warp/block 同步、K-block 软件流水及 CUTLASS/FlashInfer SM120 对照；做 SVDQ CuTe GEMM 调度与性能优化前先读。
 
+Ulysses / Ring 通信参考：
+
+- `references/ulysses.md`：`csrc/kernels/ulysses/` 的 `ulysses_fp8_*` 算子契约、BF16/FP8 对齐策略、K FP8、实测、已知限制，以及 packed QKV a2a 下一优化方向。
+- `references/ring.md`：Ring p2p 现状、Ring2 buffer 复用实测，以及未来 Ring FP8 的数据流、精度和性能判断。
+
 原理路由：先读 `references/svdquant-mathematics.md` 的 §1–4 建立记号并复核推导与成立条件，需要落到当前实现时读 §5，评估 TurboQuant / DVD-Quant 是否可借鉴时读 §6–8；性能结论与数值契约仍以 `references/svdq-nvfp4-cute.md` 为准。
 
 配合 `cuda-auto-tune`（NCU 驱动迭代优化）、`cuda-cpp-kernel`（CUDA/PTX/架构细节）、`cutlass-cpp-kernel`（CUTLASS/CuTe C++ 模板）、`cute-dsl-kernel`（CuTe DSL Python kernel 编写）使用。本仓目前没有 CuTe DSL 算子；将来引入时，kernel 编写走 `cute-dsl-kernel`，接入、注册与构建仍走本 skill。NCU 优化必须先 profile 后修改，再复采验证。
