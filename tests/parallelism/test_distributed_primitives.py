@@ -168,16 +168,16 @@ def test_fp8_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, expec
   assert (rows * packed) % 16 == 0
 
 
-@pytest.mark.parametrize("units,head_size,expected", [
-  ([16382], 66, 68),
-  ([16382], 128, 128),
-  ([2, 4, 6, 8], 66, 68),
+@pytest.mark.parametrize("head_size,expected", [
+  (66, 72),
+  (128, 128),
+  (130, 136),
 ])
-def test_bf16_padded_last_dim_aligns_every_chunk(units, head_size, expected):
-  packed = primitives._padded_last_dim(units, head_size, element_size=2)
+def test_bf16_padded_last_dim_aligns_every_row(head_size, expected):
+  packed = primitives._padded_last_dim(head_size, element_size=2)
 
   assert packed == expected
-  assert all((unit * packed * 2) % 16 == 0 for unit in units)
+  assert (packed * 2) % 16 == 0
 
 
 def test_fp8_packed_row_width_covers_uneven_splits():

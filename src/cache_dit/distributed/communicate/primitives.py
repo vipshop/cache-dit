@@ -509,7 +509,7 @@ def _all_to_all_single_qkv_async(
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
   H_LOCAL = (H + H_PAD) // world_size
-  packed_D = _padded_last_dim([S_LOCAL * B * H_LOCAL], D, x.element_size())
+  packed_D = _padded_last_dim(D, x.element_size())
   x = _pad_last_dim(x, packed_D)
   x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, packed_D).permute(2, 1, 0, 3, 4).contiguous()
   _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, packed_D)
@@ -550,7 +550,7 @@ def _all_to_all_single_o_async(
   x, H_PAD = _maybe_pad_o_head(x, H, group)
   B, S_GLOBAL, H_LOCAL, D = x.shape
   S_LOCAL = S_GLOBAL // world_size
-  packed_D = _padded_last_dim([B * S_LOCAL * H_LOCAL], D, x.element_size())
+  packed_D = _padded_last_dim(D, x.element_size())
   x = _pad_last_dim(x, packed_D)
   # (B, S_GLOBAL, H_LOCAL, packed_D) -> (world_size, H_LOCAL, B, S_LOCAL, packed_D)
   x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, packed_D).permute(1, 3, 0, 2, 4).contiguous()
@@ -786,18 +786,18 @@ def _all_to_all_single_qkv_fp8_async(
   return wait
 
 
-def _padded_last_dim(units: List[int], head_size: int, element_size: int) -> int:
-  """Return the smallest last dimension that aligns every all-to-all chunk to 16 bytes.
+def _padded_last_dim(head_size: int, element_size: int) -> int:
+  """Return the smallest last dimension whose row width is a multiple of 16 bytes.
 
-  :param units: Per-chunk products of all dimensions before the last one.
+  This shape-only rule is sufficient for BF16: once every row starts 16-byte aligned, every
+  all-to-all chunk is aligned regardless of how many rows it contains.
+
   :param head_size: Original last dimension.
   :param element_size: Bytes per element.
-  :returns: A last dimension satisfying every send and receive chunk.
+  :returns: A row-width-aligned last dimension.
   """
-  packed_width = head_size
-  while any((unit * packed_width * element_size) % 16 != 0 for unit in units):
-    packed_width += 1
-  return packed_width
+  alignment = 16 // element_size
+  return (head_size + alignment - 1) // alignment * alignment
 
 
 def _pad_last_dim(x: torch.Tensor, packed_width: int) -> torch.Tensor:
@@ -813,14 +813,20 @@ def _unpad_last_dim(x: torch.Tensor, head_size: int) -> torch.Tensor:
 
 
 def _fp8_packed_row_width(split_sizes: List[int], row_elements: int, min_width: int) -> int:
-  """Return the smallest row width that aligns every all-to-all chunk to 16 bytes.
+  """Return the smallest FP8 row width that aligns every all-to-all chunk to 16 bytes.
+
+  FP8 rows include the scale bytes, so a row-width-aligned rule would over-pad them. Keep the chunk-
+  based search to minimize transmitted bytes.
 
   :param split_sizes: Number of sequence rows exchanged with each peer, covering all ranks.
   :param row_elements: Number of tensor elements per sequence row excluding the packed head width.
   :param min_width: Minimum row width, `D + scale_bytes`.
   :returns: A packed row width satisfying every send and receive chunk.
   """
-  return _padded_last_dim([size * row_elements for size in split_sizes], min_width, 1)
+  packed_width = min_width
+  while any((size * row_elements * packed_width) % 16 != 0 for size in split_sizes):
+    packed_width += 1
+  return packed_width
 
 
 def _fp8_o_packed_head_size(rows_per_rank: int, head_size: int) -> int:
@@ -901,8 +907,7 @@ def _all_to_all_single_any_qkv_async(
   # since we don't know the actual shape before this timing, thus,
   # we have to use all gather to collect the S_LOCAL first.
   output_split_sizes = _gather_size(S_LOCAL, group)
-  packed_D = _padded_last_dim(
-    [size * B * H_LOCAL for size in input_split_sizes + output_split_sizes], D, x.element_size())
+  packed_D = _padded_last_dim(D, x.element_size())
   x = _pad_last_dim(x, packed_D)
   # (world_size, S_LOCAL, B, H_LOCAL, packed_D)
   x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, packed_D).permute(2, 1, 0, 3, 4).contiguous()
@@ -964,8 +969,7 @@ def _all_to_all_single_any_o_async(
   S_LOCAL = kwargs.get("Q_S_LOCAL")
   input_split_sizes = _gather_size(S_LOCAL, group)
   output_split_sizes = [S_LOCAL] * world_size
-  packed_D = _padded_last_dim(
-    [size * B * H_LOCAL for size in input_split_sizes + output_split_sizes], D, x.element_size())
+  packed_D = _padded_last_dim(D, x.element_size())
   x = _pad_last_dim(x, packed_D)
 
   x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, packed_D)
