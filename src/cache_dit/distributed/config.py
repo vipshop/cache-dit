@@ -105,6 +105,10 @@ class ParallelismConfig:
   #   Whether to enable the ulysses float8 attention to use fp8 for
   #   faster communication.
   ulysses_float8: Optional[bool] = False
+  # ulysses_float8_k: (`bool`, *optional*):
+  #   Whether to also quantize K for Ulysses FP8 communication. Requires
+  #   ulysses_float8=True. LSE always remains BF16.
+  ulysses_float8_k: Optional[bool] = False
   # ulysses_async: (`bool`, *optional*):
   #   Whether to enable the ulysses async attention to overlap
   #   communication and computation.
@@ -173,6 +177,9 @@ class ParallelismConfig:
   def __post_init__(self):
     # For backward compatibility, will be removed in future versions.
     self._maybe_flatten_deprecated_parallel_kwargs()
+
+    if self.ulysses_float8_k and not self.ulysses_float8:
+      raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
 
     if isinstance(self.backend, str):
       self.backend = ParallelismBackend.from_str(self.backend)
@@ -398,6 +405,8 @@ class ParallelismConfig:
           parallel_str += f"ulysses_anything={self.ulysses_anything}, "
         if self.ulysses_float8:
           parallel_str += f"ulysses_float8={self.ulysses_float8}, "
+        if self.ulysses_float8_k:
+          parallel_str += f"ulysses_float8_k={self.ulysses_float8_k}, "
         if self.ulysses_async:
           parallel_str += f"ulysses_async={self.ulysses_async}, "
       if self.ring_size is not None:
@@ -414,10 +423,14 @@ class ParallelismConfig:
         parallel_str += f"Ring{self.ring_size}_"
       if self.ulysses_anything:
         parallel_str += "UAA_"
-        if self.ulysses_float8:
+        if self.ulysses_float8_k:
+          parallel_str += "F8K_"
+        elif self.ulysses_float8:
           parallel_str += "F8_"
       else:
-        if self.ulysses_float8:
+        if self.ulysses_float8_k:
+          parallel_str += "UF8K_"
+        elif self.ulysses_float8:
           parallel_str += "UF8_"
       if self.ulysses_async:
         parallel_str += "UAS_"

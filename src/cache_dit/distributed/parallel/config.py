@@ -17,6 +17,7 @@ class _ContextParallelConfig:
   :param mesh: Optional user-provided device mesh.
   :param ulysses_anything: Whether uneven sequence/head Ulysses mode is enabled.
   :param ulysses_float8: Whether Ulysses communication should use fp8 kernels when available.
+  :param ulysses_float8_k: Whether K should also use FP8 communication; requires ulysses_float8.
   :param ulysses_async: Whether model-specific async Ulysses attention patches are enabled.
   :param extra_kwargs: Reserved extension storage for cache-dit specific runtime hints.
   """
@@ -28,6 +29,7 @@ class _ContextParallelConfig:
   mesh: torch.distributed.device_mesh.DeviceMesh | None = None
   ulysses_anything: bool = False
   ulysses_float8: bool = False
+  ulysses_float8_k: bool = False
   ulysses_async: bool = False
   extra_kwargs: dict[str, Any] | None = None
 
@@ -61,6 +63,8 @@ class _ContextParallelConfig:
       raise ValueError(
         "ulysses_degree must be greater than 1 when ulysses_anything, ulysses_float8, or ulysses_async is enabled."
       )
+    if self.ulysses_float8_k and not self.ulysses_float8:
+      raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
     if self.ulysses_anything:
       if self.ring_degree > 1:
         raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")

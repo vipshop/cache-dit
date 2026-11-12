@@ -69,6 +69,7 @@ def _parallelize_transformer_context(
       rotate_method=parallelism_config.ring_rotate_method,
       ulysses_anything=parallelism_config.ulysses_anything,
       ulysses_float8=parallelism_config.ulysses_float8,
+      ulysses_float8_k=parallelism_config.ulysses_float8_k,
       ulysses_async=parallelism_config.ulysses_async,
       extra_kwargs=dict(parallelism_config.extra_parallel_kwargs),
     )

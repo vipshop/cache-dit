@@ -6,31 +6,32 @@ import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
 from ...platforms import current_platform
-from ...logger import init_logger
-
-logger = init_logger(__name__)
 
 if TYPE_CHECKING:
   from ..parallel.config import _ContextParallelConfig
 
 try:
   from ...kernels import (
-    fp8_comm_per_token_quant,
-    fp8_comm_per_token_dequant,
-    fp8_comm_qkv_permute_quant,
-    fp8_comm_qkv_permute_dequant,
+    ulysses_fp8_o_permute_quant,
+    ulysses_fp8_o_permute_dequant,
+    ulysses_fp8_per_token_quant,
+    ulysses_fp8_per_token_dequant,
+    ulysses_fp8_qkv_permute_quant,
+    ulysses_fp8_qkv_permute_dequant,
   )
 except ImportError:
 
-  def _fp8_comm_kernel_unavailable(*args, **kwargs):
+  def _ulysses_fp8_kernel_unavailable(*args, **kwargs):
     raise RuntimeError("FP8 comm kernels could not be imported. Build cache_dit._C_ops with "
                        "CACHE_DIT_BUILD_CUDA=1 on an SM89+ GPU (sm90 excluded), or disable "
                        "FP8 mode.")
 
-  fp8_comm_per_token_quant = _fp8_comm_kernel_unavailable
-  fp8_comm_per_token_dequant = _fp8_comm_kernel_unavailable
-  fp8_comm_qkv_permute_quant = _fp8_comm_kernel_unavailable
-  fp8_comm_qkv_permute_dequant = _fp8_comm_kernel_unavailable
+  ulysses_fp8_o_permute_quant = _ulysses_fp8_kernel_unavailable
+  ulysses_fp8_o_permute_dequant = _ulysses_fp8_kernel_unavailable
+  ulysses_fp8_per_token_quant = _ulysses_fp8_kernel_unavailable
+  ulysses_fp8_per_token_dequant = _ulysses_fp8_kernel_unavailable
+  ulysses_fp8_qkv_permute_quant = _ulysses_fp8_kernel_unavailable
+  ulysses_fp8_qkv_permute_dequant = _ulysses_fp8_kernel_unavailable
 
 # Some helper distributed primitive functions for context parallel attention.
 __all__ = [
@@ -273,7 +274,8 @@ class _All2AllComm:
     self._group = _cp_config._ulysses_mesh.get_group()
     self._metadata: Optional[dict] = None
     self._q_impl = _select_all_to_all_qkv_async_impl(_cp_config)
-    self._k_impl = _select_all_to_all_qkv_async_impl(_cp_config, fp8=False)
+    self._k_impl = (self._q_impl if getattr(_cp_config, "ulysses_float8_k", False) else
+                    _select_all_to_all_qkv_async_impl(_cp_config, fp8=False))
     self._v_impl = self._q_impl
     self._o_impl = _select_all_to_all_o_async_impl(_cp_config)
     self._lse_impl = _select_all_to_all_o_async_impl(_cp_config, fp8=False)
@@ -345,7 +347,7 @@ class _All2AllComm:
     return self._launch(self._q_impl, query, allow_implicit_init=True, **metadata)
 
   def send_k(self, key: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
-    """Launch async all-to-all for the key tensor on the non-fp8 path."""
+    """Launch async all-to-all for the key tensor on the configured BF16 or FP8 path."""
     return self._launch(self._k_impl, key, allow_implicit_init=True, **metadata)
 
   def send_v(self, value: torch.Tensor, **metadata) -> _All2AllAsyncHandle:
@@ -507,8 +509,10 @@ def _all_to_all_single_qkv_async(
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
   H_LOCAL = (H + H_PAD) // world_size
-  x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-  _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D)
+  packed_D = _padded_last_dim(D, x.element_size())
+  x = _pad_last_dim(x, packed_D)
+  x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, packed_D).permute(2, 1, 0, 3, 4).contiguous()
+  _shape = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, packed_D)
 
   x = x.flatten()
   x = fc.all_to_all_single(x, None, None, group)
@@ -516,10 +520,11 @@ def _all_to_all_single_qkv_async(
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
     x = _wait_tensor(x)
-    # (world_size, S_LOCAL, B, H_LOCAL, D)
-    # -> (S_GLOBAL, B, H_LOCAL, D)
-    # -> (B, S_GLOBAL, H_LOCAL, D)
-    x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3).contiguous()
+    # (world_size, S_LOCAL, B, H_LOCAL, packed_D)
+    # -> (S_GLOBAL, B, H_LOCAL, packed_D)
+    # -> (B, S_GLOBAL, H_LOCAL, packed_D)
+    x = x.reshape(_shape).flatten(0, 1).permute(1, 0, 2, 3)
+    x = _unpad_last_dim(x, D)
     x = _maybe_unpad_qkv_head(x, H_PAD, group)
     return x
 
@@ -545,9 +550,11 @@ def _all_to_all_single_o_async(
   x, H_PAD = _maybe_pad_o_head(x, H, group)
   B, S_GLOBAL, H_LOCAL, D = x.shape
   S_LOCAL = S_GLOBAL // world_size
-  # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
-  x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-  _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
+  packed_D = _padded_last_dim(D, x.element_size())
+  x = _pad_last_dim(x, packed_D)
+  # (B, S_GLOBAL, H_LOCAL, packed_D) -> (world_size, H_LOCAL, B, S_LOCAL, packed_D)
+  x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, packed_D).permute(1, 3, 0, 2, 4).contiguous()
+  _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, packed_D)
 
   x = x.flatten()
   x = fc.all_to_all_single(x, None, None, group)
@@ -555,10 +562,11 @@ def _all_to_all_single_o_async(
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
     x = _wait_tensor(x)
-    # (world_size, H_LOCAL, B, S_LOCAL, D)
-    # -> (H_GLOBAL, B, S_LOCAL, D)
-    # -> (B, S_LOCAL, H_GLOBAL, D)
-    x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+    # (world_size, H_LOCAL, B, S_LOCAL, packed_D)
+    # -> (H_GLOBAL, B, S_LOCAL, packed_D)
+    # -> (B, S_LOCAL, H_GLOBAL, packed_D)
+    x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3)
+    x = _unpad_last_dim(x, D)
     x = _maybe_unpad_o_head(x, H_PAD, group)
     return x
 
@@ -761,8 +769,9 @@ def _all_to_all_single_qkv_fp8_async(
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
   H_LOCAL = (H + H_PAD) // world_size
   x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D)
-  x = fp8_comm_qkv_permute_quant(x)
-  shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, D + itemsize)
+  packed_head_size = _fp8_packed_row_width([B * S_LOCAL * H_LOCAL], 1, D + 4)
+  x = ulysses_fp8_qkv_permute_quant(x, packed_head_size)
+  shape_with_scale = x.shape  # (world_size, S_LOCAL, B, H_LOCAL, packed_head_size)
   x = x.flatten()
   x = fc.all_to_all_single(x, None, None, group)
 
@@ -770,11 +779,64 @@ def _all_to_all_single_qkv_fp8_async(
     nonlocal x, H_PAD
     x = _wait_tensor(x)
     x = x.reshape(shape_with_scale).flatten(0, 1)
-    x = fp8_comm_qkv_permute_dequant(x)
+    x = ulysses_fp8_qkv_permute_dequant(x, D)
     x = _maybe_unpad_qkv_head(x, H_PAD, group)
     return x
 
   return wait
+
+
+def _padded_last_dim(head_size: int, element_size: int) -> int:
+  """Return the smallest last dimension whose row width is a multiple of 16 bytes.
+
+  This shape-only rule is sufficient for BF16: once every row starts 16-byte aligned, every
+  all-to-all chunk is aligned regardless of how many rows it contains.
+
+  :param head_size: Original last dimension.
+  :param element_size: Bytes per element.
+  :returns: A row-width-aligned last dimension.
+  """
+  alignment = 16 // element_size
+  return (head_size + alignment - 1) // alignment * alignment
+
+
+def _pad_last_dim(x: torch.Tensor, packed_width: int) -> torch.Tensor:
+  """Pad the last dimension with zeros only when alignment requires it."""
+  if packed_width == x.shape[-1]:
+    return x
+  return F.pad(x, (0, packed_width - x.shape[-1]))
+
+
+def _unpad_last_dim(x: torch.Tensor, head_size: int) -> torch.Tensor:
+  """Remove trailing alignment padding from the last dimension."""
+  return x if x.shape[-1] == head_size else x[..., :head_size]
+
+
+def _fp8_packed_row_width(split_sizes: List[int], row_elements: int, min_width: int) -> int:
+  """Return the smallest FP8 row width that aligns every all-to-all chunk to 16 bytes.
+
+  FP8 rows include the scale bytes, so a row-width-aligned rule would over-pad them. Keep the chunk-
+  based search to minimize transmitted bytes.
+
+  :param split_sizes: Number of sequence rows exchanged with each peer, covering all ranks.
+  :param row_elements: Number of tensor elements per sequence row excluding the packed head width.
+  :param min_width: Minimum row width, `D + scale_bytes`.
+  :returns: A packed row width satisfying every send and receive chunk.
+  """
+  packed_width = min_width
+  while any((size * row_elements * packed_width) % 16 != 0 for size in split_sizes):
+    packed_width += 1
+  return packed_width
+
+
+def _fp8_o_packed_head_size(rows_per_rank: int, head_size: int) -> int:
+  """Return the smallest FP8 O row width that keeps each rank chunk 16-byte aligned.
+
+  :param rows_per_rank: Number of rows contributed to every peer, `B * S_LOCAL * H_LOCAL`.
+  :param head_size: Original attention head dimension `D`.
+  :returns: Packed row width, including the BF16 scale and zeroed alignment padding.
+  """
+  return _fp8_packed_row_width([rows_per_rank], 1, head_size + 2)
 
 
 def _all_to_all_single_o_fp8_async(
@@ -784,7 +846,7 @@ def _all_to_all_single_o_fp8_async(
 ) -> Callable[..., torch.Tensor]:
   """Launch async FP8 all-to-all for output tensors with evenly split heads.
 
-  :param x: Input tensor for the operation.
+  :param x: Input tensor shaped `(B, S_GLOBAL, H_LOCAL, D)` whose last dimension has stride 1.
   :param group: Process group used for communication.
   :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
   :returns: A wait callable that yields a dequantized tensor shaped `(B, S_LOCAL, H_GLOBAL, D)`.
@@ -793,27 +855,25 @@ def _all_to_all_single_o_fp8_async(
   # The padding logic needs H to determine if padding is necessary.
   H = kwargs.get("NUM_QO_HEAD", None)
   _, world_size = _get_rank_world_size(group)
-  x, H_PAD = _maybe_pad_o_head(x, H, group)
   B, S_GLOBAL, H_LOCAL, D = x.shape
+  if S_GLOBAL % world_size != 0:
+    raise ValueError("The fused FP8 O path requires S_GLOBAL to be divisible by ulysses_size; "
+                     "disable ulysses_float8 for this shape.")
+  if H is not None and H % world_size != 0:
+    raise ValueError("The fused FP8 O path requires the global head count to be divisible by "
+                     "ulysses_size; disable ulysses_float8 for this model.")
+  x, H_PAD = _maybe_pad_o_head(x, H, group)
   S_LOCAL = S_GLOBAL // world_size
-  # (B, S_GLOBAL, H_LOCAL, D) -> (world_size, H_LOCAL, B, S_LOCAL, D)
-  x = x.reshape(B, world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 0, 2, 4).contiguous()
-  _shape = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D)
-
-  x = fp8_comm_per_token_quant(x)
-  shape_with_scale = x.shape  # (world_size, H_LOCAL, B, S_LOCAL, D + itemsize)
+  packed_head_size = _fp8_o_packed_head_size(B * S_LOCAL * H_LOCAL, D)
+  x = ulysses_fp8_o_permute_quant(x, world_size, packed_head_size)
   x = x.flatten()
   x = fc.all_to_all_single(x, None, None, group)
 
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
     x = _wait_tensor(x)
-    x = x.reshape(shape_with_scale)
-    x = fp8_comm_per_token_dequant(x)
-    # (world_size, H_LOCAL, B, S_LOCAL, D)
-    # -> (H_GLOBAL, B, S_LOCAL, D)
-    # -> (B, H_GLOBAL, S_LOCAL, D)
-    x = x.reshape(_shape).flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+    x = x.reshape(world_size * H_LOCAL, B, S_LOCAL, packed_head_size)
+    x = ulysses_fp8_o_permute_dequant(x, D)
     x = _maybe_unpad_o_head(x, H_PAD, group)
     return x
 
@@ -842,26 +902,28 @@ def _all_to_all_single_any_qkv_async(
   B, S_LOCAL, H, D = x.shape
   x, H_PAD = _maybe_pad_qkv_head(x, H, group)
   H_LOCAL = (H + H_PAD) // world_size
-  # (world_size, S_LOCAL, B, H_LOCAL, D)
-  x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-
   input_split_sizes = [S_LOCAL] * world_size
   # S_LOCAL maybe not equal for all ranks in dynamic shape case,
   # since we don't know the actual shape before this timing, thus,
   # we have to use all gather to collect the S_LOCAL first.
   output_split_sizes = _gather_size(S_LOCAL, group)
+  packed_D = _padded_last_dim(D, x.element_size())
+  x = _pad_last_dim(x, packed_D)
+  # (world_size, S_LOCAL, B, H_LOCAL, packed_D)
+  x = x.reshape(B, S_LOCAL, world_size, H_LOCAL, packed_D).permute(2, 1, 0, 3, 4).contiguous()
   # NOTE: The `if` branch will introduce graph break for torch.compile,
   # so, we choose to disable the even split optimization implementation
   # _all_to_all_single for now.
-  x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
+  x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, packed_D)
   x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
-    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-    # (S_GLOBAL, B, H_LOCAL, D)
-    # -> (B, S_GLOBAL, H_LOCAL, D)
-    x = x.permute(1, 0, 2, 3).contiguous()
+    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, packed_D)
+    # (S_GLOBAL, B, H_LOCAL, packed_D)
+    # -> (B, S_GLOBAL, H_LOCAL, packed_D)
+    x = x.permute(1, 0, 2, 3)
+    x = _unpad_last_dim(x, D)
     x = _maybe_unpad_qkv_head(x, H_PAD, group)
     return x
 
@@ -906,17 +968,20 @@ def _all_to_all_single_any_o_async(
 
   S_LOCAL = kwargs.get("Q_S_LOCAL")
   input_split_sizes = _gather_size(S_LOCAL, group)
-
-  x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
   output_split_sizes = [S_LOCAL] * world_size
+  packed_D = _padded_last_dim(D, x.element_size())
+  x = _pad_last_dim(x, packed_D)
+
+  x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, packed_D)
   x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
-    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-    x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
-    x = x.permute(2, 1, 0, 3, 4).contiguous()
-    x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
+    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, packed_D)
+    x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, packed_D)
+    x = x.permute(2, 1, 0, 3, 4)
+    x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, packed_D)
+    x = _unpad_last_dim(x, D)
     x = _maybe_unpad_o_head(x, H_PAD, group)
     return x
 
@@ -956,14 +1021,15 @@ def _all_to_all_single_any_qkv_fp8_async(
   # NOTE: The `if` branch will introduce graph break for torch.compile,
   # so, we choose to disable the even split optimization implementation
   # _all_to_all_single for now.
-  x = fp8_comm_qkv_permute_quant(x)
+  packed_head_size = _fp8_packed_row_width(output_split_sizes, B * H_LOCAL, D + 4)
+  x = ulysses_fp8_qkv_permute_quant(x, packed_head_size)
   x = x.flatten(0, 1)
   x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
     x = _wait_tensor(x)
-    x = fp8_comm_qkv_permute_dequant(x)
+    x = ulysses_fp8_qkv_permute_dequant(x, D)
     x = _maybe_unpad_qkv_head(x, H_PAD, group)
     return x
 
@@ -994,7 +1060,6 @@ def _all_to_all_single_any_o_fp8_async(
   rank, world_size = _get_rank_world_size(group)
   x, H_PAD = _maybe_pad_o_head(x, H, group)
   shape = x.shape  # (B, S_GLOBAL, H_LOCAL, D)
-  x = fp8_comm_per_token_quant(x)
   (B, S_GLOBAL, H_LOCAL, D) = shape
   # input_split: e.g, S_GLOBAL=9 input splits across ranks [[5,4], [5,4],..]
   # output_split: e.g, S_GLOBAL=9 output splits across ranks [[5,5], [4,4],..]
@@ -1009,15 +1074,18 @@ def _all_to_all_single_any_o_fp8_async(
 
   S_LOCAL = kwargs.get("Q_S_LOCAL")
   input_split_sizes = _gather_size(S_LOCAL, group)
-
-  x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
   output_split_sizes = [S_LOCAL] * world_size
+  packed_head_size = _fp8_packed_row_width(input_split_sizes + output_split_sizes, B * H_LOCAL,
+                                           D + 2)
+  x = ulysses_fp8_per_token_quant(x, packed_head_size)
+
+  x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, packed_head_size)
   x = fc.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
   def wait() -> torch.Tensor:
     nonlocal x, H_PAD
-    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, D)
-    x = fp8_comm_per_token_dequant(x)
+    x = _wait_tensor(x)  # (S_GLOBAL, B, H_LOCAL, packed_head_size)
+    x = ulysses_fp8_per_token_dequant(x, D)
     x = x.reshape(world_size, S_LOCAL, B, H_LOCAL, D)
     x = x.permute(2, 1, 0, 3, 4).contiguous()
     x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
