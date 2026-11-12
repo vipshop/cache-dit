@@ -61,6 +61,12 @@ def _activate_cp_planners():
     ".flux", "FluxContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   Flux3ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".flux3", "Flux3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
+  # Unlike the adapter registry (whose keys are short class-name prefixes), the planner registry is
+  # keyed by the full transformer class name, so the image and video entries cannot shadow each
+  # other here. `minimax_h3_image` imports the video planners anyway, which registers them first.
+  MiniMaxH3ImageContextParallelismPlanner = _safe_import(  # noqa: F841
+    ".minimax_h3_image", "MiniMaxH3ImageContextParallelismPlanner",
+    ImportErrorContextParallelismPlanner)
   MiniMaxH3ContextParallelismPlanner = _safe_import(  # noqa: F841
     ".minimax_h3", "MiniMaxH3ContextParallelismPlanner", ImportErrorContextParallelismPlanner)
   FastH3ContextParallelismPlanner = _safe_import(  # noqa: F841
@@ -207,6 +213,10 @@ def _activate_tp_planners():
     ".flux2", "Flux2TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   Flux3TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".flux3", "Flux3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
+  # Keyed by the full transformer class name, like the CP registry above: no prefix shadowing.
+  MiniMaxH3ImageTensorParallelismPlanner = _safe_import(  # noqa: F841
+    ".minimax_h3_image", "MiniMaxH3ImageTensorParallelismPlanner",
+    ImportErrorTensorParallelismPlanner)
   MiniMaxH3TensorParallelismPlanner = _safe_import(  # noqa: F841
     ".minimax_h3", "MiniMaxH3TensorParallelismPlanner", ImportErrorTensorParallelismPlanner)
   FastH3TensorParallelismPlanner = _safe_import(  # noqa: F841

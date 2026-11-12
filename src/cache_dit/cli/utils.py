@@ -156,6 +156,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Override image path if provided",
   )
   parser.add_argument(
+    "--prompt-enhancer",
+    type=str,
+    default=None,
+    help=("Local path of the MiniMax-H3-Image-PE **blocks** repository "
+          "(`diffusers/minimax-h3-image-pe-blocks`). When set, `minimax_h3_image` / "
+          "`minimax_h3_image_edit` expand the prompt with it and, unless `--height/--width` are "
+          "given, take the recommended aspect ratio. Off by default: the expanded caption is a "
+          "different input, and the ~19 GiB enhancer dominates the latency."),
+  )
+  parser.add_argument(
     "--mask-image-path",
     type=str,
     default=None,
@@ -1068,6 +1078,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "actually streamed (i.e. without `--quantize` or `--parallel tp`) each per-block copy is "
           "a graph break, so `--compile` still works but pays a smaller speedup; "
           "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
+  )
+  offload_group.add_argument(
+    "--adaln-online",
+    dest="adaln_online",
+    action="store_true",
+    default=False,
+    help=("Precompute the AdaLN modulation tables of a MiniMax-H3 transformer for the checkpoint's "
+          "fixed sampling grid, keep the small results on the device and park the 24 GiB of "
+          "`adaln_proj` weights on the host. Exact, not an approximation: the tables are a pure "
+          "function of the timestep embedding, and a timestep outside the announced grid falls "
+          "back to recomputing with the weights. Removes the per-step host-to-device traffic "
+          "`--adaln-host-residency` pays, so it also keeps `--compile` free of that graph break."),
   )
   parser.add_argument(
     "--layerwise-async-transfer",
@@ -2774,6 +2796,25 @@ def _adaln_offload_target_names(transformer: torch.nn.Module) -> list[str]:
   ]
 
 
+def _move_to_device_without_adaln(module: torch.nn.Module, device: torch.device) -> None:
+  """Move every leaf of `module` to `device`, leaving the `adaln_proj` tables on the host.
+
+  `module.to(device)` would take the whole 62 GiB of a MiniMax-H3 checkpoint up even when the
+  memoized AdaLN tables make 24 GiB of it dead weight; moving the leaves one by one keeps the device
+  peak at the resident size. Only used without tensor parallelism and quantization, where every leaf
+  is a plain tensor.
+
+  :param module: Transformer whose leaves are moved.
+  :param device: Execution device.
+  """
+  for name, parameter in module.named_parameters():
+    if "adaln_proj" not in name:
+      parameter.data = parameter.data.to(device)
+  for name, buffer in module.named_buffers():
+    if "adaln_proj" not in name:
+      buffer.data = buffer.data.to(device)
+
+
 def maybe_adaln_host_residency(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter | torch.nn.Module | Any,
@@ -2787,20 +2828,36 @@ def maybe_adaln_host_residency(
   attention / FFN weights resident. The text encoder, which does not fit either way, stays on the
   full layerwise path, and the remaining components simply move to the device.
 
+  With `--adaln-online` the same placement applies, but the AdaLN tables are memoized for the
+  checkpoint's fixed sampling grid instead of streamed: the tables are computed once with the
+  weights on the device, kept (a few MiB), and the 24 GiB of projections are parked on the host, so
+  no host-to-device traffic happens per step at all.
+
   :param args: CLI arguments with the `layerwise_*` options.
   :param pipe_or_adapter: Pipeline or adapter to modify in place.
-  :returns: Whether AdaLN host residency is now installed.
+  :returns: Whether an AdaLN residency scheme is now installed.
   """
 
-  if not getattr(args, "adaln_host_residency", False):
+  online = getattr(args, "adaln_online", False)
+  if not getattr(args, "adaln_host_residency", False) and not online:
     return False
+  if online and getattr(args, "adaln_host_residency", False):
+    raise ValueError("--adaln-online and --adaln-host-residency both own the `adaln_proj` weights; "
+                     "pass one of the two.")
+  if online and (getattr(args, "cpu_offload", False)
+                 or getattr(args, "sequential_cpu_offload", False)
+                 or getattr(args, "module_layerwise_cpu_offload", False)):
+    raise ValueError("--adaln-online keeps the transformer resident by design, and the generic "
+                     "offload switches stream every block again; pass one of them, not both.")
   if getattr(args, "device_map_balance", False):
-    raise ValueError("--adaln-host-residency cannot be combined with --device-map-balance.")
+    raise ValueError("--adaln-host-residency/--adaln-online cannot be combined with "
+                     "--device-map-balance.")
 
   _, device = get_rank_device()
   targets = _resolve_generic_offload_targets(pipe_or_adapter)
   if not targets:
-    raise ValueError("--adaln-host-residency found no nn.Module components to manage.")
+    raise ValueError("--adaln-host-residency/--adaln-online found no nn.Module components to "
+                     "manage.")
 
   # Tensor parallelism already divides the AdaLN tables across the ranks, and a sharded table is a
   # DTensor, which the offload mirror cannot stream per tensor: it would fall back to moving the
@@ -2809,6 +2866,14 @@ def maybe_adaln_host_residency(
   # text encoder is streamed.
   tp_enabled = "tp" in (getattr(args, "parallel_type", "") or "")
   keep_transformer_resident = tp_enabled or getattr(args, "quantize", False)
+  if online and getattr(args, "cuda_graph", False):
+    # The plan lookup keys on the timestep embedding's bytes, i.e. a device-to-host copy on every
+    # step, which a capture cannot replay.
+    raise ValueError("--adaln-online cannot be combined with --cuda-graph: keying the plan copies "
+                     "the timestep embedding to the host on every step.")
+  if online and getattr(args, "compile_full_graph", False):
+    raise ValueError("--adaln-online cannot be combined with --compile-full-graph: keying the plan "
+                     "is a graph break, which `fullgraph=True` refuses by construction.")
   if getattr(args, "cuda_graph", False) and not keep_transformer_resident:
     # CUDA Graph capture bakes the parameter pointers into the graph, and the host mirror rebinds
     # `parameter.data` on every block, so the capture would replay stale device buffers.
@@ -2818,7 +2883,11 @@ def maybe_adaln_host_residency(
     # `fullgraph=True` refuses the graph break the streaming hook causes by construction.
     raise ValueError("--adaln-host-residency cannot be combined with --compile-full-graph unless "
                      "the transformer stays resident (`--quantize` or `--parallel tp`).")
-  if getattr(args, "compile", False) and not keep_transformer_resident:
+  if getattr(args, "compile", False) and online:
+    logger.info(
+      "Compiling the repeated blocks with the AdaLN plans on the device: keying a plan is "
+      "a per-block graph break, so each block compiles around it.")
+  elif getattr(args, "compile", False) and not keep_transformer_resident:
     # The device move happens inside the layerwise hooks, which are `torch.compiler.disable`d, so
     # each streamed block shows up as a graph break instead of an error: the compiled region is
     # everything around it. That still pays off — the attention / FFN bodies are the bulk of the
@@ -2838,11 +2907,31 @@ def maybe_adaln_host_residency(
   # (`proj_in`, `token_refiner`, the rope buffer) still need this move.
   for name, module in targets:
     if _is_transformer(name, module):
-      module.to(device)
+      if online and not keep_transformer_resident:
+        _move_to_device_without_adaln(module, device)
+      else:
+        module.to(device)
 
   installed = False
   for name, module in targets:
     if not _is_transformer(name, module):
+      continue
+    if online:
+      from ..offload.adaln_plan import (
+        adaln_plan_tembeddings,
+        install_adaln_plan_cache,
+        timestep_sets_from_pipeline,
+      )
+
+      pipe = pipe_or_adapter.pipe if isinstance(pipe_or_adapter, BlockAdapter) else pipe_or_adapter
+      timestep_sets = timestep_sets_from_pipeline(pipe)
+      embeddings = adaln_plan_tembeddings(module, timestep_sets)
+      plans, tables = install_adaln_plan_cache(module, embeddings, compute_device=device)
+      logger.info(
+        "AdaLN online for module %s: %d plans over %d modulation tables for %d "
+        "timestep vectors; projection weights that are not tensor-parallel shards are "
+        "parked on the host.", name, plans, tables, len(timestep_sets))
+      installed = True
       continue
     if keep_transformer_resident:
       logger.info(

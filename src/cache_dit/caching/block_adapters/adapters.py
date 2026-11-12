@@ -215,6 +215,46 @@ def cogvideox_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+# NOTE: Registered before "MiniMaxH3" on purpose. The registry returns the first class-name prefix
+# that matches and `MiniMaxH3ImageModularPipeline` also starts with "MiniMaxH3", so this entry has to
+# come first: the video adapter's `_relaxed_assert(..., MiniMaxH3Transformer3DModel)` is a hard
+# assertion for a diffusers transformer and would reject `MiniMaxH3ImageTransformer2DModel`.
+@BlockAdapterRegister.register("MiniMaxH3Image")
+def minimax_h3_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  """Block adapter for MiniMax-H3-Image.
+
+  MiniMax-H3-Image is the MiniMax-H3 transformer **without its audio stream**: one packed 1-D
+  sequence of `[text | reference rows | generated rows]` runs through a single stack of blocks, and
+  every block rebuilds its AdaLN modulation from the current timestep and reads its per-row
+  `adaln_indices`. There is no cross-attention, no attention mask and no classifier-free guidance,
+  so every step is exactly one forward pass.
+
+  The checkpoint is distilled with Parallel Decoding Distillation: it samples on a fixed 6-step sigma
+  grid and applies **one output head per step** (`pdd_proj_out[step]`). Only the block stack is
+  cached. The head is chosen after the stack, so a skipped step still runs its own head and the cache
+  decision stays a residual approximation instead of a step/head mismatch. `token_refiner` runs once
+  per step over the text stream alone and carries no AdaLN parameters, so caching it would only add
+  noise to the residual statistics.
+
+  :param pipe: MiniMax-H3-Image modular pipeline.
+  :param kwargs: Forwarded to the `BlockAdapter`.
+  :returns: The block adapter for `MiniMaxH3ImageTransformer2DModel`.
+  """
+  from diffusers import MiniMaxH3ImageTransformer2DModel
+
+  _relaxed_assert(pipe.transformer, MiniMaxH3ImageTransformer2DModel)
+
+  return BlockAdapter(
+    pipe=pipe,
+    transformer=pipe.transformer,
+    blocks=pipe.transformer.transformer_blocks,
+    forward_pattern=ForwardPattern.Pattern_3,
+    check_forward_pattern=True,
+    has_separate_cfg=False,
+    **kwargs,
+  )
+
+
 @BlockAdapterRegister.register("MiniMaxH3")
 def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import MiniMaxH3Transformer3DModel

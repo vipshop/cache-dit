@@ -130,6 +130,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Video | MiniMax-H3 (T2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |
 | Video | MiniMax-H3 (FL2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
 | Video | MiniMax-H3 (Ref2VA) 🔥 | [`🤗diffusers@0.40.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3) | 1 | ✔️/✔️/✔️/✔️ |  
+| Image | MiniMax-H3-Image (T2I/Edit) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Joy-Image| [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Krea-2 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Ideogram 4 🔥 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
