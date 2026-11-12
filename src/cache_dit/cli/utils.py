@@ -997,6 +997,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable Ulysses Attention/UAA Float8 for context parallelism",
   )
   parser.add_argument(
+    "--ulysses-float8-k",
+    "--ufp8k",
+    action="store_true",
+    default=False,
+    help="Also quantize K for Ulysses FP8 communication (requires --ulysses-float8)",
+  )
+  parser.add_argument(
     "--ulysses-async",
     "--uaqkv",
     action="store_true",
@@ -2998,6 +3005,7 @@ def maybe_apply_optimization(
           extra_parallel_modules=extra_parallel_modules,
           ulysses_anything=args.ulysses_anything,
           ulysses_float8=args.ulysses_float8,
+          ulysses_float8_k=args.ulysses_float8_k,
           ulysses_async=args.ulysses_async,
           ring_rotate_method=args.ring_rotate_method,
           ring_convert_to_fp32=not args.ring_no_convert_to_fp32,

@@ -1,10 +1,12 @@
 """Public CUDA operator APIs provided by Cache-DiT."""
 
 from .attn import fused_merge_attn_states
-from .comm import fp8_comm_per_token_dequant
-from .comm import fp8_comm_per_token_quant
-from .comm import fp8_comm_qkv_permute_dequant
-from .comm import fp8_comm_qkv_permute_quant
+from .ulysses import ulysses_fp8_o_permute_dequant
+from .ulysses import ulysses_fp8_o_permute_quant
+from .ulysses import ulysses_fp8_per_token_dequant
+from .ulysses import ulysses_fp8_per_token_quant
+from .ulysses import ulysses_fp8_qkv_permute_dequant
+from .ulysses import ulysses_fp8_qkv_permute_quant
 from .cuda_ext import cuda_ext_get_load_error
 from .cuda_ext import cuda_ext_is_available
 from .fp8 import fp8_gemm
@@ -31,10 +33,12 @@ from .svdquant import svdq_gemm_w4a4
 from .svdquant import svdq_quantize_w4a4
 
 __all__ = [
-  "fp8_comm_per_token_quant",
-  "fp8_comm_per_token_dequant",
-  "fp8_comm_qkv_permute_quant",
-  "fp8_comm_qkv_permute_dequant",
+  "ulysses_fp8_o_permute_quant",
+  "ulysses_fp8_o_permute_dequant",
+  "ulysses_fp8_per_token_quant",
+  "ulysses_fp8_per_token_dequant",
+  "ulysses_fp8_qkv_permute_quant",
+  "ulysses_fp8_qkv_permute_dequant",
   "fused_merge_attn_states",
   "fp8_quantize",
   "fp8_gemm",

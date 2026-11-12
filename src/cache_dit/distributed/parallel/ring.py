@@ -43,10 +43,22 @@ class RingAttention(torch.autograd.Function):
     ctx._cp_config = _cp_config
 
     next_k, next_v = None, None
+    # Alternate two receive slots: the next hop sends the slot received on the
+    # previous hop, so its receive destination must be the other slot.
+    recv_buffers = None
 
     for step in range(comm.world_size):
       if step + 1 != comm.world_size:
-        next_k, next_v = comm.send_recv_kv(key, value)
+        if recv_buffers is None:
+          recv_buffers = [
+            (torch.empty_like(key, memory_format=torch.contiguous_format),
+             torch.empty_like(value, memory_format=torch.contiguous_format)),
+          ]
+          if comm.world_size > 2:
+            recv_buffers.append((torch.empty_like(key, memory_format=torch.contiguous_format),
+                                 torch.empty_like(value, memory_format=torch.contiguous_format)))
+        k_buffer, v_buffer = recv_buffers[step % 2]
+        next_k, next_v = comm.send_recv_kv(key, value, k_buffer=k_buffer, v_buffer=v_buffer)
 
       # [B, N, H, D], [B, N, H, 1]
       out, lse = forward_op(

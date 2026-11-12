@@ -4,6 +4,7 @@ import torch
 from typing import Dict, Optional
 from diffusers import ModelMixin
 from ...logger import init_logger
+from ..topology import warn_if_cross_numa
 from .config import (
   _ContextParallelModelPlan,
   _ContextParallelConfig,
@@ -58,6 +59,9 @@ def _enable_context_parallelism(
     config.setup(rank, world_size, device, mesh=mesh)
   elif config._rank is None or config._world_size is None or config._device is None:
     config.setup(rank, world_size, device, mesh=config._mesh)
+
+  if rank == 0 and config._flattened_mesh is not None:
+    warn_if_cross_numa(config._flattened_mesh.mesh.flatten().tolist())
 
   # `_cp_config` is the primary cache-dit runtime attribute. `_parallel_config`
   # intentionally aliases the same object for diffusers-style call sites that

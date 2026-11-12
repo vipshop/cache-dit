@@ -126,7 +126,7 @@ cache_dit.enable_cache(
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit has implemented <span style="color:#c77dff;">Async FP8 Ulysses Attention</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. To maintain higher precision during softmax computation—where <span style="color:#c77dff;">Softmax(Q@K^T)</span> is sensitive to numerical instability—we currently retain <span style="color:#c77dff;">K</span> in <span style="color:#c77dff;">FP16/BF16</span> format. Float8-optimized all_to_all communication is therefore only applied to Q, V, and O.
+cache-dit has implemented <span style="color:#c77dff;">Async FP8 Ulysses Attention</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. By default, <span style="color:#c77dff;">K</span> remains in <span style="color:#c77dff;">FP16/BF16</span> format to protect the numerically sensitive <span style="color:#c77dff;">Softmax(Q@K^T)</span> computation, so FP8 is applied only to Q, V, and O. Setting `ulysses_float8_k=True` additionally opts K into FP8 communication; this requires `ulysses_float8=True` and should be validated against the target model's output quality. LSE always remains BF16. The fused FP8 O path additionally requires both the global head count and the global sequence length to be divisible by `ulysses_size`; if either is not divisible, disable `ulysses_float8` for that model or shape.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -138,9 +138,13 @@ cache_dit.enable_cache(
   parallelism_config=ParallelismConfig(
     ulysses_size=2,
     ulysses_float8=True,
+    # Optional: also quantize K. Requires ulysses_float8=True.
+    ulysses_float8_k=False,
   ),
 )
 ```
+
+On PCIe-only multi-socket machines, cache-dit emits a one-time warning when a CP group spans NUMA nodes through `SYS` links and no NVLink is detected. This is a diagnostic only: process groups and rank placement are not changed. Topology discovery is fail-open when `nvidia-smi` is unavailable or its output cannot be parsed.
 
 |L20x2 w/ Ulysses| w/ Ulysses FP8|w/ Ulysses + compile|w/ Ulysses FP8 + compile|
 |:---:|:---:|:---:|:---:|

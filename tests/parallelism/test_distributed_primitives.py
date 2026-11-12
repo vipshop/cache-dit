@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import cache_dit.distributed.communicate.primitives as primitives
+from cache_dit.distributed.parallel.config import _ContextParallelConfig
 
 
 class _FakeMesh:
@@ -129,6 +130,77 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch):
       "metadata": metadata,
     },
   ]
+
+
+def test_ulysses_float8_k_requires_float8():
+  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
+    _ContextParallelConfig(ulysses_degree=2, ulysses_float8_k=True)
+
+  config = _ContextParallelConfig(ulysses_degree=2, ulysses_float8=True, ulysses_float8_k=True)
+  assert config.ulysses_float8_k
+
+
+def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
+  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()), ulysses_float8_k=True)
+  qkv_impl = object()
+  monkeypatch.setattr(primitives, "_select_all_to_all_qkv_async_impl",
+                      lambda *args, **kwargs: qkv_impl)
+  monkeypatch.setattr(primitives, "_select_all_to_all_o_async_impl",
+                      lambda *args, **kwargs: object())
+
+  comm = primitives._All2AllComm(cp_config)
+
+  assert comm._k_impl is qkv_impl
+  assert comm._q_impl is qkv_impl
+  assert comm._v_impl is qkv_impl
+
+
+@pytest.mark.parametrize("rows,head_size,expected", [
+  (12, 64, 68),
+  (24576, 128, 130),
+  (81900, 128, 132),
+])
+def test_fp8_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, expected):
+  packed = primitives._fp8_o_packed_head_size(rows, head_size)
+
+  assert packed == expected
+  assert packed >= head_size + 2
+  assert (rows * packed) % 16 == 0
+
+
+@pytest.mark.parametrize("units,head_size,expected", [
+  ([16382], 66, 68),
+  ([16382], 128, 128),
+  ([2, 4, 6, 8], 66, 68),
+])
+def test_bf16_padded_last_dim_aligns_every_chunk(units, head_size, expected):
+  packed = primitives._padded_last_dim(units, head_size, element_size=2)
+
+  assert packed == expected
+  assert all((unit * packed * 2) % 16 == 0 for unit in units)
+
+
+def test_fp8_packed_row_width_covers_uneven_splits():
+  packed = primitives._fp8_packed_row_width([1, 2, 3, 4], row_elements=2, min_width=68)
+
+  assert packed == 72
+  assert all((size * 2 * packed) % 16 == 0 for size in [1, 2, 3, 4])
+
+
+def test_all2all_comm_keeps_k_and_lse_off_fp8_by_default(monkeypatch):
+  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
+                              ulysses_float8=True,
+                              ulysses_float8_k=False)
+  impls = iter([object(), object(), object(), object(), object()])
+  monkeypatch.setattr(primitives, "_select_all_to_all_qkv_async_impl",
+                      lambda *args, **kwargs: next(impls))
+  monkeypatch.setattr(primitives, "_select_all_to_all_o_async_impl",
+                      lambda *args, **kwargs: next(impls))
+
+  comm = primitives._All2AllComm(cp_config)
+
+  assert comm._k_impl is not comm._q_impl
+  assert comm._lse_impl is not comm._q_impl
 
 
 def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkeypatch):
