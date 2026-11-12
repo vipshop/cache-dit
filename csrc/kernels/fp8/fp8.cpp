@@ -91,7 +91,7 @@ void check_gemm_inputs(const at::Tensor& a, const at::Tensor& b, const at::Tenso
 
 void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scale,
               const at::Tensor& b_scale, const std::optional<at::Tensor>& bias, at::Tensor& out,
-              int64_t mode) {
+              int64_t mode, bool use_ws) {
   const c10::cuda::CUDAGuard device_guard(a.device());
   check_gemm_inputs(a, b, a_scale, b_scale, bias, out, mode);
   const int M = static_cast<int>(a.size(0));
@@ -106,11 +106,13 @@ void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
 
   if (mode == kPerBlock) {
     launch_fp8_gemm_per_block(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
-                              bias_ptr, out_ptr, M, N, K, num_k_blocks, stream);
+                              bias_ptr, out_ptr, M, N, K, num_k_blocks, use_ws, stream);
+  } else if (mode == kPerTensor) {
+    launch_fp8_gemm_per_tensor(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
+                               bias_ptr, out_ptr, M, N, K, use_ws, stream);
   } else {
-    launch_fp8_gemm_per_row_tensor(a_ptr, b_ptr, a_scale.data_ptr<float>(),
-                                   b_scale.data_ptr<float>(), bias_ptr, out_ptr, M, N, K,
-                                   mode == kPerTensor, stream);
+    launch_fp8_gemm_per_row(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
+                            bias_ptr, out_ptr, M, N, K, use_ws, stream);
   }
 }
 

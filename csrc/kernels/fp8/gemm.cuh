@@ -6,6 +6,7 @@
 
 #include <cute/tensor.hpp>
 #include <cutlass/arch/barrier.h>
+#include <cutlass/arch/reg_reconfig.h>
 #include <cutlass/device_kernel.h>
 #include <cutlass/numeric_conversion.h>
 #include <cutlass/numeric_types.h>
@@ -245,6 +246,162 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
 #endif
 }
 
+template <typename Traits, typename TmaA, typename TmaB, typename TmaC, bool kPerTensor>
+__global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
+  fp8_gemm_scale_ws_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
+                           CUTLASS_GRID_CONSTANT TmaB const tma_b,
+                           CUTLASS_GRID_CONSTANT TmaC const tma_c,
+                           const float* __restrict__ a_scale, const float* __restrict__ b_scale,
+                           const __nv_bfloat16* __restrict__ bias, int M, int N, int K) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  static_assert(CUDA_CTA_RECONFIG_ACTIVATED,
+                "FP8 warp specialization requires an architecture-specific -arch=sm_*a build.");
+  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
+  using CtaBarrier = cutlass::arch::ClusterBarrier;
+  using NamedBarrier = cutlass::arch::NamedBarrier;
+  using Element = typename Traits::Element;
+  using ElementO = typename Traits::ElementO;
+  using SmemLayoutA = typename Traits::SmemLayoutA;
+  using SmemLayoutB = typename Traits::SmemLayoutB;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+  using TiledMma = typename Traits::TiledMma;
+  using SmemCopyAtom = typename Traits::SmemCopyAtom;
+
+  constexpr int kBM = Traits::kBM;
+  constexpr int kBN = Traits::kBN;
+  constexpr int kBK = Traits::kBK;
+  constexpr int kStages = Traits::kStages;
+  constexpr int kProducerThreads = 128;
+  constexpr int kConsumerThreads = Traits::kNumThreads;
+  constexpr int kAElems = cosize(SmemLayoutA{});
+  constexpr int kBElems = cosize(SmemLayoutB{});
+  static_assert(kProducerThreads * 32 + kConsumerThreads * 232 <= 65536,
+                "WS register budget: 128 x 32 + consumer x 232 must fit 64K");
+
+  const int tid = threadIdx.x;
+  const int m0 = blockIdx.y * kBM;
+  const int n0 = blockIdx.x * kBN;
+  const int nKt = (K + kBK - 1) / kBK;
+
+  extern __shared__ __align__(1024) Element smem[];
+  Element* a_base = smem;
+  Element* b_base = smem + kStages * kAElems;
+  __shared__ uint64_t full[kStages];
+  __shared__ uint64_t empty[kStages];
+  if (tid == 0) {
+    for (int stage = 0; stage < kStages; ++stage) {
+      TmaBarrier::init(&full[stage], 1);
+      CtaBarrier::init(&empty[stage], kConsumerThreads);
+    }
+  }
+  cutlass::arch::fence_barrier_init();
+  __syncthreads();
+
+  if (tid < kProducerThreads) {
+    cutlass::arch::warpgroup_reg_dealloc<32>();
+    if (tid == 0) {
+      auto mA = tma_a.get_tma_tensor(make_shape(M, K));
+      auto mB = tma_b.get_tma_tensor(make_shape(N, K));
+      auto a_slice = tma_a.get_slice(_0{});
+      auto b_slice = tma_b.get_slice(_0{});
+      for (int kt = 0; kt < nKt; ++kt) {
+        const int stage = kt % kStages;
+        const int phase = (kt / kStages) & 1;
+        CtaBarrier::wait(&empty[stage], phase);
+        cutlass::arch::fence_view_async_shared();
+        auto sA = make_tensor(make_smem_ptr(a_base + stage * kAElems), SmemLayoutA{});
+        auto sB = make_tensor(make_smem_ptr(b_base + stage * kBElems), SmemLayoutB{});
+        auto gA = local_tile(mA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
+        auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+        TmaBarrier::arrive_and_expect_tx(&full[stage], sizeof(Element) * (size(sA) + size(sB)));
+        copy(tma_a.with(full[stage]), a_slice.partition_S(gA), a_slice.partition_D(sA));
+        copy(tma_b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB));
+      }
+    }
+  } else {
+    cutlass::arch::warpgroup_reg_alloc<232>();
+    const int ctid = tid - kProducerThreads;
+    for (int stage = 0; stage < kStages; ++stage) {
+      CtaBarrier::arrive(&empty[stage]);
+    }
+
+    TiledMma tiled_mma;
+    auto thr_mma = tiled_mma.get_thread_slice(ctid);
+    auto s2r_copy_a = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma);
+    auto s2r_copy_b = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma);
+    auto s2r_thr_a = s2r_copy_a.get_thread_slice(ctid);
+    auto s2r_thr_b = s2r_copy_b.get_thread_slice(ctid);
+    auto tCrC = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
+    clear(tCrC);
+    auto cC = make_identity_tensor(Shape<Int<kBM>, Int<kBN>>{});
+    auto tScC = thr_mma.partition_C(cC);
+    auto tScC_rc = make_tensor(tScC.data(), convert_layout_acc_rowcol(tScC.layout()));
+    constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
+    constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
+
+#pragma unroll 1
+    for (int kt = 0; kt < nKt; ++kt) {
+      const int stage = kt % kStages;
+      const int phase = (kt / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
+      cutlass::arch::fence_view_async_shared();
+      auto sA = make_tensor(make_smem_ptr(a_base + stage * kAElems), SmemLayoutA{});
+      auto sB = make_tensor(make_smem_ptr(b_base + stage * kBElems), SmemLayoutB{});
+      auto tCrA = thr_mma.partition_fragment_A(sA);
+      auto tCrB = thr_mma.partition_fragment_B(sB);
+      auto tAsA = s2r_thr_a.partition_S(sA);
+      auto tBsB = s2r_thr_b.partition_S(sB);
+      gemm_ss(tCrC, tCrA, tCrB, tAsA, tBsB, tiled_mma, s2r_copy_a, s2r_copy_b, s2r_thr_a,
+              s2r_thr_b);
+      CtaBarrier::arrive(&empty[stage]);
+    }
+
+    NamedBarrier::arrive_and_wait(kConsumerThreads, 0);
+    auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+    float row_scale[kCRows];
+    float col_scale[kCCols];
+    const float tensor_scale = kPerTensor ? a_scale[0] * b_scale[0] : 1.0f;
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r) {
+      const int m = m0 + get<0>(tScC_rc(r, 0));
+      row_scale[r] = kPerTensor ? tensor_scale : (m < M ? a_scale[m] : 0.0f);
+    }
+#pragma unroll
+    for (int c = 0; c < kCCols; ++c) {
+      const int n = n0 + get<1>(tScC_rc(0, c));
+      col_scale[c] = kPerTensor ? 1.0f : (n < N ? b_scale[n] : 0.0f);
+    }
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r) {
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c) {
+        const int n = n0 + get<1>(tScC_rc(r, c));
+        const float bias_value = (bias != nullptr && n < N) ? __bfloat162float(bias[n]) : 0.0f;
+        tCrC_rc(r, c) = tCrC_rc(r, c) * row_scale[r] * col_scale[c] + bias_value;
+      }
+    }
+
+    auto tCrCh = convert_type<ElementO>(tCrC);
+    auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
+    auto r2s_thr = r2s_copy.get_thread_slice(ctid);
+    auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(smem)), SmemLayoutO{});
+    auto tCrCh_src = r2s_thr.retile_S(tCrCh);
+    auto tCsC_dst = r2s_thr.partition_D(sC);
+    copy(r2s_copy, tCrCh_src, tCsC_dst);
+    cutlass::arch::fence_view_async_shared();
+    NamedBarrier::arrive_and_wait(kConsumerThreads, 0);
+    auto mC = tma_c.get_tma_tensor(make_shape(M, N));
+    auto c_slice = tma_c.get_slice(_0{});
+    auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
+    if (ctid == 0) {
+      copy(tma_c, c_slice.partition_S(sC), c_slice.partition_D(gC));
+    }
+    tma_store_arrive();
+    tma_store_wait<0>();
+  }
+#endif
+}
+
 template <typename Traits, typename TmaA, typename TmaB, typename TmaC>
 __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   fp8_gemm_block_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
@@ -416,6 +573,176 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   }
   tma_store_arrive();
   tma_store_wait<0>();
+#endif
+}
+
+template <typename Traits, typename TmaA, typename TmaB, typename TmaC>
+__global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
+  fp8_gemm_block_ws_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
+                           CUTLASS_GRID_CONSTANT TmaB const tma_b,
+                           CUTLASS_GRID_CONSTANT TmaC const tma_c,
+                           const float* __restrict__ a_scale, const float* __restrict__ b_scale,
+                           const __nv_bfloat16* __restrict__ bias, int M, int N, int K,
+                           int num_k_blocks) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  static_assert(CUDA_CTA_RECONFIG_ACTIVATED,
+                "FP8 warp specialization requires an architecture-specific -arch=sm_*a build.");
+  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
+  using CtaBarrier = cutlass::arch::ClusterBarrier;
+  using NamedBarrier = cutlass::arch::NamedBarrier;
+  using Element = typename Traits::Element;
+  using ElementO = typename Traits::ElementO;
+  using SmemLayoutA = typename Traits::SmemLayoutA;
+  using SmemLayoutB = typename Traits::SmemLayoutB;
+  using SmemLayoutO = typename Traits::SmemLayoutO;
+  using TiledMma = typename Traits::TiledMma;
+  using SmemCopyAtom = typename Traits::SmemCopyAtom;
+
+  constexpr int kBM = Traits::kBM;
+  constexpr int kBN = Traits::kBN;
+  constexpr int kBK = Traits::kBK;
+  constexpr int kStages = Traits::kStages;
+  constexpr int kProducerThreads = 128;
+  constexpr int kConsumerThreads = Traits::kNumThreads;
+  constexpr int kAElems = cosize(SmemLayoutA{});
+  constexpr int kBElems = cosize(SmemLayoutB{});
+  static_assert(kProducerThreads * 32 + kConsumerThreads * 232 <= 65536,
+                "WS register budget: 128 x 32 + consumer x 232 must fit 64K");
+
+  const int tid = threadIdx.x;
+  const int m0 = blockIdx.y * kBM;
+  const int n0 = blockIdx.x * kBN;
+  const int nKt = (K + kBK - 1) / kBK;
+
+  extern __shared__ __align__(1024) Element smem[];
+  Element* a_base = smem;
+  Element* b_base = smem + kStages * kAElems;
+  __shared__ uint64_t full[kStages];
+  __shared__ uint64_t empty[kStages];
+  if (tid == 0) {
+    for (int stage = 0; stage < kStages; ++stage) {
+      TmaBarrier::init(&full[stage], 1);
+      CtaBarrier::init(&empty[stage], kConsumerThreads);
+    }
+  }
+  cutlass::arch::fence_barrier_init();
+  __syncthreads();
+
+  if (tid < kProducerThreads) {
+    cutlass::arch::warpgroup_reg_dealloc<32>();
+    if (tid == 0) {
+      auto mA = tma_a.get_tma_tensor(make_shape(M, K));
+      auto mB = tma_b.get_tma_tensor(make_shape(N, K));
+      auto a_slice = tma_a.get_slice(_0{});
+      auto b_slice = tma_b.get_slice(_0{});
+      for (int kt = 0; kt < nKt; ++kt) {
+        const int stage = kt % kStages;
+        const int phase = (kt / kStages) & 1;
+        CtaBarrier::wait(&empty[stage], phase);
+        cutlass::arch::fence_view_async_shared();
+        auto sA = make_tensor(make_smem_ptr(a_base + stage * kAElems), SmemLayoutA{});
+        auto sB = make_tensor(make_smem_ptr(b_base + stage * kBElems), SmemLayoutB{});
+        auto gA = local_tile(mA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
+        auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
+        TmaBarrier::arrive_and_expect_tx(&full[stage], sizeof(Element) * (size(sA) + size(sB)));
+        copy(tma_a.with(full[stage]), a_slice.partition_S(gA), a_slice.partition_D(sA));
+        copy(tma_b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB));
+      }
+    }
+  } else {
+    cutlass::arch::warpgroup_reg_alloc<232>();
+    const int ctid = tid - kProducerThreads;
+    for (int stage = 0; stage < kStages; ++stage) {
+      CtaBarrier::arrive(&empty[stage]);
+    }
+
+    TiledMma tiled_mma;
+    auto thr_mma = tiled_mma.get_thread_slice(ctid);
+    auto s2r_copy_a = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma);
+    auto s2r_copy_b = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma);
+    auto s2r_thr_a = s2r_copy_a.get_thread_slice(ctid);
+    auto s2r_thr_b = s2r_copy_b.get_thread_slice(ctid);
+    auto tCrPartial = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
+    auto tCrTotal = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
+    clear(tCrPartial);
+    clear(tCrTotal);
+    auto cC = make_identity_tensor(Shape<Int<kBM>, Int<kBN>>{});
+    auto tScC = thr_mma.partition_C(cC);
+    auto tScC_rc = make_tensor(tScC.data(), convert_layout_acc_rowcol(tScC.layout()));
+    constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
+    constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
+
+#pragma unroll 1
+    for (int kt = 0; kt < nKt; ++kt) {
+      const int stage = kt % kStages;
+      const int phase = (kt / kStages) & 1;
+      TmaBarrier::wait(&full[stage], phase);
+      cutlass::arch::fence_view_async_shared();
+      auto sA = make_tensor(make_smem_ptr(a_base + stage * kAElems), SmemLayoutA{});
+      auto sB = make_tensor(make_smem_ptr(b_base + stage * kBElems), SmemLayoutB{});
+      auto tCrA = thr_mma.partition_fragment_A(sA);
+      auto tCrB = thr_mma.partition_fragment_B(sB);
+      auto tAsA = s2r_thr_a.partition_S(sA);
+      auto tBsB = s2r_thr_b.partition_S(sB);
+      gemm_ss(tCrPartial, tCrA, tCrB, tAsA, tBsB, tiled_mma, s2r_copy_a, s2r_copy_b, s2r_thr_a,
+              s2r_thr_b);
+
+      auto partial_rc =
+        make_tensor(tCrPartial.data(), convert_layout_acc_rowcol(tCrPartial.layout()));
+      auto total_rc = make_tensor(tCrTotal.data(), convert_layout_acc_rowcol(tCrTotal.layout()));
+      float row_scale[kCRows];
+      float col_scale[kCCols];
+#pragma unroll
+      for (int r = 0; r < kCRows; ++r) {
+        const int m = m0 + get<0>(tScC_rc(r, 0));
+        row_scale[r] = m < M ? a_scale[static_cast<int64_t>(m) * num_k_blocks + kt] : 0.0f;
+      }
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c) {
+        const int n = n0 + get<1>(tScC_rc(0, c));
+        col_scale[c] = n < N ? b_scale[static_cast<int64_t>(n / 128) * num_k_blocks + kt] : 0.0f;
+      }
+#pragma unroll
+      for (int r = 0; r < kCRows; ++r) {
+#pragma unroll
+        for (int c = 0; c < kCCols; ++c) {
+          total_rc(r, c) += partial_rc(r, c) * row_scale[r] * col_scale[c];
+        }
+      }
+      clear(tCrPartial);
+      CtaBarrier::arrive(&empty[stage]);
+    }
+
+    NamedBarrier::arrive_and_wait(kConsumerThreads, 0);
+    auto total_rc = make_tensor(tCrTotal.data(), convert_layout_acc_rowcol(tCrTotal.layout()));
+#pragma unroll
+    for (int r = 0; r < kCRows; ++r) {
+#pragma unroll
+      for (int c = 0; c < kCCols; ++c) {
+        const int n = n0 + get<1>(tScC_rc(r, c));
+        const float bias_value = (bias != nullptr && n < N) ? __bfloat162float(bias[n]) : 0.0f;
+        total_rc(r, c) += bias_value;
+      }
+    }
+
+    auto tCrCh = convert_type<ElementO>(tCrTotal);
+    auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
+    auto r2s_thr = r2s_copy.get_thread_slice(ctid);
+    auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(smem)), SmemLayoutO{});
+    auto tCrCh_src = r2s_thr.retile_S(tCrCh);
+    auto tCsC_dst = r2s_thr.partition_D(sC);
+    copy(r2s_copy, tCrCh_src, tCsC_dst);
+    cutlass::arch::fence_view_async_shared();
+    NamedBarrier::arrive_and_wait(kConsumerThreads, 0);
+    auto mC = tma_c.get_tma_tensor(make_shape(M, N));
+    auto c_slice = tma_c.get_slice(_0{});
+    auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
+    if (ctid == 0) {
+      copy(tma_c, c_slice.partition_S(sC), c_slice.partition_D(gC));
+    }
+    tma_store_arrive();
+    tma_store_wait<0>();
+  }
 #endif
 }
 

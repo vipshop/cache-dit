@@ -183,7 +183,7 @@ def _validate_gemm_metadata(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Ten
 
 
 def _call_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-                   bias: torch.Tensor | None, out: torch.Tensor, mode: int) -> None:
+                   bias: torch.Tensor | None, out: torch.Tensor, mode: int, use_ws: bool) -> None:
   """Bridge the Python GEMM to the compiled extension.
 
   :param a: Quantized activation ``[M, K]``.
@@ -193,31 +193,34 @@ def _call_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_sc
   :param bias: Optional BF16 bias.
   :param out: BF16 destination ``[M, N]``.
   :param mode: Integer granularity id.
+  :param use_ws: Select the warp-specialized mainloop.
   """
 
-  _fp8_ops_module().fp8_gemm(a, b, a_scale, b_scale, bias, out, mode)
+  _fp8_ops_module().fp8_gemm(a, b, a_scale, b_scale, bias, out, mode, use_ws)
 
 
 torch.library.define(
   "cache_dit_cuda_ops::fp8_gemm",
-  "(Tensor a, Tensor b, Tensor a_scale, Tensor b_scale, Tensor? bias, int mode) -> Tensor",
+  "(Tensor a, Tensor b, Tensor a_scale, Tensor b_scale, Tensor? bias, int mode, bool use_ws) "
+  "-> Tensor",
 )
 
 
 @torch.library.impl("cache_dit_cuda_ops::fp8_gemm", "CUDA")
 def _fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-              bias: torch.Tensor | None, mode: int) -> torch.Tensor:
+              bias: torch.Tensor | None, mode: int, use_ws: bool) -> torch.Tensor:
   _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
   a = a.contiguous()
   b = b.contiguous()
   out = torch.empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16, device=a.device)
-  _call_fp8_gemm(a, b, a_scale.contiguous(), b_scale.contiguous(), bias, out, mode)
+  _call_fp8_gemm(a, b, a_scale.contiguous(), b_scale.contiguous(), bias, out, mode, use_ws)
   return out
 
 
 @torch.library.register_fake("cache_dit_cuda_ops::fp8_gemm")
 def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-                   bias: torch.Tensor | None, mode: int) -> torch.Tensor:
+                   bias: torch.Tensor | None, mode: int, use_ws: bool) -> torch.Tensor:
+  del use_ws
   _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
@@ -244,7 +247,8 @@ def fp8_gemm(a: torch.Tensor,
              a_scale: torch.Tensor,
              b_scale: torch.Tensor,
              bias: torch.Tensor | None = None,
-             mode: str = "per_row") -> torch.Tensor:
+             mode: str = "per_row",
+             use_ws: bool | None = None) -> torch.Tensor:
   """Compute ``a @ b.T`` with FP8 inputs and a BF16 output.
 
   :param a: Quantized activation ``[M, K]``.
@@ -253,10 +257,16 @@ def fp8_gemm(a: torch.Tensor,
   :param b_scale: Weight scale produced by :func:`fp8_quantize`.
   :param bias: Optional BF16 bias ``[N]``.
   :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
+  :param use_ws: Select the warp-specialized mainloop. ``None`` uses the measured
+    default: WS for per-block, all-warps for per-row/per-tensor because the former's
+    epilogue spills 144 B/thread in the 384-thread WS kernel on sm120.
   :returns: BF16 output ``[M, N]``.
   """
 
-  return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, _resolve_mode(mode))
+  mode_id = _resolve_mode(mode)
+  if use_ws is None:
+    use_ws = mode_id == _MODE_TO_ID["per_block"]
+  return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id, use_ws)
 
 
 __all__ = ["fp8_gemm", "fp8_quantize"]

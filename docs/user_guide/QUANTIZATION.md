@@ -48,7 +48,7 @@ python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
   --quantize-type float8_per_row --quantize-backend cache_dit --compile
 ```
 
-The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements.
+The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` also accepts `use_ws`; by default `per_block` uses the warp-specialized mainloop and `per_row`/`per_tensor` use the all-warps mainloop, based on the measured per-mode optimum on sm120.
 
 ## FP8 Quantization
 

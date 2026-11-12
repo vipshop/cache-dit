@@ -309,7 +309,8 @@ def _required_fp8_sources() -> list[str]:
   return [
     "csrc/kernels/fp8/fp8.cpp",
     "csrc/kernels/fp8/quantize.cu",
-    "csrc/kernels/fp8/gemm_per_row_tensor.cu",
+    "csrc/kernels/fp8/gemm_per_row.cu",
+    "csrc/kernels/fp8/gemm_per_tensor.cu",
     "csrc/kernels/fp8/gemm_per_block.cu",
   ]
 
