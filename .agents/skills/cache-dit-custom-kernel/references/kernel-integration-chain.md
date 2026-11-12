@@ -254,7 +254,7 @@ python -c "import cache_dit.kernels as k; print(k.<op>)"
 - 错误信息必须带构建命令与 arch 门槛，照抄 `_get_required_ops_module()` 的文案；否则用户只会看到 dispatch 报错或裸 `AttributeError`。
 - **autograd**：三族都只注册了 `CUDA` key，**没有 Autograd key**。这些算子是推理专用：`requires_grad=True` 的输入走 `autograd_not_implemented` fallback（torch 2.11 实测为 `UserWarning`，并注明该行为未来会变成 error）。要可微必须显式注册 Autograd 实现（或包一层 `autograd.Function`），不要指望"能跑通就是对的"。
 - **torch.compile**：注册了 fake + fake 无数据依赖分支 + 公开包装里不出现 `.item()`/值比较，即可 `fullgraph=True`。模板见 `tests/kernels/test_cuda_merge_attn_states.py` 与 `tests/kernels/test_cuda_fp8_comm_ops.py::test_fp8_comm_compile_smoke`。
-- **模型级族（`models`）多一层 wrapper**：调用点不在框架代码里，而在 `models/pipelines/<model>/fused_ops.py`。它负责三件事——前置条件（必须覆盖 C++ 的 `TORCH_CHECK`）、逐位等价的 eager 回退、以及开关。开关统一为 `CACHE_DIT_FUSED_OPS`（解析点在 `models/pipelines/env.py`，三态；由 `install_fused_modules()` 安装 fused transformer 时打开），不是模型专属变量。框架级三族没有这层义务，所以别把三族的写法直接套到模型侧。
+- **模型级族（`models`）多一层 wrapper**：调用点不在框架代码里，而在 `models/pipelines/<model>/fused_ops.py`。它负责三件事——前置条件（必须覆盖 C++ 的 `TORCH_CHECK`）、逐位等价的 eager 回退、以及开关。开关统一为 `CACHE_DIT_FUSED_OPS`（解析点在 `models/pipelines/env.py`，三态；由 `install_fused_modules()` 安装 fused transformer 时打开，`boogu_image` 这种无独立安装步的 vendored 模型则以构造其 transformer 为激活点），不是模型专属变量。框架级三族没有这层义务，所以别把三族的写法直接套到模型侧。
 
 ## 7. 测试矩阵（含现有用例的真实强度）
 

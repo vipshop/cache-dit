@@ -279,12 +279,13 @@ src/cache_dit/models/pipelines/<model>/
 | extension | `cache_dit._C_ops`（全部四族共用） | — |
 | 融合开关 | `CACHE_DIT_FUSED_OPS`（三态，全部模型族共用） | — |
 
-开关统一为 `CACHE_DIT_FUSED_OPS`，解析点只有 `models/pipelines/env.py`。三态：未设置 = 关，
-由 `install_fused_modules()`（唯一安装漏斗，4 个调用点都走它）调 `activate_fused_ops()` 打开，因此只有走
-cache-dit 自有入口（`_XxxPipeline`、`flux3_fused` CLI、`upgrade_transformer()`、qwen21 的 patch functor）
-才会生效；`1` = 开；`0` = 关。**不要再新增 `CACHE_DIT_{MODEL}_*`**——唯一历史遗留是
-`boogu_image` 的 `CACHE_DIT_BOOGU_FUSED_OPS`（默认 on）。逐算子白名单是代码常量 `ACTIVE_OPS`
-（一个模型的算子集合一个元组），A/B 时用赋值收窄，不要再给它配 env。
+开关统一为 `CACHE_DIT_FUSED_OPS`，解析点只有 `models/pipelines/env.py`，四族（flux2_klein / flux3_klein /
+qwen_image21 / boogu_image）共用，**不提供按模型的开关**。三态：未设置 = 关，由各自的安装点调
+`activate_fused_ops()` 打开——三族走 `install_fused_modules()`（唯一安装漏斗，4 个调用点都走它），
+`boogu_image` 没有独立安装步，激活点是构造 `BooguImageTransformer2DModel`；因此只有走 cache-dit 自有入口
+（`_XxxPipeline`、`BooguImagePipeline`、`flux3_fused` CLI、`upgrade_transformer()`、qwen21 的 patch functor）
+才会生效；`1` = 开；`0` = 关。**不要再新增 `CACHE_DIT_{MODEL}_*`**。逐算子白名单是代码常量
+`ACTIVE_OPS`（一个模型的算子集合一个元组），A/B 时用赋值收窄，不要再给它配 env。
 
 实测预期（torch 2.15，RTX PRO 5000）：eager 臂 −13~17%，compile 臂持平（inductor 已把同一条点式链融到
 DRAM 墙，图内 opaque op 反而碎图）。给新模型写这一族时，不要承诺 compile 臂提速。

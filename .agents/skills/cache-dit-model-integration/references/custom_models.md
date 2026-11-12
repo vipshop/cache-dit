@@ -652,10 +652,11 @@ Standard shape (details in `cache-dit-custom-kernel`):
 * Python side is the bridge: `from ..cuda_ext import _get_required_ops_module` → `_call_*`
   → `torch.library` `define` / `impl("CUDA")` / `register_fake` → public wrapper;
 * one switch for **every** family (`CACHE_DIT_FUSED_OPS`, parsed only in
-  `models/pipelines/env.py`), tri-state: unset = off until `install_fused_modules()` calls
-  `activate_fused_ops()`, `1` = on, `0` = off. That is what makes the operators default on through
-  cache-dit's own entry points only. Do not add a new `CACHE_DIT_<MODEL>_*` variable (Boogu-Image is
-  the single legacy exception). If you measured a per-operator difference, encode it in the module's
+  `models/pipelines/env.py`), tri-state: unset = off until the family's install point calls
+  `activate_fused_ops()` (`install_fused_modules()` for the transformer-subclass families, the
+  transformer's own `__init__` for a vendored model like Boogu-Image), `1` = on, `0` = off. That is
+  what makes the operators default on through cache-dit's own entry points only. Never add a
+  `CACHE_DIT_<MODEL>_*` variable. If you measured a per-operator difference, encode it in the module's
   `ACTIVE_OPS` constant — the shipped set must be the measured winner, not "everything", and an A/B
   run narrows it by assignment rather than by an env;
 * expectation setting: measured on torch 2.15 these operators are at parity with `torch.compile` and only

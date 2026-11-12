@@ -21,13 +21,15 @@ _FAMILIES = (
   "cache_dit.models.pipelines.flux2_klein.fused_ops",
   "cache_dit.models.pipelines.flux3_klein.fused_ops",
   "cache_dit.models.pipelines.qwen_image21.fused_ops",
+  "cache_dit.models.pipelines.boogu_image.fused_ops",
 )
-# The names this variable replaced: the three per-model switches, plus their per-operator
-# allow-lists and the two FLUX.2 sub-feature knobs. They must not come back one model at a time.
+# The names this variable replaced: the per-model switches, plus their per-operator allow-lists and
+# the two FLUX.2 sub-feature knobs. They must not come back one model at a time.
 _REMOVED = (
   "CACHE_DIT_FLUX2_KLEIN_FUSED_OPS",
   "CACHE_DIT_FLUX3_KLEIN_FUSED_OPS",
   "CACHE_DIT_QWEN_IMAGE21_FUSED_OPS",
+  "CACHE_DIT_BOOGU_FUSED_OPS",
   "CACHE_DIT_FLUX2_KLEIN_OPS",
   "CACHE_DIT_FLUX3_KLEIN_OPS",
   "CACHE_DIT_QWEN_IMAGE21_OPS",
@@ -106,7 +108,9 @@ def test_a_clean_process_imports_the_family_disabled(name):
 def test_no_family_keeps_a_switch_of_its_own(name):
   module = importlib.import_module(name)
 
-  assert not hasattr(module, "_ENV_SWITCH")
+  # No per-family constant, no per-family parser, and no model-prefixed flag attribute.
+  for attribute in ("_ENV_SWITCH", "_BOOGU_FUSED_OPS_ENV", "_BOOGU_FUSED_OPS_ENABLED"):
+    assert not hasattr(module, attribute), attribute
 
 
 def test_the_removed_per_model_names_are_gone_from_the_package():

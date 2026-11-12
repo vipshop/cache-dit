@@ -37,6 +37,7 @@ from .block_lumina2 import (
   LuminaLayerNormContinuous,
   LuminaRMSNormZero,
 )
+from .fused_ops import activate_fused_ops
 from .fused_ops import apply_gated_rms_norm
 from .fused_ops import apply_scaled_rms_norm
 from .rms_norm import RMSNorm
@@ -757,6 +758,11 @@ class BooguImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
   ) -> None:
     """Initialize the Boogu-Image mixed single-double stream transformer model."""
     super().__init__()
+
+    # Constructing this transformer is the Boogu equivalent of installing a fused transformer: the
+    # fused helpers are called straight from the block forwards, so this is the only object that
+    # reaches them. `CACHE_DIT_FUSED_OPS=0` opts out for the whole process.
+    activate_fused_ops()
 
     # Validate configuration
     if (hidden_size // num_attention_heads) != sum(axes_dim_rope):

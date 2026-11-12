@@ -4,22 +4,24 @@ The module hosts the variables the vendored model pipelines read. Today that is 
 fused-operators switch below; further model-side switches belong here rather than in one variable
 per model, so this file is the place to grep for "what can I configure on a model pipeline".
 
-Three model families ship memory-bound CUDA operators that replace expressions the stock diffusers
-module already evaluates: :mod:`.flux2_klein`, :mod:`.flux3_klein` and :mod:`.qwen_image21`. They are
-one optional optimisation, not a required path, and one variable controls all of them:
-``CACHE_DIT_FUSED_OPS``.
+Four model families ship memory-bound CUDA operators that replace expressions the stock diffusers
+module already evaluates: :mod:`.flux2_klein`, :mod:`.flux3_klein`, :mod:`.qwen_image21` and
+:mod:`.boogu_image`. They are one optional optimisation, not a required path, and one variable
+controls all of them: ``CACHE_DIT_FUSED_OPS``.
 
 * unset - off until a cache-dit entry point installs the fused transformer
   (``_Flux2KleinPipeline.from_pretrained``, ``_QwenImage21Pipeline.from_pretrained``, the
-  ``flux3_fused`` CLI example, or a direct ``upgrade_transformer()``), which enables the family from
-  :func:`install_fused_modules`. A pipeline that only goes through stock diffusers therefore never
-  reaches an operator, and needs no configuration.
+  ``flux3_fused`` CLI example, a direct ``upgrade_transformer()``, or - for Boogu-Image, which has
+  no separate install step - construction of ``BooguImageTransformer2DModel`` from its own
+  pipeline), which enables the family from :func:`install_fused_modules`. A pipeline that only goes
+  through stock diffusers therefore never reaches an operator, and needs no configuration.
 * ``1`` - on wherever a fused transformer is installed. Only useful when wiring the install by
   hand; the cache-dit entry points already do the equivalent.
 * ``0`` - off: every ``apply_*`` runs the literal eager expression, and the attention seams that
   hold a kernel (FLUX.2 and Qwen-Image 2.1) are not installed. FLUX.3 still swaps in its fused
-  attention processor, whose operator then takes the eager branch. This is the switch to use when a
-  kernel is suspected of producing the image.
+  attention processor, whose operator then takes the eager branch; Boogu-Image keeps its block
+  forwards and simply evaluates the pre-fusion chain. This is the switch to use when a kernel is
+  suspected of producing the image.
 
 It has to be set before the first fused pipeline is built in the process: the switch is a module
 global that only the install writes, so flipping it afterwards changes nothing.
