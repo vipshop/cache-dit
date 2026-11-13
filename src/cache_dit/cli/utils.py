@@ -745,10 +745,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--svdq-runtime-kernel",
     type=str,
     default=None,
-    choices=["native", "cute", "flashinfer"],
-    help=("SVDQ GEMM family. Default: auto (native for INT4 and NVFP4). 'flashinfer' runs "
-          "FlashInfer's own NVFP4 SVDQuant chain on a pack derived from the checkpoint; it is a "
-          "comparison runtime (extra e4m3 scale re-encode), not a drop-in replacement."),
+    choices=["native", "cute", "flashinfer", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120"],
+    help=("SVDQ GEMM family. Default: auto (native for INT4 and NVFP4). The flashinfer runtimes "
+          "run FlashInfer's own NVFP4 SVDQuant chain on a pack derived from the checkpoint; they "
+          "are comparison runtimes, not a drop-in replacement. Bare 'flashinfer' maps to "
+          "'flashinfer+cutlass-sm120' (fused prefix, ranks 32/64); use 'flashinfer+cute-dsl' for "
+          "the shape-pinned CuTe chain, which covers every rank."),
   )
   parser.add_argument(
     "--svdq-lora-layout",

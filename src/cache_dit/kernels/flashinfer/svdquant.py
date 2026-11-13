@@ -12,20 +12,36 @@ from __future__ import annotations
 
 import torch
 
+from ...logger import init_logger
+
+logger = init_logger(__name__)
+
 # FlashInfer's `svdquant_linear` autotunes across several SM120 chains (`cute-dsl`,
-# `cute-dsl-unfused`, `cutlass-sm120`, fused/separate preprocessing). The runtime pins the CuTe
-# chain so a layer keeps one implementation per shape, matching the profile this runtime exists
-# to compare against.
+# `cute-dsl-unfused`, `cutlass-sm120`, fused/separate preprocessing). The runtime names the chain
+# in the same string as the runtime family, so a layer always knows which chain it runs:
+# - `flashinfer+cute-dsl`: one implementation per shape, the profile this runtime compares against.
+# - `flashinfer+cutlass-sm120`: FlashInfer's fused quantize + LoRA-down prefix, ranks 32/64 only.
+# Bare `flashinfer` resolves to `flashinfer+cutlass-sm120`.
 SVDQUANT_BACKEND = "cute-dsl"
+CUTLASS_SM120_BACKEND = "cutlass-sm120"
+
+FLASHINFER_RUNTIME = "flashinfer"
+CUTE_DSL_RUNTIME = f"{FLASHINFER_RUNTIME}+{SVDQUANT_BACKEND}"
+CUTLASS_SM120_RUNTIME = f"{FLASHINFER_RUNTIME}+{CUTLASS_SM120_BACKEND}"
+DEFAULT_FLASHINFER_RUNTIME = CUTLASS_SM120_RUNTIME
+FLASHINFER_RUNTIMES = (CUTE_DSL_RUNTIME, CUTLASS_SM120_RUNTIME)
+
+# FlashInfer's SM120 CUTLASS chain only instantiates these LoRA ranks.
+CUTLASS_SM120_LORA_RANKS = (32, 64)
 
 # `448 * 6` maps the FP8-E4M3 block scale maximum (448) onto the E2M1 mantissa maximum (6).
 NVFP4_GLOBAL_SCALE = 448.0 * 6.0
 
-_AMAX_CHUNK_ROWS = 1024
-
 _INSTALL_HINT = (
   "FlashInfer is optional. Install it with `pip install flashinfer-python` before selecting "
   "runtime_kernel='flashinfer'.")
+
+_REPORTED_CHAINS: set[str] = set()
 
 
 def flashinfer_available() -> bool:
@@ -53,20 +69,66 @@ def _load_svdquant_linear():
   return _SVDQUANT_LINEAR
 
 
+def resolve_runtime(runtime_kernel: str) -> str:
+  """Normalize a FlashInfer runtime spelling and return the chain it names.
+
+  :param runtime_kernel: `flashinfer`, `flashinfer+cute-dsl`, or `flashinfer+cutlass-sm120`.
+  :returns: The explicit `flashinfer+<chain>` runtime string.
+  :raises ValueError: If the string is not a FlashInfer runtime.
+  """
+  if runtime_kernel == FLASHINFER_RUNTIME:
+    return DEFAULT_FLASHINFER_RUNTIME
+  if runtime_kernel not in FLASHINFER_RUNTIMES:
+    raise ValueError(f"{runtime_kernel!r} is not a FlashInfer runtime; expected one of "
+                     f"{(FLASHINFER_RUNTIME, *FLASHINFER_RUNTIMES)}.")
+  return runtime_kernel
+
+
+def chain_for_runtime(runtime_kernel: str) -> str:
+  """Return the FlashInfer chain backend named by a normalized runtime string."""
+  return resolve_runtime(runtime_kernel).removeprefix(f"{FLASHINFER_RUNTIME}+")
+
+
+def check_chain_support(chain: str, rank: int, device: torch.device | None = None) -> None:
+  """Reject a chain that cannot run this rank on this device, before any kernel is built.
+
+  :param chain: FlashInfer chain name, `cute-dsl` or `cutlass-sm120`.
+  :param rank: LoRA rank of the layer.
+  :param device: Device the layer runs on; the capability check is skipped when omitted or CPU.
+  :raises ValueError: If the chain does not cover this rank or device.
+  """
+  if chain != CUTLASS_SM120_BACKEND:
+    return
+  if rank not in CUTLASS_SM120_LORA_RANKS:
+    raise ValueError(f"runtime_kernel='{CUTLASS_SM120_RUNTIME}' only supports LoRA ranks "
+                     f"{CUTLASS_SM120_LORA_RANKS}, got {rank}; use '{CUTE_DSL_RUNTIME}' instead.")
+  if device is None or device.type != "cuda":
+    return
+  capability = torch.cuda.get_device_capability(device)
+  if capability != (12, 0):
+    raise ValueError(f"runtime_kernel='{CUTLASS_SM120_RUNTIME}' requires an SM120 (12.0) device, "
+                     f"got {capability}; use '{CUTE_DSL_RUNTIME}' instead.")
+  if chain not in _REPORTED_CHAINS:
+    _REPORTED_CHAINS.add(chain)
+    logger.info(
+      "Selected runtime_kernel='%s'; the first use of each LoRA rank JIT-builds a "
+      "FlashInfer CUTLASS module and autotunes a fused prefix, which can take a couple "
+      "of minutes.", CUTLASS_SM120_RUNTIME)
+
+
 def activation_global_scale(x: torch.Tensor, pre_quant_scale: torch.Tensor) -> torch.Tensor:
   """Compute FlashInfer's FP32 activation global scale for one forward.
 
-  The scale only has to keep the per-block FP8 scales inside the E4M3 range, but it is a per-tensor
-  value, so it must be recomputed for every activation batch.
+  The scale only has to keep the per-block FP8 scales inside the E4M3 range, and it is a per-tensor
+  value, so it must be recomputed for every activation batch. `max|x| * max|scale|` is an upper
+  bound of `max|x * scale|`: it can only shrink the FP8 block scales (never overflow them), and it
+  costs one fused reduction instead of a full elementwise smoothing pass.
 
   :param x: BF16 activation `[M, K]`.
   :param pre_quant_scale: Per-input-channel smoothing scale `[K]`, BF16.
-  :returns: FP32 device tensor of shape `[1]` holding `448 * 6 / max|x * pre_quant_scale|`.
+  :returns: FP32 device tensor of shape `[1]` holding at most `448 * 6 / max|x * pre_quant_scale|`.
   """
-  peak = torch.zeros((), dtype=torch.float32, device=x.device)
-  for start in range(0, x.shape[0], _AMAX_CHUNK_ROWS):
-    chunk = x[start:start + _AMAX_CHUNK_ROWS]
-    peak = torch.maximum(peak, (chunk * pre_quant_scale).abs().amax().float())
+  peak = (torch.linalg.vector_norm(x, float("inf")).float() * pre_quant_scale.abs().amax().float())
   return (NVFP4_GLOBAL_SCALE / peak.clamp_min(1e-12)).reshape(1)
 
 
@@ -78,6 +140,7 @@ def flashinfer_svdquant_linear(
   l1_weight: torch.Tensor,
   pre_quant_scale: torch.Tensor,
   bias: torch.Tensor | None = None,
+  runtime_kernel: str | None = None,
 ) -> torch.Tensor:
   """Run FlashInfer's fused SVDQuant linear with cache-dit's derived pack.
 
@@ -94,8 +157,11 @@ def flashinfer_svdquant_linear(
   :param l1_weight: LoRA-up weight `[N, R]`, BF16, at its own scale (not pre-divided by alpha).
   :param pre_quant_scale: `1 / smooth_factor` `[K]`, BF16.
   :param bias: Optional BF16 bias `[N]`.
+  :param runtime_kernel: FlashInfer runtime spelling; `None` uses `flashinfer+cutlass-sm120`.
   :returns: BF16 output `[M, N]`.
   """
+  chain = chain_for_runtime(runtime_kernel or DEFAULT_FLASHINFER_RUNTIME)
+  check_chain_support(chain, l1_weight.shape[1], x.device)
   global_scale = activation_global_scale(x, pre_quant_scale)
   # The fused residual epilogue emits `alpha * (a @ b^T + d @ l1^T)`, and `l1` must carry
   # `1 / alpha` so the LoRA term lands at its original scale.
@@ -111,14 +177,24 @@ def flashinfer_svdquant_linear(
     l1_scaled,
     global_scale,
     bias,
-    backend=SVDQUANT_BACKEND,
+    backend=chain,
   )
 
 
 __all__ = [
+  "CUTE_DSL_RUNTIME",
+  "CUTLASS_SM120_BACKEND",
+  "CUTLASS_SM120_LORA_RANKS",
+  "CUTLASS_SM120_RUNTIME",
+  "DEFAULT_FLASHINFER_RUNTIME",
+  "FLASHINFER_RUNTIME",
+  "FLASHINFER_RUNTIMES",
   "NVFP4_GLOBAL_SCALE",
   "SVDQUANT_BACKEND",
   "activation_global_scale",
+  "chain_for_runtime",
+  "check_chain_support",
   "flashinfer_available",
   "flashinfer_svdquant_linear",
+  "resolve_runtime",
 ]

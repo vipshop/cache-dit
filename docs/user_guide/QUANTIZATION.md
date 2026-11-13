@@ -424,7 +424,7 @@ Cache-DiT provides a native SVDQuant PTQ workflow for W4A4 quantization (with hi
 
 With Cache-DiT's SVDQuant support, users can easily apply W4A4 quantization to their models with just a few lines of code, without worrying about the underlying implementation details or compatibility issues. Before using SVDQuant, install the pre-built CUDA package (see [Installation](./INSTALL.md)) or **build Cache-DiT from source with the CUDA extensions**.
 
-For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs and defaults to the native W4A4 GEMM. NVFP4 is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and defaults to the same native GEMM. The public <span style="color:#c77dff;">runtime_kernel</span> choices are <span style="color:#c77dff;">native</span>, <span style="color:#c77dff;">cute</span>, and <span style="color:#c77dff;">flashinfer</span>; <span style="color:#c77dff;">None</span> selects the defaults above, while <span style="color:#c77dff;">cute</span> and <span style="color:#c77dff;">flashinfer</span> are NVFP4-only opt-in paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). One native kernel family serves both precisions, so INT4 and NVFP4 differ only in the packed weight format.
+For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{rank}</span> and <span style="color:#c77dff;">svdq_nvfp4_r{rank}</span>. The INT4 path remains the general cross-architecture option for supported non-Hopper GPUs and defaults to the native W4A4 GEMM. NVFP4 is currently validated on <span style="color:#c77dff;">Blackwell (sm120)</span> and defaults to the same native GEMM. The public <span style="color:#c77dff;">runtime_kernel</span> choices are <span style="color:#c77dff;">native</span>, <span style="color:#c77dff;">cute</span>, <span style="color:#c77dff;">flashinfer</span>, <span style="color:#c77dff;">flashinfer+cute-dsl</span>, and <span style="color:#c77dff;">flashinfer+cutlass-sm120</span>; <span style="color:#c77dff;">None</span> selects the defaults above, while the rest are NVFP4-only opt-in paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). One native kernel family serves both precisions, so INT4 and NVFP4 differ only in the packed weight format.
 
 ```bash
 # Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
@@ -622,7 +622,7 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 
 Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span>, <span style="color:#c77dff;">svdq_int4_r128_dq</span>, <span style="color:#c77dff;">svdq_nvfp4_r32_dq</span>, and <span style="color:#c77dff;">svdq_nvfp4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
 
-The DQ runtime routing is identical to PTQ: INT4 and NVFP4 both default to the native W4A4 GEMM. Explicit <span style="color:#c77dff;">runtime_kernel="native"</span> selects that same native kernel; <span style="color:#c77dff;">cute</span> and <span style="color:#c77dff;">flashinfer</span> are NVFP4-only opt-in paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). Only <span style="color:#c77dff;">None</span>, <span style="color:#c77dff;">native</span>, <span style="color:#c77dff;">cute</span>, and <span style="color:#c77dff;">flashinfer</span> are accepted.
+The DQ runtime routing is identical to PTQ: INT4 and NVFP4 both default to the native W4A4 GEMM. Explicit <span style="color:#c77dff;">runtime_kernel="native"</span> selects that same native kernel; <span style="color:#c77dff;">cute</span> and the three <span style="color:#c77dff;">flashinfer</span> spellings are NVFP4-only opt-in paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel) for the runtime × lora_layout semantics and the native/cute/FlashInfer comparison tables). Only <span style="color:#c77dff;">None</span>, <span style="color:#c77dff;">native</span>, <span style="color:#c77dff;">cute</span>, <span style="color:#c77dff;">flashinfer</span>, <span style="color:#c77dff;">flashinfer+cute-dsl</span>, and <span style="color:#c77dff;">flashinfer+cutlass-sm120</span> are accepted.
 
 Under the hood, cache-dit now treats this as an explicit backend-local smooth-strategy choice: DQ uses the identity smooth vector by default, while PTQ continues to use activation-derived smoothing. The public DQ behavior does not change, but this separation makes it easier to add future opt-in smooth strategies without redefining the meaning of existing `_dq` quant types.
 
@@ -940,7 +940,7 @@ python3 -m cache_dit.quantization.converter \
 | `--device` | no | `cuda` | Device to run quantization on. |
 | `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
 | `--svdq-calibrate-precision` | no | `low` | Precision plan for SVDQ decomposition math. One of: `low`, `medium`, `high`. |
-| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native`, `cute`, or `flashinfer`. Default is automatic: `native` for both INT4 and NVFP4. `flashinfer` is a comparison runtime (see [SVDQ Runtime Kernel](#svdq-runtime-kernel)). |
+| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native`, `cute`, `flashinfer`, `flashinfer+cute-dsl`, or `flashinfer+cutlass-sm120`. Default is automatic: `native` for both INT4 and NVFP4. The flashinfer runtimes are comparison paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel)); bare `flashinfer` maps to `flashinfer+cutlass-sm120`. |
 | `--verbose` | no | `false` | Print detailed quantization information including per-layer skip reasons. |
 
 ### Usage examples
@@ -1028,10 +1028,10 @@ pipe.transformer = cache_dit.load(
 
 The SVDQ W4A4 entry points are organized around two orthogonal selectors: <span style="color:#c77dff;">runtime</span> (which backend family runs) and <span style="color:#c77dff;">lora_layout</span> (which layout the LoRA-down activation `D` is stored in).
 
-- <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span> | <span style="color:green;">flashinfer</span>. `None`/`native` selects the single native W4A4 GEMM for both INT4 and NVFP4; `cute` and `flashinfer` are NVFP4-only.
+- <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span> | <span style="color:green;">flashinfer</span> | <span style="color:green;">flashinfer+cute-dsl</span> | <span style="color:green;">flashinfer+cutlass-sm120</span>. `None`/`native` selects the single native W4A4 GEMM for both INT4 and NVFP4; the rest are NVFP4-only. Bare `flashinfer` maps to `flashinfer+cutlass-sm120`.
 - <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in. For `runtime="cute"`, the default (`None`) is `row_major`; other runtimes default to `native`. The `fused_mlp` configuration keeps its implicit `native` layout because those passes require fragment `D`.
 
-Only four combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, <span style="color:green;">cute+row_major</span>, and <span style="color:green;">flashinfer+native</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native GEMM, which only understands the native FP32 fragment `D`. `runtime="flashinfer"` runs FlashInfer's own chain, so `lora_layout` is unused and stays `native`.
+Only four combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, <span style="color:green;">cute+row_major</span>, and <span style="color:green;">flashinfer*+native</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native GEMM, which only understands the native FP32 fragment `D`. Every `flashinfer` runtime (`flashinfer`, `flashinfer+cute-dsl`, `flashinfer+cutlass-sm120`) runs FlashInfer's own chain, so `lora_layout` is unused and stays `native`.
 
 Both selectors are configurable through `svdq_kwargs` and are carried into every quantized `SVDQW4A4Linear` layer at runtime (the per-rank `lora_scales` contract is a kernel-internal detail; checkpoints do not store it). Explicit `lora_layout="native"` preserves the fragment-D behavior with either runtime. Older cute checkpoints whose metadata omits the layout now resolve to `row_major`; producer and consumer switch together, but D changes from packed FP32 to BF16 and is not expected to remain bitwise identical to the old execution path.
 
@@ -1056,8 +1056,11 @@ The generate CLI exposes both selectors: <span style="color:#c77dff;">--svdq-run
 python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --compile
 python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute \
   --svdq-lora-layout row_major --compile
-# FlashInfer comparison runtime (optional dependency, never the default).
+# FlashInfer comparison runtimes (optional dependency, never the default).
+# Bare `flashinfer` == `flashinfer+cutlass-sm120` (ranks 32/64, SM120 only).
 python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer
+python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer+cute-dsl
+python3 -m cache_dit.generate flux --svdq-nvfp4-r128-dq --svdq-runtime flashinfer+cute-dsl
 ```
 
 When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requested `runtime_kernel` / `lora_layout` overrides the value recorded in the checkpoint, since both are pure runtime dispatch choices that do not change the serialized tensors.
@@ -1068,12 +1071,18 @@ The NVFP4 CuTe runtime is an independent workflow. Its activation/LoRA-down prod
 
 ### FlashInfer comparison runtime
 
-`runtime_kernel="flashinfer"` runs FlashInfer's own NVFP4 SVDQuant chain (`nvfp4_quantize_smooth` → BF16 LoRA-down GEMM → fused W4A4 residual + LoRA-up GEMM) instead of a cache-dit kernel. It exists so the same checkpoint can be timed against FlashInfer end to end; it is never selected automatically.
+The `flashinfer` runtimes run FlashInfer's own NVFP4 SVDQuant chain (`nvfp4_quantize_smooth` → BF16 LoRA-down GEMM → fused W4A4 residual + LoRA-up GEMM) instead of a cache-dit kernel. They exist so the same checkpoint can be timed against FlashInfer end to end; they are never selected automatically. The chain is part of the runtime name:
+
+| runtime | FlashInfer chain | coverage |
+|---|---|---|
+| `flashinfer`, `flashinfer+cutlass-sm120` | fused quantize + LoRA-down prefix, then the CUTLASS K3 GEMM | ranks 32/64, SM120 (12.0) only; JIT-builds a CUTLASS module on first use |
+| `flashinfer+cute-dsl` | one CuTe implementation per shape (`quantize → torch.mm → fused GEMM`) | every rank the SVDQ runtime accepts |
 
 - The checkpoint is unchanged: FlashInfer's pack is derived once at load time from the native pack (`qweight` nibbles are unpacked to row-major E2M1, and the per-output-channel `wcscales` is folded into the per-block FP8 scale). Nothing extra is serialized.
-- That fold re-encodes one FP8 block scale, so the layer output differs from `native`/`cute` by a small but measurable amount (about `rel_l2 = 1e-1` at rank 32 with random weights); the LoRA branch stays exact. Treat this runtime as a timing baseline, not as evidence about FlashInfer's numerical behavior on its own pack. A block whose folded scale falls below the E4M3 subnormal range rounds to zero and is dropped; the load path logs how many blocks that affects.
-- FlashInfer's chain is pinned to its `cute-dsl` backend, so a layer keeps one implementation per shape instead of autotuning across FlashInfer's SM120 chains.
-- It requires NVFP4 + BF16, `rank > 0` and `rank % 32 == 0`, and it is rejected in combination with `fused_mlp`, `layerwise_offload`, and tensor parallelism. The call is excluded from `torch.compile` graphs, so `--compile` does not capture it.
+- That fold re-encodes one FP8 block scale, so the layer output differs from `native`/`cute` by a small but measurable amount (about `rel_l2 = 1e-1` at rank 32 with random weights); the LoRA branch stays exact. Treat these runtimes as timing baselines, not as evidence about FlashInfer's numerical behavior on its own pack. A block whose folded scale falls below the E4M3 subnormal range rounds to zero and is dropped; the load path logs how many blocks that affects.
+- The per-forward activation global scale is a safe upper bound, `448 * 6 / (max|x| * max|smooth|)`, instead of an exact `amax(x * smooth)`: it costs one fused reduction instead of a full smoothing pass (~61% cheaper) and can only shrink the FP8 block scales, never overflow them. It moves the layer `rel_l2` against `native` by about +1%.
+- They require NVFP4 + BF16, `rank > 0` and `rank % 32 == 0`, and they are rejected in combination with `fused_mlp`, `layerwise_offload`, and tensor parallelism. The call is excluded from `torch.compile` graphs, so `--compile` does not capture it.
+- Asking for a rank the CUTLASS chain does not cover is an error, not a fallback: use `flashinfer+cute-dsl` for ranks 96/128 or on SM121.
 
 ### Performance comparison (native vs cute vs FlashInfer)
 
@@ -1116,7 +1125,7 @@ CuTe with row-major D is the fastest kernel in 14 of 15 cells (−0.02% to −9.
 - Quantize is 14–31% of e2e, so kernel-only numbers overstate the win.
 - Measured e2e is slightly below `quantize + gemm` because the packs stay alive during the GEMM and the allocator reuses the same blocks.
 
-All three cache-dit paths agree numerically: `rel_l2` against native is 3.1–3.3e-3 at every shape and rank, kernel-only and e2e. FlashInfer uses its own 128x4 pack, so it is reported as `finite` only. The `runtime_kernel="flashinfer"` path derives its pack from the checkpoint instead, so its per-layer `rel_l2` against native is about 1e-1 — expected, and the reason it is documented as a comparison runtime.
+All three cache-dit paths agree numerically: `rel_l2` against native is 3.1–3.3e-3 at every shape and rank, kernel-only and e2e. FlashInfer uses its own 128x4 pack, so it is reported as `finite` only. The `flashinfer` runtimes derive their pack from the checkpoint instead, so their per-layer `rel_l2` against native is about 1e-1 — expected, and the reason they are documented as comparison runtimes.
 
 
 ## SVDQ with Fused MLP

@@ -33,13 +33,19 @@ def test_quantize_config_rejects_deprecated_runtime_kernel() -> None:
     )
 
 
-def test_quantize_config_accepts_the_flashinfer_runtime() -> None:
+def test_quantize_config_maps_bare_flashinfer_to_the_cutlass_chain() -> None:
   config = QuantizeConfig(
     quant_type="svdq_nvfp4_r32_dq",
     svdq_kwargs={"runtime_kernel": "flashinfer"},
   )
 
-  assert config.svdq_kwargs["runtime_kernel"] == "flashinfer"
+  assert config.svdq_kwargs["runtime_kernel"] == "flashinfer+cutlass-sm120"
+  assert QuantizeConfig(
+    quant_type="svdq_nvfp4_r32_dq",
+    svdq_kwargs={
+      "runtime_kernel": "flashinfer+cute-dsl"
+    },
+  ).svdq_kwargs["runtime_kernel"] == "flashinfer+cute-dsl"
   # The default runtime stays native.
   assert QuantizeConfig(quant_type="svdq_nvfp4_r32_dq").svdq_kwargs["runtime_kernel"] is None
 
@@ -51,7 +57,21 @@ def test_quantize_config_accepts_the_flashinfer_runtime() -> None:
 ])
 def test_quantize_config_rejects_unsupported_flashinfer_shapes(quant_type: str, match: str) -> None:
   with pytest.raises(ValueError, match=match):
+    QuantizeConfig(
+      quant_type=quant_type,
+      svdq_kwargs={"runtime_kernel": "flashinfer+cute-dsl"},
+    )
+
+
+@pytest.mark.parametrize("quant_type", ["svdq_nvfp4_r96_dq", "svdq_nvfp4_r128_dq"])
+def test_quantize_config_requires_the_cute_chain_off_rank(quant_type: str) -> None:
+  with pytest.raises(ValueError, match="only supports ranks"):
     QuantizeConfig(quant_type=quant_type, svdq_kwargs={"runtime_kernel": "flashinfer"})
+  config = QuantizeConfig(
+    quant_type=quant_type,
+    svdq_kwargs={"runtime_kernel": "flashinfer+cute-dsl"},
+  )
+  assert config.svdq_kwargs["runtime_kernel"] == "flashinfer+cute-dsl"
 
 
 @pytest.mark.parametrize("option", [{"fused_mlp": True}, {"layerwise_offload": True}])
