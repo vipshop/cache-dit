@@ -152,6 +152,24 @@ and removes its own handles on exit. It resolves the pipeline's actual denoising
 `transformer_ref` for MiniMax-H3 ref2va, and applicable secondary transformers for other pipelines.
 Text encoders, VAEs and schedulers are not automatically traversed by transformer hooks.
 
+### Stage Names
+
+MiniMax-H3 t2va provides these explicit ranges:
+
+| Stage | Scope |
+|---|---|
+| `encode_text` | Text encoding, including tokenization and embedding state updates |
+| `denoise_loop` | Denoising state preparation, the complete loop and state writeback |
+| `denoise_step i` | One complete step, including prediction, both scheduler updates and progress |
+| `predict` | The original denoiser call |
+| `scheduler_step` | Both video and audio numerical updates and latent writes |
+| `decode_video`, `decode_audio` | The corresponding decoding and output conversion |
+
+FL2VA and Ref2VA share denoising and decoding annotations; their conditioning encoders are not yet
+annotated. Other pipelines need explicit stage integration. Module names alone do not identify a
+stage. NVTX does not automatically add these names to a Torch trace; use CPU `record_function()`
+annotations where Torch labels are needed.
+
 ### Python Annotations
 
 Direct callers finish their usual optimization and warmup before declaring the execution roots.

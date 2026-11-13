@@ -293,6 +293,7 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
   from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3SetTimestepsStep
   from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3 import MiniMaxH3Blocks
   from cache_dit.models.pipelines.minimax_h3 import MiniMaxH3DenoiseLoop, minimax_h3_blocks
+  from cache_dit.layerwise_nvtx import nvtx_scope
 
   upstream = MiniMaxH3Blocks().get_workflow(workflow)
   pipe = MiniMaxH3ModularPipeline(blocks=minimax_h3_blocks(), workflow=workflow)
@@ -319,6 +320,15 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
   assert ("transformer" in component_names) is (workflow != "ref2va")
 
   profiler_module = importlib.import_module("cache_dit.profiler")
+  nvtx_module = importlib.import_module("cache_dit.layerwise_nvtx")
+  monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
+  stage_stack = []
+
+  def push(name):
+    stage_stack.append(name)
+
+  monkeypatch.setattr(torch.cuda.nvtx, "range_push", push)
+  monkeypatch.setattr(torch.cuda.nvtx, "range_pop", stage_stack.pop)
   if device == "cpu":
     # The collector is real; only accelerator validation and synchronization are faked on CPU.
     monkeypatch.setattr(
@@ -353,6 +363,11 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
       def call(*args, **kwargs):
         i = counts[label]
         counts[label] += 1
+        if mode != "original":
+          expected_stage = ["denoise_loop", f"denoise_step {i}"]
+          if label != "progress":
+            expected_stage.append("predict" if label == "predict" else "scheduler_step")
+          assert stage_stack == expected_stage
         with torch.profiler.record_function(f"h3_{label}_{i}"):
           return original(*args, **kwargs)
 
@@ -386,7 +401,7 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
 
     loop.progress_bar = progress
     try:
-      with context:
+      with nvtx_scope(mode != "original"), context:
         with torch.profiler.record_function("h3_encode"):
           torch.ones(1, device=device) + 1
         returned_components, returned_state = loop(components, state)
@@ -395,6 +410,7 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
     finally:
       transformer.forward = original_forward
     assert returned_components is components and returned_state is state
+    assert not stage_stack
     assert all(count == 4 for count in counts.values())
     assert components.scheduler.step_index == components.audio_scheduler.step_index == 4
     assert torch.equal(

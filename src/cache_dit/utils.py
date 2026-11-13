@@ -59,13 +59,15 @@ def profiled_denoise_loop(self, components, state):
   :returns: The components and updated pipeline state.
   """
   from .profiler import profile_steps
+  from .layerwise_nvtx import stage_range
 
   block_state = self.get_block_state(state)
   with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:
     with profile_steps(block_state.timesteps) as steps:
       for i, t in steps:
-        components, block_state = self.loop_step(components, block_state, i=i, t=t)
-        progress_bar.update()
+        with stage_range(f"denoise_step {i}"):
+          components, block_state = self.loop_step(components, block_state, i=i, t=t)
+          progress_bar.update()
   self.set_block_state(state, block_state)
   return components, state
 
