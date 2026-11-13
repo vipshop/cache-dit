@@ -16,7 +16,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
-|<span style="color:#c77dff;">nvfp4</span>|TorchAO dynamic activation and NVFP4 weight quantization. The current integration uses Triton activation quantization and dynamic per-tensor scaling.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
+|<span style="color:#c77dff;">nvfp4</span>|Dynamic activation and NVFP4 weight quantization. TorchAO uses MSLK Triton quantization plus `torch._scaled_mm`; cache-dit uses its own online quantizer plus `torch._scaled_mm` by default, with an optional native SM120 CuTe kernel.|TorchAO: <span style="color:#c77dff;">>=sm100</span>; cache-dit: <span style="color:#c77dff;">>=sm120</span>|
 |<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
@@ -29,7 +29,15 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 The three online FP8 types can run on two independent backends:
 
 - <span style="color:#c77dff;">torchao</span>: the historical path, using TorchAO's Float8Tensor. `per_row` and `per_tensor` use `torch._scaled_mm`; `per_block` uses TorchAO's Triton blockwise GEMM. Requires torchao and works on <span style="color:#c77dff;">>=sm89</span>.
-- <span style="color:#c77dff;">cache_dit</span>: Cache-DiT's own E4M3 quantize and CuTe FP8 GEMM kernels. It has no torchao runtime dependency, supports the same three granularities, and currently requires <span style="color:#c77dff;">sm100 or newer</span>. CUDA Graph-safe, but TP/DTensor sharding and serialized FP8 checkpoints are not supported. `per_tensor_fallback` is a TorchAO/TP compatibility switch and has no effect on this backend. Under `torch.compile`, activation quantization switches to an equivalent pure-Torch implementation so Inductor can fuse it; eager keeps the custom quantize kernel.
+- <span style="color:#c77dff;">cache_dit</span>: Cache-DiT's own E4M3 quantize plus a GEMM selected by `use_native`. It has no torchao runtime dependency, supports the same three granularities, and currently requires <span style="color:#c77dff;">sm100 or newer</span>. CUDA Graph-safe, but TP/DTensor sharding and serialized FP8 checkpoints are not supported. `per_tensor_fallback` is a TorchAO/TP compatibility switch and has no effect on this backend. Under `torch.compile`, activation quantization switches to an equivalent pure-Torch implementation so Inductor can fuse it; eager keeps the custom quantize kernel.
+
+For the cache-dit FP8 backend, `fp8_gemm` now defaults to `use_native=False`:
+
+- `per_row` and `per_tensor` use `torch._scaled_mm` (cuBLAS/CUTLASS), the same GEMM operator as TorchAO.
+- `per_block` keeps the cache-dit native kernel because `torch._scaled_mm` cannot express its `(1, 128) × (128, 128)` block scales.
+- `use_native=True` forces the CuTe kernel for all three modes. The `use_ws` option only affects that native kernel.
+
+Shapes whose output width is not a multiple of 16 fall back to the native kernel for the default path, because `torch._scaled_mm` requires `N % 16 == 0`.
 
 `QuantizeConfig(backend=...)` defaults to `AUTO`. AUTO keeps the existing routing: `svdq*` uses the cache-dit SVDQuant path and every other type uses TorchAO. Passing `backend="cache_dit"` with `float8_per_row`, `float8_per_tensor`, or `float8_per_block` selects the native FP8 path; unsupported combinations raise instead of silently falling back. The CLI equivalent is `--quantize-backend torchao|cache_dit`.
 
@@ -48,7 +56,7 @@ python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
   --quantize-type float8_per_row --quantize-backend cache_dit --compile
 ```
 
-The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` also accepts `use_ws`; by default `per_block` uses the warp-specialized mainloop and `per_row`/`per_tensor` use the all-warps mainloop, based on the measured per-mode optimum on sm120.
+The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts both `use_native` and `use_ws`: `use_native=False` (default) routes per-row/per-tensor through `torch._scaled_mm` and keeps per-block on the native kernel; `use_native=True` forces the CuTe kernel, where `use_ws` selects the mainloop.
 
 ## FP8 Quantization
 
@@ -150,6 +158,51 @@ cache_dit.enable_cache(
 )
 ```
 By default, <span style="color:green;">quant_type="float8_per_row"</span> for better precision. Users can set it to "float8_per_tensor" to use per-tensor quantization for better performance on some hardware.
+
+## NVFP4 Quantization
+
+Cache-DiT provides an online NVFP4 W4A4 path on SM120 through
+`QuantizeConfig(quant_type="nvfp4", backend="cache_dit")`:
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="nvfp4", backend="cache_dit"),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
+  --nvfp4 --quantize-backend cache_dit --compile
+```
+
+The cache-dit path quantizes each activation at runtime, caches the quantized
+weight once, and then calls `fp4_gemm`. Its default GEMM is
+`torch._scaled_mm`, the same cuBLAS/CUTLASS operator used by TorchAO's NVFP4
+linear; pass `use_native=True` to `cache_dit.kernels.fp4_gemm` to use the bundled
+SM120 CuTe kernel instead. On the measured FLUX production shapes the CuTe
+kernel is slower than `torch._scaled_mm`, so it is not the default.
+
+The two implementations do not use the same quantization recipe. Cache-DiT
+uses a per-row activation and per-output-channel weight FP32 global scale on top
+of the per-16 UE4M3 block scale. TorchAO uses a dynamic per-tensor global scale
+and MSLK Triton quantization. Do not use cross-backend output differences as a
+kernel correctness gate; compare each backend against its own dequantized
+reference.
+
+Requirements and limits:
+
+- Both weight and activation must be BF16; `in_features % 64 == 0` and
+  `out_features % 8 == 0`.
+- `torch._scaled_mm` requires `out_features % 16 == 0`; other tails fall back to
+  the native kernel on the default path.
+- The path is online-only: `calibrate_fn`, `serialize_to`, TP/DTensor weights and
+  serialized NVFP4 checkpoints are not supported.
+- `nvfp4_weight_only` continues to use TorchAO, and `AUTO` still routes plain
+  `nvfp4` to TorchAO. Only an explicit `backend="cache_dit"` selects this path.
 
 ## Regional Quantization
 

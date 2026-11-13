@@ -315,6 +315,14 @@ def _required_fp8_sources() -> list[str]:
   ]
 
 
+def _required_fp4_sources() -> list[str]:
+  return [
+    "csrc/kernels/fp4/fp4.cpp",
+    "csrc/kernels/fp4/quantize.cu",
+    "csrc/kernels/fp4/gemm.cu",
+  ]
+
+
 def _required_ulysses_sources() -> list[str]:
   return [
     "csrc/kernels/ulysses/ulysses.cpp",
@@ -372,13 +380,14 @@ def _required_cuda_sources() -> list[str]:
   and `tests/kernels/test_models_source_manifest.py` extract them from this file with `ast`.
   The entry point is listed first: it is the only TU that defines `PYBIND11_MODULE`.
 
-  :returns: Relative paths of the entry TU followed by the four families' sources.
+  :returns: Relative paths of the entry TU followed by all kernel-family sources.
   """
 
   return [
     "csrc/kernels/ops.cpp",
     *_required_svdquant_sources(),
     *_required_fp8_sources(),
+    *_required_fp4_sources(),
     *_required_ulysses_sources(),
     *_required_attn_sources(),
     *_required_models_sources(),
@@ -587,6 +596,7 @@ def _get_cuda_extension():
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
     "-DBUILD_CACHE_DIT_FP8=1",
+    "-DBUILD_CACHE_DIT_FP4=1",
     "-DBUILD_CACHE_DIT_ULYSSES=1",
     "-DBUILD_CACHE_DIT_ATTN=1",
     "-DBUILD_CACHE_DIT_MODELS=1",
@@ -598,6 +608,7 @@ def _get_cuda_extension():
     "/DENABLE_BF16=1",
     "/DBUILD_CACHE_DIT_SVDQUANT=1",
     "/DBUILD_CACHE_DIT_FP8=1",
+    "/DBUILD_CACHE_DIT_FP4=1",
     "/DBUILD_CACHE_DIT_ULYSSES=1",
     "/DBUILD_CACHE_DIT_ATTN=1",
     "/DBUILD_CACHE_DIT_MODELS=1",
@@ -610,6 +621,7 @@ def _get_cuda_extension():
     "-DENABLE_BF16=1",
     "-DBUILD_CACHE_DIT_SVDQUANT=1",
     "-DBUILD_CACHE_DIT_FP8=1",
+    "-DBUILD_CACHE_DIT_FP4=1",
     "-DBUILD_CACHE_DIT_ULYSSES=1",
     "-DBUILD_CACHE_DIT_ATTN=1",
     "-DBUILD_CACHE_DIT_MODELS=1",
@@ -647,6 +659,7 @@ def _get_cuda_extension():
       str(ROOT_DIR / "csrc" / "kernels"),
       str(ROOT_DIR / "csrc" / "kernels" / "svdq"),
       str(ROOT_DIR / "csrc" / "kernels" / "fp8"),
+      str(ROOT_DIR / "csrc" / "kernels" / "fp4"),
       str(ROOT_DIR / "csrc" / "kernels" / "ulysses"),
       str(ROOT_DIR / "csrc" / "kernels" / "attn"),
       str(ROOT_DIR / "csrc" / "kernels" / "models"),

@@ -1,6 +1,6 @@
 """Guard the single `cache_dit._C_ops` source list and arch policy in `setup.py`.
 
-`_required_cuda_sources()` is what actually gets compiled, and it is assembled from five
+`_required_cuda_sources()` is what actually gets compiled, and it is assembled from six
 hand-maintained lists. A family list that is never consulted, an entry point that is dropped,
 or a kernel TU that no list mentions would all compile silently wrong: the extension would
 just be missing operators at runtime. `csrc/kernels/ops.cpp` has the mirror-image failure: a
@@ -27,6 +27,7 @@ ENTRY = "csrc/kernels/ops.cpp"
 _HELPERS = (
   "_required_svdquant_sources",
   "_required_fp8_sources",
+  "_required_fp4_sources",
   "_required_ulysses_sources",
   "_required_attn_sources",
   "_required_models_sources",
@@ -131,6 +132,7 @@ def test_cuda_sources_are_the_union_of_the_family_lists():
   families = (
     "_required_svdquant_sources",
     "_required_fp8_sources",
+    "_required_fp4_sources",
     "_required_ulysses_sources",
     "_required_attn_sources",
     "_required_models_sources",
@@ -149,6 +151,7 @@ def test_pybind_entry_point_registers_every_family():
   for registrar in (
       "cache_dit::attn::register_attn_ops",
       "cache_dit::fp8::register_fp8_ops",
+      "cache_dit::fp4::register_fp4_ops",
       "cache_dit::ulysses::register_ulysses_ops",
       "cache_dit::models::register_models_ops",
       "cache_dit::svdq::register_svdq_ops",

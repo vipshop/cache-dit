@@ -392,6 +392,7 @@ _CACHE_DIT_FP8_TYPES = frozenset({
   "float8_per_tensor",
   "float8_per_block",
 })
+_CACHE_DIT_ONLINE_TYPES = _CACHE_DIT_FP8_TYPES.union({"nvfp4"})
 
 
 @dataclasses.dataclass
@@ -406,7 +407,8 @@ class QuantizeConfig:
 
   # Quantization backend. AUTO keeps the historical routing (`svdq*` uses the native
   # CACHE_DIT path, every other type uses TORCHAO). An explicit CACHE_DIT with one of
-  # the three float8 types selects cache-dit's own FP8 kernels.
+  # the three float8 types selects cache-dit's own FP8 kernels; quant_type="nvfp4"
+  # selects cache-dit's online NVFP4 path (torch._scaled_mm by default).
   backend: str | QuantizeBackend | None = QuantizeBackend.AUTO
   # Quantization type, currently support "float8_weight_only" and "float8_per_row",
   # "float8_per_tensor", "float8_per_block", "int8_per_row", "int8_per_tensor",
@@ -557,13 +559,13 @@ class QuantizeConfig:
     if self.backend == QuantizeBackend.TORCHAO and self.is_svdq():
       raise ValueError("SVDQuant quant_type requires backend='cache_dit' or backend='auto'.")
     if self.backend == QuantizeBackend.CACHE_DIT and not self.is_svdq():
-      if self.quant_type not in _CACHE_DIT_FP8_TYPES:
+      if self.quant_type not in _CACHE_DIT_ONLINE_TYPES:
         raise ValueError(
-          "The cache-dit quantization backend supports SVDQuant and the three FP8 types "
-          f"{sorted(_CACHE_DIT_FP8_TYPES)}; got {self.quant_type!r}. Use "
+          "The cache-dit quantization backend supports SVDQuant, three FP8 types and NVFP4 "
+          f"{sorted(_CACHE_DIT_ONLINE_TYPES)}; got {self.quant_type!r}. Use "
           "--quantize-backend torchao for other quantization types.")
       if self.calibrate_fn is not None or self.serialize_to is not None:
-        raise ValueError("cache-dit native FP8 is online-only; calibrate_fn and serialize_to "
+        raise ValueError("cache-dit native FP8/NVFP4 is online-only; calibrate_fn and serialize_to "
                          "are not supported.")
 
     # Validate SVDQuant PTQ workflow configuration
@@ -759,7 +761,8 @@ class QuantizeConfig:
               quant_type = f"{quant_type}_{relax_strategy}"
         if svdq_kwargs.get("fused_mlp", False):
           quant_type = f"{quant_type}_fused_mlp"
-      elif (quant_type in _CACHE_DIT_FP8_TYPES and resolved_backend == QuantizeBackend.CACHE_DIT):
+      elif (quant_type in _CACHE_DIT_ONLINE_TYPES
+            and resolved_backend == QuantizeBackend.CACHE_DIT):
         quant_type = f"{quant_type}_cache_dit"
       return quant_type
 

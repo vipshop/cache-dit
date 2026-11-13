@@ -62,7 +62,8 @@ def test_invalid_quantize_backend_is_rejected() -> None:
 
 
 @requires_native_fp8
-def test_transformer_cli_passes_backend_to_config(monkeypatch) -> None:
+@pytest.mark.parametrize("quant_type", ["float8_per_row", "nvfp4"])
+def test_transformer_cli_passes_backend_to_config(monkeypatch, quant_type: str) -> None:
   captured = []
 
   def fake_quantize(module, quantize_config):
@@ -80,7 +81,7 @@ def test_transformer_cli_passes_backend_to_config(monkeypatch) -> None:
   monkeypatch.setattr(cli_utils, "quantize", fake_quantize)
   args = cli_utils.maybe_postprocess_args(_parser().parse_args([
     "--quantize-type",
-    "float8_per_row",
+    quant_type,
     "--quantize-backend",
     "cache_dit",
     "--steps",
@@ -91,7 +92,7 @@ def test_transformer_cli_passes_backend_to_config(monkeypatch) -> None:
   cli_utils.maybe_quantize_transformer(args, pipe)
   assert len(captured) == 1
   assert captured[0].backend == QuantizeBackend.CACHE_DIT
-  assert captured[0].quant_type == "float8_per_row"
+  assert captured[0].quant_type == quant_type
 
 
 @pytest.mark.skipif(not cuda_ext_is_available(), reason="TorchAO backend availability")

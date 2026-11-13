@@ -9,6 +9,8 @@ from .ulysses import ulysses_fp8_qkv_permute_dequant
 from .ulysses import ulysses_fp8_qkv_permute_quant
 from .cuda_ext import cuda_ext_get_load_error
 from .cuda_ext import cuda_ext_is_available
+from .fp4 import fp4_gemm
+from .fp4 import fp4_quantize
 from .fp8 import fp8_gemm
 from .fp8 import fp8_quantize
 from .fp8 import fp8_quantize_gemm
@@ -41,6 +43,8 @@ __all__ = [
   "ulysses_fp8_qkv_permute_quant",
   "ulysses_fp8_qkv_permute_dequant",
   "fused_merge_attn_states",
+  "fp4_quantize",
+  "fp4_gemm",
   "fp8_quantize",
   "fp8_quantize_gemm",
   "fp8_gemm",
