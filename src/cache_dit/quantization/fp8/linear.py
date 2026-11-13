@@ -5,7 +5,6 @@ from torch import nn
 
 from ...kernels import fp8_gemm
 from ...kernels import fp8_quantize
-from ...kernels import fp8_quantize_gemm
 from ...kernels.fp8 import fp8_quantize_torch
 from ...logger import init_logger
 
@@ -165,16 +164,13 @@ class QW8A8Linear(nn.Module):
     leading_shape = x.shape[:-1]
     flat = x.reshape(-1, self.in_features)
     # Keep quantization visible to Inductor for fusion with surrounding work.
-    # The native per-row fused op is faster in eager mode, but its opaque
-    # custom-op boundary prevents this graph-level fusion under torch.compile.
+    # The native fused eager path is no longer used now that per-row and
+    # per-tensor default to the faster torch._scaled_mm GEMM.
     if torch.compiler.is_compiling():
       qx, sx = fp8_quantize_torch(flat, mode=self.mode)
-      out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
-    elif self.mode == "per_row":
-      out = fp8_quantize_gemm(flat, self.qweight, self.wscales, bias=self.bias)
     else:
       qx, sx = fp8_quantize(flat, mode=self.mode)
-      out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
+    out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
     return out.reshape(*leading_shape, self.out_features)
 
   def dequantize_weight(self) -> torch.Tensor:

@@ -11,6 +11,7 @@
 #include <torch/extension.h>
 
 #include "attn/attn.h"
+#include "fp4/fp4.h"
 #include "fp8/fp8.h"
 #include "ulysses/ulysses.h"
 #include "models/models.h"
@@ -19,6 +20,7 @@
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, module) {
   auto ops = module.def_submodule("ops");
   cache_dit::attn::register_attn_ops(ops);
+  cache_dit::fp4::register_fp4_ops(ops);
   cache_dit::fp8::register_fp8_ops(ops);
   cache_dit::ulysses::register_ulysses_ops(ops);
   cache_dit::models::register_models_ops(ops);

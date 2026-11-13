@@ -16,7 +16,6 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
-from cache_dit.kernels import fp8_quantize_gemm
 from cache_dit.kernels.fp8 import fp8_quantize_torch
 from cache_dit.quantization.fp8.linear import QW8A8Linear
 
@@ -345,24 +344,38 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
   rows = []
 
   def cache_chain(use_ws: bool) -> torch.Tensor:
-    if mode == "per_row":
-      return fp8_quantize_gemm(a, qw, sw, bias=bias, use_ws=use_ws)
     qa2, sa2 = fp8_quantize(a, mode)
-    return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode, use_ws=use_ws)
+    return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode, use_ws=use_ws, use_native=True)
+
+  def cache_chain_default() -> torch.Tensor:
+    qa2, sa2 = fp8_quantize(a, mode)
+    return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode)
 
   def torchao_chain() -> torch.Tensor:
     qa2, sa2 = _torchao_quantize(a, mode, False, api)
     return _torchao_gemm(qa2, sa2, qw, sw, mode, bias, api)
 
   arms = {
-    "cache_dit_quantize": lambda: fp8_quantize(a, mode),
-    "torchao_quantize": lambda: _torchao_quantize(a, mode, False, api),
-    "cache_dit_gemm_ws": lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=True),
-    "cache_dit_gemm_nonws": lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=False),
-    "torchao_gemm": lambda: _torchao_gemm(qa, sa, qw, sw, mode, bias, api),
-    "cache_dit_chain_ws": lambda: cache_chain(True),
-    "cache_dit_chain_nonws": lambda: cache_chain(False),
-    "torchao_chain": torchao_chain,
+    "cache_dit_quantize":
+    lambda: fp8_quantize(a, mode),
+    "torchao_quantize":
+    lambda: _torchao_quantize(a, mode, False, api),
+    "cache_dit_gemm_default":
+    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode),
+    "cache_dit_gemm_ws":
+    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=True, use_native=True),
+    "cache_dit_gemm_nonws":
+    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=False, use_native=True),
+    "torchao_gemm":
+    lambda: _torchao_gemm(qa, sa, qw, sw, mode, bias, api),
+    "cache_dit_chain_default":
+    cache_chain_default,
+    "cache_dit_chain_ws":
+    lambda: cache_chain(True),
+    "cache_dit_chain_nonws":
+    lambda: cache_chain(False),
+    "torchao_chain":
+    torchao_chain,
   }
   if not args.skip_compiled:
     arms["cache_dit_torch_compile_quantize"] = torch.compile(lambda: fp8_quantize_torch(a, mode),

@@ -7,6 +7,7 @@ import cache_dit.kernels as kernels
 import cache_dit.kernels.attn as attn_ops
 import cache_dit.kernels.ulysses as ulysses_ops
 import cache_dit.kernels.cuda_ext as cuda_ext
+import cache_dit.kernels.fp4 as fp4_ops
 import cache_dit.kernels.fp8 as fp8_ops
 import cache_dit.kernels.models as models_ops
 import cache_dit.kernels.svdquant as svdq_ops
@@ -16,6 +17,8 @@ import cache_dit.kernels.svdquant as svdq_ops
   "op_name,source_module",
   [
     ("fused_merge_attn_states", attn_ops),
+    ("fp4_quantize", fp4_ops),
+    ("fp4_gemm", fp4_ops),
     ("fp8_quantize", fp8_ops),
     ("fp8_quantize_gemm", fp8_ops),
     ("fp8_gemm", fp8_ops),

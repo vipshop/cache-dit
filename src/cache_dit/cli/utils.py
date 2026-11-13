@@ -606,7 +606,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--nvfp4",
     action="store_true",
     default=False,
-    help="Enable TorchAO NVFP4 dynamic activation and weight quantization for transformer",
+    help="Enable NVFP4 dynamic activation and weight quantization for transformer",
   )
   parser.add_argument(
     "--nvfp4-weight-only",

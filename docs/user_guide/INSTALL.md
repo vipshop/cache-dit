@@ -43,7 +43,8 @@ CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-i
 
 `CACHE_DIT_BUILD_CUDA=1` is the only CUDA build switch, and it builds the single
 `cache_dit._C_ops` extension, which links every operator family into one module: the
-SVDQuant W4A4 kernels, the communication operators used by FP8 Ulysses, the attention-state
+SVDQuant W4A4 kernels, the cache-dit FP8 quantize/GEMM kernels, the SM120 NVFP4 quantize
+and CuTe GEMM kernels, the communication operators used by FP8 Ulysses, the attention-state
 merge operator used by Ring Attention, and the model-specific fused operators. There is no
 per-family switch. Because SVDQuant is part of the same module, the spdlog and CUTLASS
 submodules are now prerequisites of the whole extension rather than of one family.
@@ -53,8 +54,8 @@ wheel that silently lacks every CUDA operator (`_warn_skipped` still reports whi
 targets the architecture predicate dropped). The floor is the intersection of the per-family
 requirements: **sm89+ and sm90 (Hopper) excluded** -- the communication and attention kernels
 need sm89+, and the SVDQuant INT4 kernels exclude Hopper. A Hopper-only architecture list
-therefore builds nothing, and every fused/FP8/SVDQuant call site falls back to its eager path
-or raises the guided "extension is not available" error.
+therefore builds nothing, and every fused/FP8/FP4/SVDQuant call site falls back to its eager
+path or raises the guided "extension is not available" error.
 
 Importing the extension successfully only means it was compiled in: the wheel ships cubins for
 the architectures it was built for, so running it on a GPU outside that set fails at the first

@@ -351,13 +351,47 @@ def fp8_quantize(x: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.fp8_quantize(x, _resolve_mode(mode), is_weight)
 
 
+def _fp8_gemm_scaled_mm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
+                        b_scale: torch.Tensor, bias: torch.Tensor | None,
+                        mode_id: int) -> torch.Tensor:
+  """Run FP8 GEMM through PyTorch's cuBLAS-backed scaled matrix multiply.
+
+  :param a: Quantized activation ``[M, K]``.
+  :param b: Quantized weight ``[N, K]``.
+  :param a_scale: Activation scale, per-row or per-tensor.
+  :param b_scale: Weight scale, per-output-channel or per-tensor.
+  :param bias: Optional BF16 bias ``[N]``.
+  :param mode_id: Resolved ``per_row`` or ``per_tensor`` mode id.
+  :returns: BF16 output ``[M, N]``.
+  """
+
+  if mode_id == _MODE_TO_ID["per_row"]:
+    return torch._scaled_mm(
+      a,
+      b.t(),
+      a_scale[:, None].contiguous(),
+      b_scale[None, :].contiguous(),
+      bias=bias,
+      out_dtype=torch.bfloat16,
+    )
+  return torch._scaled_mm(
+    a,
+    b.t(),
+    a_scale,
+    b_scale,
+    bias=bias,
+    out_dtype=torch.bfloat16,
+  )
+
+
 def fp8_gemm(a: torch.Tensor,
              b: torch.Tensor,
              a_scale: torch.Tensor,
              b_scale: torch.Tensor,
              bias: torch.Tensor | None = None,
              mode: str = "per_row",
-             use_ws: bool | None = None) -> torch.Tensor:
+             use_ws: bool | None = None,
+             use_native: bool = False) -> torch.Tensor:
   """Compute ``a @ b.T`` with FP8 inputs and a BF16 output.
 
   :param a: Quantized activation ``[M, K]``.
@@ -366,13 +400,17 @@ def fp8_gemm(a: torch.Tensor,
   :param b_scale: Weight scale produced by :func:`fp8_quantize`.
   :param bias: Optional BF16 bias ``[N]``.
   :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
-  :param use_ws: Select the warp-specialized mainloop. ``None`` uses the measured
-    default: WS for per-block, all-warps for per-row/per-tensor because the former's
-    epilogue spills 144 B/thread in the 384-thread WS kernel on sm120.
+  :param use_ws: Select the native warp-specialized mainloop. ``None`` uses the
+    measured default: WS for per-block, all-warps for per-row/per-tensor.
+  :param use_native: Force cache-dit's native FP8 GEMM. By default, per-row and
+    per-tensor use ``torch._scaled_mm``; per-block keeps the native kernel because
+    ``_scaled_mm`` cannot express its activation/weight block scales.
   :returns: BF16 output ``[M, N]``.
   """
 
   mode_id = _resolve_mode(mode)
+  if not use_native and mode_id != _MODE_TO_ID["per_block"] and b.shape[0] % 16 == 0:
+    return _fp8_gemm_scaled_mm(a, b, a_scale, b_scale, bias, mode_id)
   if use_ws is None:
     use_ws = mode_id == _MODE_TO_ID["per_block"]
   return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id, use_ws)
