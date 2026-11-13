@@ -1,202 +1,84 @@
-# Torch Profiler Usage
+# Profiler Usage
 
-## Quick Start
+Cache-DiT uses Torch Profiler to collect requests or selected complete denoising steps.
 
-### Basic Usage
+## Python Requests and Loop Boundaries
 
-`cache-dit` examples have Torch Profiler built in: pass `--profile` to `examples/generate.py` to generate a trace file.
+`ProfilerContext` wraps one inference. It defaults to `enabled=True`,
+`ranges="all"`, `with_stack=True` and `record_shapes=True`:
 
-Before running examples, make sure `cache_dit` is importable by Python.
+```python
+from cache_dit import ProfilerContext
 
-Recommended: run from the `examples/` directory (consistent with `examples/README.md`):
+# After the original initialization, optimization and warmup.
+with ProfilerContext(ranges="all", devices=["cuda:0"],
+                     output_dir="/tmp/cache_dit_profiles") as request:
+    output = pipe(**inputs)
 
-```bash
-cd examples
-
-# List all available examples
-python3 generate.py list
-
-# Basic profiling (recommended: reduce steps to keep the trace small)
-python3 generate.py flux --profile --steps 3
+for result in request.results:
+    print(result.loop_id, result.requested_range, result.actual_range,
+          result.status, result.trace_path)
 ```
 
-If you want to write traces to a specific directory (or customize the filename prefix):
+`create_profiler_context()` forwards context options and defaults to `enabled=False`.
+`profile_function()` accepts keyword-only `ranges` and `devices` and defaults to
+`with_stack=False`.
 
-```bash
-cd examples
-python3 generate.py flux --profile --steps 3 --profile-dir /tmp/cache_dit_profiles --profile-name flux_test
+Disabled contexts perform no collection and work on CPU. Enabled Torch requests require CUDA or
+Ascend NPU. Only one Cache-DiT profiler request can be active in a process,
+including the gaps between numeric windows.
+
+### Add Complete-Step Boundaries
+
+Integrate `profile_steps()` in the pipeline's actual loop before selecting numeric ranges:
+
+```python
+from cache_dit import profile_steps
+
+with profile_steps(timesteps) as steps:
+    for i, t in steps:
+        ...  # Original input preparation, prediction, CFG and scheduler updates.
+        ...  # Original callbacks, progress and all remaining work for this step.
 ```
 
-> Note: for multi-GPU runs (`torchrun`), each rank produces its own trace file, e.g. `flux_test-rank0.trace.json.gz`.
+Keep the context around the loop so `break`, `return` and exceptions close its numeric window
+before later work. Without an active numeric request, it behaves as ordinary `enumerate()`;
+`all` stays open until the request exits. Wrap the inference with
+`ProfilerContext(ranges="0-2,8-10", devices=...)` to select those complete steps.
 
-### Example: `examples/base.py` Integration
+### Results and Early Exit
 
-`generate.py` eventually calls `ExampleBase.run()`, which already integrates `--profile/--profile-dir/--profile-activities`; you only need to pass these flags on the command line.
+`request.results` contains zero or more window results. Each records request/loop/window IDs,
+requested and actual ranges, `last_step_complete`, status and successful artifact paths.
+Whole-request `all` results have no step range or last-step flag.
 
-## Command-Line Arguments
+| Status | Meaning |
+|---|---|
+| `completed` | The selected endpoint finished, or an `all` request returned normally |
+| `exhausted` | The loop ended before the selected endpoint |
+| `interrupted` | The loop exited early, for example by `break` or `return` |
+| `error` | An error occurred while opening, running or closing this window |
 
-```bash
-# Basic profiling
-cd examples
-python3 generate.py flux --profile --steps 3
+An early-exit step whose iterator has not resumed is not marked complete. A start index never
+reached creates no window. A range extending past the loop records the steps actually reached.
 
-# With custom profile name and output directory
-cd examples
-python3 generate.py flux --profile --steps 3 --profile-name flux_test --profile-dir /tmp/profiles
+`request.trace_path` retains the most recent successful Torch trace, or `None`; use `results` for
+all windows. CUDA memory snapshots and summaries are recorded independently, so an error window
+can still contain usable memory artifacts. Cleanup attempts each device synchronization, stop,
+export and memory-history shutdown independently, preserving an existing model exception.
 
-# Profile with memory tracking
-cd examples
-python3 generate.py flux --profile --steps 3 --profile-activities CPU GPU MEM
-```
+## Torch Artifacts and Configuration
 
-## Parameters
+Use activities `CPU`, `GPU` and optional `MEM`; `GPU` maps to CUDA or Ascend NPU.
+`MEM` alone enables the current accelerator activity. CUDA memory recording exports a snapshot
+and a text summary independently from the trace. Each window has its own collector and unique
+host/PID/rank/request/loop/window filename. CUDA exports `.trace.json.gz`; Ascend exports the full
+CANN directory, including `ASCEND_PROFILER_OUTPUT`.
 
-### `create_profiler_from_args(args, profile_name=None)`
+The default output directory is `CACHE_DIT_TORCH_PROFILER_DIR`, or `/tmp/cache_dit_profiles`.
+`get_profiler_output_dir()` reads it and `set_profiler_output_dir(path)` updates future contexts;
+an explicit `output_dir` takes priority. `CACHE_DIT_NPU_PROFILER_LEVEL` accepts Level0, Level1,
+Level2 or none. All declared devices are synchronized at window boundaries.
 
-Creates a ProfilerContext from command-line arguments.
-
-**Arguments:**
-
-- `args` : Parsed command-line arguments containing profiler settings
-- `profile_name` (str, optional): Override the profile name
-
-**Command-Line Arguments:**
-
-- `--profile` : Enable profiler (default: False)
-- `--profile-name` (str) : Profile name prefix (default: auto-generated timestamp)
-- `--profile-dir` (str) : Output directory (default: $CACHE_DIT_TORCH_PROFILER_DIR or `/tmp/cache_dit_profiles`)
-- `--profile-activities` (list[str]) : Activities to profile - CPU, GPU, MEM (default: ["CPU", "GPU"])
-- `--profile-with-stack` : Record stack traces (default: True, enable for detailed debugging)
-- `--profile-record-shapes` : Record tensor shapes (default: True)
-
-**Returns:**
-
-- `ProfilerContext`: Context manager for profiling
-
-**Environment Variables:**
-
-- `CACHE_DIT_TORCH_PROFILER_DIR`: Default output directory
-
-### Controlling Trace File Size
-
-Torch Profiler trace files can be large. Recommendations:
-- Reduce `--steps` (e.g., 3–5)
-- Reduce `--repeat`
-- Optionally disable `--profile-with-stack` / `--profile-record-shapes` (if you add a way to disable them in your workflow)
-
-```bash
-# Profile with 3 steps (small trace file, recommended)
-cd examples
-python3 generate.py flux --profile --steps 3 --warmup 0 --repeat 1
-
-# Profile with full 28 steps (larger trace file)
-cd examples
-python3 generate.py flux --profile --steps 28 --warmup 0 --repeat 1
-```
-
-## View Results
-
-### Perfetto UI (Recommended)
-Visit https://ui.perfetto.dev/ and drag-drop the generated `.trace.json.gz` file. Perfetto provides a more powerful and feature-rich interface compared to Chrome Tracing.
-
-The screenshots below show an example profiling result from `generate.py flux` (model: FLUX.1-dev).
-
-
-<img width="1240" height="711" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_0.png" />
-
-<img width="1225" height="545" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_1.png" />
-
-<img width="1111" height="281" alt="图片" src="https://github.com/vipshop/cache-dit/raw/main/docs/assets/profile_2.png" />
-
-
-### Chrome Tracing
-Open `chrome://tracing` in Chrome browser and load the generated `.trace.json.gz` file.
-
-### TensorBoard
-```bash
-pip install tensorboard
-tensorboard --logdir=/path/to/profiles
-```
-
-## Multi-GPU Usage
-
-The profiler automatically handles distributed environments. Each rank will generate its own trace file.
-
-### Example: Tensor Parallelism
-
-```bash
-# 2 GPUs with tensor parallelism
-cd examples
-torchrun --nproc_per_node=2 generate.py flux \
-    --parallel tp \
-    --profile --profile-name flux_tp --steps 3 --warmup 0 --repeat 1
-
-# Output files:
-# - flux_tp-rank0.trace.json.gz
-# - flux_tp-rank1.trace.json.gz
-```
-
-### Example: Context Parallelism
-
-```bash
-# 4 GPUs with context parallelism
-cd examples
-torchrun --nproc_per_node=4 generate.py flux \
-    --parallel ulysses \
-    --profile --profile-name flux_cp --profile-activities CPU GPU MEM \
-    --steps 3 --warmup 0 --repeat 1
-
-# Output files:
-# - flux_cp-rank0.trace.json.gz
-# - flux_cp-rank1.trace.json.gz
-# - flux_cp-rank2.trace.json.gz
-# - flux_cp-rank3.trace.json.gz
-# - flux_cp-rank0-memory-*.pickle (if MEM profiling enabled)
-# - flux_cp-rank1-memory-*.pickle
-# - ...
-```
-
-You can view each rank's trace separately in Perfetto UI or Chrome Tracing to analyze per-GPU performance.
-
-
-# Nsight Systems (nsys) Usage
-
-If you need a lower-level CUDA view (kernel timeline, CUDA API, CPU/GPU concurrency, etc.), use Nsight Systems.
-
-## Installation
-
-Follow NVIDIA Nsight Systems installation instructions (the CLI is usually `nsys`), or your internal environment setup.
-
-## Basic Profiling
-
-The example below profiles a single inference (recommended: set `--warmup 0` so warmup is not included):
-
-```bash
-cd examples
-nsys profile \
-  --trace=cuda,nvtx,osrt \
-  --force-overwrite=true \
-  -o cache_dit_flux \
-  python3 generate.py flux --steps 28 --warmup 0 --repeat 1
-```
-
-## Targeted Capture (reduce file size)
-
-Use `--delay/--duration` to skip model loading/initialization and capture only the main inference window:
-
-```bash
-cd examples
-nsys profile \
-  --trace=cuda,nvtx,osrt \
-  --force-overwrite=true \
-  --delay 10 \
-  --duration 30 \
-  -o cache_dit_flux_infer \
-  python3 generate.py flux --steps 28 --warmup 0 --repeat 1
-```
-
-**Parameter notes:**  
-
-- `--delay N` : wait N seconds before capture (commonly used to skip initialization)
-- `--duration N` : stop capture after N seconds (commonly used to limit file size)
-- `-o <NAME>` : output file prefix
+Disable Python stacks with `with_stack=False` when an operator/kernel timeline is sufficient.
+Recording, synchronization and export add overhead; benchmark separately without profiling.

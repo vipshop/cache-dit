@@ -1,15 +1,21 @@
-"""Torch Profiler for cache-dit.
+"""Request and complete-step collection for Torch.
 
 Reference: Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py
 """
 
-import glob
 import logging
 import os
 import re
 import time
+import socket
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
+from threading import Lock
 from typing import List, Optional, Tuple
+from uuid import uuid4
 
 import torch
 from .platforms import current_platform
@@ -24,46 +30,88 @@ PROFILER_DIR = os.getenv("CACHE_DIT_TORCH_PROFILER_DIR", "/tmp/cache_dit_profile
 # cost of larger output and slower parsing. See the Ascend PyTorch Profiler docs.
 NPU_PROFILER_LEVEL_ENV = "CACHE_DIT_NPU_PROFILER_LEVEL"
 
+# Loops resolve their own request; collector ownership is shared across the process.
+_CURRENT_REQUEST = ContextVar("cache_dit_profiler", default=None)
+_COLLECTOR_LOCK = Lock()
 
-def _supported_device() -> bool:
-  """Whether the profiler supports the current device.
 
-  CUDA devices are profiled with ``torch.profiler`` and Ascend NPU devices with
-  ``torch_npu.profiler``; other device types are not supported.
+def _normalize_ranges(ranges: str):
+  if ranges.strip() == "all":
+    return None
+  intervals = []
+  for item in ranges.split(","):
+    match = re.fullmatch(r"\s*(\d+)\s*(?:-\s*(\d+))?\s*", item)
+    if match is None:
+      raise ValueError(f"Invalid profiler range: {item!r}; use 'all' or '0-4,10-14'.")
+    start = int(match[1])
+    end = int(match[2] or match[1])
+    if start > end:
+      raise ValueError(f"Profiler range starts after its end: {item!r}.")
+    intervals.append((start, end))
+  merged = []
+  for start, end in sorted(intervals):
+    if merged and start <= merged[-1][1] + 1:
+      merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+    else:
+      merged.append((start, end))
+  return merged
 
-  :returns: True if the current device is a supported accelerator.
+
+@dataclass
+class ProfileResult:
+  """One collector window and its successfully exported artifacts."""
+
+  request_id: str
+  loop_id: Optional[int]
+  window_id: int
+  requested_range: Optional[Tuple[int, int]]
+  actual_range: Optional[Tuple[int, int]] = None
+  last_step_complete: Optional[bool] = None
+  status: str = "running"
+  trace_path: Optional[Path] = None
+  memory_snapshot_path: Optional[Path] = None
+  memory_summary_path: Optional[Path] = None
+
+
+@contextmanager
+def profile_steps(timesteps):
+  """Enumerate a real denoising loop, closing its window on every exit.
+
+  :param timesteps: The original loop iterable, with one item per logical step.
+  :yields: An iterator of ``(step_index, timestep)`` pairs.
   """
 
-  if not current_platform.is_accelerator_available():
-    return False
-  return current_platform.device_type in ("cuda", "npu")
+  request = _CURRENT_REQUEST.get()
+  if request is None or request._ranges is None:
+    yield enumerate(timesteps)
+    return
+  loop_id = request._loop_count
+  request._loop_count += 1
+  steps = request._steps(timesteps, loop_id)
+  try:
+    yield steps
+  except BaseException:
+    request._close_window("error", loop_id=loop_id, suppress_errors=True)
+    raise
+  else:
+    request._close_window("interrupted", loop_id=loop_id)
+  finally:
+    steps.close()
 
 
 def _resolve_profiler_backend() -> Tuple:
   """Select the profiler backend for the current platform.
 
-  ``torch_npu.profiler`` mirrors the ``torch.profiler`` API, so both backends are
-  driven the same way; only the ``ProfilerActivity`` enum and the accelerator
-  activity name differ.
-
-  :returns: A tuple of (profile callable, ProfilerActivity enum, accelerator activity name).
+  :returns: The profiler module and its accelerator activity enum.
   """
 
   if current_platform.device_type == "npu":
     import torch_npu.profiler as npu_profiler  # noqa: WPS433
 
-    return npu_profiler.profile, npu_profiler.ProfilerActivity, "NPU"
-  from torch.profiler import ProfilerActivity, profile  # noqa: WPS433
+    return npu_profiler, npu_profiler.ProfilerActivity.NPU
+  from torch import profiler  # noqa: WPS433
 
-  return profile, ProfilerActivity, "CUDA"
-
-
-def _npu_profiler_module():
-  """Import and return the ``torch_npu.profiler`` module (NPU only)."""
-
-  import torch_npu.profiler as npu_profiler  # noqa: WPS433
-
-  return npu_profiler
+  return profiler, profiler.ProfilerActivity.CUDA
 
 
 def _npu_profiler_level(npu_profiler):
@@ -96,7 +144,7 @@ def _npu_experimental_config(npu_profiler):
   ``PROF_XXX`` raw data, ``FRAMEWORK``/``logs``) instead of pruning them.
 
   :param npu_profiler: The ``torch_npu.profiler`` module.
-  :returns: A tuple of (experimental config, resolved profiler level).
+  :returns: The experimental config.
   """
 
   level = _npu_profiler_level(npu_profiler)
@@ -104,46 +152,18 @@ def _npu_experimental_config(npu_profiler):
   aic_metrics = (npu_profiler.AiCMetrics.PipeUtilization if level
                  in (npu_profiler.ProfilerLevel.Level1,
                      npu_profiler.ProfilerLevel.Level2) else npu_profiler.AiCMetrics.AiCoreNone)
-  config = npu_profiler._ExperimentalConfig(
+  return npu_profiler._ExperimentalConfig(
     export_type=[npu_profiler.ExportType.Text],
     profiler_level=level,
     aic_metrics=aic_metrics,
     data_simplification=False,
   )
-  return config, level
-
-
-def _npu_worker_name(profile_name: str, rank: int, world_size: int) -> str:
-  """Build a valid NPU ``worker_name`` from the profile name.
-
-  ``worker_name`` only allows letters, digits, underscores and hyphens, and becomes the
-  ``{worker_name}_{timestamp}_ascend_pt`` output directory name.
-
-  :param profile_name: The base profile name.
-  :param rank: The distributed rank.
-  :param world_size: The distributed world size.
-  :returns: A sanitized worker name.
-  """
-
-  safe = re.sub(r"[^A-Za-z0-9_-]", "_", str(profile_name or "cache_dit")).strip("_")
-  safe = safe or "cache_dit"
-  if world_size > 1:
-    safe = f"{safe}-rank{rank}"
-  return safe
 
 
 class ProfilerContext:
-  """Context manager wrapper around ``torch.profiler`` / ``torch_npu.profiler``.
+  """Profile a request or selected complete denoising steps.
 
-  It centralizes trace-file naming, optional accelerator memory-history capture, and
-  multi-rank output layout so profiling can be enabled consistently from scripts or
-  helper decorators.
-
-  On CUDA it exports a gzip chrome trace and optional ``torch.cuda.memory`` snapshots.
-  On Ascend NPU it drives ``on_trace_ready=tensorboard_trace_handler`` so the full CANN
-  profiling output directory is produced (``ASCEND_PROFILER_OUTPUT`` with
-  ``kernel_details.csv`` / ``step_trace_time.csv`` / ``trace_view.json`` / ``op_summary.csv``
-  plus the ``PROF_XXX`` raw data, ``FRAMEWORK`` and ``logs``), not just a single trace.
+  Export CUDA gzip traces/memory or full Ascend CANN directories.
   """
 
   def __init__(
@@ -154,6 +174,9 @@ class ProfilerContext:
     profile_name: Optional[str] = None,
     with_stack: bool = True,
     record_shapes: bool = True,
+    *,
+    ranges: str = "all",
+    devices=None,
   ):
     """Configure a profiler session.
 
@@ -164,166 +187,225 @@ class ProfilerContext:
     :param profile_name: Base name used for profiler output files.
     :param with_stack: Whether to capture Python stacks for profiled ops.
     :param record_shapes: Whether to record tensor shapes in the profiler trace.
+    :param ranges: ``all`` or inclusive step ranges, applied independently to each loop.
+    :param devices: Devices to synchronize; None uses the current device.
     """
 
-    assert _supported_device(), (
-      "Torch ProfilerContext currently only supports CUDA or Ascend NPU devices, "
-      f"got device_type={current_platform.device_type!r}.")
     self.enabled = enabled
     self.activities = activities or ["CPU", "GPU"]
-    self.output_dir = Path(output_dir or PROFILER_DIR).expanduser()
+    self.output_dir = Path(output_dir or get_profiler_output_dir()).expanduser()
     self.profile_name = profile_name or f"profile_{int(time.time())}"
     self.with_stack = with_stack
     self.record_shapes = record_shapes
-    # NPU records memory through the profiler (profile_memory=True); CUDA uses the
-    # separate torch.cuda.memory history mechanism instead.
-    self._is_npu = current_platform.device_type == "npu"
-    self._track_memory = "MEM" in self.activities
-    # NPU: worker name used for the {worker_name}_{ts}_ascend_pt output directory.
-    self._npu_worker = None
-
+    self.ranges = ranges
+    self.devices = tuple(devices) if devices is not None else (None, )
+    self._token = None
+    self._window = None
     self.profiler = None
     self.trace_path = None
     self.memory_snapshot_path = None
+    self.results = []
+    self.empty_reason = None
 
   def __enter__(self):
     if not self.enabled:
       return self
 
-    assert _supported_device(), (
-      "Torch ProfilerContext currently only supports CUDA or Ascend NPU devices, "
-      f"got device_type={current_platform.device_type!r}.")
-
-    self.output_dir.mkdir(parents=True, exist_ok=True)
-
-    profile_fn, activity_enum, accelerator_activity = _resolve_profiler_backend()
-    # "GPU" maps to the platform accelerator activity (CUDA on CUDA, NPU on NPU);
-    # the accelerator name (e.g. "NPU") is also accepted as an explicit synonym.
-    accelerator_activity_enum = getattr(activity_enum, accelerator_activity)
-    activity_map = {
-      "CPU": activity_enum.CPU,
-      "GPU": accelerator_activity_enum,
-      accelerator_activity: accelerator_activity_enum,
-    }
-    torch_activities = [activity_map[a] for a in self.activities if a in activity_map]
-
-    rank = 0
-    world_size = 1
-    if torch.distributed.is_initialized():
-      rank = torch.distributed.get_rank()
-      world_size = torch.distributed.get_world_size()
-
-    if not torch_activities:
-      return self
-
-    if self._is_npu:
-      self._start_npu_profiler(profile_fn, rank, world_size, torch_activities)
-    else:
-      self._start_cuda_profiler(profile_fn, rank, world_size, torch_activities)
-
+    if not current_platform.is_accelerator_available():
+      raise RuntimeError("Torch ProfilerContext only supports CUDA or Ascend NPU devices, "
+                         f"got device_type={current_platform.device_type!r}.")
+    intervals = _normalize_ranges(self.ranges)
+    if not self.devices:
+      raise ValueError("Profiler devices must include every device used by the request.")
+    # Reject overlapping requests even during gaps between collection windows.
+    if not _COLLECTOR_LOCK.acquire(blocking=False):
+      raise RuntimeError("Another profiler request is already active in this process.")
+    try:
+      self.request_id = uuid4().hex
+      self._backend, accelerator = _resolve_profiler_backend()
+      activity_map = {
+        "CPU": self._backend.ProfilerActivity.CPU,
+        "GPU": accelerator,
+        current_platform.device_type.upper(): accelerator,
+      }
+      invalid = set(self.activities) - activity_map.keys() - {"MEM"}
+      if invalid:
+        raise ValueError(f"Invalid profiler activity: {invalid}.")
+      self._torch_activities = [activity_map[a]
+                                for a in self.activities if a != "MEM"] or [accelerator]
+      self._track_memory = "MEM" in self.activities
+      rank = (torch.distributed.get_rank() if torch.distributed.is_initialized() else os.getenv(
+        "RANK", "0"))
+      self._request_name = re.sub(
+        r"[^A-Za-z0-9_-]", "_",
+        f"{self.profile_name}-{socket.gethostname()}-pid{os.getpid()}-rank{rank}-{self.request_id}")
+      self._token = _CURRENT_REQUEST.set(self)
+      self._ranges = intervals
+      self._loop_count = 0
+      self._has_steps = False
+      self.results = []
+      self.empty_reason = None
+      self.trace_path = None
+      self.memory_snapshot_path = None
+      if self._ranges is None:
+        self._open_window(None, None)
+    except BaseException:
+      self._release_request(suppress_errors=True)
+      raise
     return self
 
-  def _start_npu_profiler(self, profile_fn, rank, world_size, torch_activities):
-    """Configure and start the NPU profiler with full-directory export."""
+  def _release_request(self, *, suppress_errors):
+    token, self._token = self._token, None
+    try:
+      if token is not None:
+        _CURRENT_REQUEST.reset(token)
+    except BaseException as error:
+      if not suppress_errors:
+        raise
+      logger.warning("Profiler request cleanup failed while preserving the original exception: %s",
+                     error)
+    finally:
+      _COLLECTOR_LOCK.release()
 
-    npu_profiler = _npu_profiler_module()
-    self._npu_worker = _npu_worker_name(self.profile_name, rank, world_size)
-    experimental_config, level = _npu_experimental_config(npu_profiler)
-    trace_handler = npu_profiler.tensorboard_trace_handler(
-      dir_name=str(self.output_dir),
-      worker_name=self._npu_worker,
-      analyse_flag=True,
-      async_mode=False,
-    )
-    self.profiler = profile_fn(
-      activities=torch_activities,
-      with_stack=self.with_stack,
-      record_shapes=self.record_shapes,
-      profile_memory=self._track_memory,
-      on_trace_ready=trace_handler,
-      experimental_config=experimental_config,
-    )
-    self.profiler.start()
-    logger.info(f"Started NPU profiling. Full CANN output will be saved under "
-                f"{self.output_dir}/{self._npu_worker}_<timestamp>_ascend_pt "
-                f"(profiler_level={level}, activities: {self.activities})")
+  def _open_window(self, loop_id, requested_range):
+    if self._window is not None:
+      raise RuntimeError("Profiler windows from overlapping denoising loops are not supported.")
+    result = ProfileResult(self.request_id, loop_id, len(self.results), requested_range)
+    self.results.append(result)
+    self._window = result
+    self._memory_started = False
+    self._collector_started = False
+    try:
+      for device in self.devices:
+        current_platform.synchronize(device)
+      self._window_name = f"{self._request_name}-loop{loop_id if loop_id is not None else 'all'}-window{result.window_id}"
+      self.output_dir.mkdir(parents=True, exist_ok=True)
+      options = {}
+      if current_platform.device_type == "npu":
+        options = dict(
+          profile_memory=self._track_memory,
+          experimental_config=_npu_experimental_config(self._backend),
+          on_trace_ready=self._backend.tensorboard_trace_handler(
+            dir_name=str(self.output_dir),
+            worker_name=self._window_name,
+            analyse_flag=True,
+            async_mode=False,
+          ),
+        )
+      elif self._track_memory:
+        torch.cuda.memory._record_memory_history(max_entries=100000)
+        self._memory_started = True
+      self.profiler = self._backend.profile(
+        activities=self._torch_activities,
+        with_stack=self.with_stack,
+        record_shapes=self.record_shapes,
+        **options,
+      )
+      self.profiler.start()
+      self._collector_started = True
+      logger.info("Started profiling window %s (activities: %s). Output directory: %s",
+                  self._window_name, self.activities, self.output_dir)
+    except BaseException:
+      self._close_window("error", suppress_errors=True)
+      raise
+    return result
 
-  def _start_cuda_profiler(self, profile_fn, rank, world_size, torch_activities):
-    """Configure and start the CUDA profiler (gzip chrome trace)."""
-
-    filename_parts = [self.profile_name]
-    if world_size > 1:
-      filename_parts.append(f"rank{rank}")
-    filename = "-".join(filename_parts) + ".trace.json.gz"
-    self.trace_path = self.output_dir / filename
-
-    if self._track_memory and torch.cuda.is_available():
-      torch.cuda.memory._record_memory_history(max_entries=100000)
-      logger.info("Started CUDA memory profiling")
-
-    self.profiler = profile_fn(
-      activities=torch_activities,
-      with_stack=self.with_stack,
-      record_shapes=self.record_shapes,
-    )
-    self.profiler.start()
-    logger.info(f"Started profiling. Traces will be saved to: {self.output_dir} "
-                f"(activities: {self.activities})")
+  def _steps(self, timesteps, loop_id):
+    intervals = iter(self._ranges)
+    start, end = next(intervals)
+    result = None
+    for i, timestep in enumerate(timesteps):
+      self._has_steps = True
+      if i == start:
+        result = self._open_window(loop_id, (start, end))
+      if result is None:
+        yield i, timestep
+        continue
+      result.actual_range = (start, i)
+      result.last_step_complete = False
+      yield i, timestep
+      result.last_step_complete = True
+      if i == end:
+        self._close_window("completed", loop_id=loop_id)
+        result = None
+        start, end = next(intervals, (None, None))
+    self._close_window("exhausted", loop_id=loop_id)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    if not self.enabled:
+    if self._token is None:
       return
+    suppress_errors = exc_type is not None
+    try:
+      self._close_window("error" if suppress_errors else "completed",
+                         suppress_errors=suppress_errors)
+      if not self.results:
+        self.empty_reason = ("The denoising loops were empty or unconsumed." if not self._has_steps
+                             else "No denoising steps matched the requested ranges.")
+        if self._loop_count == 0 and not suppress_errors:
+          raise RuntimeError(
+            "Numeric profiling ranges require the pipeline to enter profile_steps().")
+    except BaseException:
+      suppress_errors = True
+      raise
+    finally:
+      self._release_request(suppress_errors=suppress_errors)
+
+  def _close_window(self, status, *, loop_id=None, suppress_errors=False):
+    result = self._window
+    if result is None or (loop_id is not None and result.loop_id != loop_id):
+      return
+    self._window = None
+    result.status = status
+    errors = []
+
+    @contextmanager
+    def finish():
+      try:
+        yield
+      except BaseException as error:
+        errors.append(error)
 
     if self.profiler is not None:
-      if current_platform.is_accelerator_available():
-        current_platform.synchronize()
+      for device in self.devices:
+        with finish():
+          current_platform.synchronize(device)
+      with finish():
+        self.profiler.stop()
+      with finish():
+        path = self._export_trace()
+        if not errors and self._collector_started:
+          result.trace_path = self.trace_path = path
+    if self._memory_started:
+      with finish():
+        path = self.output_dir / f"{self._window_name}-memory.pickle"
+        torch.cuda.memory._dump_snapshot(path)
+        result.memory_snapshot_path = self.memory_snapshot_path = path
+      with finish():
+        path = self.output_dir / f"{self._window_name}-memory.txt"
+        path.write_text(torch.cuda.memory_summary())
+        result.memory_summary_path = path
+      with finish():
+        torch.cuda.memory._record_memory_history(enabled=None)
+    self.profiler = None
+    if errors:
+      result.status = "error"
+      if not suppress_errors:
+        raise errors[0]
+      logger.warning("Profiler cleanup failed while preserving the original exception: %s", errors)
 
-      self.profiler.stop()
-
-      if self._is_npu:
-        self.trace_path = self._locate_npu_output()
-        logger.info(f"Profiling completed. NPU profile saved to: {self.trace_path}")
-      else:
-        logger.info(f"Exporting trace to: {self.trace_path}")
-        self.profiler.export_chrome_trace(str(self.trace_path))
-        logger.info(f"Profiling completed. Trace saved to: {self.trace_path}")
-
-    if self._track_memory and not self._is_npu and torch.cuda.is_available():
-      timestamp = int(time.time())
-      rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
-      memory_snapshot_path = (self.output_dir /
-                              f"{self.profile_name}-rank{rank}-memory-{timestamp}.pickle")
-      torch.cuda.memory._dump_snapshot(str(memory_snapshot_path))
-      torch.cuda.memory._record_memory_history(enabled=None)
-      logger.info(f"Memory snapshot saved to: {memory_snapshot_path}")
-
-      memory_summary_path = (self.output_dir /
-                             f"{self.profile_name}-rank{rank}-memory-{timestamp}.txt")
-      with open(memory_summary_path, "w") as f:
-        f.write(torch.cuda.memory_summary())
-      logger.info(f"Memory summary saved to: {memory_summary_path}")
-
-  def _locate_npu_output(self) -> Path:
-    """Find the ``{worker_name}_{timestamp}_ascend_pt`` directory produced by the handler.
-
-    Parsing is synchronous (async_mode=False), so it is normally ready right after
-    ``stop()``; a short poll covers slow disk finalization.
-
-    :returns: The produced output directory (falls back to ``output_dir`` if not found).
-    """
-
-    pattern = str(self.output_dir / f"{self._npu_worker}_*_ascend_pt")
+  def _export_trace(self):
+    if current_platform.device_type == "cuda":
+      path = self.output_dir / f"{self._window_name}.trace.json.gz"
+      self.profiler.export_chrome_trace(str(path))
+      return path
+    # NPU parsing is synchronous; poll briefly for slow disk finalization.
+    pattern = f"{self._window_name}_*_ascend_pt"
     for _ in range(10):
-      ready = [
-        c for c in glob.glob(pattern) if os.path.isdir(os.path.join(c, "ASCEND_PROFILER_OUTPUT"))
-      ]
-      if ready:
-        return Path(max(ready, key=os.path.getmtime))
+      for path in self.output_dir.glob(pattern):
+        if (path / "ASCEND_PROFILER_OUTPUT").is_dir():
+          return path
       time.sleep(0.5)
-    candidates = glob.glob(pattern)
-    if candidates:
-      return Path(max(candidates, key=os.path.getmtime))
-    return self.output_dir
+    raise FileNotFoundError(f"NPU profiler output was not produced: {self.output_dir / pattern}")
 
 
 def profile_function(
@@ -333,6 +415,9 @@ def profile_function(
   profile_name: Optional[str] = None,
   with_stack: bool = False,
   record_shapes: bool = True,
+  *,
+  ranges: str = "all",
+  devices=None,
 ):
   """Decorator factory that profiles one function call with `ProfilerContext`.
 
@@ -342,10 +427,13 @@ def profile_function(
   :param profile_name: Base name for the profiler output.
   :param with_stack: Whether to capture Python stack traces.
   :param record_shapes: Whether to record tensor shapes.
+  :param ranges: ``all`` or inclusive denoising step ranges.
+  :param devices: Devices used by the function; None uses the current device.
   """
 
   def decorator(func):
 
+    @wraps(func)
     def wrapper(*args, **kwargs):
       name = profile_name or func.__name__
       with ProfilerContext(
@@ -355,6 +443,8 @@ def profile_function(
           profile_name=name,
           with_stack=with_stack,
           record_shapes=record_shapes,
+          ranges=ranges,
+          devices=devices,
       ):
         return func(*args, **kwargs)
 
