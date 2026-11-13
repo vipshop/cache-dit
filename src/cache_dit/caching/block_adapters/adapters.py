@@ -22,6 +22,10 @@ def _relaxed_assert(
 ) -> None:
   if allow_classes is not None and not isinstance(allow_classes, (list, tuple)):
     allow_classes = (allow_classes, )
+  if allow_classes is not None and isinstance(transformer, allow_classes):
+    # The expected class (or a cache-dit subclass of it, which lives outside `diffusers`) matched,
+    # so there is nothing to check and nothing worth logging.
+    return
   _imported_module_ = transformer.__module__
   if _imported_module_.startswith("diffusers"):
     # Only apply strict check for Diffusers transformers
@@ -166,8 +170,9 @@ def flux2_klein_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import Flux2Transformer2DModel
 
   transformer = pipe.transformer
-  assert isinstance(transformer, Flux2Transformer2DModel), (
-    f"_Flux2KleinPipeline expects a Flux2Transformer2DModel, got {type(transformer).__name__}")
+  # Same policy as the other diffusers-family adapters: diffusers' own class is still checked
+  # strictly, a vendored copy that exposes the identical two block stacks is accepted.
+  _relaxed_assert(transformer, Flux2Transformer2DModel)
 
   return BlockAdapter(
     pipe=pipe,
@@ -306,8 +311,8 @@ def pika_h3_flex_adapter(pipe, **kwargs) -> BlockAdapter:
 # before "WanAnimate2" and "Wan". Two prefixes on purpose: the model is matched by *pipeline* class
 # name, whose upstream name is `WanSpeechToVideoPipeline` and which does not start with "WanS2V";
 # "WanS2V" additionally covers the transformer-only path used by the tests.
-@BlockAdapterRegister.register("WanSpeechToVideo")
-@BlockAdapterRegister.register("WanS2V")
+@BlockAdapterRegister.register("WanSpeechToVideo", owned=True)
+@BlockAdapterRegister.register("WanS2V", owned=True)
 def wan_s2v_adapter(pipe, **kwargs) -> BlockAdapter:
   from ...models.pipelines.wan_s2v.transformer import (
     WanS2VTransformer3DModel,
@@ -368,7 +373,7 @@ def wan_animate_2_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("CausVid")
+@BlockAdapterRegister.register("CausVid", owned=True)
 def causvid_wan_adapter(pipe, **kwargs) -> BlockAdapter:
   # CausVid-Wan is a chunk-causal Wan 2.1 student: the block contract is still Wan's (one packed
   # chunk, one returned tensor), but a block also reads and writes its layer's KV cache, so the
@@ -391,7 +396,7 @@ def causvid_wan_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("LongLive2")
+@BlockAdapterRegister.register("LongLive2", owned=True)
 def longlive2_adapter(pipe, **kwargs) -> BlockAdapter:
   # LongLive 2.0 is a chunk-causal Wan2.2-TI2V-5B generator: the block contract is Wan's (one packed
   # chunk, one returned tensor), but a block also reads and writes its layer's KV cache, so the
@@ -1154,7 +1159,7 @@ def pixart_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("SanaVideo2")
+@BlockAdapterRegister.register("SanaVideo2", owned=True)
 def sana_video2_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for SANA-Video 2.0 (`SanaVideo2Pipeline` / `SanaVideo2Transformer3DModel`).
 
@@ -1460,7 +1465,7 @@ def shape_adapter(pipe, **kwargs) -> BlockAdapter:
 
 # NOTE: The registry returns the first class-name prefix that matches, so "HiDreamO1Image" must be
 # registered before "HiDream" (HiDream-I1), which would otherwise capture it.
-@BlockAdapterRegister.register("HiDreamO1Image")
+@BlockAdapterRegister.register("HiDreamO1Image", owned=True)
 def hidream_o1_image_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for HiDream-O1-Image (`HiDreamO1ImagePipeline` /
   `HiDreamO1ImageTransformer2DModel`).
@@ -1655,7 +1660,7 @@ def chronoedit_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("MingImage")
+@BlockAdapterRegister.register("MingImage", owned=True)
 def ming_image_adapter(pipe, **kwargs) -> BlockAdapter:
   return BlockAdapter(
     pipe=pipe,
@@ -1719,7 +1724,7 @@ def ovis_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("LongCatVideoAvatar")
+@BlockAdapterRegister.register("LongCatVideoAvatar", owned=True)
 def longcat_video_avatar_adapter(pipe, **kwargs) -> BlockAdapter:
   """Adapter for the audio-driven LongCat-Video-Avatar pipeline (A2V / AI2V).
 
@@ -1897,7 +1902,7 @@ def ernie_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("BooguImage")
+@BlockAdapterRegister.register("BooguImage", owned=True)
 def boogu_image_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for the vendored Boogu-Image transformer.
 
@@ -2066,7 +2071,7 @@ def ideogram4_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("MOSSImage")
+@BlockAdapterRegister.register("MOSSImage", owned=True)
 def moss_image_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for MOSS-Image (`MOSSImagePipeline` / `MOSSImageTransformer`).
 
@@ -2216,7 +2221,7 @@ def kandinsky6_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("Magi2Preview")
+@BlockAdapterRegister.register("Magi2Preview", owned=True)
 def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for MAGI-2 Preview (`Magi2PreviewPipeline`, text/image to video with audio).
 
@@ -2279,7 +2284,7 @@ def magi2_preview_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("LingBotVideo")
+@BlockAdapterRegister.register("LingBotVideo", owned=True)
 def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for LingBot-Video Dense (`LingBotVideoPipeline`).
 
@@ -2316,7 +2321,7 @@ def lingbot_video_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("MOVA")
+@BlockAdapterRegister.register("MOVA", owned=True)
 def mova_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for MOVA (`MOVAPipeline`, text/image to video + audio).
 
@@ -2372,7 +2377,7 @@ def mova_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
-@BlockAdapterRegister.register("Nomas")
+@BlockAdapterRegister.register("Nomas", owned=True)
 def hy_nomas_adapter(pipe, **kwargs) -> BlockAdapter:
   """BlockAdapter for HY-Nomas (`NomasPipeline`).
 
