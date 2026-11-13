@@ -27,6 +27,7 @@ Cache-DiT is compatible with compilation, CPU Offloading, and quantization, full
 
 - [📘Overviews](./OVERVIEWS.md)
 - [📦Installation](./INSTALL.md)
+- [🧩Built-in Pipelines](./PIPELINES.md)
 - [🚀Quick Examples](../EXAMPLES.md)
 - [🛠️Unified Cache APIs](./CACHE_API.md)
 - [🏗️DBCache Design](./DBCACHE_DESIGN.md)
