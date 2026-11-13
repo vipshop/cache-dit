@@ -490,19 +490,21 @@ def test_cache_teardown_visits_the_partition_the_pipeline_actually_has(monkeypat
   assert released == [module]
 
 
-@pytest.mark.parametrize("flags,stack,nvtx,layerwise", [
-  ([], True, False, False),
-  (["--profile-with-stack"], True, False, False),
-  (["--no-profile-with-stack"], False, False, False),
-  (["--nvtx"], True, True, False),
-  (["--layerwise-nvtx"], True, False, True),
-  (["--nvtx", "--layerwise-nvtx"], True, True, True),
+@pytest.mark.parametrize("flags,collector,stack,nvtx,layerwise", [
+  ([], "torch", True, False, False),
+  (["--profile-with-stack"], "torch", True, False, False),
+  (["--no-profile-with-stack"], "torch", False, False, False),
+  (["--profile-collector", "nsys"], "nsys", True, False, False),
+  (["--nvtx"], "torch", True, True, False),
+  (["--layerwise-nvtx"], "torch", True, False, True),
+  (["--nvtx", "--layerwise-nvtx"], "torch", True, True, True),
 ])
 def test_profiler_flags_forward_configuration_without_enabling_collection(
-    flags, stack, nvtx, layerwise):
+    flags, collector, stack, nvtx, layerwise):
   args = get_args(parse=False).parse_args(flags)
   request = create_profiler_from_args(args)
-  assert (request.with_stack, args.nvtx, args.layerwise_nvtx) == (stack, nvtx, layerwise)
+  assert (request.collector, request.with_stack, args.nvtx,
+          args.layerwise_nvtx) == (collector, stack, nvtx, layerwise)
   assert not request.enabled
 
 

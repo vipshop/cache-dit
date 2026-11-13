@@ -1333,7 +1333,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--profile",
     action="store_true",
     default=False,
-    help="Enable profiling with torch.profiler",
+    help="Enable collection with the selected profiler collector",
+  )
+  parser.add_argument(
+    "--profile-collector",
+    choices=["torch", "nsys"],
+    default="torch",
+    help="Use Torch trace export or CUDA gates for an externally launched Nsight Systems session",
   )
   parser.add_argument(
     "--nvtx",
@@ -3316,6 +3322,7 @@ def create_profiler_from_args(args, profile_name=None, devices=None):
 
   return ProfilerContext(
     enabled=args.profile,
+    collector=getattr(args, "profile_collector", "torch"),
     activities=getattr(args, "profile_activities", ["CPU", "GPU"]),
     output_dir=getattr(args, "profile_dir", None),
     profile_name=profile_name or getattr(args, "profile_name", None),

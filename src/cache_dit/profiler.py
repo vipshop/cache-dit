@@ -1,4 +1,4 @@
-"""Request and complete-step collection for Torch.
+"""Request and complete-step collection for Torch and external Nsight Systems.
 
 Reference: Adapted from https://github.com/sgl-project/sglang/blob/main/python/sglang/bench_one_batch.py
 """
@@ -163,7 +163,9 @@ def _npu_experimental_config(npu_profiler):
 class ProfilerContext:
   """Profile a request or selected complete denoising steps.
 
-  Export CUDA gzip traces/memory or full Ascend CANN directories.
+  Torch exports CUDA gzip traces/memory or full Ascend CANN directories. Nsight uses CUDA gates,
+  ignores Torch capture options and leaves reports to the external collector. Distributed Nsight
+  requests use an existing unbound CPU/Gloo default group.
   """
 
   def __init__(
@@ -175,6 +177,7 @@ class ProfilerContext:
     with_stack: bool = True,
     record_shapes: bool = True,
     *,
+    collector: str = "torch",
     ranges: str = "all",
     devices=None,
   ):
@@ -187,6 +190,7 @@ class ProfilerContext:
     :param profile_name: Base name used for profiler output files.
     :param with_stack: Whether to capture Python stacks for profiled ops.
     :param record_shapes: Whether to record tensor shapes in the profiler trace.
+    :param collector: ``torch`` for trace export or ``nsys`` for external CUDA collection.
     :param ranges: ``all`` or inclusive step ranges, applied independently to each loop.
     :param devices: Devices to synchronize; None uses the current device.
     """
@@ -197,6 +201,7 @@ class ProfilerContext:
     self.profile_name = profile_name or f"profile_{int(time.time())}"
     self.with_stack = with_stack
     self.record_shapes = record_shapes
+    self.collector = collector
     self.ranges = ranges
     self.devices = tuple(devices) if devices is not None else (None, )
     self._token = None
@@ -211,9 +216,13 @@ class ProfilerContext:
     if not self.enabled:
       return self
 
-    if not current_platform.is_accelerator_available():
+    if self.collector not in ("torch", "nsys"):
+      raise ValueError(f"Invalid profiler collector: {self.collector!r}; use 'torch' or 'nsys'.")
+    if self.collector == "torch" and not current_platform.is_accelerator_available():
       raise RuntimeError("Torch ProfilerContext only supports CUDA or Ascend NPU devices, "
                          f"got device_type={current_platform.device_type!r}.")
+    if self.collector == "nsys" and current_platform.device_type != "cuda":
+      raise RuntimeError("Nsight collection requires a CUDA platform.")
     intervals = _normalize_ranges(self.ranges)
     if not self.devices:
       raise ValueError("Profiler devices must include every device used by the request.")
@@ -222,23 +231,25 @@ class ProfilerContext:
       raise RuntimeError("Another profiler request is already active in this process.")
     try:
       self.request_id = uuid4().hex
-      self._backend, accelerator = _resolve_profiler_backend()
-      activity_map = {
-        "CPU": self._backend.ProfilerActivity.CPU,
-        "GPU": accelerator,
-        current_platform.device_type.upper(): accelerator,
-      }
-      invalid = set(self.activities) - activity_map.keys() - {"MEM"}
-      if invalid:
-        raise ValueError(f"Invalid profiler activity: {invalid}.")
-      self._torch_activities = [activity_map[a]
-                                for a in self.activities if a != "MEM"] or [accelerator]
-      self._track_memory = "MEM" in self.activities
-      rank = (torch.distributed.get_rank() if torch.distributed.is_initialized() else os.getenv(
-        "RANK", "0"))
-      self._request_name = re.sub(
-        r"[^A-Za-z0-9_-]", "_",
-        f"{self.profile_name}-{socket.gethostname()}-pid{os.getpid()}-rank{rank}-{self.request_id}")
+      if self.collector == "torch":
+        self._backend, accelerator = _resolve_profiler_backend()
+        activity_map = {
+          "CPU": self._backend.ProfilerActivity.CPU,
+          "GPU": accelerator,
+          current_platform.device_type.upper(): accelerator,
+        }
+        invalid = set(self.activities) - activity_map.keys() - {"MEM"}
+        if invalid:
+          raise ValueError(f"Invalid profiler activity: {invalid}.")
+        self._torch_activities = [activity_map[a]
+                                  for a in self.activities if a != "MEM"] or [accelerator]
+        self._track_memory = "MEM" in self.activities
+        rank = (torch.distributed.get_rank() if torch.distributed.is_initialized() else os.getenv(
+          "RANK", "0"))
+        self._request_name = re.sub(
+          r"[^A-Za-z0-9_-]", "_",
+          f"{self.profile_name}-{socket.gethostname()}-pid{os.getpid()}-rank{rank}-{self.request_id}"
+        )
       self._token = _CURRENT_REQUEST.set(self)
       self._ranges = intervals
       self._loop_count = 0
@@ -278,6 +289,15 @@ class ProfilerContext:
     try:
       for device in self.devices:
         current_platform.synchronize(device)
+      if self.collector == "nsys":
+        distributed = torch.distributed.is_initialized()
+        if distributed:
+          torch.distributed.barrier()
+        torch.cuda.profiler.start()
+        self.profiler = torch.cuda.profiler
+        if distributed:
+          torch.distributed.barrier()
+        return result
       self._window_name = f"{self._request_name}-loop{loop_id if loop_id is not None else 'all'}-window{result.window_id}"
       self.output_dir.mkdir(parents=True, exist_ok=True)
       options = {}
@@ -369,12 +389,21 @@ class ProfilerContext:
       for device in self.devices:
         with finish():
           current_platform.synchronize(device)
+      distributed = (self.collector == "nsys" and torch.distributed.is_initialized()
+                     and not suppress_errors and not errors)
+      if distributed:
+        with finish():
+          torch.distributed.barrier()
       with finish():
         self.profiler.stop()
-      with finish():
-        path = self._export_trace()
-        if not errors and self._collector_started:
-          result.trace_path = self.trace_path = path
+      if distributed and not errors:
+        with finish():
+          torch.distributed.barrier()
+      if self.collector == "torch":
+        with finish():
+          path = self._export_trace()
+          if not errors and self._collector_started:
+            result.trace_path = self.trace_path = path
     if self._memory_started:
       with finish():
         path = self.output_dir / f"{self._window_name}-memory.pickle"
