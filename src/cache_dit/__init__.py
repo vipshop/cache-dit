@@ -61,6 +61,9 @@ from .profiler import create_profiler_context
 from .profiler import profile_steps
 from .profiler import get_profiler_output_dir
 from .profiler import set_profiler_output_dir
+from .layerwise_nvtx import stage_range
+from .layerwise_nvtx import nvtx_scope
+from .layerwise_nvtx import LayerwiseNvtxMarker
 from .quantization import load
 from .quantization import quantize
 from .quantization import QuantizeConfig

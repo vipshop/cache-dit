@@ -1336,6 +1336,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable profiling with torch.profiler",
   )
   parser.add_argument(
+    "--nvtx",
+    action="store_true",
+    default=False,
+    help="Enable stage NVTX annotations after warmup, independently of --profile",
+  )
+  parser.add_argument(
+    "--layerwise-nvtx",
+    action="store_true",
+    default=False,
+    help="Enable stage and transformer module NVTX annotations after warmup",
+  )
+  parser.add_argument(
     "--profile-name",
     type=str,
     default=None,

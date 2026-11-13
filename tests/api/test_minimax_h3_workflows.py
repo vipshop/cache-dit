@@ -41,6 +41,7 @@ from cache_dit.cli.registers import (
 )
 from cache_dit.caching.block_adapters.adapters import minimax_h3_adapter
 from cache_dit.cli.utils import create_profiler_from_args, get_args
+from cache_dit.layerwise_nvtx import stage_range
 from cache_dit.profiler import profile_steps
 from cache_dit.utils import TRANSFORMER_ATTR_NAMES, assign_transformer, resolve_transformer
 
@@ -489,26 +490,30 @@ def test_cache_teardown_visits_the_partition_the_pipeline_actually_has(monkeypat
   assert released == [module]
 
 
-@pytest.mark.parametrize("flags,stack", [
-  ([], True),
-  (["--profile-with-stack"], True),
-  (["--no-profile-with-stack"], False),
+@pytest.mark.parametrize("flags,stack,nvtx,layerwise", [
+  ([], True, False, False),
+  (["--profile-with-stack"], True, False, False),
+  (["--no-profile-with-stack"], False, False, False),
+  (["--nvtx"], True, True, False),
+  (["--layerwise-nvtx"], True, False, True),
+  (["--nvtx", "--layerwise-nvtx"], True, True, True),
 ])
-def test_profiler_flags_forward_configuration_without_enabling_collection(flags, stack):
+def test_profiler_flags_forward_configuration_without_enabling_collection(
+    flags, stack, nvtx, layerwise):
   args = get_args(parse=False).parse_args(flags)
   request = create_profiler_from_args(args)
-  assert request.with_stack is stack
+  assert (request.with_stack, args.nvtx, args.layerwise_nvtx) == (stack, nvtx, layerwise)
   assert not request.enabled
 
 
 @pytest.fixture(params=["t2va"])
 def profiled_workflow(request, monkeypatch, tmp_path):
-  """Exercise the real CLI lifecycle with the CPU collector."""
+  """Exercise the CLI lifecycle once, sharing the collector and annotation probes."""
   from cache_dit.cli import examples
 
   workflow = request.param
   root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
-  state = SimpleNamespace(events=[], requests=[], messages=[])
+  state = SimpleNamespace(events=[], requests=[], marks=[], stack=[], messages=[])
   modules = [torch.nn.Linear(2, 2) for _ in range(4)]
   args = get_args(parse=False).parse_args([
     "--prompt",
@@ -553,10 +558,13 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     def __call__(self, **kwargs):
       state.events.append(("call", kwargs["prompt"], kwargs["num_inference_steps"],
                            kwargs["generator"].initial_seed()))
-      getattr(self, root_name)(torch.ones(1, 2))
-      self.transformer_2(torch.ones(1, 2))
-      with profile_steps(range(kwargs["num_inference_steps"])) as steps:
-        list(steps)
+      state.events.append(("hooks", tuple(getattr(self, root_name)._forward_pre_hooks),
+                           tuple(self.transformer_2._forward_pre_hooks)))
+      with stage_range("test_request"):
+        getattr(self, root_name)(torch.ones(1, 2))
+        self.transformer_2(torch.ones(1, 2))
+        with profile_steps(range(kwargs["num_inference_steps"])) as steps:
+          list(steps)
       if kwargs["prompt"] == "warmup":
         setattr(self, root_name, modules[2])
       return {"videos": [[Image.new("RGB", (1, 1))]], "audio": None}
@@ -569,6 +577,13 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     state.events.append(("optimize", ))
     setattr(pipe, root_name, modules[1])
 
+  original_roots = registers.iter_transformer_modules
+
+  def roots(pipe):
+    state.events.append(("roots", ))
+    assert getattr(pipe, root_name) is modules[2]
+    return original_roots(pipe)
+
   @contextmanager
   def create_request(args, **kwargs):
     request = create_profiler_from_args(args, **kwargs)
@@ -580,18 +595,27 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     finally:
       state.events.append(("exit", ))
 
+  def push(name):
+    state.stack.append(name)
+    state.marks.append(name)
+
   module = importlib.import_module("cache_dit.profiler")
   monkeypatch.setattr(
     module, "current_platform",
     SimpleNamespace(device_type="cuda",
                     is_accelerator_available=lambda: True,
                     synchronize=lambda device: None))
+  nvtx_module = importlib.import_module("cache_dit.layerwise_nvtx")
+  monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
+  monkeypatch.setattr(torch.cuda.nvtx, "range_push", push)
+  monkeypatch.setattr(torch.cuda.nvtx, "range_pop", state.stack.pop)
   monkeypatch.setattr(registers, "maybe_init_distributed", lambda args: (0, "cpu"))
   monkeypatch.setattr(registers, "get_rank_device", lambda: (0, torch.device("cpu")))
   monkeypatch.setattr(registers, "maybe_apply_optimization", optimize)
   monkeypatch.setattr(registers, "maybe_finalize_deferred_svdq_pipe_move",
                       lambda pipe: state.events.append(("finalize", )))
   monkeypatch.setattr(registers, "maybe_destroy_distributed", lambda: None)
+  monkeypatch.setattr(registers, "iter_transformer_modules", roots)
   monkeypatch.setattr(registers, "create_profiler_from_args", create_request)
   monkeypatch.setattr(registers, "strify", lambda *args: "test")
   monkeypatch.setattr(
@@ -606,19 +630,22 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     "prompt": "formal",
     "num_inference_steps": 5
   }, {}))
+  state.modules = modules
   return state
 
 
-@pytest.mark.parametrize("profiled_workflow,profile", [
-  ("t2va", False),
-  ("t2va", True),
-  ("fl2va", False),
-  ("fl2va", True),
-  ("ref2va", False),
-  ("ref2va", True),
+@pytest.mark.parametrize("profiled_workflow,mode,profile", [
+  ("t2va", "disabled", False),
+  ("t2va", "disabled", True),
+  ("t2va", "stage", False),
+  ("t2va", "stage", True),
+  ("t2va", "layerwise", False),
+  ("t2va", "layerwise", True),
+  ("fl2va", "layerwise", False),
+  ("ref2va", "layerwise", True),
 ],
                          indirect=["profiled_workflow"])
-def test_profiler_cli_preserves_workflow_and_warmup_order(profile, profiled_workflow):
+def test_profiler_cli_preserves_workflow_and_warmup_order(mode, profile, profiled_workflow):
   from cache_dit.models.pipelines.minimax_h3 import minimax_h3_blocks
 
   state = profiled_workflow
@@ -627,7 +654,10 @@ def test_profiler_cli_preserves_workflow_and_warmup_order(profile, profiled_work
   assert example.init_config.modular_blocks_factory is minimax_h3_blocks
   assert workflow == ("t2va" if example.args.example == "minimax_h3" else
                       example.args.example.removeprefix("minimax_h3_"))
+  root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
   example.args.profile = profile
+  example.args.nvtx = mode == "stage"
+  example.args.layerwise_nvtx = mode == "layerwise"
   example.run()
   assert [e for e in state.events if e[0] in ("optimize", "call", "finalize", "enter", "exit")] == [
     ("optimize", ),
@@ -644,12 +674,28 @@ def test_profiler_cli_preserves_workflow_and_warmup_order(profile, profiled_work
   ]
   assert len(state.requests) == 2
   assert all(r.enabled is profile and r.devices == (example.device, ) for r in state.requests)
+  assert state.events.count(("roots", )) == int(mode == "layerwise")
+  hooks = [e[1:] for e in state.events if e[0] == "hooks"]
+  assert hooks[0] == ((), ())
+  assert hooks[1] == hooks[2]
+  assert all(bool(ids) is (mode == "layerwise") for ids in hooks[1])
+  assert state.marks.count("test_request") == (0 if mode == "disabled" else 2)
+  assert sum(name.startswith(f"{root_name} (Linear)")
+             for name in state.marks) == (2 if mode == "layerwise" else 0)
+  assert sum(name.startswith("transformer_2 (Linear)")
+             for name in state.marks) == (2 if mode == "layerwise" else 0)
+  assert not state.stack
+  assert all(not m._forward_pre_hooks and not m._forward_hooks for m in state.modules)
   paths = [r.trace_path for request in state.requests for r in request.results]
   assert len(paths) == len(set(paths)) == (4 if profile else 0)
   assert all(p.is_file() and p.name.startswith("fixed-") for p in paths)
   assert all(r.actual_range == r.requested_range == (i, i) for request in state.requests
              for r, i in zip(request.results, (0, 2)))
   assert sum(m.startswith("Profiler loop=") for m in state.messages) == len(paths)
+  marks = list(state.marks)
+  with stage_range("outside"):
+    state.modules[2](torch.ones(1, 2))
+  assert state.marks == marks
 
 
 @pytest.mark.parametrize("ranges,count", [("all", 2), ("10-14", 0)])
@@ -680,3 +726,29 @@ def test_balanced_cli_provides_all_visible_devices(profiled_workflow, monkeypatc
 def test_profiler_cli_factory_accepts_existing_namespaces_and_explicit_devices():
   context = create_profiler_from_args(argparse.Namespace(profile=False), devices=[0, 1])
   assert context.ranges == "all" and context.devices == (0, 1)
+
+
+@pytest.mark.parametrize("layerwise,profile", [(False, False), (True, True)])
+def test_cli_model_error_cleans_annotations_and_requests(layerwise, profile, profiled_workflow,
+                                                         monkeypatch):
+  state = profiled_workflow
+  state.example.args.nvtx = not layerwise
+  state.example.args.layerwise_nvtx = layerwise
+  state.example.args.profile = profile
+  error = ValueError("formal inference failed")
+
+  def fail(*args):
+    raise error
+
+  monkeypatch.setattr(state.modules[2], "forward", fail)
+  with pytest.raises(ValueError) as caught:
+    state.example.run()
+  assert caught.value is error
+  assert len(state.requests) == 1
+  assert not state.stack
+  assert all(not m._forward_pre_hooks and not m._forward_hooks for m in state.modules)
+  assert all(r.profiler is None for r in state.requests)
+  marks = list(state.marks)
+  with stage_range("outside"):
+    pass
+  assert state.marks == marks

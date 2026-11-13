@@ -133,6 +133,75 @@ This completes all 49 logical steps and decoding, exporting two Torch traces per
 three steps are inside the default cache warmup. In the validated run, steps 8 and 10 were cache
 hits and step 9 performed the full computation; cache decisions can vary with inputs and settings.
 
+## Independent NVTX Annotations
+
+NVTX labels and collection windows have separate controls. Both annotation switches default to off
+and require CUDA when enabled:
+
+| Switch | Behavior after optimization and the original warmup |
+|---|---|
+| `--nvtx` | Enable explicit stage annotations without resolving module roots or installing hooks |
+| `--layerwise-nvtx` | Enable stages and temporary forward hooks on the final transformer roots |
+
+Neither switch enables `--profile`. An external collector is needed to observe the annotations;
+NVTX itself writes no report. `--profile-ranges` controls collection, not NVTX emission. Leaving
+both switches off preserves CPU execution and the existing Ascend Torch profiling path.
+
+The CLI installs module hooks once after its original warmup, keeps them across formal repeats,
+and removes its own handles on exit. It resolves the pipeline's actual denoising transformers:
+`transformer_ref` for MiniMax-H3 ref2va, and applicable secondary transformers for other pipelines.
+Text encoders, VAEs and schedulers are not automatically traversed by transformer hooks.
+
+### Python Annotations
+
+Direct callers finish their usual optimization and warmup before declaring the execution roots.
+For stages alone, use `nvtx_scope()` and place `stage_range()` at the actual execution boundary:
+
+```python
+from cache_dit import LayerwiseNvtxMarker, nvtx_scope, stage_range
+
+# No module traversal or hooks.
+with nvtx_scope():
+    with stage_range("request"):
+        output = pipe(**inputs)
+
+# Example for an already loaded and warmed MiniMax-H3 ref2va pipeline.
+with LayerwiseNvtxMarker({"transformer_ref": pipe.transformer_ref}):
+    for _ in range(repeat):
+        with stage_range("request"):
+            output = pipe(**inputs)
+```
+
+The marker enables stages as well as module annotations; no profiler request is required.
+`stage_range()` is a no-op outside an enabled scope. `nvtx_scope(enabled=False)` temporarily
+disables stages and restores the previous setting on exit.
+
+Each module instance uses its first declared path. Labels include its path, type, direct parameter
+shapes and tensor input shapes, including keyword arguments. The marker preserves existing hooks,
+inputs and outputs, and removes its handles on normal exit, forward failure or partial installation
+failure. Stage and marker-exit cleanup preserve an existing model exception; module post-hooks
+follow PyTorch's `always_call` exception rules.
+
+### Visibility with Compile and CUDA Graph
+
+For modules compiled with `nn.Module.compile()`, including Diffusers `compile_repeated_blocks()`,
+the marker annotates the compiled module's outer call and leaves its descendants unmodified.
+Both NVTX hooks run outside Dynamo tracing. This preserves the validated regional-compile/TP
+execution while retaining compiled block names; it does not expose every operation inside a graph.
+Other `torch.compile(module)` wrapping forms need separate validation.
+
+Cache skips, direct `forward()` calls and CUDA Graph replay can reduce visible module names.
+Missing names do not establish that computation was absent. The marker keeps the original
+compilation and graph settings and adds no warmup or eager fallback. Warmup with different shapes,
+too few steps or no warmup can still leave compilation in the formal request.
+
+One range-accuracy limitation remains: if the same module recursively calls itself, an inner
+global pre-hook fails before the marker's local pre-hook, and the outer forward catches it and
+continues, the inner always-call post-hook can end the outer module range early. Ordinary recursion
+and local pre-hook failures are covered. Removing handles alone also does not prove that every
+compiled executable stopped retaining annotations; validate other compile/graph combinations
+before interpreting them.
+
 ## Python Requests and Loop Boundaries
 
 `ProfilerContext` wraps one inference. It defaults to `enabled=True`,
@@ -221,6 +290,8 @@ used by the request.
 | CLI argument | Default | Meaning |
 |---|---|---|
 | `--profile` | Off | Enable Torch collection |
+| `--nvtx` | Off | Explicit stage annotations, independent of collection |
+| `--layerwise-nvtx` | Off | Stages and transformer module hooks |
 | `--profile-ranges` | `all` | Whole request or inclusive logical-step ranges |
 | `--profile-name` | `<example>_profile` | Torch filename prefix |
 | `--profile-dir` | Environment value or `/tmp/cache_dit_profiles` | Torch output directory |
