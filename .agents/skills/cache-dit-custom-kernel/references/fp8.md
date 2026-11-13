@@ -371,3 +371,24 @@ The difference is 0.03 s (0.4%), i.e. parity within one-run noise. Image metrics
 Artifacts: `.tmp/native_nvfp4/e2e/fp8_per_row_native_compile.png`,
 `.tmp/native_nvfp4/e2e/fp8_per_row_torchao_compile.png`,
 `.tmp/native_nvfp4/logs/e2e_fp8_per_row_*.log`.
+
+### Compiled native `fp8_quantize` + `_scaled_mm`
+
+A dedicated benchmark arm now compiles the custom CUDA quantizer (`fp8_quantize`,
+not `fp8_quantize_torch`) followed by the default `torch._scaled_mm` GEMM. Six
+FLUX shapes, per-row, 50 iterations x 3 rounds:
+
+| shape | native quant + `_scaled_mm` compile | `fp8_quantize_torch` + `_scaled_mm` compile | ratio |
+|---|---:|---:|---:|
+| 4096x3072x3072 | 227.1 us | 214.3 us | 1.060x |
+| 4096x12288x3072 | 736.7 us | 722.8 us | 1.019x |
+| 4096x3072x12288 | 846.5 us | 845.4 us | 1.001x |
+| 4608x3072x3072 | 257.0 us | 244.3 us | 1.052x |
+| 4608x3072x15360 | 1183.2 us | 1181.7 us | 1.001x |
+| 4608x12288x3072 | 831.9 us | 817.5 us | 1.018x |
+
+Geometric mean `1.025x`: compiling the opaque custom quantizer is slower than
+the graph-visible pure-Torch quantizer, and the gap is largest on the short-K
+attention shapes. Keep `fp8_quantize_torch` on the compile path; the native
+quantizer remains correct and is used in eager mode. Raw results:
+`.tmp/native_nvfp4/bench/bench_fp8_native_quant_compile.json`.

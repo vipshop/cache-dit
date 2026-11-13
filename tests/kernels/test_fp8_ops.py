@@ -85,6 +85,23 @@ def test_compiled_torch_quantize_matches_custom(mode: str) -> None:
   assert torch.equal(s_compiled, s_custom)
 
 
+def test_compiled_native_quantize_with_scaled_mm() -> None:
+  torch.manual_seed(21)
+  m, n, k = 64, 256, 256
+  a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(n, dtype=torch.bfloat16, device="cuda")
+  qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+
+  def run(x: torch.Tensor) -> torch.Tensor:
+    qa, sa = fp8_quantize(x, "per_row")
+    return fp8_gemm(qa, qw, sa, sw, bias=bias, mode="per_row")
+
+  expected = run(a)
+  actual = torch.compile(run, fullgraph=True)(a)
+  assert _relative_l2(actual, expected) < 1e-6
+
+
 @pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
 def test_torch_quantize_matches_custom(mode: str) -> None:
   torch.manual_seed(6)

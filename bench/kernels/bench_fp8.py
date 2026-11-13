@@ -380,6 +380,12 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
   if not args.skip_compiled:
     arms["cache_dit_torch_compile_quantize"] = torch.compile(lambda: fp8_quantize_torch(a, mode),
                                                              fullgraph=True)
+
+    def native_quantize_chain() -> torch.Tensor:
+      qa2, sa2 = fp8_quantize(a, mode)
+      return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode)
+
+    arms["cache_dit_compile_native_quantize"] = torch.compile(native_quantize_chain, fullgraph=True)
   for arm, fn in arms.items():
     if arm.startswith("cache_dit") and "cache_dit" not in args.impls:
       continue
@@ -403,7 +409,7 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
         "min_ms": timing["min_ms"],
         "max_ms": timing["max_ms"],
       }
-      if "gemm" in arm:
+      if "gemm" in arm or "compile_native_quantize" in arm:
         row["rel_l2_vs_dequant"] = _relative_l2(actual, reference.to(torch.bfloat16))
         row["max_abs_err"] = float((actual.float() - reference.float()).abs().max())
       rows.append(row)
