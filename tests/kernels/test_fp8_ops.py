@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
+from cache_dit.kernels import fp8_quantize_gemm
 from cache_dit.kernels.fp8 import fp8_quantize_torch
 
 pytestmark = pytest.mark.skipif(
@@ -144,9 +145,9 @@ def test_per_block_linear_with_output_tail(m: int, n: int, k: int, use_ws: bool)
 
 
 @pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
-def test_ws_matches_non_ws(mode: str) -> None:
+@pytest.mark.parametrize("m,n,k", [(64, 256, 256), (513, 3072, 256), (2304, 3072, 256)])
+def test_ws_matches_non_ws(mode: str, m: int, n: int, k: int) -> None:
   torch.manual_seed(4)
-  m, n, k = 64, 256, 256
   a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
   w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
   qa, sa = fp8_quantize(a, mode)
@@ -154,6 +155,56 @@ def test_ws_matches_non_ws(mode: str) -> None:
   ws = fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=True)
   non_ws = fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=False)
   assert torch.equal(ws, non_ws)
+
+
+@pytest.mark.parametrize("use_ws", [True, False])
+def test_quantize_gemm_matches_separate_ops(use_ws: bool) -> None:
+  torch.manual_seed(11)
+  a = torch.randn(129, 640, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(264, 640, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(264, dtype=torch.bfloat16, device="cuda")
+  qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+  qa, sa = fp8_quantize(a, "per_row")
+  expected = fp8_gemm(qa, qw, sa, sw, bias=bias, mode="per_row", use_ws=use_ws)
+  actual = fp8_quantize_gemm(a, qw, sw, bias=bias, use_ws=use_ws)
+  assert torch.equal(actual, expected)
+
+
+def test_quantize_gemm_fake() -> None:
+  from torch._subclasses.fake_tensor import FakeTensorMode
+
+  with FakeTensorMode():
+    a = torch.empty(11, 128, dtype=torch.bfloat16, device="cuda")
+    w = torch.empty(40, 128, dtype=torch.float8_e4m3fn, device="cuda")
+    scale = torch.empty(40, dtype=torch.float32, device="cuda")
+    out = fp8_quantize_gemm(a, w, scale, use_ws=False)
+    assert out.shape == (11, 40)
+    assert out.dtype == torch.bfloat16
+
+
+@pytest.mark.parametrize("use_ws", [True, False])
+def test_quantize_gemm_cuda_graph(use_ws: bool) -> None:
+  torch.manual_seed(12)
+  a = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(128, 256, dtype=torch.bfloat16, device="cuda")
+  qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+  side_stream = torch.cuda.Stream()
+  side_stream.wait_stream(torch.cuda.current_stream())
+  with torch.cuda.stream(side_stream):
+    for _ in range(2):
+      fp8_quantize_gemm(a, qw, sw, use_ws=use_ws)
+  torch.cuda.current_stream().wait_stream(side_stream)
+  graph = torch.cuda.CUDAGraph()
+  with torch.cuda.graph(graph):
+    captured = fp8_quantize_gemm(a, qw, sw, use_ws=use_ws)
+  expected = fp8_quantize_gemm(a, qw, sw, use_ws=use_ws)
+  graph.replay()
+  assert torch.equal(captured, expected)
+
+  a.copy_(torch.randn_like(a))
+  expected = fp8_quantize_gemm(a, qw, sw, use_ws=use_ws)
+  graph.replay()
+  assert torch.equal(captured, expected)
 
 
 @pytest.mark.parametrize("mode", ["per_row", "per_block"])
@@ -191,31 +242,32 @@ def test_zero_rows_are_exactly_zero(mode: str, use_ws: bool) -> None:
 
 
 @pytest.mark.parametrize("use_ws", [True, False])
-def test_cuda_graph_replay_matches_eager(use_ws: bool) -> None:
+@pytest.mark.parametrize("mode", ["per_row", "per_block"])
+def test_cuda_graph_replay_matches_eager(use_ws: bool, mode: str) -> None:
   torch.manual_seed(3)
   m, n, k = 64, 256, 256
   a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
   w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
-  qa, sa = fp8_quantize(a, "per_block")
-  qw, sw = fp8_quantize(w, "per_block", is_weight=True)
+  qa, sa = fp8_quantize(a, mode)
+  qw, sw = fp8_quantize(w, mode, is_weight=True)
   side_stream = torch.cuda.Stream()
   side_stream.wait_stream(torch.cuda.current_stream())
   with torch.cuda.stream(side_stream):
     for _ in range(2):
-      fp8_gemm(qa, qw, sa, sw, mode="per_block", use_ws=use_ws)
+      fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=use_ws)
   torch.cuda.current_stream().wait_stream(side_stream)
   graph = torch.cuda.CUDAGraph()
   with torch.cuda.graph(graph):
-    captured = fp8_gemm(qa, qw, sa, sw, mode="per_block", use_ws=use_ws)
-  expected = fp8_gemm(qa, qw, sa, sw, mode="per_block", use_ws=use_ws)
+    captured = fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=use_ws)
+  expected = fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=use_ws)
   graph.replay()
   assert _relative_l2(captured, expected) < 1e-6
 
   new_a = torch.randn_like(a)
-  new_qa, new_sa = fp8_quantize(new_a, "per_block")
+  new_qa, new_sa = fp8_quantize(new_a, mode)
   qa.copy_(new_qa)
   sa.copy_(new_sa)
-  expected = fp8_gemm(qa, qw, sa, sw, mode="per_block", use_ws=use_ws)
+  expected = fp8_gemm(qa, qw, sa, sw, mode=mode, use_ws=use_ws)
   graph.replay()
   assert _relative_l2(captured, expected) < 1e-6
 
@@ -297,4 +349,5 @@ def test_compiled_linear_uses_fusible_torch_quantize() -> None:
     torch.cuda.synchronize()
   names = [event.key for event in prof.key_averages()]
   assert not any("quantize_per_row_kernel" in name for name in names), names
+  assert any("triton" in name for name in names), names
   assert any("fp8_gemm_scale_kernel" in name for name in names), names

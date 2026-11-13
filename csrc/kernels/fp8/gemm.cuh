@@ -56,7 +56,7 @@ CUTE_DEVICE void gemm_ss(TensorC& acc, TensorA& fragment_a, TensorB& fragment_b,
   }
 }
 
-template <int kBM_ = 128, int kBN_ = 256, int kBK_ = 128, int kStages_ = 2>
+template <int kBM_ = 128, int kBN_ = 256, int kBK_ = 128, int kStages_ = 2, int kWarpsN_ = 1>
 struct Fp8GemmTraits {
   static_assert(kBK_ == 128, "SW128 atom requires 128B rows (1B elements)");
   static_assert(kBM_ % 16 == 0, "BM must be a multiple of MMA_M");
@@ -67,6 +67,9 @@ struct Fp8GemmTraits {
   static constexpr int kBK = kBK_;
   static constexpr int kStages = kStages_;
   static constexpr int kNumWarps = kBM / 16;
+  static_assert(kWarpsN_ >= 1 && kNumWarps % kWarpsN_ == 0,
+                "the N warp factor must divide the total warp count");
+  static constexpr int kNumWarpsM = kNumWarps / kWarpsN_;
   static constexpr int kNumThreads = kNumWarps * 32;
 
   using Element = cutlass::float_e4m3_t;
@@ -82,8 +85,9 @@ struct Fp8GemmTraits {
                 "the epilogue staging buffer must fit in the freed A+B pipeline storage");
 
   using MmaAtom = MMA_Atom<SM89_16x8x32_F32E4M3E4M3F32_TN>;
-  using TiledMma = decltype(make_tiled_mma(MmaAtom{}, Layout<Shape<Int<kNumWarps>, _1, _1>>{},
-                                           Tile<Int<kBM>, Int<kBN>, _32>{}));
+  using TiledMma =
+    decltype(make_tiled_mma(MmaAtom{}, Layout<Shape<Int<kNumWarpsM>, Int<kWarpsN_>, _1>>{},
+                            Tile<Int<kBM>, Int<kBN>, _32>{}));
   using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
 };
 

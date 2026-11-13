@@ -211,3 +211,69 @@ CUDA_VISIBLE_DEVICES=4 nsys profile --trace=cuda --capture-range=cudaProfilerApi
 ```
 
 When changing the WS default, rerun `tests/kernels/test_fp8_ops.py`, especially the `use_ws` parity, K-phase, CUDA Graph, and profiler kernel-name assertions.
+
+## Per-row follow-up on 2026-11-12: retained gains and open E2E gap
+
+Branch `opt/fp8-per-row-compile`, environment `cdit-fp8-per-row-opt`, RTX PRO 5000 sm120a. Artifacts are under `.tmp/fp8_per_row_opt/`. This is an intermediate improvement: the requested stable 5% E2E win over TorchAO + compile was not reached, and no PR is claimed or created.
+
+### Retained implementation changes
+
+- Per-row quantize uses eight warps per row. For short K it reuses the BF16 input through dynamic shared memory rather than reading global memory twice; long K keeps the two-pass global path. Reciprocal constants and FP8 pack conversion already fold in SASS, so no unsafe reciprocal rewrite was introduced. The standalone `4096x3072` kernel improved from 15.856 to 9.536 us; the Inductor fused Torch quantize comparison was 14.336 us.
+- Per-row GEMM uses M4N2 warps and shape dispatch: 64x64 for tiny M, 128x128 for small M, 128x192 for medium M with N < 4096, and 128x256 otherwise. All tiles use two stages. At `4096x3072x3072`, the BN192 non-WS kernel is 181.760 us and WS is 181.712 us, versus 184.016 us for TorchAO `_scaled_mm`. NCU shows tensor-pipe utilization 76.8%, 84 KB shared memory, and one CTA/SM.
+- `fp8_quantize_gemm` is a single host/custom-op entry for per-row linear. It calls the existing quantize and GEMM functions in C++; it is not a CUDA kernel fusion. Eager per-row `QW8A8Linear` uses this entry. All compiled modes use `fp8_quantize_torch` plus the native GEMM so Inductor can fuse quantization. Fake, fullgraph, public export, WS/non-WS bitwise, CUDA Graph, and dispatch tests cover the native operators.
+
+Six production-shape compiled-linear CUDA Event medians (native / TorchAO, microseconds):
+
+| shape | native | TorchAO | native / TorchAO |
+|---|---:|---:|---:|
+| 4096x3072x3072 | 221.68 | 216.21 | 1.0253 |
+| 4096x12288x3072 | 734.34 | 737.42 | 0.9958 |
+| 4096x3072x12288 | 797.20 | 864.11 | 0.9226 |
+| 4608x3072x3072 | 241.31 | 258.64 | 0.9330 |
+| 4608x3072x15360 | 1079.14 | 1202.30 | 0.8976 |
+| 4608x12288x3072 | 825.57 | 826.62 | 0.9987 |
+
+The aggregate latency ratio is 0.9498 (about 5.0% less total latency), but the geometric-mean ratio is 0.9610 and the first shape is slower. Do not describe this as a stable 5% per-shape win.
+
+### Rejected experiments
+
+- CuTe `copy`/`copy_if` direct R-to-G epilogue: numerically correct but poorly coalesced compared with STSM+TMA. Typical GEMM regressed from about 182 to 268 us and compiled linear regressed 26%-36%; fully reverted.
+- BF16 producer prologue fusion: each N-tile repeatedly read and quantized the same activation. Compiled linear regressed 1.9x-3.9x; fully reverted. qdata materialization is costly, but repeated quantization across N-tiles is worse.
+- Compile-time pure-Torch quantization plus optimized native GEMM did not solve the E2E gap either; aggregate compiled-linear improvement was about 4.7%.
+- `CACHE_DIT_EPILOGUE_PROLOGUE_FUSION=1` improved TorchAO E2E but did not materially improve the native custom-op path.
+
+### FLUX and validation status
+
+FLUX.1-dev, 1024x1024, 28 steps, seed 42, warmup 1, repeat 3, 494/494 quantized layers on both FP8 arms:
+
+| arm | default fusion setting | epilogue/prologue fusion enabled |
+|---|---:|---:|
+| TorchAO + compile | 7.43 s | 7.03 s |
+| native cache-dit + compile | 7.62 s | 7.61 s |
+
+The default-setting native arm is about 2.6% slower than TorchAO, so the stable 5% E2E gate failed. A formal-step nsys decomposition found native GEMM slightly faster in total (142.62 versus 143.68 ms), but native quantize plus surrounding Inductor kernels remained more expensive because custom-op boundaries prevent equivalent fusion.
+
+Final native-vs-TorchAO image metrics: PSNR 40.081 dB, SSIM 0.98115. Native-vs-BF16: PSNR 35.189 dB, SSIM 0.95087. Images were visually checked and showed no structural corruption.
+
+Final checks before the intermediate commit: 187 FP8/quantization/compile-config tests passed, `pre-commit run --files ...` passed after formatting, and `git diff --check` passed. The E2E performance gate remains open and the measurements must not be described as a stable win over TorchAO.
+
+## 2026-11-13 hybrid follow-up and pure-Torch quantizer analysis
+
+All three E2E arms below ran sequentially on the same idle GPU5 with `CACHE_DIT_EPILOGUE_PROLOGUE_FUSION=1`, 1024x1024, 28 steps, seed 42, warmup 1 and repeat 3. The hybrid arm used `fp8_quantize_torch` only under `torch.compile`, followed by the optimized native per-row GEMM; eager still used the native fused host op.
+
+| arm | inference time | relative result |
+|---|---:|---|
+| native fused custom op + compile | 7.54 s | baseline |
+| pure-Torch compile quantize + native GEMM | 7.04 s | 6.6% faster than native custom-op path |
+| TorchAO + compile | 6.93 s | hybrid remains 1.6% slower |
+
+The same hybrid arm won 5/6 production compiled-linear shapes. Its aggregate and geometric-mean latency ratios to TorchAO were 0.9548 and 0.9584, respectively. This confirms that graph-visible quantization is materially better than the opaque custom-op path after enabling fusion, but it still does not establish a stable 5% E2E win over TorchAO.
+
+Pure-Torch per-row quantizer microanalysis at `4096x3072`:
+
+- TorchAO inference `_choose_scale_float8` computes `abs/amax` in the input dtype, but also computes `max_abs / 448` in that dtype before converting the scale to FP32. Cache-dit must not copy the latter rounding if it wants to preserve its current scale/qdata contract.
+- Replacing `x.float().abs().amax()` with `x.abs().amax().float()` is bit-equivalent for BF16 abs/max, including an exhaustive all-65536-bit-pattern test. However, Inductor's `codegen_upcast_to_fp32` still generates an FP32 reduction. Measured Event time was 31.07 us versus 30.88-31.10 us for the current form; disabling upcast gave 30.91 us. There is no useful performance gain.
+- Removing `clamp(-448, 448)` is bit-equivalent under the tested PyTorch 2.15 saturating FP8 conversion. Standalone quantize improved from about 31.1 to 30.2 us, but aggregate compiled-linear improvement was only 0.05% (one shape improved 1.49%, others were within noise). Treat this as optional cleanup, not a meaningful E2E optimization.
+- Replacing per-element division with a row reciprocal and multiplication gave 1,476 mismatches across the 65,536 BF16 bit patterns, in both eager and compiled modes, with no speedup (about 30.3 us). It is rejected.
+
+The hybrid path was subsequently promoted into `QW8A8Linear`: all compiled modes use `fp8_quantize_torch`, while only eager per-row uses the fused host op. Epilogue/prologue fusion now defaults to enabled and can still be disabled with `CACHE_DIT_EPILOGUE_PROLOGUE_FUSION=0`; `codegen_upcast_to_fp32` remains enabled. The no-clamp experiment stayed in `.tmp/fp8_per_row_opt/`; production `fp8_quantize_torch` was not changed by that experiment. Raw logs and generated Inductor code are retained in the same directory.

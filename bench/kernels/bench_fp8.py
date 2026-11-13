@@ -16,6 +16,8 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
+from cache_dit.kernels import fp8_quantize_gemm
+from cache_dit.kernels.fp8 import fp8_quantize_torch
 from cache_dit.quantization.fp8.linear import QW8A8Linear
 
 MODES = ("per_row", "per_tensor", "per_block")
@@ -301,16 +303,22 @@ def _compiled_torchao_linear(w: torch.Tensor, bias: torch.Tensor | None, mode: s
   :returns: Compiled callable.
   """
 
+  from torchao.float8.inference import Float8MMConfig
+
   float8_tensor, _, kernel_preference, _ = api
   act_gran = _torchao_granularity(mode, False, api)
   weight_gran = _torchao_granularity(mode, True, api)
+  # Match the production TorchAO recipe and its compiled fake-tensor path.
+  mm_config = Float8MMConfig(use_fast_accum=mode != "per_block")
   packed_weight = float8_tensor.from_hp(w,
                                         granularity=weight_gran,
+                                        mm_config=mm_config,
                                         kernel_preference=kernel_preference.TORCH)
 
   def torchao_linear(x):
     packed_act = float8_tensor.from_hp(x,
                                        granularity=act_gran,
+                                       mm_config=mm_config,
                                        kernel_preference=kernel_preference.TORCH)
     return F.linear(packed_act, packed_weight, bias)
 
@@ -337,6 +345,8 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
   rows = []
 
   def cache_chain(use_ws: bool) -> torch.Tensor:
+    if mode == "per_row":
+      return fp8_quantize_gemm(a, qw, sw, bias=bias, use_ws=use_ws)
     qa2, sa2 = fp8_quantize(a, mode)
     return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode, use_ws=use_ws)
 
@@ -354,6 +364,9 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
     "cache_dit_chain_nonws": lambda: cache_chain(False),
     "torchao_chain": torchao_chain,
   }
+  if not args.skip_compiled:
+    arms["cache_dit_torch_compile_quantize"] = torch.compile(lambda: fp8_quantize_torch(a, mode),
+                                                             fullgraph=True)
   for arm, fn in arms.items():
     if arm.startswith("cache_dit") and "cache_dit" not in args.impls:
       continue

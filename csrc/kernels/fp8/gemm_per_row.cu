@@ -8,9 +8,12 @@
 namespace cache_dit::fp8 {
 namespace {
 
-using Traits = Fp8GemmTraits<128, 256, 128, 2>;
+using DefaultTraits = Fp8GemmTraits<128, 256, 128, 2, 2>;
+using BalancedTraits = Fp8GemmTraits<128, 192, 128, 2, 2>;
+using SmallMTraits = Fp8GemmTraits<128, 128, 128, 2, 2>;
+using TinyMTraits = Fp8GemmTraits<64, 64, 128, 2, 2>;
 
-template <bool kWS>
+template <typename Traits, bool kWS>
 void launch_impl(const cutlass::float_e4m3_t* a, const cutlass::float_e4m3_t* b,
                  const float* a_scale, const float* b_scale, const __nv_bfloat16* bias,
                  cutlass::bfloat16_t* out, int M, int N, int K, cudaStream_t stream) {
@@ -56,10 +59,23 @@ void launch_fp8_gemm_per_row(const void* a, const void* b, const float* a_scale,
   const auto* b_ptr = static_cast<const cutlass::float_e4m3_t*>(b);
   const auto* bias_ptr = static_cast<const __nv_bfloat16*>(bias);
   auto* out_ptr = static_cast<cutlass::bfloat16_t*>(out);
-  if (use_ws) {
-    launch_impl<true>(a_ptr, b_ptr, a_scale, b_scale, bias_ptr, out_ptr, M, N, K, stream);
+  auto launch = [&](auto traits_tag) {
+    using Traits = decltype(traits_tag);
+    if (use_ws) {
+      launch_impl<Traits, true>(a_ptr, b_ptr, a_scale, b_scale, bias_ptr, out_ptr, M, N, K, stream);
+    } else {
+      launch_impl<Traits, false>(a_ptr, b_ptr, a_scale, b_scale, bias_ptr, out_ptr, M, N, K,
+                                 stream);
+    }
+  };
+  if (M <= 128) {
+    launch(TinyMTraits{});
+  } else if (M <= 512 || (M <= 1024 && N >= 4096)) {
+    launch(SmallMTraits{});
+  } else if (M > 2048 && M <= 4096 && N < 4096) {
+    launch(BalancedTraits{});
   } else {
-    launch_impl<false>(a_ptr, b_ptr, a_scale, b_scale, bias_ptr, out_ptr, M, N, K, stream);
+    launch(DefaultTraits{});
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

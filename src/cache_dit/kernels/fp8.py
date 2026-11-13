@@ -47,7 +47,10 @@ def _fp8_ops_module():
   """
 
   ops = _get_required_ops_module()
-  missing = [name for name in ("fp8_quantize", "fp8_gemm") if not hasattr(ops, name)]
+  missing = [
+    name for name in ("fp8_quantize", "fp8_gemm", "fp8_quantize_gemm_per_row")
+    if not hasattr(ops, name)
+  ]
   if missing:
     raise RuntimeError(
       f"The loaded cache_dit._C_ops extension is missing {missing}. Rebuild it with "
@@ -227,6 +230,52 @@ def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_sc
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
 
+def _validate_quantize_gemm_metadata(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
+                                     bias: torch.Tensor | None) -> None:
+  """Validate the public per-row quantize+GEMM metadata.
+
+  :param x: BF16 activation ``[M, K]``.
+  :param b: Quantized weight ``[N, K]``.
+  :param b_scale: Per-output-channel weight scale.
+  :param bias: Optional BF16 bias ``[N]``.
+  """
+
+  _validate_quantize_metadata(x, _MODE_TO_ID["per_row"])
+  if b.dtype != torch.float8_e4m3fn or b.dim() != 2 or b.shape[1] != x.shape[1]:
+    raise ValueError("FP8 quantize+GEMM expects an E4M3 weight with shape [N, K].")
+  if b.shape[0] % 8 != 0:
+    raise ValueError("FP8 quantize+GEMM requires N % 8 == 0.")
+  if b_scale.dtype != torch.float32 or b_scale.numel() != b.shape[0]:
+    raise ValueError("FP8 quantize+GEMM expects one float32 scale per output channel.")
+  if bias is not None and (bias.dtype != torch.bfloat16 or bias.shape != (b.shape[0], )):
+    raise ValueError("FP8 quantize+GEMM bias must be bfloat16 with shape [N].")
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_quantize_gemm_per_row",
+  "(Tensor x, Tensor b, Tensor b_scale, Tensor? bias, bool use_ws) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_quantize_gemm_per_row", "CUDA")
+def _fp8_quantize_gemm_per_row(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
+                               bias: torch.Tensor | None, use_ws: bool) -> torch.Tensor:
+  _validate_quantize_gemm_metadata(x, b, b_scale, bias)
+  x = x.contiguous()
+  b = b.contiguous()
+  out = torch.empty((x.shape[0], b.shape[0]), dtype=torch.bfloat16, device=x.device)
+  _fp8_ops_module().fp8_quantize_gemm_per_row(x, b, b_scale.contiguous(), bias, out, use_ws)
+  return out
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_quantize_gemm_per_row")
+def _fake_fp8_quantize_gemm_per_row(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
+                                    bias: torch.Tensor | None, use_ws: bool) -> torch.Tensor:
+  del use_ws
+  _validate_quantize_gemm_metadata(x, b, b_scale, bias)
+  return x.new_empty((x.shape[0], b.shape[0]), dtype=torch.bfloat16)
+
+
 def fp8_quantize_torch(x: torch.Tensor,
                        mode: str = "per_row",
                        is_weight: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
@@ -324,4 +373,22 @@ def fp8_gemm(a: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id, use_ws)
 
 
-__all__ = ["fp8_gemm", "fp8_quantize", "fp8_quantize_torch"]
+def fp8_quantize_gemm(x: torch.Tensor,
+                      b: torch.Tensor,
+                      b_scale: torch.Tensor,
+                      bias: torch.Tensor | None = None,
+                      use_ws: bool = False) -> torch.Tensor:
+  """Quantize a BF16 activation per row and immediately run FP8 GEMM.
+
+  :param x: BF16 activation ``[M, K]``.
+  :param b: Quantized weight ``[N, K]``.
+  :param b_scale: Per-output-channel FP32 weight scale.
+  :param bias: Optional BF16 bias ``[N]``.
+  :param use_ws: Select the warp-specialized GEMM mainloop.
+  :returns: BF16 output ``[M, N]``.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_quantize_gemm_per_row(x, b, b_scale, bias, use_ws)
+
+
+__all__ = ["fp8_gemm", "fp8_quantize", "fp8_quantize_gemm", "fp8_quantize_torch"]

@@ -131,16 +131,16 @@ def set_compile_configs(
       inductor_config.conv_1x1_as_mm = True
       inductor_config.coordinate_descent_tuning = True
       inductor_config.coordinate_descent_check_all_directions = True
-      inductor_config.epilogue_fusion = False
 
-      # Enable epilogue and prologue fusion
-      if ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION or kwargs.get(
-          "epilogue_prologue_fusion",
-          False,
-      ):
-        inductor_config.epilogue_fusion = True
-        inductor_config.prologue_fusion = True
-        inductor_config.epilogue_fusion_first = True
+      # Enable epilogue and prologue fusion by default. The environment variable
+      # can disable it globally, while an explicit keyword takes precedence.
+      fusion_enabled = kwargs.get(
+        "epilogue_prologue_fusion",
+        ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION,
+      )
+      inductor_config.epilogue_fusion = fusion_enabled
+      inductor_config.prologue_fusion = fusion_enabled
+      inductor_config.epilogue_fusion_first = fusion_enabled
 
       # Dead code elimination
       inductor_config.dce = True  # default is False
