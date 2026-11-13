@@ -145,16 +145,45 @@ def test_flashinfer_pack_requires_channel_scales() -> None:
 
 
 def test_flashinfer_runtime_validation() -> None:
-  with pytest.raises(ValueError, match="only supported for precision='nvfp4'"):
-    SVDQW4A4Linear(128, 128, precision="int4", runtime_kernel="flashinfer")
-  with pytest.raises(ValueError, match="torch.bfloat16"):
-    SVDQW4A4Linear(128,
-                   128,
-                   precision="nvfp4",
-                   runtime_kernel="flashinfer",
-                   torch_dtype=torch.float16)
+  for runtime in ("flashinfer", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120"):
+    with pytest.raises(ValueError, match="only supported for precision='nvfp4'"):
+      SVDQW4A4Linear(128, 128, precision="int4", runtime_kernel=runtime)
+    with pytest.raises(ValueError, match="torch.bfloat16"):
+      SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel=runtime, torch_dtype=torch.float16)
   with pytest.raises(ValueError, match="runtime_kernel must be"):
-    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="flashinfer+cute-dsl")
+    SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="flashinfer+cute-dsl-unfused")
+
+
+def test_flashinfer_runtime_spellings_normalize() -> None:
+  from cache_dit.kernels.flashinfer import CUTE_DSL_RUNTIME, CUTLASS_SM120_RUNTIME, resolve_runtime
+
+  # Bare `flashinfer` names the fused-prefix chain; the CuTe chain is always explicit.
+  assert resolve_runtime("flashinfer") == CUTLASS_SM120_RUNTIME
+  assert resolve_runtime(CUTLASS_SM120_RUNTIME) == CUTLASS_SM120_RUNTIME
+  assert resolve_runtime(CUTE_DSL_RUNTIME) == CUTE_DSL_RUNTIME
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4",
+                        runtime_kernel="flashinfer").runtime_kernel == CUTLASS_SM120_RUNTIME
+  assert SVDQW4A4Linear(128, 128, precision="nvfp4",
+                        runtime_kernel=CUTE_DSL_RUNTIME).runtime_kernel == CUTE_DSL_RUNTIME
+
+
+def test_flashinfer_cutlass_runtime_rejects_uncovered_ranks() -> None:
+  from cache_dit.kernels.flashinfer import CUTE_DSL_RUNTIME, CUTLASS_SM120_LORA_RANKS
+
+  assert CUTLASS_SM120_LORA_RANKS == (32, 64)
+  for rank in (96, 128):
+    with pytest.raises(ValueError, match="only supports LoRA ranks"):
+      SVDQW4A4Linear(128,
+                     128,
+                     rank=rank,
+                     precision="nvfp4",
+                     runtime_kernel="flashinfer+cutlass-sm120")
+    # The CuTe chain covers every rank the cache-dit runtime allows.
+    assert SVDQW4A4Linear(128, 128, rank=rank, precision="nvfp4",
+                          runtime_kernel=CUTE_DSL_RUNTIME).rank == rank
+  # Rank granularity is enforced for both chains, before the chain coverage check for cutlass.
+  with pytest.raises(ValueError, match="rank > 0 and a multiple of 32"):
+    SVDQW4A4Linear(128, 128, rank=16, precision="nvfp4", runtime_kernel=CUTE_DSL_RUNTIME)
 
 
 def test_flashinfer_pack_preserves_the_legacy_state_dict() -> None:
@@ -181,14 +210,18 @@ def test_flashinfer_pack_follows_device_moves() -> None:
 
 
 def test_flashinfer_runtime_is_never_the_default() -> None:
+  from cache_dit.kernels.flashinfer import CUTLASS_SM120_RUNTIME
+
   assert SVDQW4A4Linear(128, 128, precision="nvfp4").runtime_kernel == "native"
   assert SVDQW4A4Linear(128, 128, precision="nvfp4", runtime_kernel="cute").runtime_kernel == "cute"
   assert SVDQW4A4Linear(128, 128, precision="nvfp4",
-                        runtime_kernel="flashinfer").runtime_kernel == "flashinfer"
+                        runtime_kernel="flashinfer").runtime_kernel == CUTLASS_SM120_RUNTIME
 
 
 def test_flashinfer_runtime_validation_covers_rank_granularity() -> None:
+  from cache_dit.kernels.flashinfer import CUTE_DSL_RUNTIME
+
   with pytest.raises(ValueError, match="rank > 0 and a multiple of 32"):
-    SVDQW4A4Linear(128, 128, rank=0, precision="nvfp4", runtime_kernel="flashinfer")
+    SVDQW4A4Linear(128, 128, rank=0, precision="nvfp4", runtime_kernel=CUTE_DSL_RUNTIME)
   with pytest.raises(ValueError, match="rank > 0 and a multiple of 32"):
-    SVDQW4A4Linear(128, 128, rank=48, precision="nvfp4", runtime_kernel="flashinfer")
+    SVDQW4A4Linear(128, 128, rank=48, precision="nvfp4", runtime_kernel=CUTE_DSL_RUNTIME)

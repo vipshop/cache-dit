@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 
 from cache_dit.kernels import cuda_ext_is_available
+from cache_dit.kernels.flashinfer import CUTE_DSL_RUNTIME
+from cache_dit.kernels.flashinfer import CUTLASS_SM120_RUNTIME
 from cache_dit.kernels.flashinfer import flashinfer_available
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
@@ -27,7 +29,7 @@ def _relative_l2(actual: torch.Tensor, expected: torch.Tensor) -> float:
           expected.float().norm().clamp_min(1e-12)).item()
 
 
-def _make_pair(m: int, n: int, k: int, rank: int = 32):
+def _make_pair(m: int, n: int, k: int, rank: int = 32, runtime: str = CUTE_DSL_RUNTIME):
   torch.manual_seed(0)
   linear = nn.Linear(k, n, bias=True).to(device="cuda", dtype=torch.bfloat16)
   x = torch.randn(m, k, device="cuda", dtype=torch.bfloat16) / (k ** 0.25)
@@ -36,7 +38,7 @@ def _make_pair(m: int, n: int, k: int, rank: int = 32):
                          n,
                          rank=rank,
                          precision="nvfp4",
-                         runtime_kernel="flashinfer",
+                         runtime_kernel=runtime,
                          torch_dtype=torch.bfloat16,
                          device="cuda")
   other.load_state_dict(native.state_dict())
@@ -84,3 +86,18 @@ def test_flashinfer_runtime_rejects_the_split_quantize_api() -> None:
     flash.quantize(x)
   with pytest.raises(RuntimeError, match="flashinfer"):
     flash.forward_quant(None, None, None)
+
+
+def test_flashinfer_cutlass_runtime_matches_the_cute_chain() -> None:
+  _require_sm120()
+  if torch.cuda.get_device_capability(0) != (12, 0):
+    pytest.skip("FlashInfer's cutlass-sm120 chain requires a 12.0 device")
+  _, x, _, cute = _make_pair(512, 320, 320)
+  _, _, _, cutlass = _make_pair(512, 320, 320, runtime=CUTLASS_SM120_RUNTIME)
+  with torch.no_grad():
+    expected = cute(x).float()
+    actual = cutlass(x).float()
+  assert torch.isfinite(actual).all()
+  # Both runtimes share the derived pack and the alpha/l1 contract; only FlashInfer's chain
+  # differs, so this is a parity check between two FlashInfer routes.
+  assert _relative_l2(actual, expected) < 5e-3

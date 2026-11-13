@@ -9,6 +9,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from ..config import _SVDQ_RUNTIME_KERNELS
 from .dtensor import SVDQShardSpec
 from .dtensor import SVDQW4A4ShardLinear
 from .linear import SVDQW4A4Linear
@@ -55,11 +56,12 @@ def _resolve_svdq_group_size(precision: str) -> int:
 
 def _validate_svdq_runtime_kernel(precision: str, runtime_kernel: str | None) -> None:
   precision = _normalize_svdq_precision(precision)
-  if runtime_kernel is not None and runtime_kernel not in {"native", "cute", "flashinfer"}:
-    raise ValueError("runtime_kernel must be 'native', 'cute', 'flashinfer', or None; "
+  if runtime_kernel is not None and runtime_kernel not in _SVDQ_RUNTIME_KERNELS:
+    raise ValueError(f"runtime_kernel must be one of {_SVDQ_RUNTIME_KERNELS} or None; "
                      f"got {runtime_kernel!r}. The deprecated per-implementation selectors are "
                      "rejected; the native runtime now has a single W4A4 GEMM.")
-  if precision == "int4" and runtime_kernel in {"cute", "flashinfer"}:
+  if precision == "int4" and (runtime_kernel == "cute" or
+                              (runtime_kernel or "").startswith("flashinfer")):
     raise ValueError(f"runtime_kernel={runtime_kernel!r} is only supported for SVDQ NVFP4.")
 
 

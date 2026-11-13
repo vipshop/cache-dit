@@ -6,6 +6,7 @@ from torch import nn
 from ...kernels import svdq_gemm_w4a4
 from ...kernels import svdq_quantize_w4a4
 from ..config import _FLASHINFER_LORA_RANK_GRANULARITY
+from ..config import _SVDQ_RUNTIME_KERNELS
 
 
 class SVDQW4A4Linear(nn.Module):
@@ -51,10 +52,12 @@ class SVDQW4A4Linear(nn.Module):
     :param runtime_kernel: Packed GEMM family. `None` selects the native W4A4
       GEMM for both INT4 and NVFP4. `cute` is an NVFP4-only validation opt-in;
       it is not enabled by default until its GEMM and end-to-end performance
-      meet the release gate. `flashinfer` runs FlashInfer's own NVFP4 SVDQuant
-      chain on a pack derived from this checkpoint; it is a comparison runtime
-      (one extra `e4m3` scale re-encode, so it is not numerically equivalent to
-      `native`/`cute`) and never a default.
+      meet the release gate. `flashinfer`, `flashinfer+cute-dsl`, and
+      `flashinfer+cutlass-sm120` run FlashInfer's own NVFP4 SVDQuant chain on a
+      pack derived from this checkpoint; bare `flashinfer` resolves to
+      `flashinfer+cutlass-sm120`. They are comparison runtimes (one extra `e4m3`
+      scale re-encode, so they are not numerically equivalent to `native`/`cute`)
+      and never a default.
     :param lora_layout: Layout of the LoRA-down term produced by the
       activation quantizer and consumed by the GEMM. With `runtime_kernel="cute"`,
       `None` defaults to `row_major`, the row-major BF16 `D` emitted by the CuTe
@@ -72,23 +75,32 @@ class SVDQW4A4Linear(nn.Module):
       device = torch.device("cpu")
     if rank < 0:
       raise ValueError(f"rank must be non-negative, got {rank}.")
-    if runtime_kernel is not None and runtime_kernel not in {"native", "cute", "flashinfer"}:
-      raise ValueError("runtime_kernel must be 'native', 'cute', 'flashinfer', or None; "
+    if runtime_kernel is not None and runtime_kernel not in _SVDQ_RUNTIME_KERNELS:
+      raise ValueError(f"runtime_kernel must be one of {_SVDQ_RUNTIME_KERNELS} or None; "
                        f"got {runtime_kernel!r}. The deprecated per-implementation selectors are "
                        "rejected; the native runtime now has a single W4A4 GEMM.")
     resolved_runtime_kernel = runtime_kernel
     if resolved_runtime_kernel is None:
       resolved_runtime_kernel = "native"
-    if resolved_runtime_kernel in {"cute", "flashinfer"} and precision != "nvfp4":
+    is_flashinfer = resolved_runtime_kernel.startswith("flashinfer")
+    if is_flashinfer:
+      from ...kernels.flashinfer import chain_for_runtime
+      from ...kernels.flashinfer import check_chain_support
+      from ...kernels.flashinfer import resolve_runtime
+
+      # Bare `flashinfer` resolves to the fused-prefix chain; store the explicit spelling so a
+      # saved config never depends on the alias.
+      resolved_runtime_kernel = resolve_runtime(resolved_runtime_kernel)
+      check_chain_support(chain_for_runtime(resolved_runtime_kernel), rank)
+    if (resolved_runtime_kernel == "cute" or is_flashinfer) and precision != "nvfp4":
       raise ValueError(f"runtime_kernel={resolved_runtime_kernel!r} is only supported for "
                        "precision='nvfp4'.")
-    if resolved_runtime_kernel in {"cute", "flashinfer"} and torch_dtype != torch.bfloat16:
+    if (resolved_runtime_kernel == "cute" or is_flashinfer) and torch_dtype != torch.bfloat16:
       raise ValueError(f"runtime_kernel={resolved_runtime_kernel!r} currently requires "
                        "torch_dtype=torch.bfloat16.")
-    if (resolved_runtime_kernel == "flashinfer"
-        and (rank == 0 or rank % _FLASHINFER_LORA_RANK_GRANULARITY != 0)):
-      raise ValueError("runtime_kernel='flashinfer' requires rank > 0 and a multiple of "
-                       f"{_FLASHINFER_LORA_RANK_GRANULARITY}; got rank={rank}.")
+    if is_flashinfer and (rank == 0 or rank % _FLASHINFER_LORA_RANK_GRANULARITY != 0):
+      raise ValueError(f"runtime_kernel={resolved_runtime_kernel!r} requires rank > 0 and a "
+                       f"multiple of {_FLASHINFER_LORA_RANK_GRANULARITY}; got rank={rank}.")
     if lora_layout is not None and lora_layout not in {"native", "row_major"}:
       raise ValueError("lora_layout must be 'native', 'row_major', or None; "
                        f"got {lora_layout!r}.")
@@ -238,7 +250,7 @@ class SVDQW4A4Linear(nn.Module):
     if self._needs_k_pad:
       x = F.pad(x, (0, self._padded_in_features - self.in_features))
 
-    if self.runtime_kernel == "flashinfer":
+    if self.runtime_kernel.startswith("flashinfer"):
       # FlashInfer runs quantization, the LoRA-down GEMM, and the fused W4A4 GEMM as one call, so
       # it replaces the quantize/forward_quant pair instead of consuming their outputs. The dense
       # result is already `[tokens, padded_out]`, so the shared epilogue below still applies.
@@ -284,7 +296,7 @@ class SVDQW4A4Linear(nn.Module):
       `forward_quant`.
     """
 
-    if self.runtime_kernel == "flashinfer":
+    if self.runtime_kernel.startswith("flashinfer"):
       raise RuntimeError(
         "runtime_kernel='flashinfer' runs the whole quantize + LoRA-down + GEMM chain inside "
         "FlashInfer's `svdquant_linear`; call `forward` instead of `quantize`/`forward_quant`.")
@@ -325,7 +337,7 @@ class SVDQW4A4Linear(nn.Module):
     self._flashinfer_pack_ready = False
     if self.runtime_kernel == "cute":
       self._prepare_cute_pack()
-    elif self.runtime_kernel == "flashinfer":
+    elif self.runtime_kernel.startswith("flashinfer"):
       self._prepare_flashinfer_pack()
 
   def _apply(self, fn, *args, **kwargs):
@@ -342,7 +354,7 @@ class SVDQW4A4Linear(nn.Module):
     module = super()._apply(fn, *args, **kwargs)
     if rebuild_cute and self.runtime_kernel == "cute":
       self._prepare_cute_pack()
-    elif rebuild_flashinfer and self.runtime_kernel == "flashinfer":
+    elif rebuild_flashinfer and self.runtime_kernel.startswith("flashinfer"):
       self._prepare_flashinfer_pack()
     return module
 
@@ -412,6 +424,7 @@ class SVDQW4A4Linear(nn.Module):
       l1_weight=self._fi_proj_up,
       pre_quant_scale=self._fi_pre_quant_scale,
       bias=self._fi_bias,
+      runtime_kernel=self.runtime_kernel,
     )
 
   def forward_quant(
@@ -432,7 +445,7 @@ class SVDQW4A4Linear(nn.Module):
       GEMM runtime kernel.
     """
 
-    if self.runtime_kernel == "flashinfer":
+    if self.runtime_kernel.startswith("flashinfer"):
       raise RuntimeError(
         "runtime_kernel='flashinfer' runs the whole quantize + LoRA-down + GEMM chain inside "
         "FlashInfer's `svdquant_linear`; call `forward` instead of `quantize`/`forward_quant`.")
