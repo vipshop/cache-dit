@@ -9,7 +9,7 @@ logger = init_logger(__name__)
 
 
 def set_compile_configs(
-    descent_tuning: bool = True,  # more compiling times but may get better performance.
+    descent_tuning: bool = False,  # aggressive inductor tuning, ~17x longer compile.
     cuda_graphs: bool = False,
     force_disable_compile_caches: bool = False,
     fx_graph_cache: bool = True,
@@ -26,7 +26,12 @@ def set_compile_configs(
   """Apply cache-dit's recommended global `torch.compile` configuration tweaks.
 
   :param descent_tuning: Whether to enable the more aggressive inductor tuning set
-    used by cache-dit for generative workloads.
+    used by cache-dit for generative workloads (coordinate descent tuning,
+    epilogue/prologue fusion ordering, dead code elimination, conv_1x1_as_mm).
+    Disabled by default: measured on a diffusion transformer it inflated the compile
+    time by roughly an order of magnitude (coordinate descent tuning benchmarks every
+    generated kernel) without changing the steady-state step latency, so enable it
+    only after measuring your own workload.
   :param cuda_graphs: Whether to enable CUDA graphs inside triton-generated kernels.
   :param force_disable_compile_caches: Whether to force-disable inductor compile
     caches for debugging or reproducibility.
@@ -105,6 +110,37 @@ def set_compile_configs(
     ):
       inductor_config.cutedsl_enable_autotuning = cutedsl_enable_autotuning
 
+    # The toggles below are driven by explicit arguments or env vars, so they must stay
+    # above the early return: they used to be unreachable whenever descent tuning was
+    # disabled, which is now the default.
+    if force_disable_compile_caches:
+      inductor_config.force_disable_caches = True
+      inductor_config.fx_graph_cache = False
+      inductor_config.fx_graph_remote_cache = False
+      inductor_config.autotune_local_cache = False  # default is True
+
+    if hasattr(inductor_config, "use_fast_math"):
+      inductor_config.use_fast_math = use_fast_math
+    if hasattr(inductor_config, "cuda.use_fast_math"):
+      inductor_config.cuda.use_fast_math = use_fast_math
+
+    # Enable epilogue and prologue fusion by default. The environment variable
+    # can disable it globally, while an explicit keyword takes precedence.
+    fusion_enabled = kwargs.get(
+      "epilogue_prologue_fusion",
+      ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION,
+    )
+    if current_platform.device_type == "npu":
+      # NPU: epilogue fusion is not supported on that backend.
+      inductor_config.epilogue_fusion = False
+    else:
+      inductor_config.triton.cudagraphs = cuda_graphs
+      inductor_config.epilogue_fusion = fusion_enabled
+      inductor_config.prologue_fusion = fusion_enabled
+      # Reordering the fusion schedule is part of the aggressive tuning set.
+      if descent_tuning:
+        inductor_config.epilogue_fusion_first = fusion_enabled
+
     if not descent_tuning:
       return
 
@@ -114,17 +150,14 @@ def set_compile_configs(
         "Force disable custom compile config.", )
       return
 
-    # Below are default settings for torch.compile, you can change
-    # them to your needs and test the performance
+    # Below are the aggressive inductor tuning defaults for generative workloads.
     inductor_config.max_fusion_size = 64
     inductor_config.max_pointwise_cat_inputs = 8
 
     if current_platform.device_type == "npu":
       # NPU: skip CUDA-specific inductor configs (triton, coordinate_descent, etc)
       inductor_config.dce = True  # default is False
-      inductor_config.epilogue_fusion = False
     else:
-      inductor_config.triton.cudagraphs = cuda_graphs
       inductor_config.triton.use_block_ptr = False
       inductor_config.triton.codegen_upcast_to_fp32 = True
 
@@ -133,31 +166,8 @@ def set_compile_configs(
       inductor_config.coordinate_descent_tuning = True
       inductor_config.coordinate_descent_check_all_directions = True
 
-      # Enable epilogue and prologue fusion by default. The environment variable
-      # can disable it globally, while an explicit keyword takes precedence.
-      fusion_enabled = kwargs.get(
-        "epilogue_prologue_fusion",
-        ENV.CACHE_DIT_EPILOGUE_PROLOGUE_FUSION,
-      )
-      inductor_config.epilogue_fusion = fusion_enabled
-      inductor_config.prologue_fusion = fusion_enabled
-      inductor_config.epilogue_fusion_first = fusion_enabled
-
       # Dead code elimination
       inductor_config.dce = True  # default is False
-
-    # May need to force disable all cache
-    if force_disable_compile_caches:
-      inductor_config.force_disable_caches = True
-      inductor_config.fx_graph_cache = False
-      inductor_config.fx_graph_remote_cache = False
-      inductor_config.autotune_local_cache = False  # default is True
-
-    # Use fast math
-    if hasattr(inductor_config, "use_fast_math"):
-      inductor_config.use_fast_math = use_fast_math
-    if hasattr(inductor_config, "cuda.use_fast_math"):
-      inductor_config.cuda.use_fast_math = use_fast_math
   except Exception:
     pass
 
