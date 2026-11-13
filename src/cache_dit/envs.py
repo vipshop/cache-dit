@@ -32,9 +32,10 @@ class ENV(object):
 
   # Torch compile ENVs
 
-  # Enable epilogue and prologue fusion in cache-dit compile optimizations
+  # Enable epilogue and prologue fusion in cache-dit compile optimizations by
+  # default. Users can set the environment variable to 0 to disable this behavior.
   CACHE_DIT_EPILOGUE_PROLOGUE_FUSION: bool = bool(
-    int(os.environ.get("CACHE_DIT_EPILOGUE_PROLOGUE_FUSION", "0")))
+    int(os.environ.get("CACHE_DIT_EPILOGUE_PROLOGUE_FUSION", "1")))
 
   # Enable compile compute-communication (all reduce) overlap in cache-dit by
   # default. Users can set the environment variable to 0 to disable this behavior.

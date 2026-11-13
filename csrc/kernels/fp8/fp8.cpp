@@ -116,9 +116,19 @@ void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
   }
 }
 
+void fp8_quantize_gemm_per_row(const at::Tensor& input, const at::Tensor& b,
+                               const at::Tensor& b_scale, const std::optional<at::Tensor>& bias,
+                               at::Tensor& out, bool use_ws) {
+  auto quantized = at::empty(input.sizes(), input.options().dtype(at::kFloat8_e4m3fn));
+  auto scale = at::empty({input.size(0)}, input.options().dtype(at::kFloat));
+  fp8_quantize(input, quantized, scale, kPerRow, false);
+  fp8_gemm(quantized, b, scale, b_scale, bias, out, kPerRow, use_ws);
+}
+
 void register_fp8_ops(pybind11::module_& ops) {
   ops.def("fp8_quantize", &fp8_quantize);
   ops.def("fp8_gemm", &fp8_gemm);
+  ops.def("fp8_quantize_gemm_per_row", &fp8_quantize_gemm_per_row);
 }
 
 }  // namespace cache_dit::fp8

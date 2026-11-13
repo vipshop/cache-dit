@@ -23,20 +23,70 @@ __device__ __forceinline__ float warp_max(float value) {
   return value;
 }
 
+// =================================================================================================
+// Per-row BF16 -> FP8-E4M3 quantization: math, layout, and numerical contract
+// =================================================================================================
+// For each input row m, this kernel computes
+//
+//   amax[m]  = max_k abs(float(input[m, k]))
+//   scale[m] = amax[m] == 0 ? 0 : amax[m] / 448
+//   q[m, k]  = satfinite_e4m3(float(input[m, k]) / (scale[m] == 0 ? 1 : scale[m]))
+//
+// scale is the dequantization multiplier consumed by the FP8 GEMM. It is deliberately not the
+// reciprocal quantization multiplier. Keeping this convention makes dequant(q) = q * scale and
+// preserves exact zeros: an all-zero row has scale=0 and q=0, never 0/0. The conversion helper
+// performs the E4M3 rounding and saturation; values are not rounded through an intermediate FP16.
+// fmaxf also defines the native NaN policy: NaNs do not propagate into amax as they do in
+// torch.amax.
+//
+// Parallel decomposition:
+//   * kWarpsPerRow consecutive warps own one logical row; the production launcher uses eight.
+//   * A group therefore contains 256 lanes, and each lane reads eight contiguous BF16 values per
+//     iteration (16 B). The last dimension is checked to be a multiple of 16, so row starts and
+//     every Vec8 access remain aligned; there is no hidden scalar K-tail in this main kernel.
+//   * kRowsPerBlock is one for the production configuration. `row_in_block` and `group_lane`
+//     retain the more general template mapping without changing the public row-major ABI.
+//
+// The algorithm has two logical passes over a row. Pass 1 reduces amax and pass 2 converts/stores.
+// With kCacheInput=true, pass 1 also leaves the Vec8 input in dynamic shared memory so pass 2 does
+// not repeat the global read. The launcher selects this only for K <= 4096, bounding the cache to
+// 8 KiB per row. With kCacheInput=false, input_cache has size zero and pass 2 rereads global
+// memory; this avoids sacrificing occupancy on long-K rows. Both instantiations implement the same
+// math.
+//
+// Reduction and synchronization are hierarchical:
+//   1. each lane reduces its private values in FP32;
+//   2. warp_max performs an xor-shuffle reduction, preserving the native fmaxf NaN behavior;
+//   3. lane zero publishes each warp result to warp_amax;
+//   4. one __syncthreads makes both the reductions and cached BF16 input visible to the row group;
+//   5. every lane reduces the small warp_amax array and hence uses an identical safe scale.
+// No scale array entry is read before step 4, and no second CTA-wide barrier is required.
+template <int kWarpsPerRow, bool kCacheInput>
 __global__ void quantize_per_row_kernel(const __nv_bfloat16* __restrict__ input,
                                         __nv_fp8_e4m3* __restrict__ output,
                                         float* __restrict__ scale, int64_t rows, int64_t cols) {
+  static_assert(kWarpsPerBlock % kWarpsPerRow == 0, "per-row warp groups must cover the whole CTA");
+  constexpr int kRowsPerBlock = kWarpsPerBlock / kWarpsPerRow;
+  constexpr int kGroupSize = kWarpsPerRow * kWarpSize;
+  extern __shared__ __align__(16) __nv_bfloat16 input_cache[];
   const int warp = threadIdx.x / kWarpSize;
   const int lane = threadIdx.x % kWarpSize;
-  const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp;
-  if (row >= rows) {
-    return;
-  }
+  const int row_in_block = warp / kWarpsPerRow;
+  const int group_lane = (warp % kWarpsPerRow) * kWarpSize + lane;
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * kRowsPerBlock + row_in_block;
+  const bool valid = row < rows;
 
+  // Stage 1: form the row view and compute lane-private amax. Invalid rows still participate in
+  // barriers but are prevented from loading, storing, or publishing a scale by `valid`.
   const __nv_bfloat16* src = input + row * cols;
+  __nv_bfloat16* cached = input_cache + row_in_block * cols;
   float amax = 0.0f;
-  for (int64_t col = static_cast<int64_t>(lane) * 8; col < cols; col += kWarpSize * 8) {
+  for (int64_t col = static_cast<int64_t>(group_lane) * 8; valid && col < cols;
+       col += kGroupSize * 8) {
     const Vec8BF16 vec = *reinterpret_cast<const Vec8BF16*>(src + col);
+    if constexpr (kCacheInput) {
+      *reinterpret_cast<Vec8BF16*>(cached + col) = vec;
+    }
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
       amax = fmaxf(amax, fabsf(__bfloat162float(vec.elem[i])));
@@ -44,14 +94,27 @@ __global__ void quantize_per_row_kernel(const __nv_bfloat16* __restrict__ input,
   }
   amax = warp_max(amax);
 
-  const float safe_scale = amax == 0.0f ? 1.0f : amax / kE4M3Max;
+  __shared__ float warp_amax[kWarpsPerBlock];
   if (lane == 0) {
+    warp_amax[warp] = amax;
+  }
+  __syncthreads();
+  amax = 0.0f;
+#pragma unroll
+  for (int i = 0; i < kWarpsPerRow; ++i) {
+    amax = fmaxf(amax, warp_amax[row_in_block * kWarpsPerRow + i]);
+  }
+
+  const float safe_scale = amax == 0.0f ? 1.0f : amax / kE4M3Max;
+  if (valid && group_lane == 0) {
     scale[row] = amax == 0.0f ? 0.0f : safe_scale;
   }
 
   __nv_fp8_e4m3* dst = output + row * cols;
-  for (int64_t col = static_cast<int64_t>(lane) * 8; col < cols; col += kWarpSize * 8) {
-    const Vec8BF16 vec = *reinterpret_cast<const Vec8BF16*>(src + col);
+  for (int64_t col = static_cast<int64_t>(group_lane) * 8; valid && col < cols;
+       col += kGroupSize * 8) {
+    const Vec8BF16 vec = kCacheInput ? *reinterpret_cast<const Vec8BF16*>(cached + col)
+                                     : *reinterpret_cast<const Vec8BF16*>(src + col);
     float values[8];
 #pragma unroll
     for (int i = 0; i < 8; ++i) {
@@ -276,8 +339,17 @@ void fp8_quantize(const at::Tensor& input, at::Tensor& output, at::Tensor& scale
 
   if (mode == kPerRow) {
     TORCH_CHECK(scale.numel() == rows, "per-row scale must have M elements.");
-    const int blocks = static_cast<int>((rows + kWarpsPerBlock - 1) / kWarpsPerBlock);
-    quantize_per_row_kernel<<<blocks, kThreads, 0, stream>>>(src, dst, scales, rows, cols);
+    constexpr int kWarpsPerRow = 8;
+    constexpr int kRowsPerBlock = kWarpsPerBlock / kWarpsPerRow;
+    const int blocks = static_cast<int>((rows + kRowsPerBlock - 1) / kRowsPerBlock);
+    if (cols <= 4096) {
+      const int cache_bytes = static_cast<int>(kRowsPerBlock * cols * sizeof(__nv_bfloat16));
+      quantize_per_row_kernel<kWarpsPerRow, true>
+        <<<blocks, kThreads, cache_bytes, stream>>>(src, dst, scales, rows, cols);
+    } else {
+      quantize_per_row_kernel<kWarpsPerRow, false>
+        <<<blocks, kThreads, 0, stream>>>(src, dst, scales, rows, cols);
+    }
   } else if (mode == kPerTensor) {
     TORCH_CHECK(scale.numel() == 1, "per-tensor scale must be a single element.");
     const int blocks =

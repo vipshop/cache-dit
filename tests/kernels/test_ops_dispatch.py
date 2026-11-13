@@ -17,6 +17,7 @@ import cache_dit.kernels.svdquant as svdq_ops
   [
     ("fused_merge_attn_states", attn_ops),
     ("fp8_quantize", fp8_ops),
+    ("fp8_quantize_gemm", fp8_ops),
     ("fp8_gemm", fp8_ops),
     ("ulysses_fp8_o_permute_quant", ulysses_ops),
     ("ulysses_fp8_o_permute_dequant", ulysses_ops),
