@@ -89,6 +89,7 @@ nav:
   - Developer Guide: 
     - pre-commit: developer_guide/PRE_COMMIT.md
     - Support New Model: developer_guide/SUPPORT_NEW_MODEL.md
+    - Agentic Workflows: developer_guide/AGENTS.md
   - Quick Examples: EXAMPLES.md
   - Community Integration: COMMUNITY.md
   - FAQ: FAQ.md
