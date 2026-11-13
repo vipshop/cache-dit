@@ -145,14 +145,15 @@ struct SfSmemAtom {
     decltype(make_layout(make_shape(shapeM{}, shapeK{}), make_stride(strideM{}, strideK{})));
 };
 
-template <int kBN_ = 128, int kStages_ = 4>
+template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64>
 struct Fp4GemmTraits {
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
-  static constexpr int kBK = 64;
+  static constexpr int kBK = kBK_;
   static constexpr int kStages = kStages_;
   static constexpr int kNumThreads = kBM / 16 * 32;
   static_assert(kBN % 128 == 0, "BN must be a multiple of 128 for the SF atom");
+  static_assert(kBK % 64 == 0, "BK must contain whole K64 block-scaled MMA atoms");
   static_assert(kStages >= 2, "At least two stages are required");
 
   using Element = cutlass::float_e2m1_t;
@@ -168,7 +169,7 @@ struct Fp4GemmTraits {
   using TiledMma =
     decltype(make_tiled_mma(MmaAtom{}, AtomLayoutMNK{}, Tile<PermTileM, PermTileN, PermTileK>{}));
   static_assert(size<0>(typename TiledMma::AtomShape_MNK{}) == 16 &&
-                  size<2>(typename TiledMma::AtomShape_MNK{}) == kBK,
+                  size<2>(typename TiledMma::AtomShape_MNK{}) == 64,
                 "The block-scaled atom must be 16x8x64");
 
   using SmemAlloc = uint4_t;
@@ -265,7 +266,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   if (tid == 0) {
     for (int stage = 0; stage < kStages; ++stage) {
       TmaBarrier::init(&full[stage], 1);
-      CtaBarrier::init(&empty[stage], kNumThreads);
+      CtaBarrier::init(&empty[stage], kNumThreads / 32);
     }
   }
   __syncthreads();
@@ -329,8 +330,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   };
 
   const int num_k_tiles = K / kBK;
-  for (int stage = 0; stage < kStages; ++stage) {
-    CtaBarrier::arrive(&empty[stage]);
+  if (tid % 32 == 0) {
+    for (int stage = 0; stage < kStages; ++stage) {
+      CtaBarrier::arrive(&empty[stage]);
+    }
   }
   if (tid == 0) {
     for (int kt = 0; kt < kStages && kt < num_k_tiles; ++kt) {
@@ -344,12 +347,19 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
     const int phase = (kt / kStages) & 1;
     TmaBarrier::wait(&full[stage], phase);
     cutlass::arch::fence_view_async_shared();
-    copy(s2r_copy_a, tCsA(_, _, _, stage), tCrA_view);
-    copy(s2r_copy_b, tCsB(_, _, _, stage), tCrB_view);
-    copy(tCsSFA(_, _, _, stage), tCrSFA_view);
-    copy(tCsSFB(_, _, _, stage), tCrSFB_view);
-    cute::gemm(tiled_mma, make_zip_tensor(tCrA, tCrSFA), make_zip_tensor(tCrB, tCrSFB), tCrC);
-    CtaBarrier::arrive(&empty[stage]);
+#pragma unroll
+    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+      copy(s2r_copy_a, tCsA(_, _, k_block, stage), tCrA_view(_, _, k_block));
+      copy(tCsSFA(_, _, k_block, stage), tCrSFA_view(_, _, k_block));
+      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
+      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
+                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
+    }
+    __syncwarp();
+    if (tid % 32 == 0) {
+      CtaBarrier::arrive(&empty[stage]);
+    }
     if (tid == 0) {
       const int next = kt + kStages;
       if (next < num_k_tiles) {
@@ -362,19 +372,21 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
 
   __syncthreads();
   auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+  float col_scale[kCCols];
+  float col_bias[kCCols];
+#pragma unroll
+  for (int col = 0; col < kCCols; ++col) {
+    const int n = n0 + get<1>(tScC_rc(0, col));
+    col_scale[col] = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
+    col_bias[col] = bias != nullptr && n < N ? static_cast<float>(bias[n]) : 0.0f;
+  }
 #pragma unroll
   for (int row = 0; row < kCRows; ++row) {
     const int m = m0 + get<0>(tScC_rc(row, 0));
     const float scale_a = kLevel1A ? (m < M ? sa[m] : 0.0f) : 1.0f;
 #pragma unroll
     for (int col = 0; col < kCCols; ++col) {
-      const int n = n0 + get<1>(tScC_rc(row, col));
-      const float scale_b = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
-      float value = tCrC_rc(row, col) * scale_a * scale_b;
-      if (bias != nullptr && n < N) {
-        value += static_cast<float>(bias[n]);
-      }
-      tCrC_rc(row, col) = value;
+      tCrC_rc(row, col) = tCrC_rc(row, col) * scale_a * col_scale[col] + col_bias[col];
     }
   }
   auto tCrCh = convert_type<ElementO>(tCrC);
@@ -463,7 +475,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   if (tid == 0) {
     for (int stage = 0; stage < kStages; ++stage) {
       TmaBarrier::init(&full[stage], 1);
-      CtaBarrier::init(&empty[stage], kNumThreads);
+      CtaBarrier::init(&empty[stage], kNumThreads / 32);
     }
   }
   __syncthreads();
@@ -485,7 +497,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   };
 
   const int num_k_tiles = K / kBK;
-  if (tid >= kProducerThreads) {
+  if (tid >= kProducerThreads && tid % 32 == 0) {
     for (int stage = 0; stage < kStages; ++stage) {
       CtaBarrier::arrive(&empty[stage]);
     }
@@ -547,29 +559,38 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     const int phase = (kt / kStages) & 1;
     TmaBarrier::wait(&full[stage], phase);
     cutlass::arch::fence_view_async_shared();
-    copy(s2r_copy_a, tCsA(_, _, _, stage), tCrA_view);
-    copy(s2r_copy_b, tCsB(_, _, _, stage), tCrB_view);
-    copy(tCsSFA(_, _, _, stage), tCrSFA_view);
-    copy(tCsSFB(_, _, _, stage), tCrSFB_view);
-    cute::gemm(tiled_mma, make_zip_tensor(tCrA, tCrSFA), make_zip_tensor(tCrB, tCrSFB), tCrC);
-    CtaBarrier::arrive(&empty[stage]);
+#pragma unroll
+    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
+      copy(s2r_copy_a, tCsA(_, _, k_block, stage), tCrA_view(_, _, k_block));
+      copy(tCsSFA(_, _, k_block, stage), tCrSFA_view(_, _, k_block));
+      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
+      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
+                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
+    }
+    __syncwarp();
+    if (ctid % 32 == 0) {
+      CtaBarrier::arrive(&empty[stage]);
+    }
   }
 
   __syncthreads();
   auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
+  float col_scale[kCCols];
+  float col_bias[kCCols];
+#pragma unroll
+  for (int col = 0; col < kCCols; ++col) {
+    const int n = n0 + get<1>(tScC_rc(0, col));
+    col_scale[col] = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
+    col_bias[col] = bias != nullptr && n < N ? static_cast<float>(bias[n]) : 0.0f;
+  }
 #pragma unroll
   for (int row = 0; row < kCRows; ++row) {
     const int m = m0 + get<0>(tScC_rc(row, 0));
     const float scale_a = kLevel1A ? (m < M ? sa[m] : 0.0f) : 1.0f;
 #pragma unroll
     for (int col = 0; col < kCCols; ++col) {
-      const int n = n0 + get<1>(tScC_rc(row, col));
-      const float scale_b = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
-      float value = tCrC_rc(row, col) * scale_a * scale_b;
-      if (bias != nullptr && n < N) {
-        value += static_cast<float>(bias[n]);
-      }
-      tCrC_rc(row, col) = value;
+      tCrC_rc(row, col) = tCrC_rc(row, col) * scale_a * col_scale[col] + col_bias[col];
     }
   }
   auto tCrCh = convert_type<ElementO>(tCrC);

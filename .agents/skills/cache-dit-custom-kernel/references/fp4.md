@@ -281,3 +281,104 @@ fusion is an optional next step, not the explanation of the current compile gap.
    global scales plus per-16 UE4M3 block scales are the contract. Switching to
    per-tensor scaling would remove a pointwise pass but invalidates the accuracy
    comparison; make it an explicit opt-in experiment, never a silent default.
+
+## 2026-11-13 native collective and fused-quantize result
+
+The production default is now `fp4_gemm(..., use_native=True)`. On
+`K % 256 == 0 && N % 128 == 0`, the native op launches an SM120 CUTLASS
+`128x128x256` block-scaled collective directly from `cache_dit._C_ops`; it does
+not call `torch._scaled_mm`. A custom EVT epilogue computes
+`scale_b * (scale_a * accumulator) + bias` in FP32. Single-level uses a minimal
+`acc + bias` EVT. Other shapes retain the hand-written CuTe kernel. Both EVT
+variants use a 64x64 epilogue subtile. `use_native=False` still selects the
+`_scaled_mm` reference path for direct A/B checks.
+
+Final representative-shape NCU (4096x3072x3072):
+
+| metric | original WS | final native | `torch._scaled_mm` |
+|---|---:|---:|---:|
+| kernel duration | 128.67 us | 106.24 us | 104.45 us |
+| Tensor pipe | 60.63% | 75.19% | 76.81% |
+| memory throughput | 78.42% | 55.08% | 56.40% |
+| long-scoreboard | 1.573 | 0.848 | 0.998 |
+| shared memory | 38.9 KB | 101.4 KB | 89.1 KB |
+
+The original kernel repeated `sb[n]` and `bias[n]` loads per output row; its
+393216 global load requests were 16x the scaled_mm count. Preloading these
+values helped only a few microseconds. BK128 and warp-leader empty arrivals
+were neutral. Canonical A/SFA G2R reduced shared traffic but could not hide
+long-scoreboard latency and regressed to about 207 us Event. The official
+collective removed the structural mainloop gap.
+
+Six-shape final benchmark, CUDA Event median of 50 iterations x 3 rounds:
+
+| shape | single-level native/scaled_mm | two-level native/scaled_mm+scale chain | compiled native/TorchAO Linear |
+|---|---:|---:|---:|
+| 4096x3072x3072 | 1.035x | 0.620x | 0.675x |
+| 4096x12288x3072 | 1.038x | 0.435x | 0.744x |
+| 4096x3072x12288 | 1.032x | 0.870x | 0.811x |
+| 4608x3072x3072 | 1.040x | 0.619x | 0.641x |
+| 4608x3072x15360 | 1.020x | 0.888x | 0.697x |
+| 4608x12288x3072 | 1.043x | 0.436x | 0.713x |
+| **geomean** | **1.035x** | **0.619x** | **0.711x** |
+
+Single-level is within about 3.5% of `_scaled_mm`; the actual two-level recipe
+is much faster because global scales and bias are fused into the GEMM instead
+of requiring two full-output pointwise passes plus bias. Do not quote the
+single-level ratio as the production result.
+
+Quantize fusion:
+
+- Only `K=15360` is enabled. A 128-thread CTA per row caches BF16 input in
+  shared memory with 128-bit accesses, computes K64 group/row amax, then
+  quantizes with 32B qdata and packed-u32 scale stores. Scale padding is
+  explicitly memset to zero.
+- Fused Event at 4096x15360: about 173.7 us versus 221.8 us for the legacy two
+  kernels (about 22% faster). NCU measured 139.1 us with DRAM throughput 80.7%.
+- K3072 and K12288 remain on the original two kernels. Shared-cache fused
+  versions were slower or neutral there; an L2-reread variant was substantially
+  worse. Thread counts 32/64/128/256 were tested and only the K15360/128
+  configuration was retained.
+- A temporary A/B switch saved outputs from both implementations. Across
+  `(129,3072)`, `(129,12288)`, `(129,15360)`, and `(4096,3072)`, qdata, scales
+  (including padding), and global scales were all bit-exact. The switch was
+  removed. The in-repo large-K test uses an independent reference with a 1-ULP
+  scale allowance because its reciprocal rounding is not identical to CUDA's.
+
+Other rejected configurations: BN256/BK256 and 128x64 epilogue tiles left only
+one illegal pipeline stage; BN256/BK128 took about 150 us; explicit S4 failed
+CUTLASS initialization; F4 block-scaled Pingpong is rejected by CUTLASS;
+standard `PerColLinCombPerColBiasEltAct` and `LinCombPerColBias` were slower
+than the minimal custom EVT; 128x64 epilogue tiles are resource-incompatible.
+
+Artifacts: `.tmp/native_fp4_tuning/{logs,bench,profiles}`. Final benchmark JSON:
+`bench/native_default.json`; baseline: `bench/baseline.json`; final NCU:
+`profiles/ncu_final_collective.ncu-rep` and `profiles/ncu_final_quantize.ncu-rep`.
+
+### FLUX e2e after the optimization
+
+One native run per mode, 1024x1024, 28 steps, seed 42, repeat 3. BF16 and
+TorchAO images/logs reuse the earlier identical baseline arms. No repeated
+interleaved scan was run.
+
+| arm | eager | compile |
+|---|---:|---:|
+| BF16 | 17.03 s | 14.90 s |
+| TorchAO NVFP4 | 9.70 s | 5.56 s |
+| optimized native NVFP4 | **7.80 s** | 5.74 s |
+
+| comparison | PSNR | SSIM |
+|---|---:|---:|
+| native eager vs BF16 eager | 31.04 dB | 0.878 |
+| TorchAO eager vs BF16 eager | 30.30 dB | 0.848 |
+| native compile vs BF16 compile | 29.83 dB | 0.871 |
+| TorchAO compile vs BF16 compile | 31.58 dB | 0.860 |
+| native eager vs TorchAO eager | 33.78 dB | 0.899 |
+| native compile vs TorchAO compile | 31.18 dB | 0.892 |
+
+The six-panel visual check has no obvious corruption or text/structure
+artifacts. Eager is 0.804x TorchAO time; compile is 1.032x, so do not claim an
+e2e compile win from the per-layer 0.711x table. The compiled model has other
+non-GEMM boundaries and host overhead. Images and metrics are in
+`.tmp/native_fp4_tuning/e2e/` and `logs/e2e_metrics.log`; the comparison sheet
+is `.tmp/native_fp4_tuning/fp4_flux_e2e_compare.png`.

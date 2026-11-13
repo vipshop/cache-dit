@@ -118,6 +118,29 @@ def test_quantized_scale_padding_is_zero() -> None:
   assert torch.count_nonzero(unswizzled[17:]) == 0
 
 
+def test_fused_quantize_large_k_matches_independent_reference() -> None:
+  torch.manual_seed(10)
+  rows, cols = 129, 15360
+  x = torch.randn(rows, cols, dtype=torch.bfloat16, device="cuda")
+  x[0].zero_()
+  x[1, :16] = 2.0 ** -12
+  qdata, scales, global_scales = fp4_quantize(x, level1=True)
+  normalized, block_ref, global_ref = _reference_quantize(x, level1=True)
+  assert torch.allclose(global_scales, global_ref, rtol=2e-7, atol=0)
+  swizzled_ref = _swizzle_scales(block_ref)
+  scale_ulp = (scales.view(torch.uint8).flatten().int() -
+               swizzled_ref.view(torch.uint8).int()).abs().max()
+  assert int(scale_ulp) <= 1
+
+  kernels = pytest.importorskip("torchao.prototype.mx_formats.kernels")
+  expected_qdata = kernels.pack_uint4(kernels.f32_to_f4_unpacked(normalized.clamp(-6.0, 6.0)))
+  dequantized = _dequantize(qdata, scales, global_scales)
+  reference = _dequantize(expected_qdata, swizzled_ref, global_scales)
+  assert _relative_l2(dequantized, reference) < 1e-2
+  unswizzled = _unswizzle_scales(scales, rows, cols)
+  assert torch.count_nonzero(unswizzled[rows:]) == 0
+
+
 def test_single_level_underflow_produces_exact_zero() -> None:
   x = torch.full((3, 64), 2.0 ** -12, dtype=torch.bfloat16, device="cuda")
   qdata, scales, global_scales = fp4_quantize(x, level1=False)
@@ -141,7 +164,7 @@ def test_gemm_matches_dequantized_reference_with_tails_and_bias(m: int, n: int, 
   assert _relative_l2(actual, expected) < 3e-3
 
 
-def test_scaled_mm_default_matches_dequantized_reference() -> None:
+def test_default_gemm_matches_dequantized_reference() -> None:
   torch.manual_seed(2)
   a = torch.randn(129, 192, dtype=torch.bfloat16, device="cuda")
   w = torch.randn(128, 192, dtype=torch.bfloat16, device="cuda")
@@ -159,9 +182,21 @@ def test_scaled_mm_unsupported_n_falls_back_to_native() -> None:
   w = torch.randn(24, 192, dtype=torch.bfloat16, device="cuda")
   qa, sa, ga = fp4_quantize(a)
   qw, sw, gw = fp4_quantize(w)
-  actual = fp4_gemm(qa, qw, sa, sw, ga, gw)
+  actual = fp4_gemm(qa, qw, sa, sw, ga, gw, use_native=False)
   expected = fp4_gemm(qa, qw, sa, sw, ga, gw, use_native=True)
   assert torch.equal(actual, expected)
+
+
+def test_two_level_collective_matches_dequantized_reference() -> None:
+  torch.manual_seed(5)
+  a = torch.randn(129, 256, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(256, 256, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(256, dtype=torch.bfloat16, device="cuda")
+  qa, sa, ga = fp4_quantize(a)
+  qw, sw, gw = fp4_quantize(w)
+  actual = fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias, use_native=True)
+  expected = F.linear(_dequantize(qa, sa, ga), _dequantize(qw, sw, gw), bias.float())
+  assert _relative_l2(actual, expected) < 3e-3
 
 
 def test_ws_matches_non_ws_bit_exact() -> None:
