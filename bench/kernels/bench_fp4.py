@@ -275,7 +275,11 @@ def _bench_one(shape: Shape, args, api) -> list[dict]:
 
   def native_chain():
     qx, sx, gx = fp4_quantize(a)
-    return fp4_gemm(qx, qw, sx, sw, gx, gw, bias=bias)
+    return fp4_gemm(qx, qw, sx, sw, gx, gw, bias=bias, use_native=True)
+
+  def default_chain():
+    qx, sx, gx = fp4_quantize(a)
+    return fp4_gemm(qx, qw, sx, sw, gx, gw, bias=bias, use_native=False)
 
   def torchao_chain():
     return F.linear(_torchao_activation(a, api), torchao_weight, bias)
@@ -286,7 +290,9 @@ def _bench_one(shape: Shape, args, api) -> list[dict]:
     "torchao_quantize":
     lambda: _torchao_activation(a, api),
     "cache_dit_gemm_scaled_mm":
-    lambda: fp4_gemm(qa_single, qw_single, sa_single, sw_single, ga_single, gw_single, bias=bias),
+    lambda: fp4_gemm(
+      qa_single, qw_single, sa_single, sw_single, ga_single, gw_single, bias=bias, use_native=False
+    ),
     "cache_dit_gemm_nonws":
     lambda: fp4_gemm(qa_single,
                      qw_single,
@@ -311,6 +317,8 @@ def _bench_one(shape: Shape, args, api) -> list[dict]:
     lambda: torch._scaled_mm(
       qa_single, qw_single.t(), sa_single, sw_single, bias=bias, out_dtype=torch.bfloat16),
     "cache_dit_chain":
+    default_chain,
+    "cache_dit_chain_native":
     native_chain,
     "torchao_chain":
     torchao_chain,

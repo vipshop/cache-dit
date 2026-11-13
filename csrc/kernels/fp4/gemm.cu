@@ -7,6 +7,7 @@
 
 #include "fp4.h"
 #include "gemm.cuh"
+#include "collective_gemm.cuh"
 
 namespace cache_dit::fp4 {
 namespace {
@@ -103,6 +104,9 @@ void launch_shape(const cutlass::float_e2m1_t* a, const cutlass::float_e2m1_t* b
   if (fp4_gemm_use_wide_tile(M, N, K)) {
     launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<256, 6>>(a, b, sfa, sfb, sa, sb, bias, out,
                                                                 M, N, K, stream);
+  } else if (K % 128 == 0) {
+    launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<128, 4, 128>>(a, b, sfa, sfb, sa, sb, bias,
+                                                                     out, M, N, K, stream);
   } else {
     launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<>>(a, b, sfa, sfb, sa, sb, bias, out, M, N,
                                                           K, stream);
@@ -148,6 +152,17 @@ void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
                      : nullptr;
   auto* out_ptr = reinterpret_cast<cutlass::bfloat16_t*>(out.data_ptr<at::BFloat16>());
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (K % 256 == 0 && N % 128 == 0) {
+    if (level1_a || level1_b) {
+      fp4_gemm_cutlass(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out,
+                       stream);
+    } else {
+      fp4_gemm_cutlass_simple(a, b, a_scales, b_scales, bias, out, stream);
+    }
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return;
+  }
 
   if (level1_a && level1_b) {
     launch_ws<true, true>(a_ptr, b_ptr, sfa, sfb, sa, sb, bias_ptr, out_ptr, M, N, K, use_ws,

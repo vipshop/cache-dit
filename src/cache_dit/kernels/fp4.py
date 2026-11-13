@@ -245,12 +245,13 @@ def fp4_gemm(a: torch.Tensor,
              b_global_scales: torch.Tensor,
              bias: torch.Tensor | None = None,
              use_ws: bool = True,
-             use_native: bool = False) -> torch.Tensor:
+             use_native: bool = True) -> torch.Tensor:
   """Compute packed NVFP4 ``a @ b.T`` with a BF16 output.
 
-  By default this uses ``torch._scaled_mm``, the same cuBLAS/CUTLASS operator as
-  TorchAO's NVFP4 dispatch. The bundled CuTe kernel remains available with
-  ``use_native=True`` and is currently slower on the measured SM120 shapes.
+  By default this uses cache-dit's SM120 CUTLASS collective and a custom FP32
+  epilogue that folds both global scales and bias into the GEMM. Set
+  ``use_native=False`` for the ``torch._scaled_mm`` reference path. Shapes outside
+  the collective domain use the bundled hand-written CuTe kernel.
 
   :param a: Packed activation ``[M, K / 2]``.
   :param b: Packed weight ``[N, K / 2]``.
@@ -259,8 +260,9 @@ def fp4_gemm(a: torch.Tensor,
   :param a_global_scales: Empty or per-row FP32 activation scales.
   :param b_global_scales: Empty or per-output-channel FP32 weight scales.
   :param bias: Optional BF16 bias ``[N]``.
-  :param use_ws: Native-kernel option selecting the warp-specialized mainloop.
-  :param use_native: Force cache-dit's CuTe kernel instead of ``torch._scaled_mm``.
+  :param use_ws: Select the mainloop only for the hand-written tail fallback.
+  :param use_native: ``True`` uses cache-dit's collective; ``False`` selects
+    ``torch._scaled_mm`` when supported and the native tail fallback otherwise.
   :returns: BF16 output ``[M, N]``.
   """
 

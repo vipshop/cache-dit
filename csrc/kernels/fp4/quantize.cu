@@ -38,6 +38,116 @@ __global__ void row_amax_fp4_kernel(const __nv_bfloat16* __restrict__ input,
   }
 }
 
+template <int kK, int kThreads>
+__global__ void __launch_bounds__(kThreads, 1)
+  quantize_fp4_fused_kernel(const __nv_bfloat16* __restrict__ input,
+                            cutlass::float_e2m1_t* __restrict__ qdata,
+                            cutlass::float_ue4m3_t* __restrict__ block_scales,
+                            float* __restrict__ global_scales, int rows) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
+  constexpr int kChunks = kK / 64;
+  constexpr int kGroups = kK / kSFVec;
+  constexpr int kWarps = kThreads / 32;
+  const int row = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+
+  extern __shared__ uint8_t fused_smem[];
+  auto* x_cache = reinterpret_cast<Vec8BF16*>(fused_smem);
+  auto* group_amax = reinterpret_cast<float*>(fused_smem + kK * sizeof(__nv_bfloat16));
+  auto* warp_amax = group_amax + kGroups;
+  auto* row_params = warp_amax + kWarps;
+  const auto* input_row = input + static_cast<size_t>(row) * kK;
+  auto* qdata_row = reinterpret_cast<uint8_t*>(qdata) + static_cast<size_t>(row) * (kK / 2);
+  auto* scales_bytes = reinterpret_cast<uint8_t*>(block_scales);
+
+  float thread_amax = 0.0f;
+  for (int chunk = tid; chunk < kChunks; chunk += kThreads) {
+    float local_amax[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+    for (int vec = 0; vec < 8; ++vec) {
+      const int index = chunk * 8 + vec;
+      const Vec8BF16 values = reinterpret_cast<const Vec8BF16*>(input_row)[index];
+      x_cache[index] = values;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        local_amax[vec / 2] = fmaxf(local_amax[vec / 2], fabsf(__bfloat162float(values.elem[j])));
+      }
+    }
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      group_amax[chunk * 4 + group] = local_amax[group];
+      thread_amax = fmaxf(thread_amax, local_amax[group]);
+    }
+  }
+
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    thread_amax = fmaxf(thread_amax, __shfl_xor_sync(0xffffffff, thread_amax, offset));
+  }
+  if (lane == 0) {
+    warp_amax[warp] = thread_amax;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    float amax = warp_amax[0];
+#pragma unroll
+    for (int w = 1; w < kWarps; ++w) {
+      amax = fmaxf(amax, warp_amax[w]);
+    }
+    const float global_scale = __fdiv_rn(amax, kFp4ScaleMax);
+    const float inv_global = global_scale > 0.0f ? __fdiv_rn(1.0f, global_scale) : 0.0f;
+    global_scales[row] = global_scale;
+    row_params[0] = inv_global;
+  }
+  __syncthreads();
+  const float inv_global = row_params[0];
+
+  for (int chunk = tid; chunk < kChunks; chunk += kThreads) {
+    uint4 packed0 = {};
+    uint4 packed1 = {};
+    auto* packed_words0 = reinterpret_cast<uint32_t*>(&packed0);
+    auto* packed_words1 = reinterpret_cast<uint32_t*>(&packed1);
+    uint32_t scale_word = 0;
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      float values[kSFVec];
+      float normalized_amax = 0.0f;
+#pragma unroll
+      for (int vec = 0; vec < 2; ++vec) {
+        const Vec8BF16 input_values = x_cache[chunk * 8 + group * 2 + vec];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int index = vec * 8 + j;
+          values[index] = __fmul_rn(__bfloat162float(input_values.elem[j]), inv_global);
+          normalized_amax = fmaxf(normalized_amax, fabsf(values[index]));
+        }
+      }
+      const unsigned char scale_byte = cvt_f2_to_ue4m3(__fdiv_rn(normalized_amax, kE2M1Max));
+      const float block_fp32 = cvt_ue4m3_to_f32(scale_byte);
+      const float inv_block = block_fp32 > 0.0f ? __fdiv_rn(1.0f, block_fp32) : 0.0f;
+      uint32_t words[2] = {0u, 0u};
+#pragma unroll
+      for (int index = 0; index < kSFVec; ++index) {
+        float v = __fmul_rn(values[index], inv_block);
+        v = fminf(fmaxf(v, -kE2M1Max), kE2M1Max);
+        words[index / 8] |= static_cast<uint32_t>(cvt_f2_to_e2m1x2(v, v) & 0xF)
+                            << ((index % 8) * 4);
+      }
+      auto* destination = group < 2 ? packed_words0 + group * 2 : packed_words1 + (group - 2) * 2;
+      destination[0] = words[0];
+      destination[1] = words[1];
+      scale_word |= static_cast<uint32_t>(scale_byte) << (group * 8);
+    }
+    reinterpret_cast<uint4*>(qdata_row)[chunk * 2] = packed0;
+    reinterpret_cast<uint4*>(qdata_row)[chunk * 2 + 1] = packed1;
+    *reinterpret_cast<uint32_t*>(scales_bytes + sf_byte_offset(row, chunk * 4, kChunks)) =
+      scale_word;
+  }
+#endif
+}
+
 template <bool kLevel1>
 __global__ void quantize_fp4_kernel(const __nv_bfloat16* __restrict__ input,
                                     cutlass::float_e2m1_t* __restrict__ qdata,
@@ -165,7 +275,16 @@ void fp4_quantize(const at::Tensor& input, at::Tensor& qdata, at::Tensor& block_
   float* global = level1 ? global_scales.data_ptr<float>() : nullptr;
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
-  if (level1) {
+  const bool use_fused = level1 && cols == 15360;
+  if (use_fused) {
+    cudaMemsetAsync(scales, 0, block_scales.numel(), stream);
+    constexpr int kCols = 15360;
+    constexpr int kThreads = 128;
+    const int smem_bytes = kCols * 2 + (kCols / kSFVec) * 4 + 64;
+    auto kernel = quantize_fp4_fused_kernel<kCols, kThreads>;
+    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+    kernel<<<rows, kThreads, smem_bytes, stream>>>(src, packed, scales, global, rows);
+  } else if (level1) {
     row_amax_fp4_kernel<<<(rows + 7) / 8, 256, 0, stream>>>(src, global, rows, cols);
     quantize_fp4_kernel<true>
       <<<(total_groups + 255) / 256, 256, 0, stream>>>(src, packed, scales, global, rows, cols);
