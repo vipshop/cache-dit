@@ -58,6 +58,7 @@ nav:
   - Docmentation:
       - Overviews: user_guide/OVERVIEWS.md
       - Installation: user_guide/INSTALL.md
+      - Built-in Pipelines: user_guide/PIPELINES.md
       - Unified Cache APIs: user_guide/CACHE_API.md
       - DBCache Design: user_guide/DBCACHE_DESIGN.md
       - Context Parallelism: user_guide/CONTEXT_PARALLEL.md
