@@ -1342,6 +1342,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Name for the profiling session",
   )
   parser.add_argument(
+    "--profile-ranges",
+    type=str,
+    default="all",
+    help="Profile the whole request ('all') or inclusive denoising steps (e.g. '0-4,10-14')",
+  )
+  parser.add_argument(
     "--profile-dir",
     type=str,
     default=None,
@@ -1357,9 +1363,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--profile-with-stack",
-    action="store_true",
+    action=argparse.BooleanOptionalAction,
     default=True,
-    help="profile with stack for better traceability",
+    help="Record Python stacks; use --no-profile-with-stack for an operator/kernel timeline",
   )
   parser.add_argument(
     "--profile-record-shapes",
@@ -3293,7 +3299,7 @@ def maybe_destroy_distributed():
     dist.destroy_process_group()
 
 
-def create_profiler_from_args(args, profile_name=None):
+def create_profiler_from_args(args, profile_name=None, devices=None):
   from ..profiler import ProfilerContext
 
   return ProfilerContext(
@@ -3303,4 +3309,6 @@ def create_profiler_from_args(args, profile_name=None):
     profile_name=profile_name or getattr(args, "profile_name", None),
     with_stack=getattr(args, "profile_with_stack", True),
     record_shapes=getattr(args, "profile_record_shapes", True),
+    ranges=getattr(args, "profile_ranges", "all"),
+    devices=devices,
   )

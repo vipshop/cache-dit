@@ -19,6 +19,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 from ..summary import summary
 from ..utils import is_modular_pipeline
 from ..logger import init_logger
+from ..platforms import current_platform
 
 from .utils import (
   strify,
@@ -1055,25 +1056,27 @@ class Example:
     else:
       warmup_time = None
 
-    start_time = time.time()
     # actual inference
     model_tag = self.args.example if self.args.example is not None else "None"
-    if self.args.profile:
-      requested_profile_name = getattr(self.args, "profile_name", None)
-      profile_name = requested_profile_name or f"{model_tag}_profile"
-      profiler = create_profiler_from_args(self.args, profile_name=profile_name)
-      with profiler:
-        for _ in range(self.args.repeat):
-          step_kwargs = self.new_generator(dict(input_kwargs), self.args)
-          output = self.call_pipe(pipe, step_kwargs)
-          maybe_finalize_deferred_svdq_pipe_move(pipe)
-      if self.rank == 0:
-        logger.info(f"Profiler traces saved to: {profiler.output_dir}/{profiler.trace_path.name}")
-    else:
-      for _ in range(self.args.repeat):
+    profile_name = self.args.profile_name or f"{model_tag}_profile"
+    devices = (list(range(current_platform.device_count()))
+               if self.args.profile and self.args.device_map_balance else [self.device])
+    start_time = time.time()
+    for _ in range(self.args.repeat):
+      with create_profiler_from_args(self.args, profile_name=profile_name,
+                                     devices=devices) as profiler:
         step_kwargs = self.new_generator(dict(input_kwargs), self.args)
         output = self.call_pipe(pipe, step_kwargs)
         maybe_finalize_deferred_svdq_pipe_move(pipe)
+      if self.args.profile and self.rank == 0:
+        if not profiler.results:
+          logger.info("Profiler produced no windows: %s", profiler.empty_reason)
+        for result in profiler.results:
+          logger.info(
+            "Profiler loop=%s window=%s requested=%s actual=%s status=%s "
+            "last_step_complete=%s trace=%s memory=%s summary=%s", result.loop_id, result.window_id,
+            result.requested_range, result.actual_range, result.status, result.last_step_complete,
+            result.trace_path, result.memory_snapshot_path, result.memory_summary_path)
     if self.args.repeat > 0:
       inference_time = (time.time() - start_time) / self.args.repeat
     else:

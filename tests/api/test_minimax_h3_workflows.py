@@ -15,6 +15,8 @@ the checkpoint partition a workflow loads. The silent failure modes covered here
    `--residual-diff-threshold` still wins.
 """
 import argparse
+import importlib
+from contextlib import contextmanager
 import os
 import sys
 from types import SimpleNamespace
@@ -31,12 +33,15 @@ from cache_dit.cli.examples import (
 )
 from cache_dit.cli.registers import (
   ExampleInputData,
+  ExampleOutputData,
   ExampleType,
   _AUDIO_VIDEO_TASKS,
   Example,
   parse_audio_video_output,
 )
 from cache_dit.caching.block_adapters.adapters import minimax_h3_adapter
+from cache_dit.cli.utils import create_profiler_from_args, get_args
+from cache_dit.profiler import profile_steps
 from cache_dit.utils import TRANSFORMER_ATTR_NAMES, assign_transformer, resolve_transformer
 
 
@@ -482,3 +487,196 @@ def test_cache_teardown_visits_the_partition_the_pipeline_actually_has(monkeypat
 
   cache_adapter_mod.CachedAdapter.release_hooks(pipe, _release_transformer=released.append)
   assert released == [module]
+
+
+@pytest.mark.parametrize("flags,stack", [
+  ([], True),
+  (["--profile-with-stack"], True),
+  (["--no-profile-with-stack"], False),
+])
+def test_profiler_flags_forward_configuration_without_enabling_collection(flags, stack):
+  args = get_args(parse=False).parse_args(flags)
+  request = create_profiler_from_args(args)
+  assert request.with_stack is stack
+  assert not request.enabled
+
+
+@pytest.fixture(params=["t2va"])
+def profiled_workflow(request, monkeypatch, tmp_path):
+  """Exercise the real CLI lifecycle with the CPU collector."""
+  from cache_dit.cli import examples
+
+  workflow = request.param
+  root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
+  state = SimpleNamespace(events=[], requests=[], messages=[])
+  modules = [torch.nn.Linear(2, 2) for _ in range(4)]
+  args = get_args(parse=False).parse_args([
+    "--prompt",
+    "formal",
+    "--warmup-prompt",
+    "warmup",
+    "--warmup",
+    "1",
+    "--repeat",
+    "2",
+    "--steps",
+    "5",
+    "--warmup-num-inference-steps",
+    "2",
+    "--seed",
+    "11",
+    "--warmup-seed",
+    "23",
+    "--generator-device",
+    "cpu",
+    "--profile",
+    "--profile-ranges",
+    "0,2",
+    "--profile-name",
+    "fixed",
+    "--profile-dir",
+    str(tmp_path),
+    "--profile-activities",
+    "CPU",
+    "--no-profile-with-stack",
+  ])
+  args.image_path = args.last_image_path = _write_image(tmp_path, "provided.png")
+  args.reference_image_path = [args.image_path]
+  args.example = "minimax_h3" if workflow == "t2va" else f"minimax_h3_{workflow}"
+  args.track_memory = args.cache_summary = False
+
+  class Pipe:
+
+    def set_progress_bar_config(self, **kwargs):
+      pass
+
+    def __call__(self, **kwargs):
+      state.events.append(("call", kwargs["prompt"], kwargs["num_inference_steps"],
+                           kwargs["generator"].initial_seed()))
+      getattr(self, root_name)(torch.ones(1, 2))
+      self.transformer_2(torch.ones(1, 2))
+      with profile_steps(range(kwargs["num_inference_steps"])) as steps:
+        list(steps)
+      if kwargs["prompt"] == "warmup":
+        setattr(self, root_name, modules[2])
+      return {"videos": [[Image.new("RGB", (1, 1))]], "audio": None}
+
+  pipe = Pipe()
+  setattr(pipe, root_name, modules[0])
+  pipe.transformer_2 = modules[3]
+
+  def optimize(*args, **kwargs):
+    state.events.append(("optimize", ))
+    setattr(pipe, root_name, modules[1])
+
+  @contextmanager
+  def create_request(args, **kwargs):
+    request = create_profiler_from_args(args, **kwargs)
+    state.requests.append(request)
+    state.events.append(("enter", ))
+    try:
+      with request:
+        yield request
+    finally:
+      state.events.append(("exit", ))
+
+  module = importlib.import_module("cache_dit.profiler")
+  monkeypatch.setattr(
+    module, "current_platform",
+    SimpleNamespace(device_type="cuda",
+                    is_accelerator_available=lambda: True,
+                    synchronize=lambda device: None))
+  monkeypatch.setattr(registers, "maybe_init_distributed", lambda args: (0, "cpu"))
+  monkeypatch.setattr(registers, "get_rank_device", lambda: (0, torch.device("cpu")))
+  monkeypatch.setattr(registers, "maybe_apply_optimization", optimize)
+  monkeypatch.setattr(registers, "maybe_finalize_deferred_svdq_pipe_move",
+                      lambda pipe: state.events.append(("finalize", )))
+  monkeypatch.setattr(registers, "maybe_destroy_distributed", lambda: None)
+  monkeypatch.setattr(registers, "create_profiler_from_args", create_request)
+  monkeypatch.setattr(registers, "strify", lambda *args: "test")
+  monkeypatch.setattr(
+    registers.logger, "info", lambda message, *args: state.messages.append(message % args
+                                                                           if args else message))
+  monkeypatch.setattr(ExampleOutputData, "save", lambda *args: None)
+  monkeypatch.setattr(ExampleOutputData, "summary", lambda *args: None)
+  example_name = "minimax_h3_example" if workflow == "t2va" else f"minimax_h3_{workflow}_example"
+  state.example = getattr(examples, example_name)(args)
+  monkeypatch.setattr(state.example.init_config, "get_pipe", lambda args: pipe)
+  monkeypatch.setattr(state.example, "prepare_input_data", lambda: ({
+    "prompt": "formal",
+    "num_inference_steps": 5
+  }, {}))
+  return state
+
+
+@pytest.mark.parametrize("profiled_workflow,profile", [
+  ("t2va", False),
+  ("t2va", True),
+  ("fl2va", False),
+  ("fl2va", True),
+  ("ref2va", False),
+  ("ref2va", True),
+],
+                         indirect=["profiled_workflow"])
+def test_profiler_cli_preserves_workflow_and_warmup_order(profile, profiled_workflow):
+  from cache_dit.models.pipelines.minimax_h3 import minimax_h3_blocks
+
+  state = profiled_workflow
+  example = state.example
+  workflow = example.init_config.modular_workflow
+  assert example.init_config.modular_blocks_factory is minimax_h3_blocks
+  assert workflow == ("t2va" if example.args.example == "minimax_h3" else
+                      example.args.example.removeprefix("minimax_h3_"))
+  example.args.profile = profile
+  example.run()
+  assert [e for e in state.events if e[0] in ("optimize", "call", "finalize", "enter", "exit")] == [
+    ("optimize", ),
+    ("call", "warmup", 2, 23),
+    ("finalize", ),
+    ("enter", ),
+    ("call", "formal", 5, 11),
+    ("finalize", ),
+    ("exit", ),
+    ("enter", ),
+    ("call", "formal", 5, 11),
+    ("finalize", ),
+    ("exit", ),
+  ]
+  assert len(state.requests) == 2
+  assert all(r.enabled is profile and r.devices == (example.device, ) for r in state.requests)
+  paths = [r.trace_path for request in state.requests for r in request.results]
+  assert len(paths) == len(set(paths)) == (4 if profile else 0)
+  assert all(p.is_file() and p.name.startswith("fixed-") for p in paths)
+  assert all(r.actual_range == r.requested_range == (i, i) for request in state.requests
+             for r, i in zip(request.results, (0, 2)))
+  assert sum(m.startswith("Profiler loop=") for m in state.messages) == len(paths)
+
+
+@pytest.mark.parametrize("ranges,count", [("all", 2), ("10-14", 0)])
+def test_cli_logs_whole_and_unmatched_requests(ranges, count, profiled_workflow):
+  state = profiled_workflow
+  state.example.args.profile_ranges = ranges
+  state.example.run()
+  windows = [m for m in state.messages if m.startswith("Profiler loop=")]
+  assert len(windows) == count
+  if count:
+    assert all(
+      str(r.trace_path) in " ".join(windows) for request in state.requests for r in request.results)
+  else:
+    assert sum(
+      m.startswith("Profiler produced no windows: No denoising steps matched")
+      for m in state.messages) == 2
+    assert all(not r.results and r.trace_path is None for r in state.requests)
+
+
+def test_balanced_cli_provides_all_visible_devices(profiled_workflow, monkeypatch):
+  state = profiled_workflow
+  state.example.args.device_map_balance = True
+  monkeypatch.setattr(registers, "current_platform", SimpleNamespace(device_count=lambda: 2))
+  state.example.run()
+  assert all(request.devices == (0, 1) for request in state.requests)
+
+
+def test_profiler_cli_factory_accepts_existing_namespaces_and_explicit_devices():
+  context = create_profiler_from_args(argparse.Namespace(profile=False), devices=[0, 1])
+  assert context.ranges == "all" and context.devices == (0, 1)

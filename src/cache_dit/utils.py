@@ -47,6 +47,29 @@ def is_modular_pipeline(pipe_or_module: Any) -> bool:
   return modular_pipeline_cls is not None and isinstance(pipe_or_module, modular_pipeline_cls)
 
 
+@torch.no_grad()
+def profiled_denoise_loop(self, components, state):
+  """Run an explicitly selected Modular loop with complete profiling steps.
+
+  Only for loops that call loop_step and update progress once per timestep.
+
+  :param self: Loop block providing the original state and computation methods.
+  :param components: Pipeline components used by the original computation blocks.
+  :param state: Pipeline state to read and update.
+  :returns: The components and updated pipeline state.
+  """
+  from .profiler import profile_steps
+
+  block_state = self.get_block_state(state)
+  with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:
+    with profile_steps(block_state.timesteps) as steps:
+      for i, t in steps:
+        components, block_state = self.loop_step(components, block_state, i=i, t=t)
+        progress_bar.update()
+  self.set_block_state(state, block_state)
+  return components, state
+
+
 def is_pipeline(pipe_or_module: Any) -> bool:
   """Check whether the given object is a pipeline, standard or modular.
 

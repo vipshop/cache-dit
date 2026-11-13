@@ -3100,6 +3100,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
   :returns: The MiniMax-H3 t2va example.
   """
   from diffusers import MiniMaxH3ModularPipeline
+  from cache_dit.models.pipelines.minimax_h3 import minimax_h3_blocks
 
   _minimax_h3_quantize_exclusions(args)
 
@@ -3111,6 +3112,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
       pipeline_class=MiniMaxH3ModularPipeline,
       bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
       modular_workflow="t2va",
+      modular_blocks_factory=minimax_h3_blocks,
       # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
       modular_component_dtypes={
         "transformer": torch.bfloat16,
@@ -3149,6 +3151,7 @@ def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
   :returns: The MiniMax-H3 fl2va example.
   """
   from diffusers import MiniMaxH3ModularPipeline
+  from cache_dit.models.pipelines.minimax_h3 import minimax_h3_blocks
 
   _minimax_h3_quantize_exclusions(args)
 
@@ -3165,6 +3168,7 @@ def minimax_h3_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
       pipeline_class=MiniMaxH3ModularPipeline,
       bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
       modular_workflow="fl2va",
+      modular_blocks_factory=minimax_h3_blocks,
       # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
       modular_component_dtypes={
         "transformer": torch.bfloat16,
@@ -3203,6 +3207,7 @@ def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
   :returns: The MiniMax-H3 ref2va example.
   """
   from diffusers import MiniMaxH3ModularPipeline
+  from cache_dit.models.pipelines.minimax_h3 import minimax_h3_blocks
   # The reference data classes are exported by the pipeline package, not by `diffusers` itself.
   from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3ImageReference,
@@ -3239,6 +3244,7 @@ def minimax_h3_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
       pipeline_class=MiniMaxH3ModularPipeline,
       bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
       modular_workflow="ref2va",
+      modular_blocks_factory=minimax_h3_blocks,
       # The two VAEs ship float32; only the conditioner and the reference transformer are bfloat16.
       modular_component_dtypes={
         "transformer_ref": torch.bfloat16,
