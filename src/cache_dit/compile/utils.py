@@ -90,13 +90,14 @@ def set_compile_configs(
     # https://github.com/pytorch/pytorch/issues/153791
     inductor_config.autotune_local_cache = autotune_local_cache
 
-    # Enable compute comm overlap
+    # Enable compute comm overlap (only meaningful once distributed is initialized).
+    # The intra-node bandwidth is deliberately left unset: inductor auto-detects it
+    # from the interconnect (`comm_analysis.get_intra_node_bw`) and feeds it to its
+    # NCCL runtime estimation. Setting it here also used to override a user-provided
+    # value, since the assignment had no `is None` guard.
     if dist.is_initialized():
       inductor_config.reorder_for_compute_comm_overlap = (
         compute_comm_overlap and ENV.CACHE_DIT_ENABLE_COMPILE_COMPUTE_COMM_OVERLAP)
-      # L20 64 GB/s, PCIe; A100/A800 NVLink 300 GB/s.
-      if inductor_config.reorder_for_compute_comm_overlap:
-        inductor_config.intra_node_bw = (64 if "L20" in current_platform.get_device_name() else 300)
 
     if cutedsl_enable_autotuning is not None and hasattr(
         inductor_config,
