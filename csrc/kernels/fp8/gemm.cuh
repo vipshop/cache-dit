@@ -19,6 +19,48 @@ namespace cache_dit::fp8 {
 
 using namespace cute;
 
+// Reading guide for the scale kernels in this header:
+//   A      = E4M3 activation [M,K], B = E4M3 weight [N,K], C = BF16 output [M,N].
+//   a_scale = per-row dequantization scales [M], b_scale = per-output-channel scales [N].
+//   mX/sX/tCrX = global-memory, shared-memory, and per-thread register tensors, respectively.
+//   TMA    = asynchronous bulk copy engine used for A/B loads and the final C store.
+//   full/empty = the transaction/CTA barriers that publish and recycle each pipeline stage.
+//   stage  = physical ring slot; kt = logical K tile; phase = mbarrier phase for that slot.
+//
+// Mathematical contract of fp8_gemm_scale_kernel and fp8_gemm_scale_ws_kernel:
+//
+//   P[m,n] = sum_k E4M3(A[m,k]) * E4M3(B[n,k])             (FP32 accumulation)
+//   C[m,n] = BF16(P[m,n] * a_scale[m] * b_scale[n] + bias[n])
+//
+// The activation/weight scales are applied once in the epilogue, not inside the K loop. This keeps
+// the SM89 FP8 MMA atom on a single FP32 accumulator and fixes K accumulation order for a given
+// tile. kPerTensor selects the scalar variant P * a_scale[0] * b_scale[0]; per-block scaling has a
+// different K-coupled contract and is implemented by fp8_gemm_block_kernel below, not by this path.
+//
+// Tile and memory contract:
+//   * One CTA owns a [kBM,kBN] output tile. kBK=128 FP8 elements = 128 B per A/B row, matching the
+//     SW128 shared-memory atom. M4N2 (kWarpsN_=2) divides the same warps across M and N so B
+//     fragments are reused by more than one M warp without changing the output coordinates.
+//   * TMA descriptors retain the logical [M,K]/[N,K]/[M,N] extents and perform boundary handling.
+//     Register epilogue loads additionally guard m<M/n<N; tail CTAs must not fetch a scale or bias
+//     through an out-of-range coordinate even though their accumulator storage exists.
+//   * A/B stages occupy kStages * (kAElems+kBElems) bytes. After the mainloop, the same allocation
+//     is reinterpreted as BF16 output staging. This aliasing is legal only because all consumer
+//     threads finish their K work and synchronize before the first STSM output write.
+//   * The epilogue performs scale/bias in FP32, converts to BF16 once, uses STSM to produce the
+//     swizzled smem tile, and lets one thread issue the TMA store. A direct register-to-global
+//     scatter is intentionally not used: it was both slower and less coalesced on the target SM120.
+//
+// Non-WS and WS share this numerical contract but schedule differently:
+//   * non-WS: one thread issues TMA for kt+kStages while all threads consume kt. `gemm_ss`
+//   prefetches
+//     the next SMEM->RF fragment before invoking the next MMA, overlapping copies and tensor math.
+//   * WS: 128 producer threads run at a reduced register allocation; only producer lane zero issues
+//     TMA. Consumer warps wait on full[], execute MMA, and publish empty[] for the producer.
+//     Register reallocation and the consumer-only named barrier replace the non-WS CTA-wide
+//     epilogue sync.
+// Both variants must preserve bit-identical output for identical traits, inputs, scales, and bias.
+
 template <typename Layout>
 CUTE_DEVICE auto convert_layout_acc_rowcol(Layout acc_layout) {
   auto divided = logical_divide(acc_layout, Shape<_2>{});
@@ -91,6 +133,15 @@ struct Fp8GemmTraits {
   using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
 };
 
+// Non-WS execution flow:
+//   1. Build TMA tensor views, allocate FP32 accumulators, and initialize full/empty barriers.
+//   2. Prime at most kStages K tiles. Each full barrier tracks the exact A+B transaction bytes.
+//   3. For every kt, wait for its full stage, run SMEM->RF copies and FP8 MMA, then mark the stage
+//      empty. Thread zero may refill kt+kStages only after all consumer threads released that slot.
+//   4. After a CTA-wide sync, map accumulator coordinates to logical rows/columns, load guarded
+//      row/column scales, and apply scale+bias in FP32.
+//   5. Convert once to BF16, reuse the now-idle A/B smem through STSM, synchronize again, and issue
+//      the single-thread TMA store. The final store wait prevents returning with smem still in use.
 template <typename Traits, typename TmaA, typename TmaB, typename TmaC, bool kPerTensor>
 __global__ void __launch_bounds__(Traits::kNumThreads, 1)
   fp8_gemm_scale_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
@@ -250,6 +301,16 @@ __global__ void __launch_bounds__(Traits::kNumThreads, 1)
 #endif
 }
 
+// WS execution flow:
+//   1. Initialize the same pipeline contract as non-WS, then split at kProducerThreads=128.
+//   2. Producer warps donate registers and wait for empty[] before issuing A/B TMA. Only producer
+//      lane zero launches copies; full[] still accounts for both A and B transaction bytes.
+//   3. Consumer warps receive a larger register budget, wait for full[], and run the identical MMA
+//      and FP32 accumulation sequence. Releasing empty[] hands the physical slot back to the
+//      producer.
+//   4. A consumer-only named barrier replaces the non-WS CTA sync. Scales, bias, BF16 conversion,
+//      and the smem overlay follow exactly the non-WS numerical and memory-safety rules.
+//   5. Only consumer lane zero issues the TMA store. Producer warps never touch the output tile.
 template <typename Traits, typename TmaA, typename TmaB, typename TmaC, bool kPerTensor>
 __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   fp8_gemm_scale_ws_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,

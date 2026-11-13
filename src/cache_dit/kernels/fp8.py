@@ -278,19 +278,24 @@ def _fake_fp8_quantize_gemm_per_row(x: torch.Tensor, b: torch.Tensor, b_scale: t
 
 def fp8_quantize_torch(x: torch.Tensor,
                        mode: str = "per_row",
-                       is_weight: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+                       is_weight: bool = False,
+                       safe_scale: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
   """Pure-PyTorch FP8 quantizer used when ``torch.compile`` traces the module.
 
-  For finite inputs the math and qdata are bit-identical to :func:`fp8_quantize`:
-  ``scale = amax / 448``, zero tensors produce scale zero and quantized zero.
-  NaN inputs differ by design: CUDA ``fmaxf`` ignores NaNs, while torch ``amax``
-  propagates them. Keeping this path in ordinary pointwise/reduction ops lets
-  Inductor fuse it around the FP8 GEMM instead of materializing an opaque
-  custom-op boundary.
+  For finite inputs with nonzero amax, the math and qdata are bit-identical to
+  :func:`fp8_quantize`: ``scale = amax / 448``. By default, zero scales are
+  replaced by one for the division, preserving scale zero and quantized zero for
+  all-zero quantization units. Setting ``safe_scale=False`` assumes nonzero amax
+  and produces NaNs for zero units. NaN inputs differ by design: CUDA ``fmaxf``
+  ignores NaNs, while torch ``amax`` propagates them. Keeping this path in
+  ordinary pointwise/reduction ops lets Inductor fuse it around the FP8 GEMM
+  instead of materializing an opaque custom-op boundary.
 
   :param x: 2D BF16 tensor ``[M, K]``; non-contiguous inputs are copied.
   :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
   :param is_weight: Whether ``x`` is an ``[N, K]`` linear weight.
+  :param safe_scale: Replace a zero scale by one for the division. Enabled by
+    default; disable only when all rows, tensors, and blocks have nonzero amax.
   :returns: ``(quantized, scale)``.
   """
 
@@ -301,21 +306,21 @@ def fp8_quantize_torch(x: torch.Tensor,
   fp32 = x.float()
   if mode_id == _MODE_TO_ID["per_row"]:
     scale = fp32.abs().amax(dim=1) / 448.0
-    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
-    quantized = (fp32 / safe_scale[:, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+    denominator = torch.where(scale == 0, torch.ones_like(scale), scale) if safe_scale else scale
+    quantized = (fp32 / denominator[:, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
     return quantized, scale
   if mode_id == _MODE_TO_ID["per_tensor"]:
     scale = fp32.abs().amax().reshape(1) / 448.0
-    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
-    quantized = (fp32 / safe_scale[0]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+    denominator = torch.where(scale == 0, torch.ones_like(scale), scale) if safe_scale else scale
+    quantized = (fp32 / denominator[0]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
     return quantized, scale
 
   num_k_blocks = (cols + 127) // 128
   if not is_weight:
     amax = fp32.reshape(rows, num_k_blocks, 128).abs().amax(dim=2)
     scale = amax / 448.0
-    safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
-    quantized = (fp32.reshape(rows, num_k_blocks, 128) / safe_scale[:, :, None]).clamp(
+    denominator = torch.where(scale == 0, torch.ones_like(scale), scale) if safe_scale else scale
+    quantized = (fp32.reshape(rows, num_k_blocks, 128) / denominator[:, :, None]).clamp(
       -448.0, 448.0).to(torch.float8_e4m3fn)
     return quantized.reshape(rows, cols), scale
 
@@ -324,8 +329,8 @@ def fp8_quantize_torch(x: torch.Tensor,
                                    (0, num_k_blocks * 128 - cols, 0, num_n_blocks * 128 - rows))
   blocks = padded.reshape(num_n_blocks, 128, num_k_blocks, 128)
   scale = blocks.abs().amax(dim=(1, 3)) / 448.0
-  safe_scale = torch.where(scale == 0, torch.ones_like(scale), scale)
-  quantized = (blocks / safe_scale[:, None, :, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
+  denominator = torch.where(scale == 0, torch.ones_like(scale), scale) if safe_scale else scale
+  quantized = (blocks / denominator[:, None, :, None]).clamp(-448.0, 448.0).to(torch.float8_e4m3fn)
   return quantized.reshape(num_n_blocks * 128, num_k_blocks * 128)[:rows, :cols], scale
 
 

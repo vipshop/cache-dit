@@ -277,3 +277,39 @@ Pure-Torch per-row quantizer microanalysis at `4096x3072`:
 - Replacing per-element division with a row reciprocal and multiplication gave 1,476 mismatches across the 65,536 BF16 bit patterns, in both eager and compiled modes, with no speedup (about 30.3 us). It is rejected.
 
 The hybrid path was subsequently promoted into `QW8A8Linear`: all compiled modes use `fp8_quantize_torch`, while only eager per-row uses the fused host op. Epilogue/prologue fusion now defaults to enabled and can still be disabled with `CACHE_DIT_EPILOGUE_PROLOGUE_FUSION=0`; `codegen_upcast_to_fp32` remains enabled. The no-clamp experiment stayed in `.tmp/fp8_per_row_opt/`; production `fp8_quantize_torch` was not changed by that experiment. Raw logs and generated Inductor code are retained in the same directory.
+
+## 2026-11-13 final E2E record and convergence decision
+
+The optimization task is stopped at the current hybrid implementation. TorchAO + compile was faster in the final model matrix, so further native GEMM/Inductor tuning is deferred unless a new requirement appears. This section records the remaining gap without claiming convergence on performance.
+
+### FLUX.1 steady-state NSYS decomposition
+
+Both hybrid and TorchAO had exactly 35,136 kernel launches in the captured 28-step inference. Total GPU time differed by 159.6 ms: native FP8 GEMM contributed +114.8 ms and Inductor quantization regions +45.0 ms; attention was 3.2 ms faster and other Triton kernels were 3.1 ms faster. Timeline gaps were 22.2 ms for hybrid and 25.6 ms for TorchAO, so host launch gaps were not the main wall-time cause. The largest quantization-region discrepancy was a `_where_9` kernel (96.83 vs 40.41 us in NSYS), while both backends contained the cache-dit zero-scale `where` protection. `_patch_torchao_zero_row_scale` is called by `quantize_ao`, so the 6.93 s TorchAO baseline also included this protection; it was not an unprotected upstream-TorchAO comparison.
+
+`ones_like` was lowered to a scalar `tl.full([1,1], 1.0)`, not a real M-element allocation. A four-way `[M]/[M,1]` x `ones_like/scalar` test was bit-exact, but scalar/keepdim did not improve the full linear. TorchAO per-row scale was `[M,1]` and cache-dit's was `[M]`; matching the rank did not provide a reliable gain. These are not retained as performance optimizations.
+
+### Three-model performance matrix
+
+All runs used GPU5, 1024x1024, seed 42, warmup 1, repeat 3, fusion enabled, and no DBCache. Qwen used its built-in 8-step schedule; both Klein models used 4 steps. Native arms used pure-Torch compile quantization plus native FP8 GEMM. The safe-off runs explicitly used `safe_scale=False`; safe-on used `True`.
+
+| model | BF16 + compile | native safe on | native safe off | TorchAO + compile | safe-on vs TorchAO |
+|---|---:|---:|---:|---:|---:|
+| Qwen-Image-2.1-Turbo | 3.16 s | 1.97 s | 1.97 s | 1.95 s | 1.0% slower |
+| FLUX.2-klein-4B | 0.92 s | 0.71 s | 0.71 s | 0.60 s | 18.3% slower |
+| FLUX.2-klein-9B | 1.71 s | 1.40 s | 1.41 s | 1.08 s | 29.6% slower |
+
+### Three-model accuracy versus BF16
+
+| model | native safe on PSNR/SSIM | native safe off PSNR/SSIM | TorchAO PSNR/SSIM |
+|---|---|---|---|
+| Qwen-Image-2.1-Turbo | 40.313 / 0.97683 | 40.073 / 0.97529 | 40.420 / 0.97701 |
+| FLUX.2-klein-4B | 34.481 / 0.95311 | 35.240 / 0.96832 | 35.652 / 0.95607 |
+| FLUX.2-klein-9B | 36.606 / 0.96505 | 36.669 / 0.96802 | 36.773 / 0.96840 |
+
+Safe-on versus safe-off PSNR was 41.056, 37.294, and 38.465 dB, respectively. Separately compiled runs were not pixel-identical, so these numbers are recorded as compile run-to-run variation rather than a proof that the switch changes or preserves final images. Visual inspection found no black images, NaNs, or structural corruption. Images, logs, and metrics are in `.tmp/fp8_per_row_opt/e2e_models/`.
+
+### Final safe-scale and documentation state
+
+`fp8_quantize_torch(..., safe_scale=True)` is now the default. Disabling it is an explicit optimization for callers that guarantee nonzero amax in every row/tensor/block; all-zero units then produce NaN qdata. Native CUDA quantization remains safe for zero units. Tests cover default-on behavior, nonzero-input bit equality, the unsafe zero-unit contract, activation blocks, and weight blocks.
+
+The main per-row quantizer and scale GEMM kernels now have detailed comments covering their mathematical contract, Vec8 layout, hierarchical reduction, shared-memory reuse, TMA/mbarrier pipeline, M4N2 tiling, guarded tails, FP32 epilogue, WS/non-WS synchronization, and BF16 output staging. Final validation after these cleanup changes was 191 tests passed, with pre-commit and `git diff --check` passing. Performance optimization is intentionally paused here.

@@ -96,6 +96,28 @@ def test_torch_quantize_matches_custom(mode: str) -> None:
   assert torch.equal(s_custom, s_torch)
 
 
+@pytest.mark.parametrize("mode,is_weight", [("per_row", False), ("per_tensor", False),
+                                            ("per_block", False), ("per_block", True)])
+def test_torch_quantize_safe_scale_option(mode: str, is_weight: bool) -> None:
+  torch.manual_seed(15)
+  x = torch.randn(130, 256, dtype=torch.bfloat16, device="cuda")
+  q_default, s_default = fp8_quantize_torch(x, mode, is_weight=is_weight)
+  q_fast, s_fast = fp8_quantize_torch(x, mode, is_weight=is_weight, safe_scale=False)
+  assert torch.equal(q_default, q_fast)
+  assert torch.equal(s_default, s_fast)
+
+  x.zero_()
+  q_default, s_default = fp8_quantize_torch(x, mode, is_weight=is_weight)
+  q_safe, s_safe = fp8_quantize_torch(x, mode, is_weight=is_weight, safe_scale=True)
+  q_fast, s_fast = fp8_quantize_torch(x, mode, is_weight=is_weight, safe_scale=False)
+  assert torch.equal(q_default, q_safe)
+  assert torch.equal(s_default, s_safe)
+  assert torch.count_nonzero(q_default.float()) == 0
+  assert torch.count_nonzero(s_default) == 0
+  assert torch.count_nonzero(s_fast) == 0
+  assert torch.isnan(q_fast.float()).all()
+
+
 def test_torch_quantize_weight_per_block_with_output_tail() -> None:
   torch.manual_seed(7)
   weight = torch.randn(136, 256, dtype=torch.bfloat16, device="cuda")

@@ -8,6 +8,11 @@
 namespace cache_dit::fp8 {
 namespace {
 
+// Per-row shape dispatch. All configurations use BK=128, two A/B pipeline stages, and M4N2 warps.
+// Smaller BM/BN tiles increase CTA-level parallelism for short sequences; larger BN improves weight
+// reuse for long sequences. BN=192 is a separate medium-width regime: it reduces accumulator/smem
+// pressure relative to BN=256 without paying the full B-reread cost of BN=128. These boundaries are
+// empirical SM120 choices, not numerical requirements; every instantiation implements the same ABI.
 using DefaultTraits = Fp8GemmTraits<128, 256, 128, 2, 2>;
 using BalancedTraits = Fp8GemmTraits<128, 192, 128, 2, 2>;
 using SmallMTraits = Fp8GemmTraits<128, 128, 128, 2, 2>;

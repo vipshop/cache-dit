@@ -23,6 +23,44 @@ __device__ __forceinline__ float warp_max(float value) {
   return value;
 }
 
+// =================================================================================================
+// Per-row BF16 -> FP8-E4M3 quantization: math, layout, and numerical contract
+// =================================================================================================
+// For each input row m, this kernel computes
+//
+//   amax[m]  = max_k abs(float(input[m, k]))
+//   scale[m] = amax[m] == 0 ? 0 : amax[m] / 448
+//   q[m, k]  = satfinite_e4m3(float(input[m, k]) / (scale[m] == 0 ? 1 : scale[m]))
+//
+// scale is the dequantization multiplier consumed by the FP8 GEMM. It is deliberately not the
+// reciprocal quantization multiplier. Keeping this convention makes dequant(q) = q * scale and
+// preserves exact zeros: an all-zero row has scale=0 and q=0, never 0/0. The conversion helper
+// performs the E4M3 rounding and saturation; values are not rounded through an intermediate FP16.
+// fmaxf also defines the native NaN policy: NaNs do not propagate into amax as they do in
+// torch.amax.
+//
+// Parallel decomposition:
+//   * kWarpsPerRow consecutive warps own one logical row; the production launcher uses eight.
+//   * A group therefore contains 256 lanes, and each lane reads eight contiguous BF16 values per
+//     iteration (16 B). The last dimension is checked to be a multiple of 16, so row starts and
+//     every Vec8 access remain aligned; there is no hidden scalar K-tail in this main kernel.
+//   * kRowsPerBlock is one for the production configuration. `row_in_block` and `group_lane`
+//     retain the more general template mapping without changing the public row-major ABI.
+//
+// The algorithm has two logical passes over a row. Pass 1 reduces amax and pass 2 converts/stores.
+// With kCacheInput=true, pass 1 also leaves the Vec8 input in dynamic shared memory so pass 2 does
+// not repeat the global read. The launcher selects this only for K <= 4096, bounding the cache to
+// 8 KiB per row. With kCacheInput=false, input_cache has size zero and pass 2 rereads global
+// memory; this avoids sacrificing occupancy on long-K rows. Both instantiations implement the same
+// math.
+//
+// Reduction and synchronization are hierarchical:
+//   1. each lane reduces its private values in FP32;
+//   2. warp_max performs an xor-shuffle reduction, preserving the native fmaxf NaN behavior;
+//   3. lane zero publishes each warp result to warp_amax;
+//   4. one __syncthreads makes both the reductions and cached BF16 input visible to the row group;
+//   5. every lane reduces the small warp_amax array and hence uses an identical safe scale.
+// No scale array entry is read before step 4, and no second CTA-wide barrier is required.
 template <int kWarpsPerRow, bool kCacheInput>
 __global__ void quantize_per_row_kernel(const __nv_bfloat16* __restrict__ input,
                                         __nv_fp8_e4m3* __restrict__ output,
@@ -38,6 +76,8 @@ __global__ void quantize_per_row_kernel(const __nv_bfloat16* __restrict__ input,
   const int64_t row = static_cast<int64_t>(blockIdx.x) * kRowsPerBlock + row_in_block;
   const bool valid = row < rows;
 
+  // Stage 1: form the row view and compute lane-private amax. Invalid rows still participate in
+  // barriers but are prevented from loading, storing, or publishing a scale by `valid`.
   const __nv_bfloat16* src = input + row * cols;
   __nv_bfloat16* cached = input_cache + row_in_block * cols;
   float amax = 0.0f;
