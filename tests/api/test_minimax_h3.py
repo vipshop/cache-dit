@@ -292,7 +292,7 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
   from diffusers.modular_pipelines.modular_pipeline import PipelineState
   from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3SetTimestepsStep
   from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3 import MiniMaxH3Blocks
-  from cache_dit.models.pipelines.minimax_h3 import MiniMaxH3DenoiseLoop, minimax_h3_blocks
+  from bench.profile.model.minimax_h3 import MiniMaxH3DenoiseLoop, minimax_h3_blocks
   from cache_dit.profile.nvtx import nvtx_scope
 
   upstream = MiniMaxH3Blocks().get_workflow(workflow)

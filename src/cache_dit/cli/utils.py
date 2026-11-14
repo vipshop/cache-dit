@@ -606,7 +606,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--nvfp4",
     action="store_true",
     default=False,
-    help="Enable TorchAO NVFP4 dynamic activation and weight quantization for transformer",
+    help="Enable NVFP4 dynamic activation and weight quantization for transformer",
   )
   parser.add_argument(
     "--nvfp4-weight-only",
@@ -1333,37 +1333,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--profile",
     action="store_true",
     default=False,
-    help="Enable collection with the selected profiler collector",
-  )
-  parser.add_argument(
-    "--profile-collector",
-    choices=["torch", "nsys"],
-    default="torch",
-    help="Use Torch trace export or CUDA gates for an externally launched Nsight Systems session",
-  )
-  parser.add_argument(
-    "--nvtx",
-    action="store_true",
-    default=False,
-    help="Enable stage NVTX annotations after warmup, independently of --profile",
-  )
-  parser.add_argument(
-    "--layerwise-nvtx",
-    action="store_true",
-    default=False,
-    help="Enable stage and transformer module NVTX annotations after warmup",
+    help="Enable profiling with torch.profiler",
   )
   parser.add_argument(
     "--profile-name",
     type=str,
     default=None,
     help="Name for the profiling session",
-  )
-  parser.add_argument(
-    "--profile-ranges",
-    type=str,
-    default="all",
-    help="Profile the whole request ('all') or inclusive denoising steps (e.g. '0-4,10-14')",
   )
   parser.add_argument(
     "--profile-dir",
@@ -1381,9 +1357,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--profile-with-stack",
-    action=argparse.BooleanOptionalAction,
+    action="store_true",
     default=True,
-    help="Record Python stacks; use --no-profile-with-stack for an operator/kernel timeline",
+    help="profile with stack for better traceability",
   )
   parser.add_argument(
     "--profile-record-shapes",
@@ -3317,17 +3293,14 @@ def maybe_destroy_distributed():
     dist.destroy_process_group()
 
 
-def create_profiler_from_args(args, profile_name=None, devices=None):
+def create_profiler_from_args(args, profile_name=None):
   from ..profile import ProfilerContext
 
   return ProfilerContext(
     enabled=args.profile,
-    collector=getattr(args, "profile_collector", "torch"),
     activities=getattr(args, "profile_activities", ["CPU", "GPU"]),
     output_dir=getattr(args, "profile_dir", None),
     profile_name=profile_name or getattr(args, "profile_name", None),
     with_stack=getattr(args, "profile_with_stack", True),
     record_shapes=getattr(args, "profile_record_shapes", True),
-    ranges=getattr(args, "profile_ranges", "all"),
-    devices=devices,
   )
