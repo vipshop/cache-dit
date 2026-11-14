@@ -58,8 +58,8 @@ def profiled_denoise_loop(self, components, state):
   :param state: Pipeline state to read and update.
   :returns: The components and updated pipeline state.
   """
-  from .profiler import profile_steps
-  from .layerwise_nvtx import stage_range
+  from .profile import profile_steps
+  from .profile.nvtx import stage_range
 
   block_state = self.get_block_state(state)
   with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:

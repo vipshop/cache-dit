@@ -263,7 +263,7 @@ Direct callers finish their usual optimization and warmup before declaring the e
 For stages alone, use `nvtx_scope()` and place `stage_range()` at the actual execution boundary:
 
 ```python
-from cache_dit import LayerwiseNvtxMarker, nvtx_scope, stage_range
+from cache_dit.profile.nvtx import LayerwiseNvtxMarker, nvtx_scope, stage_range
 
 # No module traversal or hooks.
 with nvtx_scope():
@@ -339,7 +339,7 @@ including the gaps between numeric windows.
 Integrate `profile_steps()` in the pipeline's actual loop before selecting numeric ranges:
 
 ```python
-from cache_dit import profile_steps
+from cache_dit.profile import profile_steps
 
 with profile_steps(timesteps) as steps:
     for i, t in steps:

@@ -3318,7 +3318,7 @@ def maybe_destroy_distributed():
 
 
 def create_profiler_from_args(args, profile_name=None, devices=None):
-  from ..profiler import ProfilerContext
+  from ..profile import ProfilerContext
 
   return ProfilerContext(
     enabled=args.profile,

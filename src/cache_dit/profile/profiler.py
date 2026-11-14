@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 from uuid import uuid4
 
 import torch
-from .platforms import current_platform
+from ..platforms import current_platform
 
 logger = logging.getLogger(__name__)
 

@@ -293,7 +293,7 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
   from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3SetTimestepsStep
   from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3 import MiniMaxH3Blocks
   from cache_dit.models.pipelines.minimax_h3 import MiniMaxH3DenoiseLoop, minimax_h3_blocks
-  from cache_dit.layerwise_nvtx import nvtx_scope
+  from cache_dit.profile.nvtx import nvtx_scope
 
   upstream = MiniMaxH3Blocks().get_workflow(workflow)
   pipe = MiniMaxH3ModularPipeline(blocks=minimax_h3_blocks(), workflow=workflow)
@@ -319,8 +319,8 @@ def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, d
   assert ("transformer_ref" in component_names) is (workflow == "ref2va")
   assert ("transformer" in component_names) is (workflow != "ref2va")
 
-  profiler_module = importlib.import_module("cache_dit.profiler")
-  nvtx_module = importlib.import_module("cache_dit.layerwise_nvtx")
+  profiler_module = importlib.import_module("cache_dit.profile.profiler")
+  nvtx_module = importlib.import_module("cache_dit.profile.nvtx")
   monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
   stage_stack = []
 

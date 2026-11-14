@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from cache_dit.layerwise_nvtx import LayerwiseNvtxMarker, nvtx_scope, stage_range
+from cache_dit.profile.nvtx import LayerwiseNvtxMarker, nvtx_scope, stage_range
 
-nvtx_module = importlib.import_module("cache_dit.layerwise_nvtx")
+nvtx_module = importlib.import_module("cache_dit.profile.nvtx")
 
 
 @pytest.fixture

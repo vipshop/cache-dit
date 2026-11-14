@@ -190,7 +190,7 @@ def _run_rank(rank: int, world: int) -> None:
         assert relative < _REL_TOL, f"{name} output diverged under TP ({relative:.3e})"
 
     from cache_dit.compile import set_compile_configs
-    from cache_dit.layerwise_nvtx import LayerwiseNvtxMarker
+    from cache_dit.profile.nvtx import LayerwiseNvtxMarker
     from torch._dynamo.utils import counters
     from torch._inductor import metrics
 

@@ -9,7 +9,7 @@ from typing import Mapping
 import torch
 from torch.utils._pytree import tree_leaves
 
-from .platforms import current_platform
+from ..platforms import current_platform
 
 logger = logging.getLogger(__name__)
 _NVTX_ENABLED = ContextVar("cache_dit_nvtx", default=False)

@@ -18,7 +18,7 @@ from diffusers.quantizers import PipelineQuantizationConfig
 
 from ..summary import summary
 from ..utils import is_modular_pipeline, iter_transformer_modules
-from ..layerwise_nvtx import LayerwiseNvtxMarker, nvtx_scope
+from ..profile.nvtx import LayerwiseNvtxMarker, nvtx_scope
 from ..logger import init_logger
 from ..platforms import current_platform
 

@@ -12,7 +12,7 @@ from diffusers.modular_pipelines.minimax_h3.denoise import (
 from diffusers.modular_pipelines.minimax_h3.encoders import MiniMaxH3TextEncoderStep
 from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3 import MiniMaxH3Blocks
 
-from ....layerwise_nvtx import stage_range
+from ....profile.nvtx import stage_range
 from ....utils import profiled_denoise_loop
 
 

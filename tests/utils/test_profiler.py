@@ -3,15 +3,32 @@
 import importlib
 from contextlib import nullcontext
 from contextvars import Context
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 import pytest
 import torch
 
-from cache_dit.profiler import ProfilerContext, create_profiler_context, profile_function, profile_steps
+from cache_dit.profile import ProfilerContext, create_profiler_context, profile_function, profile_steps
 
-profiler_module = importlib.import_module("cache_dit.profiler")
+profiler_module = importlib.import_module("cache_dit.profile.profiler")
+
+
+def test_profile_package_preserves_existing_root_api():
+  import cache_dit
+  from cache_dit import profile
+  from setuptools import find_packages
+
+  for name in ("ProfilerContext", "profile_function", "create_profiler_context",
+               "get_profiler_output_dir", "set_profiler_output_dir"):
+    assert getattr(cache_dit, name) is getattr(profile, name) is getattr(profiler_module, name)
+  for name in ("profile_steps", "stage_range", "nvtx_scope", "LayerwiseNvtxMarker"):
+    assert not hasattr(cache_dit, name)
+  package_dir = Path(cache_dit.__file__).parent
+  assert not (package_dir / "profiler.py").exists()
+  assert not (package_dir / "layerwise_nvtx.py").exists()
+  assert "cache_dit.profile" in find_packages("src")
 
 
 @pytest.fixture

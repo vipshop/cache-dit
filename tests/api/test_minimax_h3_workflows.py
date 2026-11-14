@@ -41,8 +41,8 @@ from cache_dit.cli.registers import (
 )
 from cache_dit.caching.block_adapters.adapters import minimax_h3_adapter
 from cache_dit.cli.utils import create_profiler_from_args, get_args
-from cache_dit.layerwise_nvtx import stage_range
-from cache_dit.profiler import profile_steps
+from cache_dit.profile.nvtx import stage_range
+from cache_dit.profile import profile_steps
 from cache_dit.utils import TRANSFORMER_ATTR_NAMES, assign_transformer, resolve_transformer
 
 
@@ -601,13 +601,13 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     state.stack.append(name)
     state.marks.append(name)
 
-  module = importlib.import_module("cache_dit.profiler")
+  module = importlib.import_module("cache_dit.profile.profiler")
   monkeypatch.setattr(
     module, "current_platform",
     SimpleNamespace(device_type="cuda",
                     is_accelerator_available=lambda: True,
                     synchronize=lambda device: None))
-  nvtx_module = importlib.import_module("cache_dit.layerwise_nvtx")
+  nvtx_module = importlib.import_module("cache_dit.profile.nvtx")
   monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
   monkeypatch.setattr(torch.cuda.nvtx, "range_push", push)
   monkeypatch.setattr(torch.cuda.nvtx, "range_pop", state.stack.pop)
