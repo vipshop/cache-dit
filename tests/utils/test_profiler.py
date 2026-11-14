@@ -1,63 +1,153 @@
+"""Public profiler contracts; real model and CLI coverage lives in the H3 tests."""
+
+import importlib
+from contextlib import nullcontext
+from contextvars import Context
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, call
+
 import pytest
+import torch
 
-from cache_dit.platforms import current_platform
-from cache_dit.profiler import (
-  ProfilerContext,
-  _npu_worker_name,
-  _resolve_profiler_backend,
-  _supported_device,
-)
+from cache_dit.profile import ProfilerContext, create_profiler_context, profile_function, profile_steps
+
+profiler_module = importlib.import_module("cache_dit.profile.profiler")
 
 
-class TestProfilerBackendSelection:
+def test_profile_package_preserves_existing_root_api():
+  import cache_dit
+  from cache_dit import profile
+  from setuptools import find_packages
 
-  def test_supported_device_returns_bool(self):
-    assert isinstance(_supported_device(), bool)
-
-  def test_supported_device_matches_platform(self):
-    # CPU is not a supported profiler device; CUDA/NPU are.
-    if current_platform.device_type == "cpu":
-      assert _supported_device() is False
-    else:
-      assert _supported_device() is current_platform.is_accelerator_available()
-
-  def test_resolve_backend_returns_cuda_on_non_npu(self):
-    # On non-NPU devices the CUDA profiler backend is selected; NPU devices select
-    # torch_npu.profiler. Either way the tuple shape is (callable, enum, str).
-    profile_fn, activity_enum, accelerator = _resolve_profiler_backend()
-    assert callable(profile_fn)
-    assert hasattr(activity_enum, "CPU")
-    assert isinstance(accelerator, str)
-    if current_platform.device_type == "npu":
-      assert accelerator == "NPU"
-    else:
-      assert accelerator == "CUDA"
+  for name in ("ProfilerContext", "profile_function", "create_profiler_context",
+               "get_profiler_output_dir", "set_profiler_output_dir"):
+    assert getattr(cache_dit, name) is getattr(profile, name) is getattr(profiler_module, name)
+  for name in ("profile_steps", "stage_range", "nvtx_scope", "LayerwiseNvtxMarker"):
+    assert not hasattr(cache_dit, name)
+  package_dir = Path(cache_dit.__file__).parent
+  assert not (package_dir / "profiler.py").exists()
+  assert not (package_dir / "layerwise_nvtx.py").exists()
+  assert "cache_dit.profile" in find_packages("src")
 
 
-class TestNpuWorkerName:
-
-  def test_sanitizes_disallowed_chars(self):
-    # worker_name only allows [A-Za-z0-9_-]; dots and spaces must be replaced.
-    assert _npu_worker_name("wan2.2_t2v profile", 0, 1) == "wan2_2_t2v_profile"
-
-  def test_appends_rank_for_distributed(self):
-    assert _npu_worker_name("flux", 3, 8) == "flux-rank3"
-
-  def test_single_rank_omits_suffix(self):
-    assert _npu_worker_name("flux", 0, 1) == "flux"
-
-  def test_falls_back_for_empty_name(self):
-    assert _npu_worker_name("", 0, 1) == "cache_dit"
-    # All-disallowed chars sanitize to empty and fall back to the default.
-    assert _npu_worker_name("...", 0, 1) == "cache_dit"
+@pytest.fixture
+def cpu_collector(monkeypatch):
+  """Use the real CPU collector while replacing accelerator checks and synchronization."""
+  monkeypatch.setattr(
+    profiler_module, "current_platform",
+    SimpleNamespace(device_type="cuda",
+                    is_accelerator_available=lambda: True,
+                    synchronize=lambda device: None))
 
 
-class TestProfilerContextGuard:
+@profile_function(enabled=False, ranges="invalid")
+def test_disabled_request_does_not_probe_platform(monkeypatch):
+  monkeypatch.setattr(profiler_module, "current_platform", None)
+  with ProfilerContext(enabled=False, collector="invalid", ranges="invalid") as request:
+    with profile_steps([7]) as steps:
+      assert list(steps) == [(0, 7)]
+  assert request.results == [] and request.trace_path is None
 
-  def test_construct_raises_on_unsupported_device(self):
-    # ProfilerContext must refuse unsupported devices (e.g. CPU) instead of
-    # silently producing an empty/invalid trace.
-    if _supported_device():
-      pytest.skip("device is supported by the profiler")
-    with pytest.raises(AssertionError):
-      ProfilerContext(enabled=True)
+
+@pytest.mark.parametrize("options,error", [
+  ({
+    "collector": "invalid"
+  }, ValueError),
+  ({
+    "ranges": "-1"
+  }, ValueError),
+  ({
+    "activities": ["invalid"],
+    "ranges": "99"
+  }, ValueError),
+  ({
+    "devices": []
+  }, ValueError),
+  ({
+    "ranges": "0"
+  }, RuntimeError),
+])
+def test_invalid_or_unconnected_request(options, error, cpu_collector):
+  with pytest.raises(error):
+    with ProfilerContext(**options):
+      pass
+
+
+@pytest.mark.parametrize("collector", ["torch", "nsys"])
+def test_unsupported_platform_fails_at_entry(collector, monkeypatch):
+  monkeypatch.setattr(profiler_module, "current_platform",
+                      SimpleNamespace(device_type="cpu", is_accelerator_available=lambda: False))
+  with pytest.raises(RuntimeError):
+    with ProfilerContext(collector=collector):
+      pass
+
+
+@pytest.mark.parametrize("status", ["completed", "interrupted", "error", "exhausted"])
+def test_windows_and_loop_exit(status, cpu_collector, tmp_path):
+  request = ProfilerContext(activities=["CPU"],
+                            ranges="4-5,2,1,2",
+                            output_dir=tmp_path,
+                            with_stack=False)
+  with pytest.raises(LookupError) if status == "error" else nullcontext():
+    with request:
+      for _ in range(2):
+        with profile_steps(range(2 if status == "exhausted" else 6)) as steps:
+          for i, _ in steps:
+            if i == 1 and status in ("interrupted", "error"):
+              if status == "error":
+                raise LookupError("model failed")
+              break
+  expected = [(1, 2),
+              (4, 5)] * 2 if status == "completed" else [(1, 1)] * (1 if status == "error" else 2)
+  assert [r.actual_range for r in request.results] == expected
+  assert all(r.status == status and r.last_step_complete == (status in ("completed", "exhausted"))
+             for r in request.results)
+  paths = [r.trace_path for r in request.results]
+  assert len(set(paths)) == len(expected) and all(p.is_file() for p in paths)
+  assert request.trace_path == paths[-1]
+
+
+def test_request_excludes_other_contexts_even_between_windows(cpu_collector, tmp_path):
+
+  def visit():
+    with profile_steps([7]) as steps:
+      return list(steps)
+
+  with ProfilerContext(activities=["CPU"], ranges="99", output_dir=tmp_path) as request:
+    assert Context().run(visit) == [(0, 7)]
+    with pytest.raises(RuntimeError, match="already active"):
+      Context().run(request.__enter__)
+    with profile_steps([]) as steps:
+      list(steps)
+  assert request.results == [] and "empty" in request.empty_reason
+  with ProfilerContext(activities=["CPU"], output_dir=tmp_path, with_stack=False):
+    pass
+
+
+@pytest.mark.parametrize("distributed", [False, True])
+def test_nsys_gate_windows(distributed, cpu_collector, monkeypatch, tmp_path):
+  capture = Mock()
+  monkeypatch.setattr(torch.cuda, "profiler", capture)
+  monkeypatch.setattr(torch.distributed, "is_initialized", lambda: distributed)
+  monkeypatch.setattr(torch.distributed, "barrier", capture.barrier)
+  with create_profiler_context(enabled=True,
+                               collector="nsys",
+                               ranges="0,2",
+                               activities=["external activities"],
+                               output_dir=tmp_path / "unused") as request:
+    with profile_steps(range(4)) as steps:
+      list(steps)
+  expected = [call.start(), call.stop()]
+  if distributed:
+    expected = [
+      call.barrier(),
+      call.start(),
+      call.barrier(),
+      call.barrier(),
+      call.stop(),
+      call.barrier()
+    ]
+  assert capture.mock_calls == expected * 2
+  assert [r.actual_range for r in request.results] == [(0, 0), (2, 2)]
+  assert request.trace_path is None and not (tmp_path / "unused").exists()

@@ -15,6 +15,11 @@ Four silent failure modes are covered, all CPU-only:
    the kwargs that appear in `inspect.signature(forward)`.
 """
 import inspect
+import gzip
+import importlib
+import json
+from contextlib import contextmanager
+from functools import wraps
 from types import SimpleNamespace
 
 import pytest
@@ -272,3 +277,163 @@ def test_minimax_h3_ffn_rearrange_is_guarded_against_a_second_call():
   # the interleave is an involution: applying it twice would silently restore gate x gate
   with pytest.raises(RuntimeError, match="already rearranged"):
     planner.rearrange_ffn_weight(block, tp_size=2)
+
+
+@pytest.mark.parametrize("workflow", ["t2va", "fl2va", "ref2va"])
+@pytest.mark.parametrize("device", [
+  "cpu",
+  pytest.param(
+    "cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable"))
+])
+def test_profiler_preserves_minimax_loop_and_captures_complete_steps(workflow, device, monkeypatch,
+                                                                     tmp_path):
+  from diffusers import MiniMaxH3Scheduler, MiniMaxH3ModularPipeline
+  from cache_dit.utils import iter_transformer_modules
+  from diffusers.modular_pipelines.modular_pipeline import PipelineState
+  from diffusers.modular_pipelines.minimax_h3.before_denoise import MiniMaxH3SetTimestepsStep
+  from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3 import MiniMaxH3Blocks
+  from bench.profile.model.minimax_h3 import MiniMaxH3DenoiseLoop, minimax_h3_blocks
+  from cache_dit.profile.nvtx import nvtx_scope
+
+  upstream = MiniMaxH3Blocks().get_workflow(workflow)
+  pipe = MiniMaxH3ModularPipeline(blocks=minimax_h3_blocks(), workflow=workflow)
+  selected = pipe.blocks
+  assert list(selected.sub_blocks) == list(upstream.sub_blocks)
+  for name, block in upstream.sub_blocks.items():
+    actual = selected.sub_blocks[name]
+    assert (actual.inputs, actual.intermediate_outputs, actual.outputs,
+            actual.expected_components) == (block.inputs, block.intermediate_outputs, block.outputs,
+                                            block.expected_components)
+    if name == "denoise.denoise":
+      assert isinstance(actual, MiniMaxH3DenoiseLoop)
+      assert list(actual.sub_blocks) == list(block.sub_blocks)
+      for key, child in block.sub_blocks.items():
+        assert inspect.unwrap(actual.sub_blocks[key].__call__) is inspect.unwrap(child.__call__)
+        assert actual.sub_blocks[key].expected_components == child.expected_components
+    else:
+      assert isinstance(actual, type(block))
+      assert inspect.unwrap(actual.__call__) is inspect.unwrap(block.__call__)
+  root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
+  assert selected.sub_blocks["denoise.denoise"].sub_blocks["denoiser"].transformer_name == root_name
+  component_names = {spec.name for spec in selected.expected_components}
+  assert ("transformer_ref" in component_names) is (workflow == "ref2va")
+  assert ("transformer" in component_names) is (workflow != "ref2va")
+
+  profiler_module = importlib.import_module("cache_dit.profile.profiler")
+  nvtx_module = importlib.import_module("cache_dit.profile.nvtx")
+  monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
+  stage_stack = []
+
+  def push(name):
+    stage_stack.append(name)
+
+  monkeypatch.setattr(torch.cuda.nvtx, "range_push", push)
+  monkeypatch.setattr(torch.cuda.nvtx, "range_pop", stage_stack.pop)
+  if device == "cpu":
+    # The collector is real; only accelerator validation and synchronization are faked on CPU.
+    monkeypatch.setattr(
+      profiler_module, "current_platform",
+      SimpleNamespace(device_type="cuda",
+                      is_accelerator_available=lambda: True,
+                      synchronize=lambda device: None))
+  torch.manual_seed(31)
+  transformer = _tiny_minimax_h3_transformer().to(device).eval()
+  inputs = {name: tensor.to(device) for name, tensor in _tiny_packed_inputs().items()}
+  initial_rng = torch.get_rng_state()
+  initial_cuda_rng = torch.cuda.get_rng_state() if device == "cuda" else None
+  condition_video = int(workflow != "t2va")
+  condition_audio = int(workflow == "ref2va")
+  outputs = []
+
+  for mode in ("original", "disabled", "all", "0,2"):
+    torch.set_rng_state(initial_rng)
+    if device == "cuda":
+      torch.cuda.set_rng_state(initial_cuda_rng)
+    counts = dict.fromkeys(("predict", "video_update", "audio_update", "progress"), 0)
+    context = cache_dit.ProfilerContext(enabled=mode in ("all", "0,2"),
+                                        ranges=mode if mode in ("all", "0,2") else "all",
+                                        activities=["CPU", "GPU"] if device == "cuda" else ["CPU"],
+                                        devices=[device],
+                                        output_dir=tmp_path / mode,
+                                        with_stack=False)
+
+    def trace_call(original, label):
+
+      @wraps(original)
+      def call(*args, **kwargs):
+        i = counts[label]
+        counts[label] += 1
+        if mode != "original":
+          expected_stage = ["denoise_loop", f"denoise_step {i}"]
+          if label != "progress":
+            expected_stage.append("predict" if label == "predict" else "scheduler_step")
+          assert stage_stack == expected_stage
+        with torch.profiler.record_function(f"h3_{label}_{i}"):
+          return original(*args, **kwargs)
+
+      return call
+
+    components = SimpleNamespace(scheduler=MiniMaxH3Scheduler(shift=12),
+                                 audio_scheduler=MiniMaxH3Scheduler(shift=3),
+                                 _execution_device=torch.device(device),
+                                 keyframe_noise_aug=0.999)
+    setattr(components, root_name, transformer)
+    assert dict(iter_transformer_modules(components)) == {root_name: transformer}
+    components.scheduler.step = trace_call(components.scheduler.step, "video_update")
+    components.audio_scheduler.step = trace_call(components.audio_scheduler.step, "audio_update")
+    original_forward = transformer.forward
+    transformer.forward = trace_call(original_forward, "predict")
+    state = PipelineState(values=dict(latents=inputs["hidden_states"][0].clone(),
+                                      audio_latents=inputs["audio_hidden_states"][0].clone(),
+                                      prompt_embeds=inputs["encoder_hidden_states"],
+                                      num_inference_steps=5,
+                                      num_condition_video_rows=condition_video,
+                                      num_condition_audio_rows=condition_audio))
+    for name in ("token_tags", "position_ids", "video_indices", "audio_indices", "text_indices"):
+      state.set(name, inputs[name], kwargs_type="denoiser_input_fields")
+    MiniMaxH3SetTimestepsStep()(components, state)
+    loop = (upstream if mode == "original" else selected).sub_blocks["denoise.denoise"]
+
+    @contextmanager
+    def progress(total):
+      assert total == 4
+      yield SimpleNamespace(update=trace_call(lambda: None, "progress"))
+
+    loop.progress_bar = progress
+    try:
+      with nvtx_scope(mode != "original"), context:
+        with torch.profiler.record_function("h3_encode"):
+          torch.ones(1, device=device) + 1
+        returned_components, returned_state = loop(components, state)
+        with torch.profiler.record_function("h3_decode"):
+          torch.ones(1, device=device) * 2
+    finally:
+      transformer.forward = original_forward
+    assert returned_components is components and returned_state is state
+    assert not stage_stack
+    assert all(count == 4 for count in counts.values())
+    assert components.scheduler.step_index == components.audio_scheduler.step_index == 4
+    assert torch.equal(
+      state.get("latents")[:condition_video], inputs["hidden_states"][0, :condition_video])
+    assert torch.equal(
+      state.get("audio_latents")[:condition_audio],
+      inputs["audio_hidden_states"][0, :condition_audio])
+    assert torch.equal(torch.get_rng_state(), initial_rng)
+    if device == "cuda":
+      assert torch.equal(torch.cuda.get_rng_state(), initial_cuda_rng)
+    outputs.append((state.get("latents").clone(), state.get("audio_latents").clone()))
+    for result in context.results:
+      with gzip.open(result.trace_path, "rt") as trace_file:
+        trace = json.load(trace_file)["traceEvents"]
+      names = {event["name"] for event in trace if event["name"].startswith("h3_")}
+      selected_steps = range(4) if mode == "all" else range(result.actual_range[0],
+                                                            result.actual_range[1] + 1)
+      expected = {f"h3_{label}_{i}" for i in selected_steps for label in counts}
+      if mode == "all":
+        expected.update(("h3_encode", "h3_decode"))
+      assert names == expected
+      if device == "cuda":
+        assert any(event.get("cat") == "kernel" for event in trace)
+  assert all(
+    torch.equal(video, outputs[0][0]) and torch.equal(audio, outputs[0][1])
+    for video, audio in outputs[1:])

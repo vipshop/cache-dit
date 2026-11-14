@@ -15,8 +15,11 @@ the checkpoint partition a workflow loads. The silent failure modes covered here
    `--residual-diff-threshold` still wins.
 """
 import argparse
+import importlib
+from contextlib import contextmanager
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -31,13 +34,18 @@ from cache_dit.cli.examples import (
 )
 from cache_dit.cli.registers import (
   ExampleInputData,
+  ExampleOutputData,
   ExampleType,
   _AUDIO_VIDEO_TASKS,
   Example,
   parse_audio_video_output,
 )
 from cache_dit.caching.block_adapters.adapters import minimax_h3_adapter
+from cache_dit.cli.utils import create_profiler_from_args, get_args
+from cache_dit.profile.nvtx import stage_range
+from cache_dit.profile import ProfilerContext, profile_steps
 from cache_dit.utils import TRANSFORMER_ATTR_NAMES, assign_transformer, resolve_transformer
+from bench.profile import run as profile_run
 
 
 def _data_args(**overrides) -> argparse.Namespace:
@@ -482,3 +490,359 @@ def test_cache_teardown_visits_the_partition_the_pipeline_actually_has(monkeypat
 
   cache_adapter_mod.CachedAdapter.release_hooks(pipe, _release_transformer=released.append)
   assert released == [module]
+
+
+@pytest.mark.parametrize("flags,collector,stack,nvtx,layerwise", [
+  ([], "torch", True, False, False),
+  (["--profile-with-stack"], "torch", True, False, False),
+  (["--no-profile-with-stack"], "torch", False, False, False),
+  (["--profile-collector", "nsys"], "nsys", True, False, False),
+  (["--nvtx"], "torch", True, True, False),
+  (["--layerwise-nvtx"], "torch", True, False, True),
+  (["--nvtx", "--layerwise-nvtx"], "torch", True, True, True),
+])
+def test_profiler_flags_forward_configuration_without_enabling_collection(
+    flags, collector, stack, nvtx, layerwise):
+  args = profile_run.get_args(parse=False).parse_args(["flux", *flags])
+  assert (args.profile_collector, args.profile_with_stack, args.nvtx,
+          args.layerwise_nvtx) == (collector, stack, nvtx, layerwise)
+  assert not args.profile
+
+
+@pytest.mark.parametrize(
+  "flags",
+  [["--profile-collector", "nsys"], ["--profile-ranges", "0-2"], ["--nvtx"], ["--layerwise-nvtx"],
+   ["--no-profile-with-stack"], ["--example-factory", "model.minimax_h3:create_example"]])
+def test_generate_parser_excludes_standalone_options(flags):
+  with pytest.raises(SystemExit):
+    get_args(parse=False).parse_args(flags)
+
+
+@pytest.fixture(params=["t2va"])
+def profiled_workflow(request, monkeypatch, tmp_path):
+  """Share real example configuration and lifecycle probes between the two runners."""
+  from cache_dit.cli import examples
+
+  monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "bench" / "profile"))
+  workflow = request.param
+  root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
+  state = SimpleNamespace(events=[], requests=[], marks=[], stack=[], messages=[])
+  modules = [torch.nn.Linear(2, 2) for _ in range(4)]
+  args = profile_run.get_args(parse=False).parse_args([
+    "minimax_h3",
+    "--prompt",
+    "formal",
+    "--warmup-prompt",
+    "warmup",
+    "--warmup",
+    "1",
+    "--repeat",
+    "2",
+    "--steps",
+    "5",
+    "--warmup-num-inference-steps",
+    "2",
+    "--seed",
+    "11",
+    "--warmup-seed",
+    "23",
+    "--generator-device",
+    "cpu",
+    "--profile",
+    "--profile-ranges",
+    "0,2",
+    "--profile-name",
+    "fixed",
+    "--profile-dir",
+    str(tmp_path),
+    "--profile-activities",
+    "CPU",
+    "--no-profile-with-stack",
+  ])
+  args.image_path = args.last_image_path = _write_image(tmp_path, "provided.png")
+  args.reference_image_path = [args.image_path]
+  args.example = ("flux" if workflow == "flux" else
+                  "minimax_h3" if workflow == "t2va" else f"minimax_h3_{workflow}")
+  args.example_factory = None if workflow == "flux" else "model.minimax_h3:create_example"
+  args.track_memory = args.cache_summary = False
+
+  class Pipe:
+
+    def set_progress_bar_config(self, **kwargs):
+      pass
+
+    def __call__(self, **kwargs):
+      state.events.append(("call", kwargs["prompt"], kwargs["num_inference_steps"],
+                           kwargs["generator"].initial_seed()))
+      state.events.append(("hooks", tuple(getattr(self, root_name)._forward_pre_hooks),
+                           tuple(self.transformer_2._forward_pre_hooks)))
+      with stage_range("test_request"):
+        getattr(self, root_name)(torch.ones(1, 2))
+        self.transformer_2(torch.ones(1, 2))
+        with profile_steps(range(kwargs["num_inference_steps"])) as steps:
+          list(steps)
+      if kwargs["prompt"] == "warmup":
+        setattr(self, root_name, modules[2])
+      if workflow == "flux":
+        return SimpleNamespace(images=[Image.new("RGB", (1, 1))])
+      return {"videos": [[Image.new("RGB", (1, 1))]], "audio": None}
+
+  pipe = Pipe()
+  setattr(pipe, root_name, modules[0])
+  pipe.transformer_2 = modules[3]
+
+  def optimize(*args, **kwargs):
+    state.events.append(("optimize", ))
+    setattr(pipe, root_name, modules[1])
+
+  original_roots = profile_run.iter_transformer_modules
+
+  def roots(pipe):
+    state.events.append(("roots", ))
+    assert getattr(pipe, root_name) is modules[2]
+    return original_roots(pipe)
+
+  @contextmanager
+  def observe_request(request):
+    state.requests.append(request)
+    state.events.append(("enter", ))
+    try:
+      with request:
+        yield request
+    finally:
+      state.events.append(("exit", ))
+
+  def push(name):
+    state.stack.append(name)
+    state.marks.append(name)
+
+  module = importlib.import_module("cache_dit.profile.profiler")
+  monkeypatch.setattr(
+    module, "current_platform",
+    SimpleNamespace(device_type="cuda",
+                    is_accelerator_available=lambda: True,
+                    synchronize=lambda device: None))
+  nvtx_module = importlib.import_module("cache_dit.profile.nvtx")
+  monkeypatch.setattr(nvtx_module, "current_platform", SimpleNamespace(device_type="cuda"))
+  monkeypatch.setattr(torch.cuda.nvtx, "range_push", push)
+  monkeypatch.setattr(torch.cuda.nvtx, "range_pop", state.stack.pop)
+  monkeypatch.setattr(registers, "maybe_init_distributed", lambda args: (0, "cpu"))
+  monkeypatch.setattr(registers, "get_rank_device", lambda: (0, torch.device("cpu")))
+  for runner in (registers, profile_run):
+    monkeypatch.setattr(runner, "maybe_apply_optimization", optimize)
+    monkeypatch.setattr(runner, "maybe_finalize_deferred_svdq_pipe_move",
+                        lambda pipe: state.events.append(("finalize", )))
+    monkeypatch.setattr(runner, "maybe_destroy_distributed", lambda: state.events.append(
+      ("destroy", )))
+    monkeypatch.setattr(runner, "strify", lambda *args: "test")
+    monkeypatch.setattr(
+      runner.logger, "info", lambda message, *args: state.messages.append(message % args
+                                                                          if args else message))
+  monkeypatch.setattr(profile_run, "iter_transformer_modules", roots)
+  monkeypatch.setattr(profile_run, "ProfilerContext",
+                      lambda **kwargs: observe_request(ProfilerContext(**kwargs)))
+
+  def create_cli_request(args, **kwargs):
+    request = create_profiler_from_args(args, **kwargs)
+    state.requests.append(request)
+    state.events.append(("enter", ))
+    return request
+
+  monkeypatch.setattr(registers, "create_profiler_from_args", create_cli_request)
+  monkeypatch.setattr(ExampleOutputData, "save", lambda *args: None)
+  monkeypatch.setattr(ExampleOutputData, "summary", lambda *args: None)
+  example_name = ("flux_example" if workflow == "flux" else
+                  "minimax_h3_example" if workflow == "t2va" else f"minimax_h3_{workflow}_example")
+  state.example = getattr(examples, example_name)(args)
+  monkeypatch.setattr(profile_run, "get_args", lambda: args)
+  monkeypatch.setattr(profile_run.ExampleRegister, "get_example", lambda args, name: state.example)
+  monkeypatch.setattr(state.example.init_config, "get_pipe", lambda args: pipe)
+  monkeypatch.setattr(state.example, "prepare_input_data", lambda: ({
+    "prompt": "formal",
+    "num_inference_steps": 5
+  }, {}))
+  state.modules = modules
+  return state
+
+
+@pytest.mark.parametrize("profiled_workflow,mode,profile", [
+  ("t2va", "disabled", False),
+  ("t2va", "disabled", True),
+  ("t2va", "stage", False),
+  ("t2va", "stage", True),
+  ("t2va", "layerwise", False),
+  ("t2va", "layerwise", True),
+  ("fl2va", "layerwise", False),
+  ("ref2va", "layerwise", True),
+  ("flux", "layerwise", True),
+],
+                         indirect=["profiled_workflow"])
+def test_profile_script_preserves_workflow_and_warmup_order(mode, profile, profiled_workflow):
+  state = profiled_workflow
+  example = state.example
+  workflow = example.init_config.modular_workflow
+  assert example.init_config.modular_blocks_factory is None
+  root_name = "transformer_ref" if workflow == "ref2va" else "transformer"
+  example.args.profile = profile
+  example.args.nvtx = mode == "stage"
+  example.args.layerwise_nvtx = mode == "layerwise"
+  profile_run.main()
+  if example.args.example_factory:
+    assert example.init_config.modular_blocks_factory is importlib.import_module(
+      "model.minimax_h3").minimax_h3_blocks
+    assert workflow == ("t2va" if example.args.example == "minimax_h3" else
+                        example.args.example.removeprefix("minimax_h3_"))
+  else:
+    assert example.init_config.modular_blocks_factory is None
+  assert [e for e in state.events if e[0] in ("optimize", "call", "finalize", "enter", "exit")] == [
+    ("optimize", ),
+    ("call", "warmup", 2, 23),
+    ("finalize", ),
+    *([("enter", )] if profile else []),
+    ("call", "formal", 5, 11),
+    ("finalize", ),
+    *([("exit", ), ("enter", )] if profile else []),
+    ("call", "formal", 5, 11),
+    ("finalize", ),
+    *([("exit", )] if profile else []),
+  ]
+  assert len(state.requests) == (2 if profile else 0)
+  assert all(r.enabled is profile and r.devices == (example.device, ) for r in state.requests)
+  assert state.events.count(("roots", )) == int(mode == "layerwise")
+  hooks = [e[1:] for e in state.events if e[0] == "hooks"]
+  assert hooks[0] == ((), ())
+  assert hooks[1] == hooks[2]
+  assert all(bool(ids) is (mode == "layerwise") for ids in hooks[1])
+  assert state.marks.count("test_request") == (0 if mode == "disabled" else 2)
+  assert sum(name.startswith(f"{root_name} (Linear)")
+             for name in state.marks) == (2 if mode == "layerwise" else 0)
+  assert sum(name.startswith("transformer_2 (Linear)")
+             for name in state.marks) == (2 if mode == "layerwise" else 0)
+  assert not state.stack
+  assert all(not m._forward_pre_hooks and not m._forward_hooks for m in state.modules)
+  paths = [r.trace_path for request in state.requests for r in request.results]
+  windows_per_request = 1 if example.args.profile_ranges == "all" else 2
+  assert len(paths) == len(set(paths)) == (2 * windows_per_request if profile else 0)
+  assert all(p.is_file() and p.name.startswith("fixed-") for p in paths)
+  expected_ranges = [None] if windows_per_request == 1 else [(0, 0), (2, 2)]
+  assert all([r.actual_range for r in request.results] == expected_ranges
+             for request in state.requests)
+  assert sum(m.startswith("Profiler loop=") for m in state.messages) == len(paths)
+  marks = list(state.marks)
+  with stage_range("outside"):
+    state.modules[2](torch.ones(1, 2))
+  assert state.marks == marks
+
+
+@pytest.mark.parametrize("ranges,count", [("all", 2), ("10-14", 0)])
+def test_script_logs_whole_and_unmatched_requests(ranges, count, profiled_workflow):
+  state = profiled_workflow
+  state.example.args.profile_ranges = ranges
+  profile_run.main()
+  windows = [m for m in state.messages if m.startswith("Profiler loop=")]
+  assert len(windows) == count
+  if count:
+    assert all(
+      str(r.trace_path) in " ".join(windows) for request in state.requests for r in request.results)
+  else:
+    assert sum(
+      m.startswith("Profiler produced no windows: No denoising steps matched")
+      for m in state.messages) == 2
+    assert all(not r.results and r.trace_path is None for r in state.requests)
+
+
+def test_balanced_script_provides_all_visible_devices(profiled_workflow, monkeypatch):
+  state = profiled_workflow
+  state.example.args.device_map_balance = True
+  monkeypatch.setattr(profile_run, "current_platform", SimpleNamespace(device_count=lambda: 2))
+  profile_run.main()
+  assert all(request.devices == (0, 1) for request in state.requests)
+
+
+def test_profiler_cli_factory_accepts_existing_namespaces():
+  context = create_profiler_from_args(argparse.Namespace(profile=False))
+  assert context.collector == "torch" and context.ranges == "all"
+
+
+@pytest.mark.parametrize("layerwise,profile", [(False, False), (True, True)])
+def test_script_model_error_cleans_annotations_and_requests(layerwise, profile, profiled_workflow,
+                                                            monkeypatch):
+  state = profiled_workflow
+  state.example.args.nvtx = not layerwise
+  state.example.args.layerwise_nvtx = layerwise
+  state.example.args.profile = profile
+  error = ValueError("formal inference failed")
+
+  def fail(*args):
+    raise error
+
+  monkeypatch.setattr(state.modules[2], "forward", fail)
+  with pytest.raises(ValueError) as caught:
+    profile_run.main()
+  assert caught.value is error
+  assert len(state.requests) == int(profile)
+  assert state.events[-1] == ("destroy", )
+  assert not state.stack
+  assert all(not m._forward_pre_hooks and not m._forward_hooks for m in state.modules)
+  assert all(r.profiler is None for r in state.requests)
+  marks = list(state.marks)
+  with stage_range("outside"):
+    pass
+  assert state.marks == marks
+
+
+@pytest.mark.parametrize("profile", [False, True])
+@pytest.mark.parametrize("profiled_workflow", ["t2va", "fl2va", "ref2va"], indirect=True)
+def test_generate_has_no_instrumentation_and_profiles_repeats_together(
+    profile, profiled_workflow, monkeypatch):
+  state = profiled_workflow
+  example = state.example
+  example.args.profile = profile
+
+  def unexpected(*args, **kwargs):
+    pytest.fail("ordinary generate entered profiling or NVTX instrumentation")
+
+  nvtx = importlib.import_module("cache_dit.profile.nvtx")
+  monkeypatch.setattr(nvtx, "nvtx_scope", unexpected)
+  monkeypatch.setattr(nvtx.LayerwiseNvtxMarker, "__enter__", unexpected)
+  if not profile:
+    monkeypatch.setattr(registers, "create_profiler_from_args", unexpected)
+  example.run()
+  assert example.init_config.modular_blocks_factory is None
+  assert [event for event in state.events if event[0] == "call"] == [("call", "warmup", 2, 23),
+                                                                     ("call", "formal", 5, 11),
+                                                                     ("call", "formal", 5, 11)]
+  assert state.events.index(("optimize", )) < state.events.index(("call", "warmup", 2, 23))
+  assert not state.marks and ("roots", ) not in state.events
+  assert all(event[1:] == ((), ()) for event in state.events if event[0] == "hooks")
+  assert len(state.requests) == int(profile)
+  paths = [result.trace_path for request in state.requests for result in request.results]
+  assert len(set(paths)) == len(paths) == len(state.requests)
+  assert all(path.is_file() for path in paths)
+  assert all(request.collector == "torch" and request.ranges == "all" for request in state.requests)
+  if profile:
+    assert state.events.index(("enter", )) > state.events.index(("call", "warmup", 2, 23))
+
+
+@pytest.mark.parametrize("profiled_workflow", ["flux"], indirect=True)
+def test_script_requires_real_step_boundaries(profiled_workflow, monkeypatch):
+  state = profiled_workflow
+  state.example.args.warmup = 0
+  calls = []
+  monkeypatch.setattr(state.example, "call_pipe", lambda *args: calls.append(args))
+  with pytest.raises(RuntimeError, match="profile_steps"):
+    profile_run.main()
+  assert len(calls) == len(state.requests) == 1
+  assert not state.requests[0].results
+  assert state.events[-1] == ("destroy", )
+
+
+@pytest.mark.parametrize("factory,error",
+                         [("missing_profile_factory:create_example", ModuleNotFoundError),
+                          ("model.minimax_h3:missing_factory", AttributeError)])
+def test_script_factory_errors_are_not_silently_ignored(factory, error, profiled_workflow):
+  state = profiled_workflow
+  state.example.args.example_factory = factory
+  with pytest.raises(error):
+    profile_run.main()
+  assert not state.events

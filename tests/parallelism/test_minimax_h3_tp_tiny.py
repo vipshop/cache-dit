@@ -188,11 +188,32 @@ def _run_rank(rank: int, world: int) -> None:
         relative = _relative(out, ref)
         print(f"[minimax-h3-tp] {name} rel={relative:.3e}")
         assert relative < _REL_TOL, f"{name} output diverged under TP ({relative:.3e})"
+
+    from cache_dit.compile import set_compile_configs
+    from cache_dit.profile.nvtx import LayerwiseNvtxMarker
+    from torch._dynamo.utils import counters
+    from torch._inductor import metrics
+
+    set_compile_configs(cuda_graphs=False)
+    transformer.compile_repeated_blocks(fullgraph=False, dynamic=False)
+    with torch.no_grad():
+      for _ in range(2):
+        baseline = tuple(out.clone() for out in transformer(**inputs))
+      graphs = counters["stats"]["unique_graphs"]
+      kernels = metrics.generated_kernel_count
+      with LayerwiseNvtxMarker({"transformer": transformer}):
+        for _ in range(2):
+          marked = transformer(**inputs)
+          assert all(torch.equal(out, ref) for out, ref in zip(marked, baseline))
+      removed = transformer(**inputs)
+      assert all(torch.equal(out, ref) for out, ref in zip(removed, baseline))
+    assert counters["stats"]["unique_graphs"] == graphs
+    assert metrics.generated_kernel_count == kernels
   finally:
     torch.distributed.destroy_process_group()
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 def test_minimax_h3_tp_matches_single_rank_in_fp32():
-  """fp32: the sharding bookkeeping has to be exact, not merely close."""
+  """Preserve TP parity and the warmed compiled execution when NVTX hooks change."""
   mp.spawn(_run_rank, args=(2, ), nprocs=2, join=True)

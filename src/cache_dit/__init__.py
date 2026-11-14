@@ -55,11 +55,11 @@ from .compile import set_compile_configs
 from .summary import supported_matrix
 from .summary import summary
 from .summary import strify
-from .profiler import ProfilerContext
-from .profiler import profile_function
-from .profiler import create_profiler_context
-from .profiler import get_profiler_output_dir
-from .profiler import set_profiler_output_dir
+from .profile import ProfilerContext
+from .profile import profile_function
+from .profile import create_profiler_context
+from .profile import get_profiler_output_dir
+from .profile import set_profiler_output_dir
 from .quantization import load
 from .quantization import quantize
 from .quantization import QuantizeConfig

@@ -4,6 +4,7 @@
 
 - `cache/`: pipeline-level cache, distillation, plotting, metrics, prompts, and legacy benchmark assets.
 - `kernels/`: reusable kernel microbenchmarks. Scripts under this directory follow the `bench_xxx.py` naming style.
+- [`profile/`](profile/README.md): request/step profiling and explicit model instrumentation through a shared runner.
 
 Typical entry points:
 
