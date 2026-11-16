@@ -23,12 +23,8 @@ def _supported_reason(linear: nn.Linear) -> str | None:
     return "weight is not 2D"
   if type(weight).__name__ == "DTensor":
     return "DTensor/TP weights are not supported by cache-dit NVFP4"
-  out_features, in_features = weight.shape
   if weight.dtype != torch.bfloat16:
     return f"weight dtype {weight.dtype} != bfloat16"
-  if in_features % 64 != 0 or out_features % 8 != 0:
-    return (f"weight shape ({out_features}, {in_features}) violates "
-            "in_features % 64 == 0 / out_features % 8 == 0")
   return None
 
 

@@ -24,7 +24,7 @@ class _Block(nn.Module):
 
   def __init__(self) -> None:
     super().__init__()
-    self.proj = nn.Linear(128, 128, bias=True)
+    self.proj = nn.Linear(256, 256, bias=True)
     self.bad_shape = nn.Linear(48, 24)
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -44,7 +44,7 @@ class _Transformer(nn.Module):
     super().__init__()
     self._repeated_blocks = ["_Block"]
     self.blocks = nn.ModuleList([_Block(), _Block()])
-    self.modulation = nn.Linear(128, 128)
+    self.modulation = nn.Linear(256, 128)
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
     """Run every branch.
@@ -81,11 +81,11 @@ def test_native_fp4_quantizes_only_supported_repeated_blocks() -> None:
     ),
   )
   assert all(type(block.proj) is NVFP4Linear for block in out.blocks)
-  assert all(isinstance(block.bad_shape, nn.Linear) for block in out.blocks)
+  assert all(type(block.bad_shape) is NVFP4Linear for block in out.blocks)
   assert isinstance(out.modulation, nn.Linear)
   assert out._quantize_type == "nvfp4"
-  assert len(out._fp4_quantized_layers) == 2
-  assert len(out._fp4_skipped_layers) == 2
+  assert len(out._fp4_quantized_layers) == 4
+  assert len(out._fp4_skipped_layers) == 0
   assert out._quantize_config.backend == QuantizeBackend.CACHE_DIT
 
 
@@ -95,7 +95,7 @@ def test_native_fp4_forward_tracks_bf16_reference() -> None:
   model = _Transformer().cuda().to(torch.bfloat16).eval()
   reference = _Transformer().cuda().to(torch.bfloat16).eval()
   reference.load_state_dict(_plain_state(model))
-  x = torch.randn(2, 128, dtype=torch.bfloat16, device="cuda")
+  x = torch.randn(2, 256, dtype=torch.bfloat16, device="cuda")
   with torch.no_grad():
     expected = reference(x)
     out = quantize(
@@ -111,16 +111,33 @@ def test_native_fp4_forward_tracks_bf16_reference() -> None:
 
 
 @requires_native_fp4
+def test_native_fp4_pads_and_depads_nonaligned_linear() -> None:
+  torch.manual_seed(7)
+  holder = nn.Module()
+  holder.proj = nn.Linear(48, 24).cuda().to(torch.bfloat16)
+  x = torch.randn(3, 48, dtype=torch.bfloat16, device="cuda")
+  expected = holder.proj(x)
+  quantize(holder, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
+  packed = holder.proj
+  assert packed.qweight.shape == (128, 128)
+  assert packed.dequantize_weight().shape == (24, 48)
+  actual = packed(x)
+  assert actual.shape == (3, 24)
+  diff = (actual.float() - expected.float()).norm() / expected.float().norm()
+  assert float(diff.detach()) < 0.35
+
+
+@requires_native_fp4
 def test_fp4_weight_dequantize_matches_quantized_linear() -> None:
   torch.manual_seed(2)
   holder = nn.Module()
-  holder.proj = nn.Linear(128, 128).cuda().to(torch.bfloat16)
+  holder.proj = nn.Linear(256, 128).cuda().to(torch.bfloat16)
   quantize(holder, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
   packed = holder.proj
   dense = packed.dequantize_weight()
-  assert dense.shape == (128, 128)
+  assert dense.shape == (128, 256)
   assert dense.dtype == torch.bfloat16
-  x = torch.randn(3, 128, dtype=torch.bfloat16, device="cuda")
+  x = torch.randn(3, 256, dtype=torch.bfloat16, device="cuda")
   qx, sx, gx = fp4_quantize(x)
   from cache_dit.quantization.fp4.linear import _dequantize_fp4
 
@@ -134,9 +151,9 @@ def test_fp4_weight_dequantize_matches_quantized_linear() -> None:
 def test_native_fp4_compile_matches_eager() -> None:
   torch.manual_seed(3)
   holder = nn.Module()
-  holder.proj = nn.Linear(128, 128).cuda().to(torch.bfloat16)
+  holder.proj = nn.Linear(256, 128).cuda().to(torch.bfloat16)
   quantize(holder, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
-  x = torch.randn(2, 4, 128, dtype=torch.bfloat16, device="cuda")
+  x = torch.randn(2, 4, 256, dtype=torch.bfloat16, device="cuda")
   expected = holder.proj(x)
   actual = torch.compile(holder.proj, fullgraph=True)(x)
   diff = (actual.float() - expected.float()).norm() / expected.float().norm()
@@ -179,7 +196,7 @@ def test_backend_routing_and_validation() -> None:
 @requires_native_fp4
 def test_native_fp4_rejects_a_selection_with_no_supported_linears() -> None:
   holder = nn.Module()
-  holder.bad = nn.Linear(48, 24).cuda().to(torch.bfloat16)
+  holder.bad = nn.Linear(48, 24).cuda().float()
   with pytest.raises(ValueError, match="did not quantize any linear"):
     quantize(
       holder,
@@ -193,7 +210,7 @@ def test_native_fp4_rejects_a_selection_with_no_supported_linears() -> None:
 
 @requires_native_fp4
 def test_native_fp4_load_is_rejected() -> None:
-  module = nn.Linear(128, 128).cuda().to(torch.bfloat16)
+  module = nn.Linear(256, 128).cuda().to(torch.bfloat16)
   config = QuantizeConfig(backend="cache_dit", quant_type="nvfp4")
   with pytest.raises(ValueError, match="online-only"):
     load(module, config)

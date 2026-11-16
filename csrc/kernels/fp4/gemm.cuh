@@ -1,672 +1,405 @@
 #pragma once
 
-#include <cuda_bf16.h>
-#include <cuda_fp8.h>
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
 
-#include <cute/arch/copy_sm100.hpp>
-#include <cute/arch/mma_sm120.hpp>
-#include <cute/atom/mma_traits_sm120.hpp>
 #include <cute/tensor.hpp>
-#include <cutlass/arch/barrier.h>
-#include <cutlass/arch/reg_reconfig.h>
-#include <cutlass/device_kernel.h>
-#include <cutlass/numeric_conversion.h>
+#include <cutlass/epilogue/collective/collective_builder.hpp>
+#include <cutlass/epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp>
+#include <cutlass/epilogue/thread/activation.h>
+#include <cutlass/gemm/collective/collective_builder.hpp>
+#include <cutlass/gemm/device/gemm_universal_adapter.h>
+#include <cutlass/gemm/kernel/gemm_universal.hpp>
+#include <cutlass/detail/collective/moe_stride_utils.hpp>
 
-#include <cstdint>
+/*
+ * Cache-DiT NVFP4 GEMM: packed data, two-level scales, and the CUTLASS collective.
+ * =============================================================================
+ *
+ * Notation
+ * --------
+ *   x      : BF16 activation [M,K], stored row-major.
+ *   w      : BF16 linear weight [N,K], stored row-major like torch.nn.Linear.
+ *   qx/qw  : packed E2M1 data [M,K/2] / [N,K/2], two FP4 values per byte.
+ *   sx/sw  : per-16-element UE4M3 block scales in the canonical CUTLASS layout.
+ *   gx/gw  : optional FP32 level-1 scales, one per activation row / weight row.
+ *
+ * fp4_quantize produces the following dequantization contract for each 16-value
+ * group g in row r (the same expression applies to a weight row):
+ *
+ *   g_x[r]       = max_k |x[r,k]| / (448 * 6)
+ *   x_norm[r,k]  = x[r,k] / g_x[r]
+ *   s_x[r,g]     = UE4M3(max_{k in g} |x_norm[r,k]| / 6)
+ *   q_x[r,k]     = E2M1_RNE(x_norm[r,k] / FP32(s_x[r,g]))
+ *   x_hat[r,k]   = g_x[r] * FP32(s_x[r,g]) * FP4(q_x[r,k])
+ *
+ * E4M3's maximum finite value is 448 and E2M1's is 6. The level-1 scale therefore
+ * maps the row maximum to 2688 before the block scale is formed. Computing s_x
+ * from the rounded UE4M3 value (rather than the unrounded maximum) is required:
+ * the GEMM and the quantizer must use exactly the same scale. Zero rows/groups
+ * use zero scales and produce zero qdata; reciprocal-by-zero is never evaluated
+ * on a meaningful value. See quantize.cu for the bit-exact conversion sequence.
+ *
+ * The block-scaled MMA evaluates
+ *
+ *   P[m,n] = sum_g s_x[m,g] * s_w[n,g] *
+ *            sum_{k in g} FP4(qx[m,k]) * FP4(qw[n,k])
+ *
+ * with FP32 accumulation inside the CUTLASS collective. The custom EVT epilogue
+ * then folds the level-1 scales and bias without another global-memory pass:
+ *
+ *   y[m,n] = BF16(g_w[n] * (g_x[m] * P[m,n]) + bias[n])
+ *
+ * EVT means Epilogue Visitor Tree. It is CUTLASS's way of describing the
+ * per-output-element epilogue as a small computation tree instead of a separate
+ * hand-written kernel. Leaf nodes fetch the accumulator or broadcast row/column
+ * inputs; internal nodes apply multiply/add/activation operations; the root
+ * produces the output tile. In this file Sm90AccFetch obtains P, Sm90ColBroadcast
+ * supplies g_w[n], Sm90RowBroadcast supplies g_x[m] and bias[n], Sm90Compute
+ * performs the arithmetic, and the collective epilogue schedules the final BF16
+ * store. The tree is evaluated while the output is still in registers.
+ *
+ * When level-1 scales are absent, the single-level entry computes P+bias. The
+ * multiplication order in the EVT is intentional and is part of the numerical
+ * contract. All scale/bias arithmetic is FP32; conversion to BF16 happens once.
+ *
+ * Why there are two different scale objects
+ * -----------------------------------------
+ * s_x/s_w are required by the SM120 block-scaled MMA and are loaded per K block.
+ * They are not ordinary pointwise multipliers applied after an unscaled GEMM.
+ * g_x/g_w are epilogue-only row/column broadcasts. Keeping these roles separate
+ * avoids both a full-size [M,N] scale tensor and a second BF16 output roundtrip.
+ *
+ * Collective construction and execution
+ * -------------------------------------
+ * 1. Fp4CutlassThreadBlockShape is 128x128x256. K=256 contains sixteen NVFP4
+ *    groups and is the native mainloop tile; N must be a multiple of the 128
+ *    output tile. M tails are predicated by CUTLASS.
+ * 2. A uses RowMajor [M,K]. The input weight is physically [N,K] row-major, but
+ *    ColumnMajor in the builder interprets the same allocation as B^T [K,N].
+ *    No transpose, repack, or extra allocation is performed at runtime.
+ * 3. StageCountAutoCarveout reserves the epilogue's shared storage and lets the
+ *    builder choose a legal mainloop pipeline. A 64x64 epilogue subtile is used;
+ *    larger subtiles can consume the storage needed by the mainloop stages.
+ * 4. The SM120 collective TMA-loads packed A/B and canonical SFA/SFB, issues the
+ *    block-scaled tensor operations, and leaves FP32 accumulators for the EVT.
+ * 5. fp4_gemm_cutlass_2x constructs packed strides and ScaleConfig's SFA/SFB layouts,
+ *    attaches the level-1 scale/bias pointers to FusionArguments, initializes the
+ *    GemmUniversalAdapter with any required workspace, and launches on the
+ *    caller's current CUDA stream. It does not call torch._scaled_mm.
+ *
+ * API shape requirements are enforced in gemm.cu and fp4.py: logical K%256==0
+ * and N%128==0. The previous hand-written GEMM and its `use_ws` switch were
+ * removed rather than keeping a second set of tail/mainloop rules.
+ */
 
-#include "quantize.cuh"
+namespace cutlass::epilogue::fusion {
+
+// Fusion declaration for the two-level epilogue. The capability flags tell the
+// collective builder that the EVT may read one value per output row (g_x), one
+// per output column (g_w), and one bias per output column. ElementCompute=float
+// is deliberate: accumulator rescaling and bias addition never use BF16 math.
+template <class ElementOutput_, class ElementCompute_, class ElementBias_>
+struct Fp4RowColScaleBias : FusionOperation {
+  using ElementOutput = ElementOutput_;
+  using ElementCompute = ElementCompute_;
+  using ElementScalar = ElementCompute_;
+  using ElementBias = ElementBias_;
+  static constexpr int AlignmentScalar = 1;
+  static constexpr int AlignmentBias = 128 / cute::sizeof_bits_v<ElementBias>;
+  static constexpr bool IsPerRowScaleSupported = true;
+  static constexpr bool IsPerColScaleSupported = true;
+  static constexpr bool IsPerColBiasSupported = true;
+};
+
+// EVT tree, from the outermost node inward:
+//   homogeneous_multiply_add(bias, g_w, homogeneous(g_x, accumulator))
+// Sm90AccFetch reads the collective's FP32 accumulator. ColBroadcast<...,
+// Stride<bool,_0,...>> supplies g_w[n], RowBroadcast<..., Stride<_0,bool,...>>
+// supplies g_x[m], and the final RowBroadcast supplies bias[n]. The strides are
+// broadcast markers, not physical [M,N] tensors. `homogeneous_multiply_add`
+// evaluates the fused scale and bias while the output tile is still in registers.
+template <class CtaTileShapeMNK, class ElementOutput, class ElementCompute, class ElementBias>
+using Sm90Fp4RowColScaleBias = Sm90EVT<
+  Sm90Compute<homogeneous_multiply_add, ElementOutput, ElementCompute,
+              FloatRoundStyle::round_to_nearest>,
+  Sm90RowBroadcast<0, CtaTileShapeMNK, float, ElementCompute, Stride<_0, bool, int64_t>, 4>,
+  Sm90EVT<
+    Sm90Compute<multiplies, ElementCompute, ElementCompute, FloatRoundStyle::round_to_nearest>,
+    Sm90ColBroadcast<0, CtaTileShapeMNK, float, ElementCompute, Stride<bool, _0, int64_t>, 1>,
+    Sm90AccFetch>,
+  Sm90RowBroadcast<0, CtaTileShapeMNK, ElementBias, ElementCompute, Stride<_0, _1, int64_t>,
+                   128 / cute::sizeof_bits_v<ElementBias>>>;
+
+template <int StagesC, int StagesD, int FragmentSize, bool ReuseSmemC, bool DelayTmaStore,
+          class ElementOutput, class ElementCompute, class ElementBias, class CtaTileShapeMNK,
+          class EpilogueTile>
+struct FusionCallbacks<
+  epilogue::Sm90TmaWarpSpecialized<StagesC, StagesD, FragmentSize, ReuseSmemC, DelayTmaStore>,
+  Fp4RowColScaleBias<ElementOutput, ElementCompute, ElementBias>, CtaTileShapeMNK, EpilogueTile>
+    : Sm90Fp4RowColScaleBias<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias> {
+  using Impl = Sm90Fp4RowColScaleBias<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias>;
+  using Operation = Fp4RowColScaleBias<ElementOutput, ElementCompute, ElementBias>;
+
+  // Host-to-EVT argument adapter. Null scale pointers become a default value of
+  // 1.0f and null bias becomes 0. This allows the same compiled epilogue to
+  // handle one-sided level-1 scaling without a second kernel instantiation.
+  struct Arguments {
+    float const* a_scale_ptr = nullptr;
+    float const* b_scale_ptr = nullptr;
+    ElementBias const* bias_ptr = nullptr;
+    Stride<bool, _0, int64_t> dAScale = {bool(1), _0{}, 0};
+    Stride<_0, bool, int64_t> dBScale = {_0{}, bool(1), 0};
+    Stride<_0, _1, int64_t> dBias = {};
+
+    operator typename Impl::Arguments() const {
+      return {
+        {b_scale_ptr, 1.0f, dBScale},
+        {
+          {a_scale_ptr, 1.0f, dAScale},
+          {},
+          {},
+        },
+        {bias_ptr, ElementBias(0), dBias},
+        {},
+      };
+    }
+  };
+
+  using Impl::Impl;
+};
+
+template <class ElementOutput_, class ElementCompute_, class ElementBias_>
+struct Fp4BiasOnly : FusionOperation {
+  using ElementOutput = ElementOutput_;
+  using ElementCompute = ElementCompute_;
+  using ElementBias = ElementBias_;
+  static constexpr int AlignmentBias = 128 / cute::sizeof_bits_v<ElementBias>;
+  static constexpr bool IsPerColBiasSupported = true;
+};
+
+template <class CtaTileShapeMNK, class ElementOutput, class ElementCompute, class ElementBias>
+using Sm90Fp4BiasOnly =
+  Sm90EVT<Sm90Compute<plus, ElementOutput, ElementCompute, FloatRoundStyle::round_to_nearest>,
+          Sm90AccFetch,
+          Sm90RowBroadcast<0, CtaTileShapeMNK, ElementBias, ElementCompute, Stride<_0, _1, int64_t>,
+                           128 / cute::sizeof_bits_v<ElementBias>>>;
+
+template <int StagesC, int StagesD, int FragmentSize, bool ReuseSmemC, bool DelayTmaStore,
+          class ElementOutput, class ElementCompute, class ElementBias, class CtaTileShapeMNK,
+          class EpilogueTile>
+struct FusionCallbacks<
+  epilogue::Sm90TmaWarpSpecialized<StagesC, StagesD, FragmentSize, ReuseSmemC, DelayTmaStore>,
+  Fp4BiasOnly<ElementOutput, ElementCompute, ElementBias>, CtaTileShapeMNK, EpilogueTile>
+    : Sm90Fp4BiasOnly<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias> {
+  using Impl = Sm90Fp4BiasOnly<CtaTileShapeMNK, ElementOutput, ElementCompute, ElementBias>;
+  using Operation = Fp4BiasOnly<ElementOutput, ElementCompute, ElementBias>;
+
+  struct Arguments {
+    ElementBias const* bias_ptr = nullptr;
+    Stride<_0, _1, int64_t> dBias = {};
+
+    operator typename Impl::Arguments() const {
+      return {{}, {bias_ptr, ElementBias(0), dBias}, {}};
+    }
+  };
+
+  using Impl::Impl;
+};
+
+}  // namespace cutlass::epilogue::fusion
 
 namespace cache_dit::fp4 {
-using namespace cute;
 
-template <typename Layout>
-CUTE_DEVICE auto convert_layout_acc_rowcol(Layout acc_layout) {
-  auto divided = logical_divide(acc_layout, Shape<_2>{});
-  return make_layout(make_layout(get<0, 1>(divided), get<1>(divided)),
-                     make_layout(get<0, 0>(divided), get<2>(divided)));
-}
+using Fp4CutlassElementA = cutlass::nv_float4_t<cutlass::float_e2m1_t>;
+using Fp4CutlassElementB = cutlass::nv_float4_t<cutlass::float_e2m1_t>;
+using Fp4CutlassElementD = cutlass::bfloat16_t;
+using Fp4CutlassFusion =
+  cutlass::epilogue::fusion::Fp4RowColScaleBias<Fp4CutlassElementD, float, Fp4CutlassElementD>;
+using Fp4CutlassThreadBlockShape = cute::Shape<cute::_128, cute::_128, cute::_256>;
+using Fp4CutlassClusterShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
 
-template <typename To, typename Engine, typename Layout>
-CUTE_DEVICE auto convert_type(Tensor<Engine, Layout> const& tensor) {
-  using From = typename Engine::value_type;
-  constexpr int kElements = decltype(size(tensor))::value;
-  cutlass::NumericArrayConverter<To, From, kElements> convert;
-  auto fragment = convert(*reinterpret_cast<cutlass::Array<From, kElements> const*>(tensor.data()));
-  return make_tensor(make_rmem_ptr<To>(&fragment), tensor.layout());
-}
+using Fp4CutlassEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassBlockScaledTensorOp, Fp4CutlassThreadBlockShape,
+  Fp4CutlassClusterShape, cute::Shape<cute::_64, cute::_64>, float, float, Fp4CutlassElementD,
+  cutlass::layout::RowMajor, 8, Fp4CutlassElementD, cutlass::layout::RowMajor, 8,
+  cutlass::epilogue::collective::EpilogueScheduleAuto, Fp4CutlassFusion>::CollectiveOp;
 
-namespace sf_partition {
+using Fp4CutlassMainloop = typename cutlass::gemm::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassBlockScaledTensorOp, Fp4CutlassElementA,
+  cutlass::layout::RowMajor, 32, Fp4CutlassElementB, cutlass::layout::ColumnMajor, 32, float,
+  Fp4CutlassThreadBlockShape, Fp4CutlassClusterShape,
+  cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(
+    sizeof(typename Fp4CutlassEpilogue::SharedStorage))>,
+  cutlass::gemm::collective::KernelScheduleAuto>::CollectiveOp;
 
-template <class SFATensor, class Atom, class TiledThr, class TiledPerm>
-CUTE_HOST_DEVICE constexpr auto thrfrg_sfa(SFATensor&& tensor,
-                                           TiledMMA<Atom, TiledThr, TiledPerm>& mma) {
-  CUTE_STATIC_ASSERT_V(rank(tensor) >= Int<2>{});
-  using AtomShape_MNK = typename Atom::Shape_MNK;
-  using AtomLayoutSFA_TV = typename Atom::Traits::SFALayout;
-  auto permutation_mnk = TiledPerm{};
-  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto t_tile = make_tile(get<0>(permutation_mnk), get<2>(permutation_mnk));
-  auto t_tensor = logical_divide(tensor, t_tile);
-  auto a_tile =
-    make_tile(make_layout(size<0>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
-  auto a_tensor = zipped_divide(t_tensor, a_tile);
-  auto tv_tensor = a_tensor.compose(AtomLayoutSFA_TV{}, _);
-  auto thr_tile = make_tile(
-    _, make_tile(make_layout(size<1>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
-  return zipped_divide(tv_tensor, thr_tile);
-}
+using Fp4CutlassGemmKernel =
+  cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>, Fp4CutlassMainloop,
+                                       Fp4CutlassEpilogue, void>;
+using Fp4CutlassGemm = cutlass::gemm::device::GemmUniversalAdapter<Fp4CutlassGemmKernel>;
 
-template <class SFBTensor, class Atom, class TiledThr, class TiledPerm>
-CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor&& tensor,
-                                           TiledMMA<Atom, TiledThr, TiledPerm>& mma) {
-  CUTE_STATIC_ASSERT_V(rank(tensor) >= Int<2>{});
-  using AtomShape_MNK = typename Atom::Shape_MNK;
-  using AtomLayoutSFB_TV = typename Atom::Traits::SFBLayout;
-  auto permutation_mnk = TiledPerm{};
-  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto t_tile = make_tile(get<1>(permutation_mnk), get<2>(permutation_mnk));
-  auto t_tensor = logical_divide(tensor, t_tile);
-  auto b_tile =
-    make_tile(make_layout(size<1>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
-  auto b_tensor = zipped_divide(t_tensor, b_tile);
-  auto tv_tensor = b_tensor.compose(AtomLayoutSFB_TV{}, _);
-  auto thr_tile = make_tile(
-    _, make_tile(make_layout(size<2>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
-  return zipped_divide(tv_tensor, thr_tile);
-}
+using Fp4CutlassSimpleFusion =
+  cutlass::epilogue::fusion::Fp4BiasOnly<Fp4CutlassElementD, float, Fp4CutlassElementD>;
+using Fp4CutlassSimpleEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassBlockScaledTensorOp, Fp4CutlassThreadBlockShape,
+  Fp4CutlassClusterShape, cute::Shape<cute::_64, cute::_64>, float, float, Fp4CutlassElementD,
+  cutlass::layout::RowMajor, 8, Fp4CutlassElementD, cutlass::layout::RowMajor, 8,
+  cutlass::epilogue::collective::EpilogueScheduleAuto, Fp4CutlassSimpleFusion>::CollectiveOp;
+using Fp4CutlassSimpleMainloop = typename cutlass::gemm::collective::CollectiveBuilder<
+  cutlass::arch::Sm120, cutlass::arch::OpClassBlockScaledTensorOp, Fp4CutlassElementA,
+  cutlass::layout::RowMajor, 32, Fp4CutlassElementB, cutlass::layout::ColumnMajor, 32, float,
+  Fp4CutlassThreadBlockShape, Fp4CutlassClusterShape,
+  cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(
+    sizeof(typename Fp4CutlassSimpleEpilogue::SharedStorage))>,
+  cutlass::gemm::collective::KernelScheduleAuto>::CollectiveOp;
+using Fp4CutlassSimpleGemmKernel =
+  cutlass::gemm::kernel::GemmUniversal<cute::Shape<int, int, int, int>, Fp4CutlassSimpleMainloop,
+                                       Fp4CutlassSimpleEpilogue, void>;
+using Fp4CutlassSimpleGemm =
+  cutlass::gemm::device::GemmUniversalAdapter<Fp4CutlassSimpleGemmKernel>;
 
-template <class SFATensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor&& tensor, ThrMma& thread_mma) {
-  using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
-  auto thr_tensor =
-    make_tensor(static_cast<SFATensor&&>(tensor).data(), thrfrg_sfa(tensor.layout(), thread_mma));
-  auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vmk = make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
-  auto part = thr_tensor(thr_vmk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
-  return make_fragment_like<ValTypeSF>(part);
-}
+// Launch the two-level collective.
+//
+// Host argument construction mirrors the mathematical data flow:
+//   1. Recover logical K from the packed byte width (a.size(1) * 2).
+//   2. Build packed A/B/C/D strides without changing any tensor storage.
+//   3. Ask Sm1xxBlkScaledConfig for the canonical SFA/SFB layout expected by the
+//      collective. fp4_quantize writes that exact byte layout.
+//   4. Attach g_x/g_w/bias pointers to the EVT and point C and D at the same
+//      output allocation (this is not an in-place accumulation: beta is zero).
+//   5. Initialize the adapter and run on `stream`. The only temporary storage is
+//      CUTLASS's explicitly requested workspace; qdata and scale buffers are
+//      reused directly from the caller.
+inline void fp4_gemm_cutlass_2x(const at::Tensor& a, const at::Tensor& b,
+                                const at::Tensor& a_scales, const at::Tensor& b_scales,
+                                const at::Tensor& a_global_scales,
+                                const at::Tensor& b_global_scales,
+                                const std::optional<at::Tensor>& bias, at::Tensor& out,
+                                cudaStream_t stream) {
+  using StrideA = typename Fp4CutlassGemm::GemmKernel::StrideA;
+  using StrideB = typename Fp4CutlassGemm::GemmKernel::StrideB;
+  using StrideC = typename Fp4CutlassGemm::GemmKernel::StrideC;
+  using StrideD = typename Fp4CutlassGemm::GemmKernel::StrideD;
+  using ScaleConfig = typename Fp4CutlassGemm::GemmKernel::CollectiveMainloop::Sm1xxBlkScaledConfig;
+  using FusionArguments =
+    typename Fp4CutlassGemm::GemmKernel::CollectiveEpilogue::FusionCallbacks::Arguments;
 
-template <class SFBTensor, class ThrMma>
-CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor&& tensor, ThrMma& thread_mma) {
-  using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
-  auto thr_tensor =
-    make_tensor(static_cast<SFBTensor&&>(tensor).data(), thrfrg_sfb(tensor.layout(), thread_mma));
-  auto thr_vmnk = thread_mma.thr_vmnk_;
-  auto thr_vnk = make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
-  auto part = thr_tensor(thr_vnk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
-  return make_fragment_like<ValTypeSF>(part);
-}
+  const int M = static_cast<int>(a.size(0));
+  const int N = static_cast<int>(b.size(0));
+  const int K = static_cast<int>(a.size(1) * 2);
+  auto stride_a = cutlass::make_internal_packed_stride(StrideA{}, {M, K, 1});
+  auto stride_b = cutlass::make_internal_packed_stride(StrideB{}, {N, K, 1});
+  auto stride_c = cutlass::make_internal_packed_stride(StrideC{}, {M, N, 1});
+  auto stride_d = cutlass::make_internal_packed_stride(StrideD{}, {M, N, 1});
+  auto layout_sfa = ScaleConfig::tile_atom_to_shape_SFA(cute::make_shape(M, N, K, 1));
+  auto layout_sfb = ScaleConfig::tile_atom_to_shape_SFB(cute::make_shape(M, N, K, 1));
 
-template <class TiledMma>
-CUTE_HOST_DEVICE constexpr auto layout_sfa_tv(TiledMma& mma) {
-  auto tile_shape_mnk = tile_shape(mma);
-  auto ref_a = make_layout(make_shape(size<0>(tile_shape_mnk), size<2>(tile_shape_mnk)));
-  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto a_tile = make_tile(
-    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
-                             make_stride(Int<1>{}, Int<0>{})),
-                 _));
-  auto thridx_to_thrid = right_inverse(thr_layout_vmnk);
-  return thrfrg_sfa(ref_a, mma).compose(a_tile, _).compose(thridx_to_thrid, _);
-}
+  FusionArguments fusion_args{};
+  fusion_args.a_scale_ptr =
+    a_global_scales.numel() != 0 ? a_global_scales.data_ptr<float>() : nullptr;
+  fusion_args.b_scale_ptr =
+    b_global_scales.numel() != 0 ? b_global_scales.data_ptr<float>() : nullptr;
+  fusion_args.bias_ptr =
+    bias.has_value() ? reinterpret_cast<const Fp4CutlassElementD*>(bias->data_ptr<at::BFloat16>())
+                     : nullptr;
 
-template <class TiledMma>
-CUTE_HOST_DEVICE constexpr auto layout_sfb_tv(TiledMma& mma) {
-  auto tile_shape_mnk = tile_shape(mma);
-  auto ref_b = make_layout(make_shape(size<1>(tile_shape_mnk), size<2>(tile_shape_mnk)));
-  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
-  auto b_tile = make_tile(
-    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
-                             make_stride(Int<0>{}, Int<1>{})),
-                 _));
-  auto thridx_to_thrid = right_inverse(thr_layout_vmnk);
-  return thrfrg_sfb(ref_b, mma).compose(b_tile, _).compose(thridx_to_thrid, _);
-}
-
-}  // namespace sf_partition
-
-template <class TiledMma_, int kMN, int kBK_>
-struct SfSmemAtom {
-  static constexpr int kMMA_NSF = size<2>(typename TiledMma_::AtomShape_MNK{}) / kSFVec;
-  using Config = cutlass::detail::Sm1xxBlockScaledConfig<kSFVec>;
-  using Blk_Elems = decltype(typename Config::Blk_MN{} * typename Config::Blk_SF{});
-  using mnBlockShape = Shape<_32, _4>;
-  using mnBlockStride = Stride<_16, _4>;
-  using kBlockShape = Shape<Int<kSFVec>, Int<kMMA_NSF>>;
-  using kBlockStride = Stride<_0, _1>;
-  using shapeM = decltype(prepend(Int<kMN / kRowBlock>{}, mnBlockShape{}));
-  using strideM = decltype(prepend(Blk_Elems{}, mnBlockStride{}));
-  using shapeK = decltype(prepend(
-    make_shape(Int<kSFVecPerBlk / kMMA_NSF>{}, Int<kBK_ / kSFVec / kSFVecPerBlk>{}),
-    kBlockShape{}));
-  using strideK =
-    decltype(prepend(make_stride(Int<kMMA_NSF>{}, Int<kMN / kRowBlock * 512>{}), kBlockStride{}));
-  using type =
-    decltype(make_layout(make_shape(shapeM{}, shapeK{}), make_stride(strideM{}, strideK{})));
-};
-
-template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64>
-struct Fp4GemmTraits {
-  static constexpr int kBM = 128;
-  static constexpr int kBN = kBN_;
-  static constexpr int kBK = kBK_;
-  static constexpr int kStages = kStages_;
-  static constexpr int kNumThreads = kBM / 16 * 32;
-  static_assert(kBN % 128 == 0, "BN must be a multiple of 128 for the SF atom");
-  static_assert(kBK % 64 == 0, "BK must contain whole K64 block-scaled MMA atoms");
-  static_assert(kStages >= 2, "At least two stages are required");
-
-  using Element = cutlass::float_e2m1_t;
-  using ElementSF = cutlass::float_ue4m3_t;
-  using ElementO = cutlass::bfloat16_t;
-  using ElementAcc = float;
-  using MmaAtom =
-    SM120::BLOCKSCALED::SM120_16x8x64_TN_VS<Element, Element, ElementAcc, ElementSF, kSFVec>;
-  using AtomLayoutMNK = Layout<Shape<_4, _2, _1>>;
-  using PermTileM = Int<kBM>;
-  using PermTileN = Layout<Shape<_8, _2, _2>, Stride<_1, _16, _8>>;
-  using PermTileK = _64;
-  using TiledMma =
-    decltype(make_tiled_mma(MmaAtom{}, AtomLayoutMNK{}, Tile<PermTileM, PermTileN, PermTileK>{}));
-  static_assert(size<0>(typename TiledMma::AtomShape_MNK{}) == 16 &&
-                  size<2>(typename TiledMma::AtomShape_MNK{}) == 64,
-                "The block-scaled atom must be 16x8x64");
-
-  using SmemAlloc = uint4_t;
-  using SmemLayoutAtomA = UMMA::Layout_K_SW32_Atom<SmemAlloc>;
-  using SmemLayoutAtomB = UMMA::Layout_K_SW32_Atom<SmemAlloc>;
-  using SmemLayoutA =
-    decltype(tile_to_shape(SmemLayoutAtomA{}, Shape<Int<kBM>, Int<kBK>, Int<kStages>>{}));
-  using SmemLayoutB =
-    decltype(tile_to_shape(SmemLayoutAtomB{}, Shape<Int<kBN>, Int<kBK>, Int<kStages>>{}));
-  using SmemLayoutAtomSFA = typename SfSmemAtom<TiledMma, kBM, kBK>::type;
-  using SmemLayoutAtomSFB =
-    typename SfSmemAtom<TiledMma, (kBN > kRowBlock ? kBN : kRowBlock), kBK>::type;
-  using SmemLayoutSFA = decltype(make_layout(
-    append(shape(SmemLayoutAtomSFA{}), Int<kStages>{}),
-    append(stride(SmemLayoutAtomSFA{}), size(filter_zeros(SmemLayoutAtomSFA{})))));
-  using SmemLayoutSFB = decltype(make_layout(
-    append(shape(SmemLayoutAtomSFB{}), Int<kStages>{}),
-    append(stride(SmemLayoutAtomSFB{}), size(filter_zeros(SmemLayoutAtomSFB{})))));
-  using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, SmemAlloc>;
-  using SmemAtomO = GMMA::Layout_K_SW128_Atom<ElementO>;
-  using SmemLayoutO = decltype(tile_to_shape(SmemAtomO{}, Shape<Int<kBM>, Int<kBN>>{}));
-
-  static constexpr int kAStageBytes = cosize(SmemLayoutA{}) / kStages / 2;
-  static constexpr int kBStageBytes = cosize(SmemLayoutB{}) / kStages / 2;
-  static constexpr int kSFAStageBytes = cosize(SmemLayoutSFA{}) / kStages;
-  static constexpr int kSFBStageBytes = cosize(SmemLayoutSFB{}) / kStages;
-  static constexpr int kStageBytes = kAStageBytes + kBStageBytes + kSFAStageBytes + kSFBStageBytes;
-  static constexpr int kSmemBytes = kStages * kStageBytes;
-  static constexpr uint32_t kTxBytes =
-    kBM * kBK / 2 + kBN * kBK / 2 + kSFAStageBytes + kSFBStageBytes;
-  static constexpr bool kOStagingFits = cosize(SmemLayoutO{}) * sizeof(ElementO) <= kSmemBytes;
-  static_assert(kOStagingFits, "Output staging must fit in the reused mainloop shared memory");
-};
-
-template <typename Traits, typename TmaA, typename TmaB, typename TmaSFA, typename TmaSFB,
-          typename TmaC, bool kLevel1A, bool kLevel1B>
-__global__ void __launch_bounds__(Traits::kNumThreads, 1)
-  fp4_gemm_tma_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
-                      CUTLASS_GRID_CONSTANT TmaB const tma_b,
-                      CUTLASS_GRID_CONSTANT TmaSFA const tma_sfa,
-                      CUTLASS_GRID_CONSTANT TmaSFB const tma_sfb,
-                      CUTLASS_GRID_CONSTANT TmaC const tma_c, const float* __restrict__ sa,
-                      const float* __restrict__ sb, const cutlass::bfloat16_t* __restrict__ bias,
-                      int M, int N, int K) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
-  using cute::tma_store_arrive;
-  using cute::tma_store_wait;
-  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
-  using CtaBarrier = cutlass::arch::ClusterBarrier;
-  using Element = typename Traits::Element;
-  using ElementSF = typename Traits::ElementSF;
-  using ElementO = typename Traits::ElementO;
-  using SmemLayoutA = typename Traits::SmemLayoutA;
-  using SmemLayoutB = typename Traits::SmemLayoutB;
-  using SmemLayoutSFA = typename Traits::SmemLayoutSFA;
-  using SmemLayoutSFB = typename Traits::SmemLayoutSFB;
-  using SmemLayoutAtomSFA = typename Traits::SmemLayoutAtomSFA;
-  using SmemLayoutAtomSFB = typename Traits::SmemLayoutAtomSFB;
-  using SmemLayoutO = typename Traits::SmemLayoutO;
-  using TiledMma = typename Traits::TiledMma;
-  using SmemCopyAtom = typename Traits::SmemCopyAtom;
-
-  constexpr int kBM = Traits::kBM;
-  constexpr int kBN = Traits::kBN;
-  constexpr int kBK = Traits::kBK;
-  constexpr int kStages = Traits::kStages;
-  constexpr int kNumThreads = Traits::kNumThreads;
-  constexpr int kAStageBytes = Traits::kAStageBytes;
-  constexpr int kBStageBytes = Traits::kBStageBytes;
-  constexpr int kSFAStageBytes = Traits::kSFAStageBytes;
-
-  const int tid = threadIdx.x;
-  const int m0 = blockIdx.y * kBM;
-  const int n0 = blockIdx.x * kBN;
-  auto mA = tma_a.get_tma_tensor(make_shape(M, K));
-  auto mB = tma_b.get_tma_tensor(make_shape(N, K));
-  auto mC = tma_c.get_tma_tensor(make_shape(M, N));
-  auto mSFA = tma_sfa.get_tma_tensor(shape(sf_gmem_layout(M, K)));
-  auto mSFB = tma_sfb.get_tma_tensor(shape(sf_gmem_layout(N, K)));
-  auto a_slice = tma_a.get_slice(_0{});
-  auto b_slice = tma_b.get_slice(_0{});
-  auto sfa_slice = tma_sfa.get_slice(_0{});
-  auto sfb_slice = tma_sfb.get_slice(_0{});
-  auto c_slice = tma_c.get_slice(_0{});
-
-  extern __shared__ __align__(1024) uint8_t shm[];
-  uint8_t* a_bytes = shm;
-  uint8_t* b_bytes = a_bytes + kStages * kAStageBytes;
-  ElementSF* sfa_base = reinterpret_cast<ElementSF*>(b_bytes + kStages * kBStageBytes);
-  ElementSF* sfb_base = sfa_base + kStages * kSFAStageBytes;
-
-  __shared__ uint64_t full[kStages];
-  __shared__ uint64_t empty[kStages];
-  if (tid == 0) {
-    for (int stage = 0; stage < kStages; ++stage) {
-      TmaBarrier::init(&full[stage], 1);
-      CtaBarrier::init(&empty[stage], kNumThreads / 32);
-    }
-  }
-  __syncthreads();
-
-  auto sA = make_tensor(make_smem_ptr(recast_ptr<uint4_t>(a_bytes)), SmemLayoutA{});
-  auto sB = make_tensor(make_smem_ptr(recast_ptr<uint4_t>(b_bytes)), SmemLayoutB{});
-  auto sSFA = make_tensor(make_smem_ptr(sfa_base), SmemLayoutSFA{});
-  auto sSFB = make_tensor(make_smem_ptr(sfb_base), SmemLayoutSFB{});
-
-  TiledMma tiled_mma;
-  auto thr_mma = tiled_mma.get_thread_slice(tid);
-  auto s2r_copy_a = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma);
-  auto s2r_copy_b = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma);
-  auto s2r_thr_a = s2r_copy_a.get_thread_slice(tid);
-  auto s2r_thr_b = s2r_copy_b.get_thread_slice(tid);
-  auto tCsA = s2r_thr_a.partition_S(as_position_independent_swizzle_tensor(sA));
-  auto tCsB = s2r_thr_b.partition_S(as_position_independent_swizzle_tensor(sB));
-  auto tCrA = thr_mma.partition_fragment_A(sA(_, _, Int<0>{}));
-  auto tCrB = thr_mma.partition_fragment_B(sB(_, _, Int<0>{}));
-  auto tCrA_view = s2r_thr_a.retile_D(tCrA);
-  auto tCrB_view = s2r_thr_b.retile_D(tCrB);
-
-  using SmemCopyAtomSF = Copy_Atom<UniversalCopy<ElementSF>, ElementSF>;
-  auto tCrSFA = sf_partition::partition_fragment_sfa(sSFA(_, _, Int<0>{}), thr_mma);
-  auto tCrSFB = sf_partition::partition_fragment_sfb(sSFB(_, _, Int<0>{}), thr_mma);
-  auto copy_sfa = make_tiled_copy_impl(
-    SmemCopyAtomSF{}, sf_partition::layout_sfa_tv(tiled_mma),
-    make_shape(size<0>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
-  auto copy_sfb = make_tiled_copy_impl(
-    SmemCopyAtomSF{}, sf_partition::layout_sfb_tv(tiled_mma),
-    make_shape(size<1>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
-  auto thr_copy_sfa = copy_sfa.get_thread_slice(tid);
-  auto thr_copy_sfb = copy_sfb.get_thread_slice(tid);
-  auto tCsSFA = thr_copy_sfa.partition_S(as_position_independent_swizzle_tensor(sSFA));
-  auto tCsSFB = thr_copy_sfb.partition_S(as_position_independent_swizzle_tensor(sSFB));
-  auto tCrSFA_view = thr_copy_sfa.retile_D(tCrSFA);
-  auto tCrSFB_view = thr_copy_sfb.retile_D(tCrSFB);
-
-  auto tCrC = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
-  clear(tCrC);
-  auto cC = make_identity_tensor(Shape<Int<kBM>, Int<kBN>>{});
-  auto tScC = thr_mma.partition_C(cC);
-  auto tScC_rc = make_tensor(tScC.data(), convert_layout_acc_rowcol(tScC.layout()));
-  constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
-  constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
-
-  constexpr uint32_t kTxBytes = Traits::kTxBytes;
-  auto issue_tma = [&](int kt, int stage) {
-    cutlass::arch::fence_view_async_shared();
-    auto gA = local_tile(mA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
-    auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
-    auto gSFA = local_tile(mSFA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
-    auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
-    TmaBarrier::arrive_and_expect_tx(&full[stage], kTxBytes);
-    copy(tma_a.with(full[stage]), a_slice.partition_S(gA), a_slice.partition_D(sA(_, _, stage)));
-    copy(tma_b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB(_, _, stage)));
-    copy(tma_sfa.with(full[stage]), sfa_slice.partition_S(gSFA),
-         sfa_slice.partition_D(sSFA(_, _, stage)));
-    copy(tma_sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
-         sfb_slice.partition_D(sSFB(_, _, stage)));
+  auto* out_ptr = reinterpret_cast<Fp4CutlassElementD*>(out.data_ptr<at::BFloat16>());
+  typename Fp4CutlassGemm::Arguments arguments{
+    cutlass::gemm::GemmUniversalMode::kGemm,
+    {M, N, K, 1},
+    {
+      reinterpret_cast<const Fp4CutlassElementA::DataType*>(a.data_ptr()),
+      stride_a,
+      reinterpret_cast<const Fp4CutlassElementB::DataType*>(b.data_ptr()),
+      stride_b,
+      reinterpret_cast<const cutlass::float_ue4m3_t*>(a_scales.data_ptr<at::Float8_e4m3fn>()),
+      layout_sfa,
+      reinterpret_cast<const cutlass::float_ue4m3_t*>(b_scales.data_ptr<at::Float8_e4m3fn>()),
+      layout_sfb,
+    },
+    {fusion_args, out_ptr, stride_c, out_ptr, stride_d},
   };
 
-  const int num_k_tiles = K / kBK;
-  if (tid % 32 == 0) {
-    for (int stage = 0; stage < kStages; ++stage) {
-      CtaBarrier::arrive(&empty[stage]);
-    }
+  Fp4CutlassGemm gemm;
+  cutlass::Status status = cutlass::Status::kSuccess;
+  const size_t workspace_size = Fp4CutlassGemm::get_workspace_size(arguments);
+  at::Tensor workspace;
+  void* workspace_ptr = nullptr;
+  if (workspace_size != 0) {
+    workspace = at::empty({static_cast<int64_t>(workspace_size)}, a.options().dtype(at::kByte));
+    workspace_ptr = workspace.data_ptr();
   }
-  if (tid == 0) {
-    for (int kt = 0; kt < kStages && kt < num_k_tiles; ++kt) {
-      CtaBarrier::wait(&empty[kt], 0);
-      issue_tma(kt, kt);
-    }
-  }
-#pragma unroll 1
-  for (int kt = 0; kt < num_k_tiles; ++kt) {
-    const int stage = kt % kStages;
-    const int phase = (kt / kStages) & 1;
-    TmaBarrier::wait(&full[stage], phase);
-    cutlass::arch::fence_view_async_shared();
-#pragma unroll
-    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
-      copy(s2r_copy_a, tCsA(_, _, k_block, stage), tCrA_view(_, _, k_block));
-      copy(tCsSFA(_, _, k_block, stage), tCrSFA_view(_, _, k_block));
-      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
-      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
-      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
-                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
-    }
-    __syncwarp();
-    if (tid % 32 == 0) {
-      CtaBarrier::arrive(&empty[stage]);
-    }
-    if (tid == 0) {
-      const int next = kt + kStages;
-      if (next < num_k_tiles) {
-        const int next_stage = next % kStages;
-        CtaBarrier::wait(&empty[next_stage], (next / kStages) & 1);
-        issue_tma(next, next_stage);
-      }
-    }
-  }
-
-  __syncthreads();
-  auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
-  float col_scale[kCCols];
-  float col_bias[kCCols];
-#pragma unroll
-  for (int col = 0; col < kCCols; ++col) {
-    const int n = n0 + get<1>(tScC_rc(0, col));
-    col_scale[col] = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
-    col_bias[col] = bias != nullptr && n < N ? static_cast<float>(bias[n]) : 0.0f;
-  }
-#pragma unroll
-  for (int row = 0; row < kCRows; ++row) {
-    const int m = m0 + get<0>(tScC_rc(row, 0));
-    const float scale_a = kLevel1A ? (m < M ? sa[m] : 0.0f) : 1.0f;
-#pragma unroll
-    for (int col = 0; col < kCCols; ++col) {
-      tCrC_rc(row, col) = tCrC_rc(row, col) * scale_a * col_scale[col] + col_bias[col];
-    }
-  }
-  auto tCrCh = convert_type<ElementO>(tCrC);
-  auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
-  auto r2s_thr = r2s_copy.get_thread_slice(tid);
-  auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(shm)), SmemLayoutO{});
-  auto tCrCh_src = r2s_thr.retile_S(tCrCh);
-  auto tCsC_dst = r2s_thr.partition_D(sC);
-  copy(r2s_copy, tCrCh_src, tCsC_dst);
-  cutlass::arch::fence_view_async_shared();
-  __syncthreads();
-  auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
-  if (tid == 0) {
-    copy(tma_c, c_slice.partition_S(sC), c_slice.partition_D(gC));
-  }
-  tma_store_arrive();
-  tma_store_wait<0>();
-#else
-  asm volatile("trap;");
-#endif
+  status = gemm.initialize(arguments, workspace_ptr, stream);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS SM120 FP4 GEMM initialization failed: ", static_cast<int>(status));
+  status = gemm.run(stream);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS SM120 FP4 GEMM launch failed: ", static_cast<int>(status));
 }
 
-template <typename Traits, typename TmaA, typename TmaB, typename TmaSFA, typename TmaSFB,
-          typename TmaC, bool kLevel1A, bool kLevel1B>
-__global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
-  fp4_gemm_tma_ws_kernel(CUTLASS_GRID_CONSTANT TmaA const tma_a,
-                         CUTLASS_GRID_CONSTANT TmaB const tma_b,
-                         CUTLASS_GRID_CONSTANT TmaSFA const tma_sfa,
-                         CUTLASS_GRID_CONSTANT TmaSFB const tma_sfb,
-                         CUTLASS_GRID_CONSTANT TmaC const tma_c, const float* __restrict__ sa,
-                         const float* __restrict__ sb, const cutlass::bfloat16_t* __restrict__ bias,
-                         int M, int N, int K) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
-  using cute::tma_store_arrive;
-  using cute::tma_store_wait;
-  using TmaBarrier = cutlass::arch::ClusterTransactionBarrier;
-  using CtaBarrier = cutlass::arch::ClusterBarrier;
-  using Element = typename Traits::Element;
-  using ElementSF = typename Traits::ElementSF;
-  using ElementO = typename Traits::ElementO;
-  using SmemLayoutA = typename Traits::SmemLayoutA;
-  using SmemLayoutB = typename Traits::SmemLayoutB;
-  using SmemLayoutSFA = typename Traits::SmemLayoutSFA;
-  using SmemLayoutSFB = typename Traits::SmemLayoutSFB;
-  using SmemLayoutO = typename Traits::SmemLayoutO;
-  using TiledMma = typename Traits::TiledMma;
-  using SmemCopyAtom = typename Traits::SmemCopyAtom;
+// Single-level counterpart: the block-scaled mainloop is identical, but the EVT
+// is only `accumulator + bias`. It exists for isolated comparisons with
+// torch._scaled_mm and must not be used to drop level-1 scales from production
+// NVFP4Linear, whose recipe always produces both row and column global scales.
+inline void fp4_gemm_cutlass_1x(const at::Tensor& a, const at::Tensor& b,
+                                const at::Tensor& a_scales, const at::Tensor& b_scales,
+                                const std::optional<at::Tensor>& bias, at::Tensor& out,
+                                cudaStream_t stream) {
+  using Gemm = Fp4CutlassSimpleGemm;
+  using StrideA = typename Gemm::GemmKernel::StrideA;
+  using StrideB = typename Gemm::GemmKernel::StrideB;
+  using StrideC = typename Gemm::GemmKernel::StrideC;
+  using StrideD = typename Gemm::GemmKernel::StrideD;
+  using ScaleConfig = typename Gemm::GemmKernel::CollectiveMainloop::Sm1xxBlkScaledConfig;
+  using FusionArguments = typename Gemm::GemmKernel::CollectiveEpilogue::FusionCallbacks::Arguments;
 
-  constexpr int kBM = Traits::kBM;
-  constexpr int kBN = Traits::kBN;
-  constexpr int kBK = Traits::kBK;
-  constexpr int kStages = Traits::kStages;
-  constexpr int kNumThreads = Traits::kNumThreads;
-  constexpr int kProducerThreads = 128;
-  constexpr int kAStageBytes = Traits::kAStageBytes;
-  constexpr int kBStageBytes = Traits::kBStageBytes;
-  constexpr int kSFAStageBytes = Traits::kSFAStageBytes;
-  static_assert(kProducerThreads * 32 + kNumThreads * 224 <= 65536, "WS register budget exceeded");
+  const int M = static_cast<int>(a.size(0));
+  const int N = static_cast<int>(b.size(0));
+  const int K = static_cast<int>(a.size(1) * 2);
+  auto stride_a = cutlass::make_internal_packed_stride(StrideA{}, {M, K, 1});
+  auto stride_b = cutlass::make_internal_packed_stride(StrideB{}, {N, K, 1});
+  auto stride_c = cutlass::make_internal_packed_stride(StrideC{}, {M, N, 1});
+  auto stride_d = cutlass::make_internal_packed_stride(StrideD{}, {M, N, 1});
+  auto layout_sfa = ScaleConfig::tile_atom_to_shape_SFA(cute::make_shape(M, N, K, 1));
+  auto layout_sfb = ScaleConfig::tile_atom_to_shape_SFB(cute::make_shape(M, N, K, 1));
 
-  const int tid = threadIdx.x;
-  const int m0 = blockIdx.y * kBM;
-  const int n0 = blockIdx.x * kBN;
-  auto mA = tma_a.get_tma_tensor(make_shape(M, K));
-  auto mB = tma_b.get_tma_tensor(make_shape(N, K));
-  auto mC = tma_c.get_tma_tensor(make_shape(M, N));
-  auto mSFA = tma_sfa.get_tma_tensor(shape(sf_gmem_layout(M, K)));
-  auto mSFB = tma_sfb.get_tma_tensor(shape(sf_gmem_layout(N, K)));
-  auto a_slice = tma_a.get_slice(_0{});
-  auto b_slice = tma_b.get_slice(_0{});
-  auto sfa_slice = tma_sfa.get_slice(_0{});
-  auto sfb_slice = tma_sfb.get_slice(_0{});
-  auto c_slice = tma_c.get_slice(_0{});
-
-  extern __shared__ __align__(1024) uint8_t shm[];
-  uint8_t* a_bytes = shm;
-  uint8_t* b_bytes = a_bytes + kStages * kAStageBytes;
-  ElementSF* sfa_base = reinterpret_cast<ElementSF*>(b_bytes + kStages * kBStageBytes);
-  ElementSF* sfb_base = sfa_base + kStages * kSFAStageBytes;
-  auto sA = make_tensor(make_smem_ptr(recast_ptr<uint4_t>(a_bytes)), SmemLayoutA{});
-  auto sB = make_tensor(make_smem_ptr(recast_ptr<uint4_t>(b_bytes)), SmemLayoutB{});
-  auto sSFA = make_tensor(make_smem_ptr(sfa_base), SmemLayoutSFA{});
-  auto sSFB = make_tensor(make_smem_ptr(sfb_base), SmemLayoutSFB{});
-
-  __shared__ uint64_t full[kStages];
-  __shared__ uint64_t empty[kStages];
-  if (tid == 0) {
-    for (int stage = 0; stage < kStages; ++stage) {
-      TmaBarrier::init(&full[stage], 1);
-      CtaBarrier::init(&empty[stage], kNumThreads / 32);
-    }
-  }
-  __syncthreads();
-
-  constexpr uint32_t kTxBytes = Traits::kTxBytes;
-  auto issue_tma = [&](int kt, int stage) {
-    cutlass::arch::fence_view_async_shared();
-    auto gA = local_tile(mA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
-    auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
-    auto gSFA = local_tile(mSFA, Shape<Int<kBM>, Int<kBK>>{}, make_coord(blockIdx.y, kt));
-    auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
-    TmaBarrier::arrive_and_expect_tx(&full[stage], kTxBytes);
-    copy(tma_a.with(full[stage]), a_slice.partition_S(gA), a_slice.partition_D(sA(_, _, stage)));
-    copy(tma_b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB(_, _, stage)));
-    copy(tma_sfa.with(full[stage]), sfa_slice.partition_S(gSFA),
-         sfa_slice.partition_D(sSFA(_, _, stage)));
-    copy(tma_sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
-         sfb_slice.partition_D(sSFB(_, _, stage)));
+  FusionArguments fusion_args{};
+  fusion_args.bias_ptr =
+    bias.has_value() ? reinterpret_cast<const Fp4CutlassElementD*>(bias->data_ptr<at::BFloat16>())
+                     : nullptr;
+  auto* out_ptr = reinterpret_cast<Fp4CutlassElementD*>(out.data_ptr<at::BFloat16>());
+  typename Gemm::Arguments arguments{
+    cutlass::gemm::GemmUniversalMode::kGemm,
+    {M, N, K, 1},
+    {
+      reinterpret_cast<const Fp4CutlassElementA::DataType*>(a.data_ptr()),
+      stride_a,
+      reinterpret_cast<const Fp4CutlassElementB::DataType*>(b.data_ptr()),
+      stride_b,
+      reinterpret_cast<const cutlass::float_ue4m3_t*>(a_scales.data_ptr<at::Float8_e4m3fn>()),
+      layout_sfa,
+      reinterpret_cast<const cutlass::float_ue4m3_t*>(b_scales.data_ptr<at::Float8_e4m3fn>()),
+      layout_sfb,
+    },
+    {fusion_args, out_ptr, stride_c, out_ptr, stride_d},
   };
 
-  const int num_k_tiles = K / kBK;
-  if (tid >= kProducerThreads && tid % 32 == 0) {
-    for (int stage = 0; stage < kStages; ++stage) {
-      CtaBarrier::arrive(&empty[stage]);
-    }
+  Gemm gemm;
+  cutlass::Status status = cutlass::Status::kSuccess;
+  const size_t workspace_size = Gemm::get_workspace_size(arguments);
+  at::Tensor workspace;
+  void* workspace_ptr = nullptr;
+  if (workspace_size != 0) {
+    workspace = at::empty({static_cast<int64_t>(workspace_size)}, a.options().dtype(at::kByte));
+    workspace_ptr = workspace.data_ptr();
   }
-  if (tid < kProducerThreads) {
-    cutlass::arch::warpgroup_reg_dealloc<32>();
-    if (tid == 0) {
-      for (int kt = 0; kt < num_k_tiles; ++kt) {
-        const int stage = kt % kStages;
-        CtaBarrier::wait(&empty[stage], (kt / kStages) & 1);
-        issue_tma(kt, stage);
-      }
-    }
-    return;
-  }
-
-  cutlass::arch::warpgroup_reg_alloc<224>();
-  const int ctid = tid - kProducerThreads;
-  TiledMma tiled_mma;
-  auto thr_mma = tiled_mma.get_thread_slice(ctid);
-  auto s2r_copy_a = make_tiled_copy_A(SmemCopyAtom{}, tiled_mma);
-  auto s2r_copy_b = make_tiled_copy_B(SmemCopyAtom{}, tiled_mma);
-  auto s2r_thr_a = s2r_copy_a.get_thread_slice(ctid);
-  auto s2r_thr_b = s2r_copy_b.get_thread_slice(ctid);
-  auto tCsA = s2r_thr_a.partition_S(as_position_independent_swizzle_tensor(sA));
-  auto tCsB = s2r_thr_b.partition_S(as_position_independent_swizzle_tensor(sB));
-  auto tCrA = thr_mma.partition_fragment_A(sA(_, _, Int<0>{}));
-  auto tCrB = thr_mma.partition_fragment_B(sB(_, _, Int<0>{}));
-  auto tCrA_view = s2r_thr_a.retile_D(tCrA);
-  auto tCrB_view = s2r_thr_b.retile_D(tCrB);
-
-  using SmemCopyAtomSF = Copy_Atom<UniversalCopy<ElementSF>, ElementSF>;
-  auto tCrSFA = sf_partition::partition_fragment_sfa(sSFA(_, _, Int<0>{}), thr_mma);
-  auto tCrSFB = sf_partition::partition_fragment_sfb(sSFB(_, _, Int<0>{}), thr_mma);
-  auto copy_sfa = make_tiled_copy_impl(
-    SmemCopyAtomSF{}, sf_partition::layout_sfa_tv(tiled_mma),
-    make_shape(size<0>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
-  auto copy_sfb = make_tiled_copy_impl(
-    SmemCopyAtomSF{}, sf_partition::layout_sfb_tv(tiled_mma),
-    make_shape(size<1>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
-  auto thr_copy_sfa = copy_sfa.get_thread_slice(ctid);
-  auto thr_copy_sfb = copy_sfb.get_thread_slice(ctid);
-  auto tCsSFA = thr_copy_sfa.partition_S(as_position_independent_swizzle_tensor(sSFA));
-  auto tCsSFB = thr_copy_sfb.partition_S(as_position_independent_swizzle_tensor(sSFB));
-  auto tCrSFA_view = thr_copy_sfa.retile_D(tCrSFA);
-  auto tCrSFB_view = thr_copy_sfb.retile_D(tCrSFB);
-
-  auto tCrC = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
-  clear(tCrC);
-  auto cC = make_identity_tensor(Shape<Int<kBM>, Int<kBN>>{});
-  auto tScC = thr_mma.partition_C(cC);
-  auto tScC_rc = make_tensor(tScC.data(), convert_layout_acc_rowcol(tScC.layout()));
-  constexpr int kCRows = decltype(size<0>(tScC_rc))::value;
-  constexpr int kCCols = decltype(size<1>(tScC_rc))::value;
-
-#pragma unroll 1
-  for (int kt = 0; kt < num_k_tiles; ++kt) {
-    const int stage = kt % kStages;
-    const int phase = (kt / kStages) & 1;
-    TmaBarrier::wait(&full[stage], phase);
-    cutlass::arch::fence_view_async_shared();
-#pragma unroll
-    for (int k_block = 0; k_block < kBK / 64; ++k_block) {
-      copy(s2r_copy_a, tCsA(_, _, k_block, stage), tCrA_view(_, _, k_block));
-      copy(tCsSFA(_, _, k_block, stage), tCrSFA_view(_, _, k_block));
-      copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
-      copy(tCsSFB(_, _, k_block, stage), tCrSFB_view(_, _, k_block));
-      cute::gemm(tiled_mma, make_zip_tensor(tCrA(_, _, k_block), tCrSFA(_, _, k_block)),
-                 make_zip_tensor(tCrB(_, _, k_block), tCrSFB(_, _, k_block)), tCrC);
-    }
-    __syncwarp();
-    if (ctid % 32 == 0) {
-      CtaBarrier::arrive(&empty[stage]);
-    }
-  }
-
-  __syncthreads();
-  auto tCrC_rc = make_tensor(tCrC.data(), convert_layout_acc_rowcol(tCrC.layout()));
-  float col_scale[kCCols];
-  float col_bias[kCCols];
-#pragma unroll
-  for (int col = 0; col < kCCols; ++col) {
-    const int n = n0 + get<1>(tScC_rc(0, col));
-    col_scale[col] = kLevel1B ? (n < N ? sb[n] : 0.0f) : 1.0f;
-    col_bias[col] = bias != nullptr && n < N ? static_cast<float>(bias[n]) : 0.0f;
-  }
-#pragma unroll
-  for (int row = 0; row < kCRows; ++row) {
-    const int m = m0 + get<0>(tScC_rc(row, 0));
-    const float scale_a = kLevel1A ? (m < M ? sa[m] : 0.0f) : 1.0f;
-#pragma unroll
-    for (int col = 0; col < kCCols; ++col) {
-      tCrC_rc(row, col) = tCrC_rc(row, col) * scale_a * col_scale[col] + col_bias[col];
-    }
-  }
-  auto tCrCh = convert_type<ElementO>(tCrC);
-  auto r2s_copy = make_tiled_copy_C(Copy_Atom<SM90_U32x4_STSM_N, ElementO>{}, tiled_mma);
-  auto r2s_thr = r2s_copy.get_thread_slice(ctid);
-  auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(shm)), SmemLayoutO{});
-  auto tCrCh_src = r2s_thr.retile_S(tCrCh);
-  auto tCsC_dst = r2s_thr.partition_D(sC);
-  copy(r2s_copy, tCrCh_src, tCsC_dst);
-  cutlass::arch::fence_view_async_shared();
-  cutlass::arch::NamedBarrier::arrive_and_wait(kNumThreads, 0);
-  auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
-  if (ctid == 0) {
-    copy(tma_c, c_slice.partition_S(sC), c_slice.partition_D(gC));
-  }
-  tma_store_arrive();
-  tma_store_wait<0>();
-#else
-  asm volatile("trap;");
-#endif
-}
-
-template <bool kLevel1A, bool kLevel1B, bool kWS, typename Traits = Fp4GemmTraits<>>
-void fp4_gemm_tma_fwd(const cutlass::float_e2m1_t* a, const cutlass::float_e2m1_t* b,
-                      const cutlass::float_ue4m3_t* sfa, const cutlass::float_ue4m3_t* sfb,
-                      const float* sa, const float* sb, const cutlass::bfloat16_t* bias,
-                      cutlass::bfloat16_t* out, int M, int N, int K, cudaStream_t stream) {
-  using SmemLayoutA = typename Traits::SmemLayoutA;
-  using SmemLayoutB = typename Traits::SmemLayoutB;
-  using SmemLayoutAtomA = typename Traits::SmemLayoutAtomA;
-  using SmemLayoutAtomB = typename Traits::SmemLayoutAtomB;
-  using SmemLayoutAtomSFA = typename Traits::SmemLayoutAtomSFA;
-  using SmemLayoutAtomSFB = typename Traits::SmemLayoutAtomSFB;
-  using SmemLayoutO = typename Traits::SmemLayoutO;
-  constexpr int kBM = Traits::kBM;
-  constexpr int kBN = Traits::kBN;
-  constexpr int kBK = Traits::kBK;
-  constexpr int kSmemBytes = Traits::kSmemBytes;
-
-  auto mA =
-    make_tensor(recast_ptr<cutlass::float_e2m1_t>(a), make_shape(M, K), make_stride(K, _1{}));
-  auto mB =
-    make_tensor(recast_ptr<cutlass::float_e2m1_t>(b), make_shape(N, K), make_stride(K, _1{}));
-  auto mC = make_tensor(make_gmem_ptr(out), make_shape(M, N), make_stride(N, _1{}));
-  auto mSFA = make_tensor(recast_ptr<cutlass::float_ue4m3_t>(sfa), sf_gmem_layout(M, K));
-  auto mSFB = make_tensor(recast_ptr<cutlass::float_ue4m3_t>(sfb), sf_gmem_layout(N, K));
-  auto tma_a = make_tma_copy(SM90_TMA_LOAD{}, mA, SmemLayoutA{}(_, _, Int<0>{}),
-                             Shape<Int<kBM>, Int<kBK>>{}, _1{});
-  auto tma_b = make_tma_copy(SM90_TMA_LOAD{}, mB, SmemLayoutB{}(_, _, Int<0>{}),
-                             Shape<Int<kBN>, Int<kBK>>{}, _1{});
-  auto tma_sfa = make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFA, SmemLayoutAtomSFA{},
-                                         Shape<Int<kBM>, Int<kBK>>{}, _1{});
-  auto tma_sfb = make_tma_copy<uint16_t>(SM90_TMA_LOAD{}, mSFB, SmemLayoutAtomSFB{},
-                                         Shape<Int<kBN>, Int<kBK>>{}, _1{});
-  auto tma_c =
-    make_tma_copy(SM90_TMA_STORE{}, mC, SmemLayoutO{}, Shape<Int<kBM>, Int<kBN>>{}, _1{});
-  dim3 grid((N + kBN - 1) / kBN, (M + kBM - 1) / kBM);
-
-  if constexpr (kWS) {
-    auto kernel =
-      fp4_gemm_tma_ws_kernel<Traits, decltype(tma_a), decltype(tma_b), decltype(tma_sfa),
-                             decltype(tma_sfb), decltype(tma_c), kLevel1A, kLevel1B>;
-    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes);
-    kernel<<<grid, Traits::kNumThreads + 128, kSmemBytes, stream>>>(tma_a, tma_b, tma_sfa, tma_sfb,
-                                                                    tma_c, sa, sb, bias, M, N, K);
-  } else {
-    auto kernel = fp4_gemm_tma_kernel<Traits, decltype(tma_a), decltype(tma_b), decltype(tma_sfa),
-                                      decltype(tma_sfb), decltype(tma_c), kLevel1A, kLevel1B>;
-    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes);
-    kernel<<<grid, Traits::kNumThreads, kSmemBytes, stream>>>(tma_a, tma_b, tma_sfa, tma_sfb, tma_c,
-                                                              sa, sb, bias, M, N, K);
-  }
-}
-
-inline bool fp4_gemm_use_wide_tile(int M, int N, int K) {
-  return M >= 4096 && N >= 4096 && K >= 4096;
+  status = gemm.initialize(arguments, workspace_ptr, stream);
+  TORCH_CHECK(
+    status == cutlass::Status::kSuccess,
+    "CUTLASS SM120 single-level FP4 GEMM initialization failed: ", static_cast<int>(status));
+  status = gemm.run(stream);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS SM120 single-level FP4 GEMM launch failed: ", static_cast<int>(status));
 }
 
 }  // namespace cache_dit::fp4

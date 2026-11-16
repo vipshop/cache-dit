@@ -382,3 +382,24 @@ e2e compile win from the per-layer 0.711x table. The compiled model has other
 non-GEMM boundaries and host overhead. Images and metrics are in
 `.tmp/native_fp4_tuning/e2e/` and `logs/e2e_metrics.log`; the comparison sheet
 is `.tmp/native_fp4_tuning/fp4_flux_e2e_compare.png`.
+
+## 2026-11-16 collective-only cleanup and CUTLASS 4.8.1
+
+The hand-written FP4 GEMM was removed after auditing its remaining value: it
+only added non-production `K%64/N%8` tails, while all six FLUX production
+shapes use the CUTLASS collective. `collective_gemm.cuh` was renamed to
+`gemm.cuh`; `gemm.cu` now only validates inputs and selects the two-level or
+single-level CUTLASS epilogue. `use_ws` was removed from the public API,
+torch.library schema, and C++ entry because CUTLASS selects the mainloop.
+The two collective entry points are named `fp4_gemm_cutlass_2x` and
+`fp4_gemm_cutlass_1x` for two-level and single-level scaling. Unsupported native
+tile shapes are automatically zero-padded/depadded: direct `fp4_gemm` pads
+packed qdata, canonical scales, global scales, and bias; `NVFP4Linear` pads the
+BF16 weight once and activation K as needed, then restores the original output
+shape. `use_native=False` similarly pads N for `torch._scaled_mm`.
+
+The bundled CUTLASS submodule is upgraded from v4.6.1 to v4.8.1
+(`2c85f497547eb441f0fe80bfb0fb2e6f9add1719`). `setup.py` and installation
+documentation enforce/document 4.8.1. A clean `sm120a` rebuild succeeds with
+the collective-only FP4 implementation. FP8 collective migration is explicitly
+left for the follow-up PR after this FP4 change lands.

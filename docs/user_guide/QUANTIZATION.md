@@ -16,7 +16,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int8_per_tensor</span>|quantize weights and activations to int8 (<span style="color:green;">dynamic quantization</span>) with tensorwise method.|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int8_weight_only</span>|quantize <span style="color:green;">only weights</span> to int8, keep activations in full precision|<span style="color:#c77dff;">>=sm80</span>, Ampere or newer|
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
-|<span style="color:#c77dff;">nvfp4</span>|Dynamic activation and NVFP4 weight quantization. TorchAO uses MSLK Triton quantization plus `torch._scaled_mm`; cache-dit uses its own online quantizer plus an SM120 CUTLASS collective with fused global-scale/bias epilogue by default.|TorchAO: <span style="color:#c77dff;">>=sm100</span>; cache-dit: <span style="color:#c77dff;">>=sm120</span>|
+|<span style="color:#c77dff;">nvfp4</span>|Dynamic activation and NVFP4 weight quantization. Available through TorchAO or cache-dit's native backend.|TorchAO: <span style="color:#c77dff;">>=sm100</span>; cache-dit: <span style="color:#c77dff;">>=sm120</span>|
 |<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
@@ -179,17 +179,9 @@ python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
   --nvfp4 --quantize-backend cache_dit --compile
 ```
 
-The cache-dit path quantizes each activation at runtime, caches the quantized
-weight once, and then calls `fp4_gemm`. The default native implementation uses
-an SM120 CUTLASS block-scaled collective (`128x128x256`) and a custom FP32
-epilogue that folds both global scales and bias into the GEMM. Pass
-`use_native=False` to `cache_dit.kernels.fp4_gemm` for the `torch._scaled_mm`
-reference path. Hand-written CuTe WS/non-WS kernels remain as fallbacks for
-shapes outside the collective domain; `use_ws` only selects between those
-fallback mainloops. For `K=15360`, activation quantization uses a fused
-row-amax + quantize kernel with vectorized shared-memory reads and packed
-qdata/scale stores; other K values use the original two-kernel path when that
-is faster.
+The cache-dit path provides online NVFP4 W4A4 inference: each weight is
+quantized once, while activations are quantized at runtime. It is intended for
+SM120 GPUs and supports the FLUX production shapes.
 
 The two implementations do not use the same quantization recipe. Cache-DiT
 uses a per-row activation and per-output-channel weight FP32 global scale on top
@@ -200,12 +192,10 @@ reference.
 
 Requirements and limits:
 
-- Both weight and activation must be BF16; `in_features % 64 == 0` and
-  `out_features % 8 == 0`.
-- The default collective requires `in_features % 256 == 0` and
-  `out_features % 128 == 0`; other shapes use the hand-written native fallback.
-  With `use_native=False`, `torch._scaled_mm` requires `out_features % 16 == 0`
-  and otherwise also falls back to the native kernel.
+- Both weight and activation must be BF16. Non-aligned Linear shapes are
+  supported through automatic padding and output slicing. For best performance,
+  prefer `in_features % 256 == 0` and `out_features % 128 == 0`, which avoids
+  padding copies.
 - The path is online-only: `calibrate_fn`, `serialize_to`, TP/DTensor weights and
   serialized NVFP4 checkpoints are not supported.
 - `nvfp4_weight_only` continues to use TorchAO, and `AUTO` still routes plain
@@ -492,7 +482,7 @@ For PTQ, the available quant types are <span style="color:#c77dff;">svdq_int4_r{
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ # SVDQuant build, local version +cu13.
 # Optional: build Cache-DiT from source with the CUDA extensions.
 git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.6.1
+git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.8.1
 CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]"
 ```
 
