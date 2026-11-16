@@ -17,7 +17,7 @@ user-invocable: true
 | 接入**模型专属**算子族（`models`） | 算子只服务单个 vendored 模型，要动 `csrc/kernels/models/` 与 `kernels/models/`，或要在模型侧加 `fused_ops.py` 调用点 | 本文 §9 + `references/kernel-integration-chain.md` §2 |
 | 从上游仓库移植算子 | 有 nunchaku / deepcompressor / flashinfer 参照实现 | `references/operator-migration.md` |
 | 改现有算子实现 | 只改 `.cu/.cuh/.h`，schema、`setup.py`、Python 包装都不动 | 本文 §5 + 该族 Python 模块 + 对应测试 |
-| 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列三份 ref |
+| 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列专项 ref |
 | SVDQuant 原理 | 推导、误差上界、scale 粒度、低秩残差 | `references/svdquant-mathematics.md` |
 
 SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
@@ -25,6 +25,7 @@ SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
 - `references/svdq-nvfp4-cute.md`：当前实现、有效/无效尝试和实测性能。
 - `references/rfc-cuda-optimizations.md`：优化门槛、待办、状态更新规则。
 - `references/svdq-nvfp4-cute-tma-sync-analysis.md`：TMA/mbarrier、warp/block 同步、K-block 软件流水及 CUTLASS/FlashInfer SM120 对照；做 SVDQ CuTe GEMM 调度与性能优化前先读。
+- `references/svdq-nvfp4-cute-cutlass-collective-analysis.md`：评估 SVDQ CuTe FP4 是否迁移 CUTLASS Collective 时先读；包含 stock/custom Collective 边界、pack 与 LoRA 契约、静态数量分析及既有对照证据。
 
 Ulysses / Ring 通信参考：
 
