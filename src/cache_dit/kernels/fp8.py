@@ -1,16 +1,61 @@
-"""Cache-DiT native FP8 quantization and GEMM operators.
+"""Cache-DiT FP8 E4M3 quantization and GEMM operators.
 
-The low-level API keeps quantization and GEMM separate so callers can reuse an
-offline-quantized weight. Three scale granularities match TorchAO's public FP8
-types:
+Numerical convention
+====================
+For one quantization unit ``U``, with finite BF16 values ``X``::
 
-* ``per_row``: activation scale ``[M]``, weight scale ``[N]``.
-* ``per_tensor``: one activation scale and one weight scale.
-* ``per_block``: activation ``[M, K / 128]`` and weight
-  ``[ceil(N / 128), K / 128]`` scales; GEMM rescales each K block.
+    scale = max(abs(X[U])) / 448
+    q = satfinite_e4m3(X / scale)
+    x_hat = scale * q
+
+``scale`` is an FP32 dequantization multiplier, not its reciprocal. An all-zero
+unit returns ``scale=0, q=0`` and uses 1 as a safe division denominator. E4M3 is
+the only FP8 storage format; there is no NVFP4-style second UE4M3 scale level.
+
+For physical row-major activation ``A[M,K]`` and weight ``B[N,K]``, GEMM computes
+``D = A @ B.T + bias`` in FP32 before writing BF16:
+
+* ``per_row``: scales ``sa[M]`` and ``sb[N]``. The CUTLASS epilogue evaluates
+  ``D[m,n] = bias[n] + sa[m] * sb[n] * sum_k(qA[m,k] * qB[n,k])``.
+* ``per_tensor``: scalar ``sa`` and ``sb``. The same epilogue broadcasts the
+  scalars with zero strides, without expanding them to M/N vectors.
+* ``per_block``: activation scales ``[M,ceil(K/128)]`` and weight scales
+  ``[ceil(N/128),ceil(K/128)]``. Each K128 mainloop block applies its activation
+  and weight scales; the epilogue adds bias only. Weight scales correspond to
+  128x128 blocks, whereas activation scales correspond to 1x128 blocks.
+
+Typical low-level use (weight quantization is done once)::
+
+    qa, sa = fp8_quantize(a, mode="per_row")
+    qw, sw = fp8_quantize(w, mode="per_row", is_weight=True)
+    d = fp8_gemm(qa, qw, sa, sw, bias=bias, mode="per_row")
+
+API layers and shape handling
+=============================
+``fp8_quantize`` is the native custom-op quantizer. ``fp8_quantize_torch`` is the
+mathematically equivalent pure-PyTorch implementation used by the high-level
+Linear under ``torch.compile`` so Inductor can fuse surrounding operations.
+``fp8_gemm`` defaults to the CUTLASS collective; ``use_native=False`` selects
+``torch._scaled_mm`` only for per-row/per-tensor. Per-block always uses the
+CUTLASS blockwise mainloop because ``_scaled_mm`` has no matching scale ABI.
+
+The quantizer itself has explicit input requirements (K divisible by 16, and by
+128 for per-block); it does not silently change the returned qdata shape. The
+public GEMM separately zero-pads already quantized operands to the selected GEMM
+backend's granularity and slices output N back. The high-level ``QW8A8Linear``
+instead pads BF16 weights/activations *before* quantization, so its entire
+quantize -> GEMM -> depad chain supports arbitrary Linear shapes. Zero qdata,
+zero padding scales and zero padding bias make these transformations equivalent
+on the original output region.
+
+These are torch.library custom ops with matching CUDA and fake implementations.
+There is intentionally no ``use_ws`` argument: CUTLASS selects the mainloop and
+warp specialization rather than exposing the removed hand-written WS/non-WS
+kernels as a public performance knob.
 """
 
 import torch
+import torch.nn.functional as F
 
 from .cuda_ext import _get_required_ops_module
 
@@ -48,8 +93,7 @@ def _fp8_ops_module():
 
   ops = _get_required_ops_module()
   missing = [
-    name for name in ("fp8_quantize", "fp8_gemm", "fp8_quantize_gemm_per_row")
-    if not hasattr(ops, name)
+    name for name in ("fp8_quantize", "fp8_gemm", "fp8_quantize_gemm") if not hasattr(ops, name)
   ]
   if missing:
     raise RuntimeError(
@@ -188,7 +232,7 @@ def _validate_gemm_metadata(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Ten
 
 
 def _call_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-                   bias: torch.Tensor | None, out: torch.Tensor, mode: int, use_ws: bool) -> None:
+                   bias: torch.Tensor | None, out: torch.Tensor, mode: int) -> None:
   """Bridge the Python GEMM to the compiled extension.
 
   :param a: Quantized activation ``[M, K]``.
@@ -198,34 +242,31 @@ def _call_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_sc
   :param bias: Optional BF16 bias.
   :param out: BF16 destination ``[M, N]``.
   :param mode: Integer granularity id.
-  :param use_ws: Select the warp-specialized mainloop.
   """
 
-  _fp8_ops_module().fp8_gemm(a, b, a_scale, b_scale, bias, out, mode, use_ws)
+  _fp8_ops_module().fp8_gemm(a, b, a_scale, b_scale, bias, out, mode)
 
 
 torch.library.define(
   "cache_dit_cuda_ops::fp8_gemm",
-  "(Tensor a, Tensor b, Tensor a_scale, Tensor b_scale, Tensor? bias, int mode, bool use_ws) "
-  "-> Tensor",
+  "(Tensor a, Tensor b, Tensor a_scale, Tensor b_scale, Tensor? bias, int mode) -> Tensor",
 )
 
 
 @torch.library.impl("cache_dit_cuda_ops::fp8_gemm", "CUDA")
 def _fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-              bias: torch.Tensor | None, mode: int, use_ws: bool) -> torch.Tensor:
+              bias: torch.Tensor | None, mode: int) -> torch.Tensor:
   _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
   a = a.contiguous()
   b = b.contiguous()
   out = torch.empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16, device=a.device)
-  _call_fp8_gemm(a, b, a_scale.contiguous(), b_scale.contiguous(), bias, out, mode, use_ws)
+  _call_fp8_gemm(a, b, a_scale.contiguous(), b_scale.contiguous(), bias, out, mode)
   return out
 
 
 @torch.library.register_fake("cache_dit_cuda_ops::fp8_gemm")
 def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
-                   bias: torch.Tensor | None, mode: int, use_ws: bool) -> torch.Tensor:
-  del use_ws
+                   bias: torch.Tensor | None, mode: int) -> torch.Tensor:
   _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
@@ -233,6 +274,9 @@ def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_sc
 def _validate_quantize_gemm_metadata(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
                                      bias: torch.Tensor | None) -> None:
   """Validate the public per-row quantize+GEMM metadata.
+
+  This convenience op is fixed to per-row quantization, so checking that recipe
+  is sufficient; it does not accept or dispatch a separate mode argument.
 
   :param x: BF16 activation ``[M, K]``.
   :param b: Quantized weight ``[N, K]``.
@@ -252,26 +296,25 @@ def _validate_quantize_gemm_metadata(x: torch.Tensor, b: torch.Tensor, b_scale: 
 
 
 torch.library.define(
-  "cache_dit_cuda_ops::fp8_quantize_gemm_per_row",
-  "(Tensor x, Tensor b, Tensor b_scale, Tensor? bias, bool use_ws) -> Tensor",
+  "cache_dit_cuda_ops::fp8_quantize_gemm",
+  "(Tensor x, Tensor b, Tensor b_scale, Tensor? bias) -> Tensor",
 )
 
 
-@torch.library.impl("cache_dit_cuda_ops::fp8_quantize_gemm_per_row", "CUDA")
-def _fp8_quantize_gemm_per_row(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
-                               bias: torch.Tensor | None, use_ws: bool) -> torch.Tensor:
+@torch.library.impl("cache_dit_cuda_ops::fp8_quantize_gemm", "CUDA")
+def _fp8_quantize_gemm(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
+                       bias: torch.Tensor | None) -> torch.Tensor:
   _validate_quantize_gemm_metadata(x, b, b_scale, bias)
   x = x.contiguous()
   b = b.contiguous()
   out = torch.empty((x.shape[0], b.shape[0]), dtype=torch.bfloat16, device=x.device)
-  _fp8_ops_module().fp8_quantize_gemm_per_row(x, b, b_scale.contiguous(), bias, out, use_ws)
+  _fp8_ops_module().fp8_quantize_gemm(x, b, b_scale.contiguous(), bias, out)
   return out
 
 
-@torch.library.register_fake("cache_dit_cuda_ops::fp8_quantize_gemm_per_row")
-def _fake_fp8_quantize_gemm_per_row(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
-                                    bias: torch.Tensor | None, use_ws: bool) -> torch.Tensor:
-  del use_ws
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_quantize_gemm")
+def _fake_fp8_quantize_gemm(x: torch.Tensor, b: torch.Tensor, b_scale: torch.Tensor,
+                            bias: torch.Tensor | None) -> torch.Tensor:
   _validate_quantize_gemm_metadata(x, b, b_scale, bias)
   return x.new_empty((x.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
@@ -339,13 +382,28 @@ def fp8_quantize(x: torch.Tensor,
                  is_weight: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
   """Quantize a 2D BF16 tensor to E4M3 with the requested scale granularity.
 
-  :param x: Contiguous-capable 2D BF16 tensor ``[M, K]``. For a linear weight
-    this is ``[N, K]`` and ``per_row`` means per-output-channel, i.e. per-col of
-    the mathematical ``B`` matrix.
-  :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
-  :param is_weight: Set for ``[N, K]`` weights so ``per_block`` uses the
-    ``128 x 128`` weight-scale layout.
-  :returns: ``(quantized, scale)`` where quantized keeps the input layout.
+  Each scale is ``amax / 448`` and each output value is
+  ``satfinite_e4m3(input / scale)``. To reconstruct the approximate BF16 value,
+  multiply qdata by the scale; do not divide by it. Zero units return zero scale
+  and zero qdata. This custom op performs the reduction and conversion in CUDA;
+  it does not fuse a following GEMM.
+
+  This low-level quantizer does not pad its output. Callers must supply K % 16
+  == 0, or K % 128 == 0 for per-block. :func:`fp8_gemm` can pad qdata later, and
+  :class:`cache_dit.quantization.fp8.linear.QW8A8Linear` normally handles shape
+  alignment before calling this function.
+
+  :param x: Contiguous-capable 2D BF16 tensor ``[M, K]`` for activations or
+    ``[N, K]`` for a weight. Per-row activation scaling is per token; per-row
+    weight scaling is per output channel (per column of mathematical ``B.T``).
+  :param mode: ``per_row`` (one scale per row), ``per_tensor`` (one scale for the
+    whole tensor), or ``per_block`` (activation 1x128 / weight 128x128 blocks).
+  :param is_weight: Only changes per-block scale-table layout. Set true for a
+    weight ``[N,K]`` to return ``[ceil(N/128),ceil(K/128)]`` scales. Activation
+    scales remain ``[M,ceil(K/128)]``. Per-row/per-tensor are unaffected.
+  :returns: ``(qdata, scale)``. ``qdata`` has the same shape as ``x`` and dtype
+    ``torch.float8_e4m3fn``; ``scale`` is FP32 with the mode-dependent shape
+    above. Dequantization is approximately ``qdata.float() * scale``.
   """
 
   return torch.ops.cache_dit_cuda_ops.fp8_quantize(x, _resolve_mode(mode), is_weight)
@@ -354,15 +412,17 @@ def fp8_quantize(x: torch.Tensor,
 def _fp8_gemm_scaled_mm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
                         b_scale: torch.Tensor, bias: torch.Tensor | None,
                         mode_id: int) -> torch.Tensor:
-  """Run FP8 GEMM through PyTorch's cuBLAS-backed scaled matrix multiply.
+  """Run the per-row/per-tensor reference through ``torch._scaled_mm``.
 
-  :param a: Quantized activation ``[M, K]``.
-  :param b: Quantized weight ``[N, K]``.
-  :param a_scale: Activation scale, per-row or per-tensor.
-  :param b_scale: Weight scale, per-output-channel or per-tensor.
-  :param bias: Optional BF16 bias ``[N]``.
-  :param mode_id: Resolved ``per_row`` or ``per_tensor`` mode id.
-  :returns: BF16 output ``[M, N]``.
+  PyTorch expects the second matrix as ``[K,N]``; ``b.t()`` is a view of our
+  row-major ``[N,K]`` weight and does not quantize or dequantize it. Per-row uses
+  scale shapes ``[M,1]`` and ``[1,N]`` for row/column broadcast. Per-tensor passes
+  the two scalar scales directly. The operator applies scales and bias according
+  to its own API, so this helper does not multiply them again afterward.
+
+  Per-block is intentionally absent: ``_scaled_mm`` has no 1x128-by-128x128
+  block-scale contract. Its N % 16 requirement is handled by the public wrapper
+  before this helper is called.
   """
 
   if mode_id == _MODE_TO_ID["per_row"]:
@@ -384,54 +444,113 @@ def _fp8_gemm_scaled_mm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
   )
 
 
+def _pad_fp8_gemm_operands(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
+                           b_scale: torch.Tensor, bias: torch.Tensor | None, mode: int,
+                           padded_k: int, padded_n: int):
+  """Zero-pad quantized operands to the selected GEMM's tile granularity.
+
+  K padding appends zero E4M3 values to both A and B, so every added dot-product
+  term is zero. N padding appends zero rows to B and zero bias entries, then the
+  caller discards those output columns. Per-tensor needs no scale-table change:
+  its scalar scale multiplied by padded zero qdata is still zero. Per-row pads
+  b_scale[N] with zeros. Per-block pads whole 128-block rows/columns in both
+  scale tables, so every newly introduced block also has zero scale.
+
+  No amax is recomputed here: this helper only adapts an existing quantized
+  representation to a backend layout. High-level Linear code normally performs
+  the equivalent padding before quantization to avoid repeating weight work.
+  """
+
+  cols = a.shape[1]
+  out_channels = b.shape[0]
+  if cols != padded_k or out_channels != padded_n:
+    a = F.pad(a, (0, padded_k - cols))
+    b = F.pad(b, (0, padded_k - cols, 0, padded_n - out_channels))
+    if mode == _MODE_TO_ID["per_row"]:
+      b_scale = F.pad(b_scale, (0, padded_n - out_channels))
+    elif mode == _MODE_TO_ID["per_block"]:
+      old_k_blocks = a_scale.shape[1]
+      new_k_blocks = padded_k // 128
+      a_scale = F.pad(a_scale, (0, new_k_blocks - old_k_blocks))
+      b_scale = F.pad(b_scale,
+                      (0, new_k_blocks - old_k_blocks, 0, padded_n // 128 - b_scale.shape[0]))
+    if bias is not None:
+      bias = F.pad(bias, (0, padded_n - out_channels))
+  return a, b, a_scale, b_scale, bias
+
+
 def fp8_gemm(a: torch.Tensor,
              b: torch.Tensor,
              a_scale: torch.Tensor,
              b_scale: torch.Tensor,
              bias: torch.Tensor | None = None,
              mode: str = "per_row",
-             use_ws: bool | None = None,
-             use_native: bool = False) -> torch.Tensor:
-  """Compute ``a @ b.T`` with FP8 inputs and a BF16 output.
+             use_native: bool = True) -> torch.Tensor:
+  """Compute ``a @ b.T + bias`` from E4M3 inputs and FP32 scales.
 
-  :param a: Quantized activation ``[M, K]``.
-  :param b: Quantized weight ``[N, K]``.
-  :param a_scale: Activation scale produced by :func:`fp8_quantize`.
-  :param b_scale: Weight scale produced by :func:`fp8_quantize`.
-  :param bias: Optional BF16 bias ``[N]``.
+  This function consumes the outputs of :func:`fp8_quantize`; it does not compute
+  amax. Accumulation is FP32 and the public output is BF16. For per-row, the
+  native EVT evaluates ``bias[n] + a_scale[m] * b_scale[n] * acc[m,n]`` in place
+  of a separate scaled-output tensor. Per-tensor broadcasts scalar scales with
+  zero strides. Per-block applies each 1x128/128x128 scale pair in the CUTLASS
+  mainloop and uses a bias-only epilogue.
+
+  Automatic shape handling is local to this wrapper. The native per-row/tensor
+  path pads K/N to multiples of 16/8, the ``_scaled_mm`` reference pads to 16/16,
+  and per-block pads to 128/128. It pads qdata and any necessary scale/bias
+  entries with zero, then returns ``out[:, :N]``. These zeros contribute nothing
+  to the original output. The underlying C++ ABI remains strict; padding happens
+  before entering the custom op. For a full BF16 Linear chain, prefer
+  ``QW8A8Linear``, which pads before quantization and avoids weight repacking on
+  every forward.
+
+  :param a: E4M3 activation ``[M,K]``.
+  :param b: E4M3 weight ``[N,K]`` in ordinary row-major Linear layout. The
+    collective consumes its mathematical transpose without a materialized copy.
+  :param a_scale: FP32 activation scale from :func:`fp8_quantize`: ``[M]`` for
+    per-row, scalar for per-tensor, or ``[M,ceil(K/128)]`` for per-block.
+  :param b_scale: FP32 weight scale: ``[N]``, scalar, or
+    ``[ceil(N/128),ceil(K/128)]`` according to the same mode.
+  :param bias: Optional BF16 vector ``[N]``.
   :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
-  :param use_ws: Select the native warp-specialized mainloop. ``None`` uses the
-    measured default: WS for per-block, all-warps for per-row/per-tensor.
-  :param use_native: Force cache-dit's native FP8 GEMM. By default, per-row and
-    per-tensor use ``torch._scaled_mm``; per-block keeps the native kernel because
-    ``_scaled_mm`` cannot express its activation/weight block scales.
-  :returns: BF16 output ``[M, N]``.
+  :param use_native: ``True`` (default) launches the CUTLASS collective.
+    ``False`` selects the ``torch._scaled_mm`` reference for per-row/per-tensor;
+    per-block still uses the native blockwise collective because scaled_mm does
+    not support this scale layout.
+  :returns: BF16 tensor ``[M,N]`` with the original, unpadded N.
   """
 
   mode_id = _resolve_mode(mode)
-  if not use_native and mode_id != _MODE_TO_ID["per_block"] and b.shape[0] % 16 == 0:
-    return _fp8_gemm_scaled_mm(a, b, a_scale, b_scale, bias, mode_id)
-  if use_ws is None:
-    use_ws = mode_id == _MODE_TO_ID["per_block"]
-  return torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id, use_ws)
+  out_channels = b.shape[0]
+  logical_k = a.shape[1]
+  use_scaled_mm = not use_native and mode_id != _MODE_TO_ID["per_block"]
+  k_multiple, n_multiple = (128, 128) if mode_id == _MODE_TO_ID["per_block"] else (
+    16, 16 if use_scaled_mm else 8)
+  padded_k = (logical_k + k_multiple - 1) // k_multiple * k_multiple
+  padded_n = (out_channels + n_multiple - 1) // n_multiple * n_multiple
+  a, b, a_scale, b_scale, bias = _pad_fp8_gemm_operands(a, b, a_scale, b_scale, bias, mode_id,
+                                                        padded_k, padded_n)
+  if use_scaled_mm:
+    out = _fp8_gemm_scaled_mm(a, b, a_scale, b_scale, bias, mode_id)
+  else:
+    out = torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id)
+  return out[:, :out_channels]
 
 
 def fp8_quantize_gemm(x: torch.Tensor,
                       b: torch.Tensor,
                       b_scale: torch.Tensor,
-                      bias: torch.Tensor | None = None,
-                      use_ws: bool = False) -> torch.Tensor:
-  """Quantize a BF16 activation per row and immediately run FP8 GEMM.
+                      bias: torch.Tensor | None = None) -> torch.Tensor:
+  """Quantize a BF16 activation per row and run the CUTLASS FP8 GEMM.
 
   :param x: BF16 activation ``[M, K]``.
   :param b: Quantized weight ``[N, K]``.
   :param b_scale: Per-output-channel FP32 weight scale.
   :param bias: Optional BF16 bias ``[N]``.
-  :param use_ws: Select the warp-specialized GEMM mainloop.
   :returns: BF16 output ``[M, N]``.
   """
 
-  return torch.ops.cache_dit_cuda_ops.fp8_quantize_gemm_per_row(x, b, b_scale, bias, use_ws)
+  return torch.ops.cache_dit_cuda_ops.fp8_quantize_gemm(x, b, b_scale, bias)
 
 
 __all__ = ["fp8_gemm", "fp8_quantize", "fp8_quantize_gemm", "fp8_quantize_torch"]

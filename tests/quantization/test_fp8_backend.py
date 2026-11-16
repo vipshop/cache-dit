@@ -84,13 +84,10 @@ def test_native_fp8_quantizes_only_supported_repeated_blocks(mode: str) -> None:
   )
   assert all(type(block.proj).__name__ == "QW8A8Linear" for block in out.blocks)
   assert isinstance(out.modulation, nn.Linear)
-  if mode == "per_block":
-    assert all(isinstance(block.bad_shape, nn.Linear) for block in out.blocks)
-    assert len(out._fp8_skipped_layers) == 2
-  else:
-    assert all(type(block.bad_shape).__name__ == "QW8A8Linear" for block in out.blocks)
+  assert all(type(block.bad_shape).__name__ == "QW8A8Linear" for block in out.blocks)
+  assert len(out._fp8_skipped_layers) == 0
   assert out._quantize_type == f"float8_{mode}"
-  assert len(out._fp8_quantized_layers) == (2 if mode == "per_block" else 4)
+  assert len(out._fp8_quantized_layers) == 4
   assert out._quantize_config.backend == QuantizeBackend.CACHE_DIT
 
 
@@ -174,8 +171,25 @@ def test_backend_routing_and_validation() -> None:
 
 
 @requires_native_fp8
-def test_native_fp8_rejects_a_selection_with_no_supported_linears() -> None:
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+def test_native_fp8_pads_unaligned_linear(mode: str) -> None:
+  torch.manual_seed(3)
   model = nn.Linear(48, 24).cuda().to(torch.bfloat16)
+  x = torch.randn(3, 48, dtype=torch.bfloat16, device="cuda")
+  expected = model(x).float()
+  quantized = quantize(
+    model,
+    QuantizeConfig(backend="cache_dit", quant_type=f"float8_{mode}", regional_quantize=False),
+  )
+  actual = quantized(x).float()
+  assert actual.shape == expected.shape
+  assert (actual - expected).norm() / expected.norm() < 0.08
+  assert next(quantized.children()).dequantize_weight().shape == (24, 48)
+
+
+@requires_native_fp8
+def test_native_fp8_rejects_a_selection_with_no_supported_linears() -> None:
+  model = nn.Linear(48, 24).cuda()  # FP32 weights are unsupported; unaligned BF16 is padded.
   with pytest.raises(ValueError, match="did not quantize any linear"):
     quantize(
       model,

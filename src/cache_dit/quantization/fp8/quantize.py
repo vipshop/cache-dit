@@ -1,4 +1,20 @@
-"""Online FP8 quantization workflow for cache-dit's native backend."""
+"""Online FP8 quantization workflow for cache-dit's native backend.
+
+This module owns *where* quantization is applied; :mod:`fp8.linear` owns the
+runtime W8A8 math. Supported public types map to :class:`QW8A8Linear` modes as
+``float8_per_row -> per_row``, ``float8_per_tensor -> per_tensor`` and
+``float8_per_block -> per_block``. Weights are quantized once during module
+replacement; activations are quantized dynamically on every forward.
+
+The flow is: validate config/device -> capture optional observer references ->
+select repeated-block regions -> resolve each layer's precision mode -> replace
+eligible ``nn.Linear`` modules -> attach observers and metadata. Selection honors
+``exclude_layers``, ``filter_fn`` and the longest matching ``precision_plan``
+pattern. Non-BF16 and DTensor/TP weights are skipped with a reason. Shape
+misalignment is not a skip reason: ``QW8A8Linear`` pads before quantization and
+depads after GEMM. This is an online-only backend, so calibration, serialized FP8
+checkpoints and loading quantized weights are intentionally rejected.
+"""
 
 import torch
 from torch import nn
@@ -14,11 +30,15 @@ _FP8_QUANT_TYPES = frozenset({"float8_per_row", "float8_per_tensor", "float8_per
 
 
 def _mode_supported_reason(linear: nn.Linear, mode: str) -> str | None:
-  """Return why one linear cannot run the native FP8 kernel, if any.
+  """Return a hard incompatibility reason, or None when replacement is allowed.
 
-  :param linear: Candidate linear layer.
-  :param mode: FP8 granularity.
-  :returns: A human-readable reason, or None when supported.
+  This check intentionally does not reject K/N misalignment or select a fallback
+  mode. ``QW8A8Linear.from_linear`` zero-pads before quantization, and
+  ``fp8_gemm`` depads output, so all ordinary Linear shapes remain on the
+  requested recipe. Only structural/semantic incompatibilities skip a layer:
+  non-2D weights, DTensor/TP weights and non-BF16 weights. ``mode`` is retained
+  in this helper's interface for backend symmetry; it does not alter these hard
+  checks.
   """
 
   weight = getattr(linear, "weight", None)
@@ -26,15 +46,8 @@ def _mode_supported_reason(linear: nn.Linear, mode: str) -> str | None:
     return "weight is not 2D"
   if type(weight).__name__ == "DTensor":
     return "DTensor/TP weights are not supported by cache-dit FP8"
-  out_features, in_features = weight.shape
   if weight.dtype != torch.bfloat16:
     return f"weight dtype {weight.dtype} != bfloat16"
-  if in_features % 16 != 0 or out_features % 8 != 0:
-    return (f"weight shape ({out_features}, {in_features}) violates "
-            "in_features % 16 == 0 / out_features % 8 == 0")
-  if mode == "per_block" and (in_features % 128 != 0 or out_features % 128 != 0):
-    return (f"weight shape ({out_features}, {in_features}) is not divisible by "
-            "the (128, 128) per-block size")
   return None
 
 
@@ -70,12 +83,29 @@ def _replace_module(root: nn.Module, local_name: str, replacement: nn.Module) ->
 
 
 def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
-  """Quantize a module with cache-dit's native online FP8 backend.
+  """Replace eligible Linear layers with online W8A8 modules, in place.
 
-  :param module: Transformer or other module to quantize in place.
-  :param quantize_config: Validated quantization configuration.
-  :returns: The same module with supported linear layers replaced by
-    :class:`QW8A8Linear`.
+  With ``regional_quantize=True`` and repeated-block metadata, only blocks whose
+  class name matches ``repeated_blocks`` are traversed. Otherwise the whole
+  module is traversed. Within each region, exclusion/filter rules run first,
+  then the longest matching precision-plan pattern chooses the FP8 granularity.
+  A shared Linear encountered through multiple names is replaced only once.
+
+  Each replacement pads and quantizes the BF16 weight immediately. Activation
+  quantization remains dynamic: no activation statistics are collected here.
+  Shape alignment does not cause a skip because ``QW8A8Linear`` handles it.
+  DTensor/TP weights and non-BF16 weights are skipped with diagnostics; if every
+  candidate is excluded or unsupported, this function raises instead of
+  returning a deceptively unquantized module.
+
+  :param module: Transformer or other module to modify. The function is not a
+    functional/pure transformation: descendants are replaced in place.
+  :param quantize_config: Validated config selecting one native FP8 type.
+    ``calibrate_fn`` and ``serialize_to`` must be absent; this backend is
+    online-only. The current device must satisfy the backend architecture gate.
+  :returns: The same ``module`` object with ``QW8A8Linear`` descendants and
+    quantization metadata. Optional observers are attached after replacement,
+    using references captured before mutation.
   """
 
   if not isinstance(module, nn.Module):
