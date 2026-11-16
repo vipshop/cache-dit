@@ -581,21 +581,23 @@ class GEMMBase : public Config {
   };
 
   // loads act of [WARP_M, WARP_N] and stores to fpsum_warp
-  // [WARP_M, WARP_N * 2] when fuse_glu
+  // When `fuse_glu` the loaded values are `input * silu(gate)`: `input` supplies the value half and
+  // `gate` the gating half, which lets the caller either point at a separate gate tensor or at the
+  // second half of the same row-major tensor.
   template <bool fuse_glu>
   struct load_act_to_fpsum {
     using matrix_t = half_t[INSN_M][WARP_N + 8];
     static constexpr size_t SHMEM_SIZE = sizeof(matrix_t);
 
-    __device__ __forceinline__ void operator()(const half_t *input, int stride, int maxRows,
-                                               int maxCols, fpsum_warp &out, void *shmem) {
+    __device__ __forceinline__ void operator()(const half_t *input, int stride, const half_t *gate,
+                                               int gate_stride, int maxRows, int maxCols,
+                                               fpsum_warp &out, void *shmem) {
       const int laneId = threadIdx.x % WARP_SIZE;
 
       matrix_t &mat = *reinterpret_cast<matrix_t *>(shmem);
 
       constexpr int PACK_SIZE = WARP_N / WARP_SIZE;
       using packed_input = std::array<half_t, PACK_SIZE>;
-      using packed_raw_input = std::array<half2_t, PACK_SIZE>;
 
 #pragma unroll
       for (int m = 0; m < WARP_M_TILES; m++) {
@@ -604,16 +606,22 @@ class GEMMBase : public Config {
           packed_input pack;
           // TODO: numCols not multiples of PACK_SIZE
           if constexpr (fuse_glu) {
-            packed_raw_input raw;
-            raw.fill(half2_t(0, 0));
-            bool pred = (m * INSN_M + row) < maxRows && laneId * PACK_SIZE * 2 < maxCols;
+            packed_input value;
+            packed_input gated;
+            value.fill(half_t(0));
+            gated.fill(half_t(0));
+            bool pred = (m * INSN_M + row) < maxRows && laneId * PACK_SIZE < maxCols;
             if (pred) {
-              raw = load(reinterpret_cast<const packed_raw_input *>(
-                input + (m * INSN_M + row) * stride + laneId * PACK_SIZE * 2));
+              const int64_t offset =
+                static_cast<int64_t>(m * INSN_M + row) * stride + laneId * PACK_SIZE;
+              const int64_t gate_offset =
+                static_cast<int64_t>(m * INSN_M + row) * gate_stride + laneId * PACK_SIZE;
+              value = load(reinterpret_cast<const packed_input *>(input + offset));
+              gated = load(reinterpret_cast<const packed_input *>(gate + gate_offset));
             }
 #pragma unroll
             for (int j = 0; j < PACK_SIZE; j++) {
-              pack[j] = raw[j].x * silu(raw[j].y);
+              pack[j] = value[j] * silu(gated[j]);
             }
           } else {
             pack.fill(half_t(0));

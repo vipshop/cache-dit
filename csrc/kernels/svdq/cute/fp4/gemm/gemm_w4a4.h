@@ -45,11 +45,29 @@ namespace svdq::cute_kernels {
 // while activation A/SFA are loaded gmem->register (G2R) and 256 consumer threads execute the
 // NVFP4/BF16 MMAs and epilogue. D/L1 reuse the A/B stage storage through swizzle-free TMA layouts.
 //
+// Fused-output epilogue (optional):
+//   qout/oscales   the activated tile is quantized into the same native 256-row E2M1 pack that the
+//                  activation producer emits, so the next layer's GEMM consumes it unchanged.
+//   smooth_factor  BF16 [N] row-major divisor applied before quantization (the next layer's
+//                  smoothing vector, not the packed native one).
+//   lora_down      BF16 [N, R_down] row-major down-projection of the next layer.
+//   lora_act_out   `lora_act_out[m, r] = sum_n act[m, n] * lora_down[n, r]`, accumulated across the
+//                  N-blocks of the grid. With `LoraLayout::kNative` it receives the packed FP32
+//                  fragment D in place; with `LoraLayout::kRowMajor` the scatter lands in the FP32
+//                  `lora_scratch` and a finalize pass rounds it into the BF16 `lora_act_out` with
+//                  the per-rank scales folded in. The caller must zero whichever buffer receives
+//                  the atomics.
+//   out            may be invalid on the fused path, which then skips only the dense TMA store; the
+//                  single FP32->BF16 rounding and the smem staging still happen.
+// `fuse_silu` applies SiLU instead of GELU when the fused path is used without `qout`.
+//
 // BF16 is the only LoRA/output dtype implemented by this CuTe path. FP16 LoRA remains on the
 // old native path and is rejected by the public module rather than silently converted.
 void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, std::vector<float> lora_scales,
-               float alpha, LoraLayout lora_layout = LoraLayout::kNative);
+               float alpha, LoraLayout lora_layout, svdq::Tensor qout, svdq::Tensor oscales,
+               svdq::Tensor lora_down, svdq::Tensor lora_act_out, svdq::Tensor lora_scratch,
+               svdq::Tensor smooth_factor, bool fuse_silu);
 
 }  // namespace svdq::cute_kernels

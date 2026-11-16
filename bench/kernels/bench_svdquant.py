@@ -14,8 +14,8 @@ fc1 is `k -> n` and fc2 is `n -> k`, both quantized at the requested rank. Three
 `unfused-mlp` (`fc2(gelu(fc1(x)))`, the baseline), `fused-mlp` (`fused_gelu_mlp`, which runs the
 fc1 GEMM with the GELU epilogue and skips the dense store) and `fused-mlp+dense` (the same pass
 with the dense store forced back on, to show what the skipped `[m, n]` fp16 buffer costs). That mode
-also reports the peak allocation delta per chain and is native-runtime only, because the fused
-epilogue chain exists only in the native GEMM.
+also reports the peak allocation delta per chain. The chain is built from the layers' own runtime,
+so a CuTe layer times the CuTe fused epilogue.
 
 Examples:
 

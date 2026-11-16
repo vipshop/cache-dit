@@ -15,6 +15,9 @@ Pass registry
 |                                   | and single stream).                                    |
 | ``fused_gelu_proj``               | Single-stream blocks with standalone GELU between two  |
 |                                   | SVDQW4A4Linear layers (e.g. FLUX single blocks).       |
+| ``fused_swiglu_mlp``              | Gated MLPs whose gate is applied inside the activation |
+|                                   | producer (Qwen-Image-2.1 style triple-linear blocks and |
+|                                   | diffusers ``FeedForward(activation_fn='swiglu')``).    |
 
 Usage::
 
@@ -39,7 +42,7 @@ _REGISTRY: dict[str, type[BasePass]] = {}
 
 # Default pass list applied when ``fused_mlp`` is enabled.  Callers that
 # need a custom subset can override via ``apply_passes(..., pass_names=...)``.
-DEFAULT_FUSED_MLP_PASSES: list[str] = ["fused_gelu_mlp", "fused_gelu_proj"]
+DEFAULT_FUSED_MLP_PASSES: list[str] = ["fused_gelu_mlp", "fused_gelu_proj", "fused_swiglu_mlp"]
 
 
 class BasePass:
@@ -511,11 +514,145 @@ class FusedGeluProjPass(BasePass):
       )
 
 
+@register_pass
+class FusedSwiGluMlpPass(BasePass):
+  """Fuse gated MLPs whose activation is ``value * silu(gate)``.
+
+  Two structures are detected, both after quantization has replaced their projections with
+  ``SVDQW4A4Linear``:
+
+  1. **Separate gate projection** — a parent module that owns ``proj`` (value), ``gate_layer``
+     (gate) and ``out`` (down) together with an ``nn.SiLU`` submodule. This is the
+     ``QwenImage21SwiGLUFeedForward`` shape: ``out(silu(gate_layer(x)) * proj(x))``.
+  2. **Single gated projection** — a diffusers ``FeedForward`` whose ``net[0]`` is a ``SwiGLU``
+     wrapper: one ``proj`` emitting ``2 * inner`` columns that ``chunk(2, -1)`` splits into value
+     and gate.
+
+  In both cases the gate is applied by the activation producer of ``down`` (see
+  ``fused_swiglu_mlp``), which removes the standalone gating kernel and one ``[tokens, hidden]``
+  HBM round trip. Detection is structural for the separate-gate shape (attribute names plus an
+  ``nn.SiLU``) and name based for the diffusers wrapper (``FeedForward`` owning a ``SwiGLU``). Both
+  compare padded widths, so a model whose hidden size is not 128-aligned is skipped instead of
+  failing inside the kernel. ``QwenImage21AdaLayerNormContinuous`` and similar modulation blocks are
+  never matched because they own at most one quantized projection.
+  """
+
+  name = "fused_swiglu_mlp"
+
+  def detect(self, module: nn.Module) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    for parent_name, parent in module.named_modules():
+      target = self._detect_separate_gate(parent)
+      if target is None:
+        target = self._detect_gated_projection(parent)
+      if target is None:
+        continue
+      up, gate, down = target
+      # The fused chain bypasses the TP collectives inside SVDQW4A4ShardLinear.forward, and the
+      # producer-side gate only exists on the native LoRA-down layout.
+      if any(isinstance(layer, SVDQW4A4ShardLinear) for layer in (up, gate, down) if layer):
+        logger.warning_once(
+          "Gated MLP %s uses TP-sharded SVDQ layers — skipping fused SwiGLU.",
+          parent_name,
+        )
+        continue
+      if getattr(down, "lora_layout", "native") != "native":
+        # Not `warning_once`: with the CuTe row-major default this silently disables the pass for
+        # every gated model, and a one-shot record is easy to miss in a long log.
+        logger.warning(
+          "Gated MLP %s uses lora_layout=%r — skipping fused SwiGLU; the gate is applied by the "
+          "native activation producer, so pass --svdq-lora-layout native to fuse it.",
+          parent_name,
+          getattr(down, "lora_layout", "native"),
+        )
+        continue
+      targets.append({
+        "parent": parent,
+        "up": up,
+        "gate": gate,
+        "down": down,
+        "parent_name": parent_name,
+      })
+    return targets
+
+  @staticmethod
+  def _detect_separate_gate(parent: nn.Module, ) -> tuple[nn.Module, nn.Module, nn.Module] | None:
+    from .linear import SVDQW4A4Linear
+
+    up = getattr(parent, "proj", None)
+    gate = getattr(parent, "gate_layer", None)
+    down = getattr(parent, "out", None)
+    if not all(isinstance(layer, SVDQW4A4Linear) for layer in (up, gate, down)):
+      return None
+    activation = getattr(parent, "activation_fn", None)
+    if not isinstance(activation, nn.SiLU):
+      return None
+    # The fused epilogue works on padded widths: `up` writes the next layer's K, which is `down`'s
+    # padded input width. Comparing logical widths would match layers whose padding differs and then
+    # fail inside the kernel instead of being skipped here.
+    if (up._padded_out_features != down._padded_in_features
+        or gate._padded_out_features != down._padded_in_features):
+      return None
+    return up, gate, down
+
+  @staticmethod
+  def _detect_gated_projection(
+    parent: nn.Module, ) -> tuple[nn.Module, nn.Module | None, nn.Module] | None:
+    from .linear import SVDQW4A4Linear
+
+    if parent.__class__.__name__ != "FeedForward":
+      return None
+    net = getattr(parent, "net", None)
+    if not isinstance(net, nn.ModuleList) or len(net) < 3:
+      return None
+    activation = net[0]
+    if activation.__class__.__name__ == "GEGLU":
+      logger.warning_once(
+        "FeedForward %s uses GEGLU — skipping fusion (only SwiGLU is supported).",
+        getattr(parent, "_svdq_name", parent.__class__.__name__),
+      )
+      return None
+    if activation.__class__.__name__ != "SwiGLU":
+      return None
+    up = getattr(activation, "proj", None)
+    down = net[2]
+    if not isinstance(up, SVDQW4A4Linear) or not isinstance(down, SVDQW4A4Linear):
+      return None
+    if up._padded_out_features != 2 * down._padded_in_features:
+      return None
+    return up, None, down
+
+  def apply(self, module: nn.Module, targets: list[dict[str, Any]]) -> None:
+    from .fused import fused_swiglu_mlp
+
+    for target in targets:
+      parent = target["parent"]
+      up = target["up"]
+      gate = target["gate"]
+      down = target["down"]
+
+      parent._ff_original_forward = parent.forward
+
+      def _patched_forward(self, hidden_states, _up=up, _gate=gate, _down=down):
+        return fused_swiglu_mlp(hidden_states, _up, _down, gate=_gate)
+
+      parent.forward = types.MethodType(_patched_forward, parent)
+
+      logger.debug(
+        "Fused SwiGLU MLP patched: %s (up=%s, gate=%s, down=%s)",
+        target["parent_name"],
+        up.__class__.__name__,
+        None if gate is None else gate.__class__.__name__,
+        down.__class__.__name__,
+      )
+
+
 __all__ = [
   "BasePass",
   "DEFAULT_FUSED_MLP_PASSES",
   "FusedGeluMlpPass",
   "FusedGeluProjPass",
+  "FusedSwiGluMlpPass",
   "apply_passes",
   "get_pass",
   "register_pass",

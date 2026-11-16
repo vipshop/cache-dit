@@ -304,10 +304,14 @@ struct F32DLoraScales {
 };
 
 template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true,
-          bool kF32DLora_ = false>
+          bool kF32DLora_ = false, bool kFuseOut_ = false>
 struct W4A4CuteTraits {
   static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr bool kF32DLora = kF32DLora_;
+  // Fused-output epilogue: quantize the activated tile into the native qact/ascales pack and
+  // reduce the LoRA-down term, so the next layer needs no separate producer launch. It is a
+  // separate instantiation so the default path keeps its exact SASS and numerics.
+  static constexpr bool kFuseOut = kFuseOut_;
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -443,6 +447,16 @@ struct W4A4CuteTraits {
   static_assert(cosize_v<SmemLayoutO> * static_cast<int>(sizeof(ElementO)) <= kSmemBytes,
                 "the BF16 output staging tile must fit into the pipeline storage");
   static_assert(kSmemBytes <= 99 * 1024, "pipeline storage exceeds the SM120 smem budget");
+
+  // The fused epilogue re-reads the BF16 output tile from the same smem overlay and emits the
+  // native 256-row qact/ascales pack, whose word index assumes whole BK=128 stages and a 256-wide
+  // column tile. The LoRA-down reduction needs the accumulator after the residual scale, so the
+  // fused instance always runs main-first. Both D layouts are supported: native FP32 fragments are
+  // written in place, while row-major BF16 goes through an FP32 scratch plus a finalize kernel.
+  static_assert(!kFuseOut || (kBM == 128 && kBN == 256 && kBK == 128),
+                "the fused epilogue requires the BM=128/BN=256/BK=128 tile");
+  static_assert(!kFuseOut || !kLoRAFirst,
+                "the fused epilogue requires the main-first order so D sees the final accumulator");
 
   // TMA transaction sizes feed mbarrier.expect_tx; they count bytes, not CuTe's 4-bit logical
   // elements. Main stages have no A/SFA TMA transaction because those operands use G2R. LoRA
@@ -932,12 +946,61 @@ class W4A4GemmKernel {
   __device__ __forceinline__ static void tma_store_C(TmaParams const &tma, GmemC const &mC,
                                                      CSlice const &c_slice, void *shm, int tid,
                                                      TiledMma const &tiled_mma, Acc const &tCrC) {
+    stage_output_tile<0>(shm, tid, tiled_mma, tCrC);
+    tma_store_O(tma, mC, c_slice, shm, tid);
+  }
+
+  // Elementwise activation applied to the BF16 output tile. GELU reproduces the native
+  // EpilogueGelu formula (`native/gemm_utils.cuh` gelu_half2) on one BF16 value: the tanh
+  // approximation is evaluated in FP32 with the hardware `tanh.approx.f32` and re-rounded once.
+  // SiLU is the dense-only native EpilogueSilu case.
+  __device__ __forceinline__ static float epi_to_float(cutlass::bfloat16_t x) {
+    return __bfloat162float(*reinterpret_cast<__nv_bfloat16 const *>(&x));
+  }
+
+  __device__ __forceinline__ static cutlass::bfloat16_t activate_scalar(cutlass::bfloat16_t x,
+                                                                        int act_mode) {
+    if (act_mode == 0) return x;
+    const float f = epi_to_float(x);
+    float t;
+    if (act_mode == 1) {
+      const float u = 0.79788456f * (f + 0.044715f * f * f * f);
+      float e;
+      asm("tanh.approx.f32 %0, %1;" : "=f"(e) : "f"(u));
+      t = f * (0.5f + 0.5f * e);
+    } else {
+      float e;
+      asm("ex2.approx.f32 %0, %1;" : "=f"(e) : "f"(-f * 1.4426950408889634f));
+      t = f * (1.0f / (1.0f + e));
+    }
+    return cutlass::bfloat16_t(__float2bfloat16_rn(t));
+  }
+
+  /**
+   * Round the FP32 accumulator once, optionally activate it, and publish the tile into the smem
+   * overlay used by the TMA store and by the fused quantization pass.
+   *
+   * @tparam kActMode 0 = none, 1 = GELU, 2 = SiLU.
+   * @param shm       Base of dynamic shared memory; overlaid with SmemLayoutO for this epilogue.
+   * @param tid       Consumer thread index.
+   * @param tiled_mma MMA layout used to retile the register fragment for STSM.
+   * @param tCrC      Final FP32 accumulator fragment, read-only.
+   * @return          void; the BF16 tile is visible in smem after the trailing barrier.
+   */
+  template <int kActMode, class TiledMma, class Acc>
+  __device__ __forceinline__ static void stage_output_tile(void *shm, int tid,
+                                                           TiledMma const &tiled_mma,
+                                                           Acc const &tCrC) {
     using ElementO = typename Traits::ElementO;
     using SmemLayoutO = typename Traits::SmemLayoutO;
     constexpr int kFrag = decltype(size(tCrC))::value;
     cutlass::Array<ElementO, kFrag> acc_bf16;
     cutlass::NumericArrayConverter<ElementO, float, kFrag> convert;
     acc_bf16 = convert(*reinterpret_cast<cutlass::Array<float, kFrag> const *>(tCrC.data()));
+    if constexpr (kActMode != 0) {
+#pragma unroll
+      for (int i = 0; i < kFrag; ++i) acc_bf16[i] = activate_scalar(acc_bf16[i], kActMode);
+    }
     auto tCrCh = make_tensor(make_rmem_ptr(acc_bf16.data()), tCrC.layout());
 
     __syncthreads();
@@ -949,10 +1012,214 @@ class W4A4GemmKernel {
     copy(r2s_copy, tCrCh_src, tCsC_dst);
     cutlass::arch::fence_view_async_shared();
     __syncthreads();
+  }
+
+  // Publish the staged smem tile through the output TMA descriptor. Only valid when the host built
+  // a real descriptor, i.e. when the caller asked for the dense output.
+  template <class GmemC, class CSlice>
+  __device__ __forceinline__ static void tma_store_O(TmaParams const &tma, GmemC const &mC,
+                                                     CSlice const &c_slice, void *shm, int tid) {
+    using ElementO = typename Traits::ElementO;
+    using SmemLayoutO = typename Traits::SmemLayoutO;
+    auto sC = make_tensor(make_smem_ptr(reinterpret_cast<ElementO *>(shm)), SmemLayoutO{});
     auto gC = local_tile(mC, Shape<Int<kBM>, Int<kBN>>{}, make_coord(blockIdx.y, blockIdx.x));
     if (tid == 0) copy(tma.c, c_slice.partition_S(sC), c_slice.partition_D(gC));
     cute::tma_store_arrive();
     cute::tma_store_wait<0>();
+  }
+
+  // E2M1 pair pack: two FP32 values become one byte of packed codes, even column in the low
+  // nibble. Same instruction and operand order as the native producer and `quantize_uni.cu`.
+  __device__ __forceinline__ static uint32_t epi_pack_fp4(float x, float y) {
+    uint32_t result;
+    asm volatile("{ .reg .b8 tmp; cvt.rn.satfinite.e2m1x2.f32 tmp, %1, %2; cvt.u32.u8 %0, tmp; }"
+                 : "=r"(result)
+                 : "f"(y), "f"(x));
+    return result;
+  }
+
+  // E4M3 quad pack: four FP32 scales become one u32, scale i in byte i.
+  __device__ __forceinline__ static uint32_t epi_pack_fp8(float4 v) {
+    uint16_t lo, hi;
+    asm volatile("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(lo) : "f"(v.y), "f"(v.x));
+    asm volatile("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(hi) : "f"(v.w), "f"(v.z));
+    return uint32_t(lo) | (uint32_t(hi) << 16);
+  }
+
+  __device__ __forceinline__ static float epi_rcp(float x) {
+    float result;
+    asm("rcp.approx.ftz.f32 %0, %1;" : "=f"(result) : "f"(x));
+    return result;
+  }
+
+  /**
+   * Quantize the staged BF16 tile into the native 256-row interleaved qact/ascales pack.
+   *
+   * Every task owns one (row, K64 block) pair: it divides 64 BF16 values by the next layer's
+   * `smooth`, derives four per-16 group scales, and emits eight u32 words plus one scale word.
+   * Word `w` of a block holds the eight codes of columns [8w, 8w+8) and is stored at
+   * `base * 256 + local + 4 * (w % 4) + 2 * (w / 4)`, with
+   * `local = 16 * (row % 8) + (row % 16) / 8 + 128 * ((row % 32) / 16)` and
+   * `base = ((row / 256) * (N / 64) + block) * 8 + (row % 256) / 32`. The scale word for the same
+   * block sits at `ascales[base * 32 + 4 * (row % 8) + (row % 32) / 8]`. Both formulas are the ones
+   * the native producer writes and `load_act_A_g2r` reads.
+   *
+   * @param sO        Staged BF16 output tile over the CTA's (kBM, kBN) coordinates.
+   * @param tid       Consumer thread index.
+   * @param m0        Global row offset of this CTA.
+   * @param n0        Global column offset of this CTA.
+   * @param N         Full output width; it is the K extent of the next layer.
+   * @param qout      Packed activation destination, `[M, N / 2]` bytes.
+   * @param oscales   Packed activation scale destination, `[M * N / 16]` bytes as u32 words.
+   * @param smooth    Per-column smoothing factors `[N]` of the next layer.
+   * @return          void; the two packs are written in global memory.
+   */
+  template <class SmemO>
+  __device__ __forceinline__ static void fused_quantize_tile(SmemO const &sO, int tid, int m0,
+                                                             int n0, int N, uint8_t *qout,
+                                                             uint32_t *oscales,
+                                                             cutlass::bfloat16_t const *smooth) {
+    constexpr int kBlocks = kBN / 64;
+    constexpr int kTasks = kBM * kBlocks;
+    for (int task = tid; task < kTasks; task += Traits::kNumThreads) {
+      const int tile_row = task / kBlocks;
+      const int block = n0 / 64 + task % kBlocks;
+      const int row = m0 + tile_row;
+      const int col0 = block * 64;
+      uint32_t words[8];
+      float scale[4];
+      __nv_bfloat162 div[32];
+#pragma unroll
+      for (int j = 0; j < 32; ++j) {
+        const int c = (task % kBlocks) * 64 + j * 2;
+        const cutlass::bfloat16_t v0 = sO(tile_row, c);
+        const cutlass::bfloat16_t v1 = sO(tile_row, c + 1);
+        const cutlass::bfloat16_t s0 = smooth[col0 + j * 2];
+        const cutlass::bfloat16_t s1 = smooth[col0 + j * 2 + 1];
+        div[j] = __float22bfloat162_rn(make_float2(__fdividef(epi_to_float(v0), epi_to_float(s0)),
+                                                   __fdividef(epi_to_float(v1), epi_to_float(s1))));
+      }
+      // Group scales are shared by two eight-column words, so they are derived before packing.
+#pragma unroll
+      for (int g = 0; g < 4; ++g) {
+        float amax = 0.0f;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float2 f = __bfloat1622float2(div[g * 8 + j]);
+          amax = fmaxf(amax, fmaxf(fabsf(f.x), fabsf(f.y)));
+        }
+        scale[g] = fminf(amax / 6.0f, 448.0f);
+      }
+      const int64_t base =
+        (static_cast<int64_t>(row / 256) * (N / 64) + block) * 8 + (row % 256) / 32;
+      oscales[base * 32 + 4 * (row % 8) + (row % 32) / 8] =
+        epi_pack_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));
+#pragma unroll
+      for (int w = 0; w < 8; ++w) {
+        const float rscale = epi_rcp(scale[w / 2]);
+        uint32_t word = 0;
+#pragma unroll
+        for (int p = 0; p < 4; ++p) {
+          const float2 f = __bfloat1622float2(div[w * 4 + p]);
+          word |= epi_pack_fp4(f.x * rscale, f.y * rscale) << (p * 8);
+        }
+        words[w] = word;
+      }
+      const int local = 16 * (row % 8) + ((row % 16) / 8) + 128 * ((row % 32) / 16);
+      uint32_t *dst = reinterpret_cast<uint32_t *>(qout) + base * 256 + local;
+#pragma unroll
+      for (int w = 0; w < 8; ++w) dst[4 * (w % 4) + 2 * (w / 4)] = words[w];
+    }
+  }
+
+  /**
+   * Reduce the LoRA-down term of the next layer from the staged activation tile.
+   *
+   * Math: `lora_act_out[row, r] += sum_n act[row, n] * lora_down[n, r]`, accumulated across the
+   * N-blocks of the grid, so the host must zero the destination first. The reduction uses one
+   * BF16 m16n8k16 atom per warp with K spanning the whole CTA column tile, so a warp owns complete
+   * partial sums and no cross-warp reduction is needed. Results land in the native FP32 fragment
+   * layout that both `gemm_f32d_lora` and the native GEMM read.
+   *
+   * @param sO            Staged BF16 activation tile.
+   * @param tid           Consumer thread index.
+   * @param m0            Global row offset of this CTA.
+   * @param n0            Global column offset of this CTA.
+   * @param rank_down     Rank of the next layer's LoRA-down projection.
+   * @param lora_down     Row-major BF16 `[N, rank_down]` down-projection of the next layer.
+   * @param lora_down     Row-major BF16 `[N, rank_down]` down-projection of the next layer.
+   * @param d_atomic      FP32 atomic destination: the native fragment buffer when
+   *                      `kF32DLora`, otherwise a row-major scratch that the host finalizes.
+   * @return              void; partial sums are atomically added in global memory.
+   */
+  template <class SmemO>
+  __device__ __forceinline__ static void fused_lora_down(SmemO const &sO, int tid, int m0, int n0,
+                                                         int rank_down,
+                                                         cutlass::bfloat16_t const *lora_down,
+                                                         float *d_atomic) {
+    using ElementLora = typename Traits::ElementLora;
+    auto down_mma = make_tiled_mma(typename Traits::LoraAtom{}, Layout<Shape<_8, _1, _1>>{});
+    auto thr_down = down_mma.get_thread_slice(tid);
+    auto cC = make_identity_tensor(Shape<Int<kBM>, Int<kRankTile>>{});
+    auto tScC_d = thr_down.partition_C(cC);
+    auto tScA = thr_down.partition_A(make_identity_tensor(Shape<Int<kBM>, _16>{}));
+    auto tScB = thr_down.partition_B(make_identity_tensor(Shape<Int<kRankTile>, _16>{}));
+    auto sA_shape = make_tensor(make_smem_ptr(reinterpret_cast<ElementLora *>(d_atomic)),
+                                make_layout(make_shape(Int<kBM>{}, _16{}), LayoutRight{}));
+    auto sB_shape = make_tensor(make_gmem_ptr(lora_down),
+                                make_layout(make_shape(Int<kRankTile>{}, _16{}), LayoutRight{}));
+    auto tCrA = thr_down.partition_fragment_A(sA_shape);
+    auto tCrB = thr_down.partition_fragment_B(sB_shape);
+    const int rank_tiles = rank_down / 16;
+    const int64_t block_stride = static_cast<int64_t>(rank_tiles) * 4096;
+#pragma unroll 1
+    for (int rt = 0; rt < rank_down / kRankTile; ++rt) {
+      auto tCrD = partition_fragment_C(down_mma, Shape<Int<kBM>, Int<kRankTile>>{});
+      clear(tCrD);
+#pragma unroll 1
+      for (int kk = 0; kk < kBN / 16; ++kk) {
+#pragma unroll
+        for (int i = 0; i < size(tCrA); ++i) {
+          const int r = get<0>(tScA(i));
+          const int c = kk * 16 + get<1>(tScA(i));
+          tCrA(i) = sO(r, c);
+        }
+#pragma unroll
+        for (int i = 0; i < size(tCrB); ++i) {
+          const int r = rt * kRankTile + get<0>(tScB(i));
+          const int c = n0 + kk * 16 + get<1>(tScB(i));
+          // Row-major [N, R_down]: one __ldg per element, then a BF16 copy into the B fragment.
+          tCrB(i) =
+            static_cast<ElementLora>(__ldg(reinterpret_cast<__nv_bfloat16 const *>(lora_down) +
+                                           static_cast<int64_t>(c) * rank_down + r));
+        }
+        cute::gemm(down_mma, tCrA, tCrB, tCrD);
+      }
+#pragma unroll
+      for (int i = 0; i < size(tCrD); ++i) {
+        const int row = m0 + get<0>(tScC_d(i));
+        const int col = rt * kRankTile + get<1>(tScC_d(i));
+        if constexpr (Traits::kF32DLora) {
+          // Native FP32 fragment D: the index is the inverse of the gather in `gemm_f32d_lora`,
+          // so the same tensor can be consumed by this GEMM or by the native one without a
+          // finalize pass.
+          const int rr = row % 256;
+          const int cc = col % 16;
+          const int warp = rr / 32;
+          const int mt = (rr % 32) / 16;
+          const int lane = (rr % 8) * 4 + (cc % 8) / 2;
+          const int j = (cc / 8) * 4 + ((rr % 16) / 8) * 2 + cc % 2;
+          const int64_t index =
+            (row / 256) * block_stride + (col / 16) * 4096 + warp * 512 + mt * 256 + j * 32 + lane;
+          atomicAdd(d_atomic + index, tCrD(i));
+        } else {
+          // Row-major layout: the destination is an FP32 scratch that a finalize kernel later
+          // rounds to BF16 with the per-rank scales folded in. BF16 has no atomic add, which is
+          // why the scattered accumulation cannot go straight into the row-major D.
+          atomicAdd(d_atomic + static_cast<int64_t>(row) * rank_down + col, tCrD(i));
+        }
+      }
+    }
   }
 };
 
@@ -962,7 +1229,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                    uint32_t const *__restrict__ ascales, float const *__restrict__ lora_act_f32,
                    F32DLoraScales scales, cutlass::bfloat16_t const *__restrict__ bias,
                    cutlass::bfloat16_t const *__restrict__ wcscales, float alpha, int M, int N,
-                   int K, int rank) {
+                   int K, int rank, uint8_t *__restrict__ qout, uint32_t *__restrict__ oscales,
+                   cutlass::bfloat16_t const *__restrict__ smooth,
+                   cutlass::bfloat16_t const *__restrict__ lora_down, float *__restrict__ d_atomic,
+                   bool write_dense, int rank_down, bool fuse_silu) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -1232,10 +1502,67 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   // generic smem stores visible to the asynchronous TMA engine, and the second barrier ensures
   // every consumer finished its STSM before thread 0 starts the store. tma_store_wait<0> drains
   // outstanding stores before this CTA can reuse the output smem or exit.
-  Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);
+  //
+  // The fused variant stages the same smem tile but keeps it live afterwards: the quantize pass
+  // re-reads it to emit the native qact/ascales pack of the next layer, and the LoRA-down pass
+  // re-reads it as the MMA source operand. Both consume the post-activation values, which is what
+  // the native mid-epilogue ordering guarantees. `write_dense=false` skips only the TMA store, so
+  // the CTA still performs the single FP32->BF16 rounding and the smem STSM.
+  if constexpr (Traits::kFuseOut) {
+    constexpr int kGelu = 1;
+    constexpr int kSilu = 2;
+    const int act_mode = qout != nullptr ? kGelu : (fuse_silu ? kSilu : 0);
+    if (act_mode == kGelu) {
+      Gemm::template stage_output_tile<kGelu>(shm, tid, tiled_mma, tCrC);
+    } else if (act_mode == kSilu) {
+      Gemm::template stage_output_tile<kSilu>(shm, tid, tiled_mma, tCrC);
+    } else {
+      Gemm::template stage_output_tile<0>(shm, tid, tiled_mma, tCrC);
+    }
+    if (write_dense) Gemm::tma_store_O(tma, mC, c_slice, shm, tid);
+    auto sO = make_tensor(make_smem_ptr(reinterpret_cast<ElementO *>(shm)), SmemLayoutO{});
+    if (qout != nullptr) {
+      Gemm::fused_quantize_tile(sO, tid, m0, n0, N, qout, oscales, smooth);
+    }
+    if (rank_down > 0) {
+      Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic);
+    }
+  } else {
+    Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);
+  }
 #else
   asm volatile("trap;");
 #endif  // __CUDA_ARCH__ >= 1200
+}
+
+// Round the row-major FP32 LoRA-down scratch to BF16 with the per-rank scales folded in. The fused
+// epilogue accumulates `lora_act_out[row, r] += sum_n act[row, n] * lora_down[n, r]` across the N
+// blocks of the grid; BF16 has no atomic add, so the scatter lands in an FP32 scratch and this pass
+// performs the single rounding that the row-major D contract expects. Four consecutive columns
+// always belong to one 16-rank group because rank is a multiple of 32, so one scale covers a
+// whole vector.
+__global__ void finalize_lora_rows_kernel(float const *__restrict__ scratch,
+                                          cutlass::bfloat16_t *__restrict__ out,
+                                          F32DLoraScales scales, int vectors, int vectors_per_row) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= vectors) return;
+  const float scale = scales.values[(index % vectors_per_row) / 4];
+  const float4 v = *reinterpret_cast<const float4 *>(scratch + static_cast<int64_t>(index) * 4);
+  cutlass::Array<cutlass::bfloat16_t, 4> packed;
+  packed[0] = cutlass::bfloat16_t(__float2bfloat16_rn(v.x * scale));
+  packed[1] = cutlass::bfloat16_t(__float2bfloat16_rn(v.y * scale));
+  packed[2] = cutlass::bfloat16_t(__float2bfloat16_rn(v.z * scale));
+  packed[3] = cutlass::bfloat16_t(__float2bfloat16_rn(v.w * scale));
+  *reinterpret_cast<uint2 *>(out + static_cast<int64_t>(index) * 4) =
+    *reinterpret_cast<uint2 *>(packed.data());
+}
+
+inline void launch_finalize_lora_rows(float const *scratch, cutlass::bfloat16_t *out, int M,
+                                      int rank, F32DLoraScales scales, cudaStream_t stream) {
+  const int vectors_per_row = rank / 4;
+  const int vectors = M * vectors_per_row;
+  finalize_lora_rows_kernel<<<(vectors + 255) / 256, 256, 0, stream>>>(scratch, out, scales,
+                                                                       vectors, vectors_per_row);
 }
 
 // Host launch has three jobs:
@@ -1249,14 +1576,17 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
 // The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true,
-          bool kF32DLora = false>
+          bool kF32DLora = false, bool kFuseOut = false>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
                       cutlass::bfloat16_t const *lora_act_in, float const *lora_act_f32,
                       cutlass::bfloat16_t const *lora_up, cutlass::bfloat16_t const *bias,
                       cutlass::bfloat16_t const *wcscales, F32DLoraScales scales, float alpha,
-                      int M, int N, int K, int rank, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora>;
+                      int M, int N, int K, int rank, uint8_t *qout, uint32_t *oscales,
+                      cutlass::bfloat16_t const *smooth, cutlass::bfloat16_t const *lora_down,
+                      float *d_atomic, cutlass::bfloat16_t *d_final, F32DLoraScales down_scales,
+                      int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream) {
+  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;
@@ -1265,9 +1595,15 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   constexpr int kBK = Traits::kBK;
   constexpr int kRankTile = Traits::kRankTile;
 
+  // Every descriptor must be built on a non-null address even when the tensor behind it is never
+  // copied: CUTLASS only asserts inside `cuTensorMapEncodeTiled`, and that assert is compiled out
+  // of the host TU. `out` is null exactly when a fused call skips the dense store, so the
+  // activation buffer stands in for it; no TMA reads or writes that placeholder.
+  void *out_or_act = out != nullptr ? out : const_cast<void *>(act);
+
   auto mB = make_tensor(recast_ptr<Element>(static_cast<uint8_t const *>(wgt)), make_shape(N, K),
                         make_stride(K, _1{}));
-  auto mC = make_tensor(make_gmem_ptr(static_cast<ElementO *>(out)), make_shape(M, N),
+  auto mC = make_tensor(make_gmem_ptr(static_cast<ElementO *>(out_or_act)), make_shape(M, N),
                         make_stride(N, _1{}));
   auto mSFB = make_tensor(recast_ptr<ElementSF>(wgt_sf), sf_gmem_layout(N, K));
 
@@ -1277,8 +1613,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   const int rankTma = rank > 0 ? rank : kRankTile;
   // kF32DLora never issues a D TMA, so the descriptor is built over the output placeholder.
   auto const *d_ptr =
-    (!kF32DLora && rank > 0) ? lora_act_in : reinterpret_cast<ElementLora const *>(out);
-  auto const *l1_ptr = rank > 0 ? lora_up : reinterpret_cast<ElementLora const *>(out);
+    (!kF32DLora && rank > 0) ? lora_act_in : reinterpret_cast<ElementLora const *>(out_or_act);
+  auto const *l1_ptr = rank > 0 ? lora_up : reinterpret_cast<ElementLora const *>(out_or_act);
   auto mD = make_tensor(make_gmem_ptr(d_ptr), make_shape(M, rankTma), make_stride(rankTma, _1{}));
   auto mL1 = make_tensor(make_gmem_ptr(l1_ptr), make_shape(N, rankTma), make_stride(rankTma, _1{}));
 
@@ -1325,7 +1661,15 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   }
   kernel<<<dim3(N / kBN, M / kBM), Traits::kNumThreads + 128, Traits::kSmemBytes, stream>>>(
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
-    lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank);
+    lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
+    d_atomic, write_dense, rank_down, fuse_silu);
+  if constexpr (kFuseOut && !kF32DLora) {
+    // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
+    // scattered FP32 scratch is rounded here once, after every CTA has contributed.
+    if (d_final != nullptr && rank_down > 0) {
+      launch_finalize_lora_rows(d_atomic, d_final, M, rank_down, down_scales, stream);
+    }
+  }
 }
 
 }  // namespace svdq::cute_kernels

@@ -758,7 +758,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=None,
     choices=["native", "row_major"],
     help=("Layout of the LoRA-down activation D. Default: auto (row_major for CuTe, native "
-          "otherwise; fused_mlp keeps native). 'row_major' requires --svdq-runtime cute."),
+          "otherwise). 'row_major' requires --svdq-runtime cute. The gated-MLP fusion needs "
+          "'native'."),
   )
   parser.add_argument(
     "--svdq-few-shot-steps",

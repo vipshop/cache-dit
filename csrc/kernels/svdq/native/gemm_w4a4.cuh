@@ -859,6 +859,10 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
 
     struct Arguments {
       const half_t *input;
+      // Gate half of the gated activation. With `fuse_glu` it points either at a separate
+      // `[M, N/2]` tensor or at column N/2 of `input`; it is never read otherwise.
+      const half_t *gate;
+      int gate_stride;
       const packed_wscale_t *smooth_factor;
       packed_act_t *output;
       oscales_t *oscales;
@@ -871,6 +875,9 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       int M, N;  // N should be the actual K in the next GEMM (needs /2 if fuse_glu)
       // the actual M and N   (no need to /2 if fuse_glu)
       int actualM, actualN;
+      // Quantized width. It is the row stride only when the gate half comes from a separate tensor,
+      // so the host resolves it and the kernel must not re-derive it from `actualN`.
+      int value_cols;
 
       bool alwaysfalse;
     };
@@ -888,15 +895,24 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       const int warpId = threadIdx.x / WARP_SIZE;
 
       const int m_offset = bm * BLOCK_M + warpId * WARP_M;
-      const int n_offset = bn * BLOCK_N * (fuse_glu ? 2 : 1);
+      // The value half always advances by BLOCK_N; with `fuse_glu` the gate half follows the same
+      // column offset inside its own source, so both halves stay aligned tile by tile.
+      const int n_offset = bn * BLOCK_N;
+      const int value_cols = args.value_cols;
 
       extern __shared__ uint8_t shmem[];
 
       fpsum_warp fpsum;
 
+      // The gate pointer is null whenever GLU fusion is off; the loader ignores it there, and
+      // forming an address from it would be undefined behaviour.
+      const half_t *gate_base =
+        args.gate == nullptr
+          ? nullptr
+          : args.gate + static_cast<int64_t>(m_offset) * args.gate_stride + n_offset;
       Base::template load_act_to_fpsum<fuse_glu>()(
-        args.input + m_offset * args.actualN + n_offset, args.actualN, args.actualM - m_offset,
-        args.actualN - n_offset, fpsum, shmem + warpId * SHMEM_PER_WARP
+        args.input + m_offset * args.actualN + n_offset, args.actualN, gate_base, args.gate_stride,
+        args.actualM - m_offset, value_cols - n_offset, fpsum, shmem + warpId * SHMEM_PER_WARP
         // args.smooth_factor ? args.smooth_factor + n_offset : nullptr
       );
 
