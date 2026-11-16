@@ -120,9 +120,9 @@ class NVFP4Linear(nn.Module):
     if weight.dtype != torch.bfloat16:
       raise ValueError(f"cache-dit NVFP4 requires bfloat16 weights, got {weight.dtype}.")
     out_features, in_features = weight.shape
-    if in_features % 64 != 0 or out_features % 8 != 0:
-      raise ValueError("cache-dit NVFP4 requires in_features % 64 == 0 and "
-                       f"out_features % 8 == 0, got ({out_features}, {in_features}).")
+    if in_features % 256 != 0 or out_features % 128 != 0:
+      raise ValueError("cache-dit NVFP4 CUTLASS collective requires in_features % 256 == 0 and "
+                       f"out_features % 128 == 0, got ({out_features}, {in_features}).")
     if quantize_device is None:
       quantize_device = weight.device if weight.is_cuda else torch.device("cuda")
 

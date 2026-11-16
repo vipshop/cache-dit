@@ -101,7 +101,7 @@ def _env_flag(name: str) -> bool:
 
 
 def _get_cutlass_include_dir() -> str:
-  """Resolve CUTLASS 4.6.1, defaulting to the repository submodule.
+  """Resolve CUTLASS 4.8.1, defaulting to the repository submodule.
 
   `csrc/third_party/cutlass` is the reproducible default. CACHE_DIT_CUTLASS_DIR is an explicit
   override for development only; no sibling checkout or machine-specific path is assumed.
@@ -130,11 +130,11 @@ def _get_cutlass_include_dir() -> str:
         raise RuntimeError(f"Unable to parse CUTLASS_{component} from {version_file}")
       versions[component] = int(match.group(1))
     version = (versions["MAJOR"], versions["MINOR"], versions["PATCH"])
-    if version != (4, 6, 1):
-      raise RuntimeError(f"The SM120 CuTe SVDQ kernel requires CUTLASS 4.6.1, found {version}")
+    if version != (4, 8, 1):
+      raise RuntimeError(f"The SM120 CuTe SVDQ kernel requires CUTLASS 4.8.1, found {version}")
     return str(include_dir)
   raise RuntimeError(
-    "The SM120 CuTe SVDQ kernel requires CUTLASS 4.6.1. Initialize the bundled dependency with "
+    "The SM120 CuTe SVDQ kernel requires CUTLASS 4.8.1. Initialize the bundled dependency with "
     "`git submodule update --init --recursive`, or explicitly set CACHE_DIT_CUTLASS_DIR to a "
     "compatible checkout.")
 

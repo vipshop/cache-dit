@@ -7,7 +7,7 @@
 
 #include "fp4.h"
 #include "gemm.cuh"
-#include "collective_gemm.cuh"
+#include "quantize.cuh"
 
 namespace cache_dit::fp4 {
 namespace {
@@ -53,8 +53,9 @@ void check_gemm_inputs(const at::Tensor& a, const at::Tensor& b, const at::Tenso
   TORCH_CHECK(b.size(1) * 2 == K, "fp4_gemm inner dimensions do not match.");
   TORCH_CHECK(out.size(0) == M && out.size(1) == N, "fp4_gemm output shape must be [M, N].");
   TORCH_CHECK(M > 0 && N > 0 && K > 0, "fp4_gemm does not accept empty operands.");
-  TORCH_CHECK(K % 64 == 0, "fp4_gemm requires logical K to be a multiple of 64.");
-  TORCH_CHECK(N % 8 == 0, "fp4_gemm requires N to be a multiple of 8.");
+  TORCH_CHECK(K % 256 == 0,
+              "fp4_gemm CUTLASS collective requires logical K to be a multiple of 256.");
+  TORCH_CHECK(N % 128 == 0, "fp4_gemm CUTLASS collective requires N to be a multiple of 128.");
   TORCH_CHECK(M <= INT32_MAX && N <= INT32_MAX && K <= INT32_MAX,
               "fp4_gemm dimensions must fit in int32.");
   TORCH_CHECK(a_scales.numel() == static_cast<int64_t>(sf_buffer_bytes(M, K)) &&
@@ -87,44 +88,6 @@ void check_gemm_inputs(const at::Tensor& a, const at::Tensor& b, const at::Tenso
   }
 }
 
-template <bool kLevel1A, bool kLevel1B, bool kWS, typename Traits>
-void launch_tile(const cutlass::float_e2m1_t* a, const cutlass::float_e2m1_t* b,
-                 const cutlass::float_ue4m3_t* sfa, const cutlass::float_ue4m3_t* sfb,
-                 const float* sa, const float* sb, const cutlass::bfloat16_t* bias,
-                 cutlass::bfloat16_t* out, int M, int N, int K, cudaStream_t stream) {
-  fp4_gemm_tma_fwd<kLevel1A, kLevel1B, kWS, Traits>(a, b, sfa, sfb, sa, sb, bias, out, M, N, K,
-                                                    stream);
-}
-
-template <bool kLevel1A, bool kLevel1B, bool kWS>
-void launch_shape(const cutlass::float_e2m1_t* a, const cutlass::float_e2m1_t* b,
-                  const cutlass::float_ue4m3_t* sfa, const cutlass::float_ue4m3_t* sfb,
-                  const float* sa, const float* sb, const cutlass::bfloat16_t* bias,
-                  cutlass::bfloat16_t* out, int M, int N, int K, cudaStream_t stream) {
-  if (fp4_gemm_use_wide_tile(M, N, K)) {
-    launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<256, 6>>(a, b, sfa, sfb, sa, sb, bias, out,
-                                                                M, N, K, stream);
-  } else if (K % 128 == 0) {
-    launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<128, 4, 128>>(a, b, sfa, sfb, sa, sb, bias,
-                                                                     out, M, N, K, stream);
-  } else {
-    launch_tile<kLevel1A, kLevel1B, kWS, Fp4GemmTraits<>>(a, b, sfa, sfb, sa, sb, bias, out, M, N,
-                                                          K, stream);
-  }
-}
-
-template <bool kLevel1A, bool kLevel1B>
-void launch_ws(const cutlass::float_e2m1_t* a, const cutlass::float_e2m1_t* b,
-               const cutlass::float_ue4m3_t* sfa, const cutlass::float_ue4m3_t* sfb,
-               const float* sa, const float* sb, const cutlass::bfloat16_t* bias,
-               cutlass::bfloat16_t* out, int M, int N, int K, bool use_ws, cudaStream_t stream) {
-  if (use_ws) {
-    launch_shape<kLevel1A, kLevel1B, true>(a, b, sfa, sfb, sa, sb, bias, out, M, N, K, stream);
-  } else {
-    launch_shape<kLevel1A, kLevel1B, false>(a, b, sfa, sfb, sa, sb, bias, out, M, N, K, stream);
-  }
-}
-
 }  // namespace
 
 void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scales,
@@ -133,49 +96,14 @@ void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
               at::Tensor& out, bool use_ws) {
   const c10::cuda::CUDAGuard device_guard(a.device());
   check_gemm_inputs(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out);
-  const int M = static_cast<int>(a.size(0));
-  const int N = static_cast<int>(b.size(0));
-  const int K = static_cast<int>(a.size(1) * 2);
-  const bool level1_a = a_global_scales.numel() != 0;
-  const bool level1_b = b_global_scales.numel() != 0;
-
-  const auto* a_ptr = reinterpret_cast<const cutlass::float_e2m1_t*>(a.data_ptr());
-  const auto* b_ptr = reinterpret_cast<const cutlass::float_e2m1_t*>(b.data_ptr());
-  const auto* sfa =
-    reinterpret_cast<const cutlass::float_ue4m3_t*>(a_scales.data_ptr<at::Float8_e4m3fn>());
-  const auto* sfb =
-    reinterpret_cast<const cutlass::float_ue4m3_t*>(b_scales.data_ptr<at::Float8_e4m3fn>());
-  const float* sa = level1_a ? a_global_scales.data_ptr<float>() : nullptr;
-  const float* sb = level1_b ? b_global_scales.data_ptr<float>() : nullptr;
-  const auto* bias_ptr =
-    bias.has_value() ? reinterpret_cast<const cutlass::bfloat16_t*>(bias->data_ptr<at::BFloat16>())
-                     : nullptr;
-  auto* out_ptr = reinterpret_cast<cutlass::bfloat16_t*>(out.data_ptr<at::BFloat16>());
+  const bool level1 = a_global_scales.numel() != 0 || b_global_scales.numel() != 0;
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+  (void)use_ws;  // CUTLASS selects the mainloop; retained for schema compatibility.
 
-  if (K % 256 == 0 && N % 128 == 0) {
-    if (level1_a || level1_b) {
-      fp4_gemm_cutlass(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out,
-                       stream);
-    } else {
-      fp4_gemm_cutlass_simple(a, b, a_scales, b_scales, bias, out, stream);
-    }
-    C10_CUDA_KERNEL_LAUNCH_CHECK();
-    return;
-  }
-
-  if (level1_a && level1_b) {
-    launch_ws<true, true>(a_ptr, b_ptr, sfa, sfb, sa, sb, bias_ptr, out_ptr, M, N, K, use_ws,
-                          stream);
-  } else if (level1_a) {
-    launch_ws<true, false>(a_ptr, b_ptr, sfa, sfb, sa, sb, bias_ptr, out_ptr, M, N, K, use_ws,
-                           stream);
-  } else if (level1_b) {
-    launch_ws<false, true>(a_ptr, b_ptr, sfa, sfb, sa, sb, bias_ptr, out_ptr, M, N, K, use_ws,
-                           stream);
+  if (level1) {
+    fp4_gemm_cutlass(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out, stream);
   } else {
-    launch_ws<false, false>(a_ptr, b_ptr, sfa, sfb, sa, sb, bias_ptr, out_ptr, M, N, K, use_ws,
-                            stream);
+    fp4_gemm_cutlass_simple(a, b, a_scales, b_scales, bias, out, stream);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

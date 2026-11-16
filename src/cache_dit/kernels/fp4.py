@@ -114,8 +114,8 @@ def _validate_gemm_metadata(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Te
     raise ValueError(f"FP4 GEMM packed inner dimensions differ: {a.shape[1]} and {b.shape[1]}.")
   rows, cols = a.shape[0], a.shape[1] * 2
   out_channels = b.shape[0]
-  if cols % 64 != 0 or out_channels % 8 != 0:
-    raise ValueError("FP4 GEMM requires logical K % 64 == 0 and N % 8 == 0.")
+  if cols % 256 != 0 or out_channels % 128 != 0:
+    raise ValueError("FP4 GEMM CUTLASS collective requires logical K % 256 == 0 and N % 128 == 0.")
   if a_scales.dtype != torch.float8_e4m3fn or b_scales.dtype != torch.float8_e4m3fn:
     raise ValueError("FP4 GEMM block scales must be float8_e4m3fn.")
   expected_a_scales = (rows + 127) // 128 * (cols // 64) * 512
@@ -250,8 +250,8 @@ def fp4_gemm(a: torch.Tensor,
 
   By default this uses cache-dit's SM120 CUTLASS collective and a custom FP32
   epilogue that folds both global scales and bias into the GEMM. Set
-  ``use_native=False`` for the ``torch._scaled_mm`` reference path. Shapes outside
-  the collective domain use the bundled hand-written CuTe kernel.
+  ``use_native=False`` for the ``torch._scaled_mm`` reference path. The native
+  collective requires logical ``K % 256 == 0`` and ``N % 128 == 0``.
 
   :param a: Packed activation ``[M, K / 2]``.
   :param b: Packed weight ``[N, K / 2]``.
@@ -260,13 +260,16 @@ def fp4_gemm(a: torch.Tensor,
   :param a_global_scales: Empty or per-row FP32 activation scales.
   :param b_global_scales: Empty or per-output-channel FP32 weight scales.
   :param bias: Optional BF16 bias ``[N]``.
-  :param use_ws: Select the mainloop only for the hand-written tail fallback.
+  :param use_ws: Deprecated and ignored; CUTLASS selects the mainloop.
   :param use_native: ``True`` uses cache-dit's collective; ``False`` selects
-    ``torch._scaled_mm`` when supported and the native tail fallback otherwise.
+    ``torch._scaled_mm`` and requires ``N % 16 == 0``.
   :returns: BF16 output ``[M, N]``.
   """
 
-  if not use_native and b.shape[0] % 16 == 0:
+  if not use_native:
+    if b.shape[0] % 16 != 0:
+      raise ValueError("torch._scaled_mm requires N % 16 == 0; use_native=True instead "
+                       "requires logical K % 256 == 0 and N % 128 == 0.")
     return _fp4_gemm_scaled_mm(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias)
   return torch.ops.cache_dit_cuda_ops.fp4_gemm(a, b, a_scales, b_scales, a_global_scales,
                                                b_global_scales, bias, use_ws)
