@@ -1,6 +1,7 @@
 """Online quantize + W8A8 linear layer backed by cache-dit's native operators."""
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from ...kernels import fp8_gemm
@@ -47,13 +48,39 @@ def _expand_block_scale(scale: torch.Tensor, rows: int, cols: int, is_weight: bo
 
 
 class QW8A8Linear(nn.Module):
-  """Linear layer running cache-dit's native quantize + W8A8 operators.
+  """Online W8A8 E4M3 replacement for ``torch.nn.Linear``.
 
-  The 8-bit weight and its scale are derived buffers: they are not persistent, so
-  a float checkpoint cannot accidentally round-trip an unlabelled quantized
-  state. Only E4M3 FP8 is implemented today; the class name leaves room for INT8
-  once a matching W8A8 GEMM exists. Bias stays a BF16 parameter. Callers must not
-  cast the quantized module to another floating dtype; device moves are supported.
+  Both weights and activations use the same quantization convention: each scale
+  is ``amax / 448``, qdata is ``satfinite_e4m3(x / scale)``, and dequantization
+  is ``qdata * scale``. Unlike NVFP4, there is only one FP32 scale level. The
+  three modes share the math but differ in scale granularity: per-token/output-
+  channel, per-tensor, or 1x128 activation and 128x128 weight blocks.
+
+  Lifecycle and shape contract
+  ----------------------------
+  :meth:`from_linear` quantizes the weight once. Before quantization it zero-pads
+  BF16 weight and bias to the mode's required dimensions, so arbitrary input and
+  output widths are supported without a per-forward weight repack:
+
+  * per-row/per-tensor: quantized K/N align to 16/8 for the CUTLASS collective;
+  * per-block: quantized K/N align to 128/128 for blockwise scale layouts.
+
+  :meth:`forward` flattens leading dimensions to ``[M,K]``, pads activation K if
+  needed, dynamically quantizes it, calls :func:`cache_dit.kernels.fp8_gemm`, and
+  slices output N back to ``out_features``. Padding qdata, padding scales and
+  padding bias are zero, so this does not change the original output region.
+  Eager uses the custom CUDA quantizer; compile uses the equivalent pure-PyTorch
+  quantizer to keep reduction/pointwise operations visible to Inductor. GEMM uses
+  the CUTLASS collective by default; ``fp8_gemm(use_native=False)`` is the
+  per-row/per-tensor ``torch._scaled_mm`` reference path.
+
+  ``qweight`` and ``wscales`` are non-persistent derived buffers: they are
+  rebuilt from a BF16 checkpoint instead of being serialized as an unlabelled
+  quantized state. ``bias`` remains BF16 and requires no gradient. Moving devices
+  is supported, but calling ``.to(dtype=...)`` on the quantized module is not:
+  casting qdata or FP32 scales would invalidate the layout and numerical recipe.
+  :meth:`dequantize_weight` is only a diagnostic approximation and also depads
+  the stored weight to the original shape.
   """
 
   def __init__(
@@ -81,21 +108,26 @@ class QW8A8Linear(nn.Module):
     self.in_features = in_features
     self.out_features = out_features
     self.mode = mode
+    k_multiple, n_multiple = (128, 128) if mode == "per_block" else (16, 8)
+    self.quantized_in_features = (in_features + k_multiple - 1) // k_multiple * k_multiple
+    self.quantized_out_features = (out_features + n_multiple - 1) // n_multiple * n_multiple
     self.register_buffer(
       "qweight",
-      torch.empty((out_features, in_features), dtype=torch.float8_e4m3fn, device=device),
+      torch.empty((self.quantized_out_features, self.quantized_in_features),
+                  dtype=torch.float8_e4m3fn,
+                  device=device),
       persistent=False,
     )
     self.register_buffer(
       "wscales",
       torch.empty(
-        fp8_weight_scale_shape(out_features, in_features, mode),
+        fp8_weight_scale_shape(self.quantized_out_features, self.quantized_in_features, mode),
         dtype=torch.float32,
         device=device,
       ),
       persistent=False,
     )
-    self.bias = nn.Parameter(torch.empty(out_features, dtype=dtype, device=device),
+    self.bias = nn.Parameter(torch.empty(self.quantized_out_features, dtype=dtype, device=device),
                              requires_grad=False) if bias else None
 
   @classmethod
@@ -106,13 +138,26 @@ class QW8A8Linear(nn.Module):
     *,
     quantize_device: torch.device | str | None = None,
   ) -> "QW8A8Linear":
-    """Quantize a float ``nn.Linear`` weight once and build the runtime module.
+    """Pad and quantize a BF16 Linear weight once, then build the runtime module.
 
-    :param linear: Source linear layer. Its weight must be a BF16 2D tensor.
-    :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
-    :param quantize_device: Device used for the one-time weight quantization;
-      defaults to the current CUDA device when the source is on CPU.
-    :returns: A native FP8 linear on the source device.
+    Padding is deliberately done in BF16 before ``fp8_quantize``. A padded row,
+    column, or 128x128 block therefore has amax zero, scale zero and qdata zero;
+    its bias is also explicitly initialized to zero. This is stronger and simpler
+    than padding only at GEMM time: both weight quantization and every later
+    activation/GEMM call see one consistent padded layout. The public logical
+    ``in_features/out_features`` remain unchanged and are used to depad output
+    and diagnostic dequantization.
+
+    :param linear: Source layer with a 2D BF16 weight. Any positive K/N is
+      accepted; alignment is handled by ``quantized_in/out_features``.
+    :param mode: ``per_row``, ``per_tensor`` or ``per_block``. Per-row weight
+      scales are per output channel; per-block uses 128x128 weight blocks.
+    :param quantize_device: Device for the one-time reduction and E4M3 cast;
+      defaults to the weight device, or current CUDA for a CPU source. Buffers
+      are copied back to the original weight device afterward.
+    :returns: An online W8A8 module whose qweight/scales are derived,
+      non-persistent buffers. No calibrated or serialized FP8 checkpoint is
+      produced.
     """
 
     if not isinstance(linear, nn.Linear):
@@ -123,17 +168,9 @@ class QW8A8Linear(nn.Module):
     if weight.dtype != torch.bfloat16:
       raise ValueError(f"cache-dit FP8 requires bfloat16 weights, got {weight.dtype}.")
     out_features, in_features = weight.shape
-    if in_features % 16 != 0 or out_features % 8 != 0:
-      raise ValueError("cache-dit FP8 requires in_features % 16 == 0 and "
-                       f"out_features % 8 == 0, got ({out_features}, {in_features}).")
-    if mode == "per_block" and (in_features % 128 != 0 or out_features % 128 != 0):
-      raise ValueError("cache-dit FP8 per-block requires both linear dimensions to be "
-                       f"multiples of 128, got ({out_features}, {in_features}).")
     if quantize_device is None:
       quantize_device = weight.device if weight.is_cuda else torch.device("cuda")
 
-    quant_weight = weight.to(device=quantize_device, dtype=torch.bfloat16).contiguous()
-    qweight, wscales = fp8_quantize(quant_weight, mode=mode, is_weight=True)
     module = cls(
       in_features=in_features,
       out_features=out_features,
@@ -142,18 +179,35 @@ class QW8A8Linear(nn.Module):
       device=weight.device,
       dtype=torch.bfloat16,
     )
+    quant_weight = weight.to(device=quantize_device, dtype=torch.bfloat16).contiguous()
+    quant_weight = F.pad(
+      quant_weight,
+      (0, module.quantized_in_features - in_features, 0,
+       module.quantized_out_features - out_features),
+    )
+    qweight, wscales = fp8_quantize(quant_weight, mode=mode, is_weight=True)
     module.qweight.copy_(qweight.to(weight.device))
     module.wscales.copy_(wscales.to(weight.device))
     if linear.bias is not None:
-      module.bias.data.copy_(linear.bias.detach().to(device=weight.device, dtype=torch.bfloat16))
+      module.bias.data.zero_()
+      module.bias.data[:out_features].copy_(linear.bias.detach().to(device=weight.device,
+                                                                    dtype=torch.bfloat16))
     module._is_inner_quantized = True
     return module
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
-    """Quantize activations dynamically and run the FP8 GEMM.
+    """Dynamically quantize activation and evaluate padded W8A8 GEMM.
 
-    :param x: Input activation ``[..., in_features]`` on CUDA.
-    :returns: BF16 output ``[..., out_features]``.
+    The steps are ``[... ,K] -> flatten [M,K] -> zero-pad K -> FP8 quantize ->
+    CUTLASS GEMM -> depad N -> restore leading dimensions``. Weight qdata and
+    scales are reused from ``from_linear``; only activation amax/qdata are
+    produced here. The scale granularity follows ``self.mode``, so per-block
+    activation uses 1x128 scales while the cached weight uses 128x128 scales.
+
+    :param x: BF16 activation ``[..., in_features]`` on CUDA. Arbitrary leading
+      dimensions and unaligned K are accepted.
+    :returns: BF16 output ``[..., out_features]``. Padding columns never leak
+      into the public shape.
     """
 
     if x.dtype != torch.bfloat16:
@@ -163,14 +217,18 @@ class QW8A8Linear(nn.Module):
                          "`.to(dtype)` on a quantized module.")
     leading_shape = x.shape[:-1]
     flat = x.reshape(-1, self.in_features)
-    # Keep quantization visible to Inductor for fusion with surrounding work.
-    # The native fused eager path is no longer used now that per-row and
-    # per-tensor default to the faster torch._scaled_mm GEMM.
+    if self.quantized_in_features != self.in_features:
+      flat = F.pad(flat, (0, self.quantized_in_features - self.in_features))
+    # Both branches implement the same amax/448 recipe. Eager uses one custom-op
+    # boundary; compile uses ordinary torch ops so Inductor can fuse quantization
+    # with neighboring pointwise/reduction work. fp8_gemm below still selects
+    # the CUTLASS collective by default in either execution mode.
     if torch.compiler.is_compiling():
       qx, sx = fp8_quantize_torch(flat, mode=self.mode)
     else:
       qx, sx = fp8_quantize(flat, mode=self.mode)
     out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
+    out = out[:, :self.out_features]
     return out.reshape(*leading_shape, self.out_features)
 
   def dequantize_weight(self) -> torch.Tensor:
@@ -185,8 +243,9 @@ class QW8A8Linear(nn.Module):
     elif self.mode == "per_tensor":
       weight = weight * self.wscales[0]
     else:
-      weight = weight * _expand_block_scale(self.wscales, self.out_features, self.in_features, True)
-    return weight.to(torch.bfloat16)
+      weight = weight * _expand_block_scale(self.wscales, self.quantized_out_features,
+                                            self.quantized_in_features, True)
+    return weight[:self.out_features, :self.in_features].to(torch.bfloat16)
 
   def extra_repr(self) -> str:
     """:returns: Compact module description."""

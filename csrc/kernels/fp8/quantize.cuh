@@ -7,6 +7,11 @@
 
 namespace cache_dit::fp8 {
 
+// Shared quantization helpers. `scale` is always the dequantization multiplier
+// amax/448, never its reciprocal. `store_e4m3x8` receives it and divides BF16-
+// converted FP32 values before rounding/saturation to E4M3. GEMM later multiplies
+// qdata by the same scale. Zero units use safe_scale=1 for this division while
+// storing scale=0, preserving qdata=0 without 0/0.
 constexpr int kThreads = 256;
 constexpr int kWarpSize = 32;
 constexpr int kWarpsPerBlock = kThreads / kWarpSize;

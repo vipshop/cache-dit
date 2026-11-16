@@ -392,3 +392,59 @@ the graph-visible pure-Torch quantizer, and the gap is largest on the short-K
 attention shapes. Keep `fp8_quantize_torch` on the compile path; the native
 quantizer remains correct and is used in eager mode. Raw results:
 `.tmp/native_nvfp4/bench/bench_fp8_native_quant_compile.json`.
+
+## 2026-11-16 CUTLASS 4.8.1 collective migration
+
+The hand-written FP8 GEMM implementations were removed. All three modes now use
+CUTLASS SM120 collectives from `csrc/kernels/fp8/gemm/`:
+
+- per-row applies activation/weight scales in a custom FP32 EVT epilogue;
+- per-tensor uses the same collective with zero broadcast strides, so scalar
+  scales do not need expanded vectors;
+- per-block uses the SM120 blockwise mainloop for `(1,128)` activation scales
+  and `(128,128)` weight scales, followed by a bias-only epilogue.
+
+`gemm/per_{row,tensor,block}.cu` contains only launch wrappers. `use_ws` was
+removed from the public API. The Python wrapper automatically zero-pads qdata,
+scales and bias for unsupported shapes and depads output N. `QW8A8Linear`
+performs the equivalent padding before weight/activation quantization, so the
+whole online chain supports arbitrary Linear shapes without per-forward weight
+repacking. Per-row/per-tensor retain an explicit `use_native=False`
+`torch._scaled_mm` reference; per-block always uses the blockwise collective.
+
+Detailed comments in `gemm.cuh` document the E4M3+FP32 scale recipe, Builder
+selection, EVT and `deduce_layoutSFA/SFB`. The latter is used only through
+`decltype` for compile-time scale-layout selection; runtime M/N/K values are
+instantiated by `tile_atom_to_shape_SFA/SFB` and are not scale calculations.
+
+Validation after migration and comments: 54 passed across FP8 operator/backend
+tests, including direct N-tail padding and all three K48/N24 full Linear modes.
+`pre-commit`, clang-format, yapf and `git diff --check` pass. E2E results are
+recorded separately below when available.
+
+### FLUX FP4/FP8 compile comparison
+
+Fresh sequential runs on GPU7 / RTX PRO 5000, 1024x1024, 28 steps, seed 42,
+warmup 1 with one warmup inference step, repeat 3, fusion enabled. TorchAO is
+the same-model comparison backend; BF16 is the visual reference.
+
+| mode | cache-dit compile | TorchAO compile | cache-dit / TorchAO |
+|---|---:|---:|---:|
+| NVFP4 | 5.75 s | 5.56 s | 1.034x |
+| FP8 per-row | 7.11 s | 7.00 s | 1.016x |
+| BF16 reference | 14.87 s | 14.87 s | 1.000x |
+
+| comparison | PSNR | SSIM |
+|---|---:|---:|
+| FP4 cache-dit vs TorchAO | 33.29179 dB | 0.89492 |
+| FP4 cache-dit vs BF16 | 31.10872 dB | 0.87313 |
+| FP4 TorchAO vs BF16 | 29.42025 dB | 0.86843 |
+| FP8 cache-dit vs TorchAO | 39.72270 dB | 0.98022 |
+| FP8 cache-dit vs BF16 | 36.09833 dB | 0.95657 |
+| FP8 TorchAO vs BF16 | 34.98625 dB | 0.94690 |
+
+The six-panel visual check shows intact text and image structure and no obvious
+corruption. FP4 is 3.4% slower than TorchAO in this single run and FP8 per-row
+is 1.6% slower; do not claim a stable e2e win from these data. Raw logs and
+images are in `.tmp/fp8_collective/{logs,e2e}`; the comparison sheet is
+`.tmp/fp8_collective/e2e/compare.png`.

@@ -91,7 +91,7 @@ void check_gemm_inputs(const at::Tensor& a, const at::Tensor& b, const at::Tenso
 
 void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scale,
               const at::Tensor& b_scale, const std::optional<at::Tensor>& bias, at::Tensor& out,
-              int64_t mode, bool use_ws) {
+              int64_t mode) {
   const c10::cuda::CUDAGuard device_guard(a.device());
   check_gemm_inputs(a, b, a_scale, b_scale, bias, out, mode);
   const int M = static_cast<int>(a.size(0));
@@ -106,29 +106,30 @@ void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
 
   if (mode == kPerBlock) {
     launch_fp8_gemm_per_block(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
-                              bias_ptr, out_ptr, M, N, K, num_k_blocks, use_ws, stream);
+                              bias_ptr, out_ptr, M, N, K, num_k_blocks, stream);
   } else if (mode == kPerTensor) {
     launch_fp8_gemm_per_tensor(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
-                               bias_ptr, out_ptr, M, N, K, use_ws, stream);
+                               bias_ptr, out_ptr, M, N, K, stream);
   } else {
     launch_fp8_gemm_per_row(a_ptr, b_ptr, a_scale.data_ptr<float>(), b_scale.data_ptr<float>(),
-                            bias_ptr, out_ptr, M, N, K, use_ws, stream);
+                            bias_ptr, out_ptr, M, N, K, stream);
   }
 }
 
-void fp8_quantize_gemm_per_row(const at::Tensor& input, const at::Tensor& b,
-                               const at::Tensor& b_scale, const std::optional<at::Tensor>& bias,
-                               at::Tensor& out, bool use_ws) {
+void fp8_quantize_gemm(const at::Tensor& input, const at::Tensor& b, const at::Tensor& b_scale,
+                       const std::optional<at::Tensor>& bias, at::Tensor& out) {
+  // This convenience op is intentionally per-row only. General granularity selection belongs to
+  // the separate fp8_quantize + fp8_gemm calls; no redundant mode argument is needed here.
   auto quantized = at::empty(input.sizes(), input.options().dtype(at::kFloat8_e4m3fn));
   auto scale = at::empty({input.size(0)}, input.options().dtype(at::kFloat));
   fp8_quantize(input, quantized, scale, kPerRow, false);
-  fp8_gemm(quantized, b, scale, b_scale, bias, out, kPerRow, use_ws);
+  fp8_gemm(quantized, b, scale, b_scale, bias, out, kPerRow);
 }
 
 void register_fp8_ops(pybind11::module_& ops) {
   ops.def("fp8_quantize", &fp8_quantize);
   ops.def("fp8_gemm", &fp8_gemm);
-  ops.def("fp8_quantize_gemm_per_row", &fp8_quantize_gemm_per_row);
+  ops.def("fp8_quantize_gemm", &fp8_quantize_gemm);
 }
 
 }  // namespace cache_dit::fp8

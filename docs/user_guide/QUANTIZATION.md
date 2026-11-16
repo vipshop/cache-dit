@@ -31,13 +31,7 @@ The three online FP8 types can run on two independent backends:
 - <span style="color:#c77dff;">torchao</span>: the historical path, using TorchAO's Float8Tensor. `per_row` and `per_tensor` use `torch._scaled_mm`; `per_block` uses TorchAO's Triton blockwise GEMM. Requires torchao and works on <span style="color:#c77dff;">>=sm89</span>.
 - <span style="color:#c77dff;">cache_dit</span>: Cache-DiT's own E4M3 quantize plus a GEMM selected by `use_native`. It has no torchao runtime dependency, supports the same three granularities, and currently requires <span style="color:#c77dff;">sm100 or newer</span>. CUDA Graph-safe, but TP/DTensor sharding and serialized FP8 checkpoints are not supported. `per_tensor_fallback` is a TorchAO/TP compatibility switch and has no effect on this backend. Under `torch.compile`, activation quantization switches to an equivalent pure-Torch implementation so Inductor can fuse it; eager keeps the custom quantize kernel.
 
-For the cache-dit FP8 backend, `fp8_gemm` now defaults to `use_native=False`:
-
-- `per_row` and `per_tensor` use `torch._scaled_mm` (cuBLAS/CUTLASS), the same GEMM operator as TorchAO.
-- `per_block` keeps the cache-dit native kernel because `torch._scaled_mm` cannot express its `(1, 128) × (128, 128)` block scales.
-- `use_native=True` forces the CuTe kernel for all three modes. The `use_ws` option only affects that native kernel.
-
-Shapes whose output width is not a multiple of 16 fall back to the native kernel for the default path, because `torch._scaled_mm` requires `N % 16 == 0`.
+For the cache-dit FP8 backend, `fp8_gemm` uses the native CUTLASS collective by default for all three modes. `use_native=False` selects the `torch._scaled_mm` reference path for per-row and per-tensor; per-block always uses the native blockwise path. Unsupported Linear shapes are handled through automatic padding and output slicing, so users do not need to align layer dimensions manually.
 
 `QuantizeConfig(backend=...)` defaults to `AUTO`. AUTO keeps the existing routing: `svdq*` uses the cache-dit SVDQuant path and every other type uses TorchAO. Passing `backend="cache_dit"` with `float8_per_row`, `float8_per_tensor`, or `float8_per_block` selects the native FP8 path; unsupported combinations raise instead of silently falling back. The CLI equivalent is `--quantize-backend torchao|cache_dit`.
 
@@ -56,7 +50,7 @@ python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
   --quantize-type float8_per_row --quantize-backend cache_dit --compile
 ```
 
-The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts both `use_native` and `use_ws`: `use_native=False` (default) routes per-row/per-tensor through `torch._scaled_mm` and keeps per-block on the native kernel; `use_native=True` forces the CuTe kernel, where `use_ws` selects the mainloop.
+The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts `use_native`; leave it enabled for the default CUTLASS path, or disable it to compare per-row/per-tensor against `torch._scaled_mm`.
 
 ## FP8 Quantization
 
