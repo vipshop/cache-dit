@@ -192,9 +192,10 @@ reference.
 
 Requirements and limits:
 
-- Both weight and activation must be BF16. The native backend requires
-  `in_features % 256 == 0` and `out_features % 128 == 0`; unsupported shapes are
-  rejected.
+- Both weight and activation must be BF16. Non-aligned Linear shapes are
+  supported through automatic padding and output slicing. For best performance,
+  prefer `in_features % 256 == 0` and `out_features % 128 == 0`, which avoids
+  padding copies.
 - The path is online-only: `calibrate_fn`, `serialize_to`, TP/DTensor weights and
   serialized NVFP4 checkpoints are not supported.
 - `nvfp4_weight_only` continues to use TorchAO, and `AUTO` still routes plain

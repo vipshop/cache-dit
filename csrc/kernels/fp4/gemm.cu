@@ -93,17 +93,17 @@ void check_gemm_inputs(const at::Tensor& a, const at::Tensor& b, const at::Tenso
 void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scales,
               const at::Tensor& b_scales, const at::Tensor& a_global_scales,
               const at::Tensor& b_global_scales, const std::optional<at::Tensor>& bias,
-              at::Tensor& out, bool use_ws) {
+              at::Tensor& out) {
   const c10::cuda::CUDAGuard device_guard(a.device());
   check_gemm_inputs(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out);
   const bool level1 = a_global_scales.numel() != 0 || b_global_scales.numel() != 0;
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-  (void)use_ws;  // CUTLASS selects the mainloop; retained for schema compatibility.
 
   if (level1) {
-    fp4_gemm_cutlass(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out, stream);
+    fp4_gemm_cutlass_2x(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, out,
+                        stream);
   } else {
-    fp4_gemm_cutlass_simple(a, b, a_scales, b_scales, bias, out, stream);
+    fp4_gemm_cutlass_1x(a, b, a_scales, b_scales, bias, out, stream);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

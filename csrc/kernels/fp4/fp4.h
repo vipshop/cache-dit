@@ -15,7 +15,7 @@ void fp4_quantize(const at::Tensor& input, at::Tensor& qdata, at::Tensor& block_
 void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scales,
               const at::Tensor& b_scales, const at::Tensor& a_global_scales,
               const at::Tensor& b_global_scales, const std::optional<at::Tensor>& bias,
-              at::Tensor& out, bool use_ws);
+              at::Tensor& out);
 void register_fp4_ops(pybind11::module_& ops);
 
 }  // namespace cache_dit::fp4

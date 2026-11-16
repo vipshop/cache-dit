@@ -174,16 +174,31 @@ def test_default_gemm_matches_dequantized_reference() -> None:
   assert _relative_l2(actual, expected) < 5e-3
 
 
-def test_unsupported_n_raises_instead_of_handwritten_fallback() -> None:
+@pytest.mark.parametrize("use_native", [True, False])
+def test_unsupported_shape_is_padded_and_depadded(use_native: bool) -> None:
   torch.manual_seed(2)
-  a = torch.randn(17, 256, dtype=torch.bfloat16, device="cuda")
-  w = torch.randn(24, 256, dtype=torch.bfloat16, device="cuda")
+  a = torch.randn(17, 192, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(24, 192, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(24, dtype=torch.bfloat16, device="cuda")
   qa, sa, ga = fp4_quantize(a)
   qw, sw, gw = fp4_quantize(w)
-  with pytest.raises(ValueError, match="N % 16"):
-    fp4_gemm(qa, qw, sa, sw, ga, gw, use_native=False)
-  with pytest.raises(ValueError, match="N % 128"):
-    fp4_gemm(qa, qw, sa, sw, ga, gw, use_native=True)
+  actual = fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias, use_native=use_native)
+  expected = F.linear(_dequantize(qa, sa, ga), _dequantize(qw, sw, gw), bias.float())
+  assert actual.shape == (17, 24)
+  assert _relative_l2(actual, expected) < 5e-3
+
+
+def test_padding_fullgraph_compile() -> None:
+  torch.manual_seed(6)
+  a = torch.randn(17, 192, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(24, 192, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(24, dtype=torch.bfloat16, device="cuda")
+  qa, sa, ga = fp4_quantize(a)
+  qw, sw, gw = fp4_quantize(w)
+  expected = fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias)
+  actual = torch.compile(lambda: fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias), fullgraph=True)()
+  assert actual.shape == expected.shape
+  assert _relative_l2(actual, expected) < 1e-4
 
 
 def test_two_level_collective_matches_dequantized_reference() -> None:
@@ -196,17 +211,6 @@ def test_two_level_collective_matches_dequantized_reference() -> None:
   actual = fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias, use_native=True)
   expected = F.linear(_dequantize(qa, sa, ga), _dequantize(qw, sw, gw), bias.float())
   assert _relative_l2(actual, expected) < 3e-3
-
-
-def test_use_ws_compatibility_flag_is_ignored() -> None:
-  torch.manual_seed(3)
-  a = torch.randn(129, 256, dtype=torch.bfloat16, device="cuda")
-  w = torch.randn(256, 256, dtype=torch.bfloat16, device="cuda")
-  qa, sa, ga = fp4_quantize(a)
-  qw, sw, gw = fp4_quantize(w)
-  non_ws = fp4_gemm(qa, qw, sa, sw, ga, gw, use_ws=False, use_native=True)
-  ws = fp4_gemm(qa, qw, sa, sw, ga, gw, use_ws=True, use_native=True)
-  assert torch.equal(ws, non_ws)
 
 
 def test_single_level_gemm_matches_torchao_scaled_mm() -> None:

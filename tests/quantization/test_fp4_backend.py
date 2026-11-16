@@ -81,11 +81,11 @@ def test_native_fp4_quantizes_only_supported_repeated_blocks() -> None:
     ),
   )
   assert all(type(block.proj) is NVFP4Linear for block in out.blocks)
-  assert all(isinstance(block.bad_shape, nn.Linear) for block in out.blocks)
+  assert all(type(block.bad_shape) is NVFP4Linear for block in out.blocks)
   assert isinstance(out.modulation, nn.Linear)
   assert out._quantize_type == "nvfp4"
-  assert len(out._fp4_quantized_layers) == 2
-  assert len(out._fp4_skipped_layers) == 2
+  assert len(out._fp4_quantized_layers) == 4
+  assert len(out._fp4_skipped_layers) == 0
   assert out._quantize_config.backend == QuantizeBackend.CACHE_DIT
 
 
@@ -107,6 +107,23 @@ def test_native_fp4_forward_tracks_bf16_reference() -> None:
       ),
     )(x)
   diff = (out.float() - expected.float()).norm() / expected.float().norm()
+  assert float(diff.detach()) < 0.35
+
+
+@requires_native_fp4
+def test_native_fp4_pads_and_depads_nonaligned_linear() -> None:
+  torch.manual_seed(7)
+  holder = nn.Module()
+  holder.proj = nn.Linear(48, 24).cuda().to(torch.bfloat16)
+  x = torch.randn(3, 48, dtype=torch.bfloat16, device="cuda")
+  expected = holder.proj(x)
+  quantize(holder, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
+  packed = holder.proj
+  assert packed.qweight.shape == (128, 128)
+  assert packed.dequantize_weight().shape == (24, 48)
+  actual = packed(x)
+  assert actual.shape == (3, 24)
+  diff = (actual.float() - expected.float()).norm() / expected.float().norm()
   assert float(diff.detach()) < 0.35
 
 
@@ -179,7 +196,7 @@ def test_backend_routing_and_validation() -> None:
 @requires_native_fp4
 def test_native_fp4_rejects_a_selection_with_no_supported_linears() -> None:
   holder = nn.Module()
-  holder.bad = nn.Linear(48, 24).cuda().to(torch.bfloat16)
+  holder.bad = nn.Linear(48, 24).cuda().float()
   with pytest.raises(ValueError, match="did not quantize any linear"):
     quantize(
       holder,

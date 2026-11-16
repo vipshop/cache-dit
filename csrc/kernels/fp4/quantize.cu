@@ -10,9 +10,76 @@
 #include "fp4.h"
 #include "quantize.cuh"
 
+/*
+ * NVFP4 activation/weight quantization, bit-level recipe and kernel dispatch.
+ * ==========================================================================
+ *
+ * Input x is a contiguous BF16 tensor [R,K]. Output qdata is [R,K/2] with two
+ * E2M1 values per byte; the even-K value occupies the low nibble and the odd-K
+ * value the high nibble. Every 16 input values form one scale group.
+ *
+ * Level 1 (production default)
+ * ----------------------------
+ * For each row r:
+ *
+ *   amax_r       = max_k |x[r,k]|
+ *   global_r     = FP32(amax_r / 2688)             // 2688 = 448 * 6
+ *   inv_global_r = global_r > 0 ? FP32(1/global_r) : 0
+ *   xn[r,k]      = FP32(x[r,k] * inv_global_r)
+ *
+ * For each group g of 16 values:
+ *
+ *   block_raw    = max_{k in g} |xn[r,k]|
+ *   block_byte   = UE4M3_satfinite(block_raw / 6)
+ *   block_fp32   = FP32(UE4M3(block_byte))
+ *   inv_block    = block_fp32 > 0 ? FP32(1/block_fp32) : 0
+ *   q[r,k]       = E2M1_RNE_satfinite(xn[r,k] * inv_block)
+ *
+ * The reciprocal after UE4M3 rounding is essential. Using 1/block_raw instead
+ * changes values near E2M1 rounding boundaries and breaks qdata bit equality.
+ * All arithmetic above uses the explicitly rounded CUDA operations shown in the
+ * kernels (__fmul_rn/__fdiv_rn); this is why --use_fast_math is not accepted as
+ * a license to change the recipe. A zero row or zero group produces zero scale
+ * and zero qdata, without a meaningful division by zero.
+ *
+ * With level1=false, global scales are empty and inv_global=1. Only the per-16
+ * UE4M3 scale and E2M1 conversion remain. This mode is for isolated GEMM tests,
+ * not for NVFP4Linear's two-level production recipe.
+ *
+ * Canonical scale storage
+ * -----------------------
+ * R is padded to a multiple of 128. For group index s=k/16 and nb_k=K/64:
+ *
+ *   offset = (r/128)*nb_k*512 + (s/4)*512
+ *            + (r%32)*16 + ((r/32)%4)*4 + (s%4)
+ *
+ * A 128x4 scale atom therefore occupies 512 bytes. This is the layout expected
+ * by CUTLASS's block-scaled collective, not a plain [R,K/16] row-major tensor.
+ * Padding scales must be zero; qdata exists only for logical rows.
+ *
+ * Kernel variants
+ * ---------------
+ * row_amax_fp4_kernel: eight warps per CTA, each warp reduces one row with
+ *   128-bit BF16 loads and shuffle reduction, then writes global_r.
+ * quantize_fp4_kernel: one thread per 16-value group. It performs two Vec8BF16
+ *   loads, the scale conversion, eight packed-byte stores via one uint2 write,
+ *   and explicit zero writes for padded scale rows.
+ * quantize_fp4_fused_kernel: K=15360 only. One 128-thread CTA owns a row. Pass 1
+ *   caches the row in shared memory with 128-bit loads while recording group and
+ *   warp maxima. After a CTA reduction computes global_r, pass 2 reads shared
+ *   memory, handles four groups (K64) per thread, writes two uint4 qdata vectors,
+ *   and packs four UE4M3 scales into one aligned u32 store. It removes the
+ *   row-amax launch and the second global read. Other K values retain the older
+ *   two kernels because their measured latency is better or equal.
+ */
+
 namespace cache_dit::fp4 {
 namespace {
 
+// Eight independent warps per CTA reduce eight rows. Each lane reads eight BF16
+// values per iteration (16 bytes), so the loop is both coalesced and aligned.
+// The final shuffle tree leaves max(|row|) in every lane; lane zero performs the
+// single FP32 division by 2688. No qdata or block scales are touched here.
 __global__ void row_amax_fp4_kernel(const __nv_bfloat16* __restrict__ input,
                                     float* __restrict__ global_scales, int rows, int cols) {
   const int row = blockIdx.x * 8 + threadIdx.x / 32;
@@ -38,6 +105,13 @@ __global__ void row_amax_fp4_kernel(const __nv_bfloat16* __restrict__ input,
   }
 }
 
+// Fused two-pass schedule (one kernel, not one global-memory pass):
+//   [load row to smem + group/row max] -> [CTA global scale]
+//   -> [smem read + UE4M3/E2M1 + packed stores].
+// Shared memory is partitioned into the BF16 row, per-group maxima, per-warp
+// maxima, and two row parameters. The two __syncthreads calls are required:
+// first publish all group maxima before deriving the row scale, then publish
+// inv_global before any thread quantizes. No global row-amax roundtrip exists.
 template <int kK, int kThreads>
 __global__ void __launch_bounds__(kThreads, 1)
   quantize_fp4_fused_kernel(const __nv_bfloat16* __restrict__ input,
@@ -148,6 +222,11 @@ __global__ void __launch_bounds__(kThreads, 1)
 #endif
 }
 
+// Generic group kernel. The grid also covers scale-padding rows; those rows
+// return immediately after writing zero, while logical rows read two Vec8BF16
+// fragments and produce exactly 16 E2M1 values (8 packed bytes). Keeping the
+// padding write in this kernel avoids a separate scale memset on the generic K
+// path. The fused large-K path instead memsets the scale buffer once up front.
 template <bool kLevel1>
 __global__ void quantize_fp4_kernel(const __nv_bfloat16* __restrict__ input,
                                     cutlass::float_e2m1_t* __restrict__ qdata,

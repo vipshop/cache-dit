@@ -389,10 +389,14 @@ The hand-written FP4 GEMM was removed after auditing its remaining value: it
 only added non-production `K%64/N%8` tails, while all six FLUX production
 shapes use the CUTLASS collective. `collective_gemm.cuh` was renamed to
 `gemm.cuh`; `gemm.cu` now only validates inputs and selects the two-level or
-single-level CUTLASS epilogue. `use_ws` remains in the schema but is ignored.
-Native GEMM and `NVFP4Linear` require `K%256==0` and `N%128==0`; unsupported
-shapes raise instead of falling back. `use_native=False` still uses
-`torch._scaled_mm` when `N%16==0` and otherwise raises.
+single-level CUTLASS epilogue. `use_ws` was removed from the public API,
+torch.library schema, and C++ entry because CUTLASS selects the mainloop.
+The two collective entry points are named `fp4_gemm_cutlass_2x` and
+`fp4_gemm_cutlass_1x` for two-level and single-level scaling. Unsupported native
+tile shapes are automatically zero-padded/depadded: direct `fp4_gemm` pads
+packed qdata, canonical scales, global scales, and bias; `NVFP4Linear` pads the
+BF16 weight once and activation K as needed, then restores the original output
+shape. `use_native=False` similarly pads N for `torch._scaled_mm`.
 
 The bundled CUTLASS submodule is upgraded from v4.6.1 to v4.8.1
 (`2c85f497547eb441f0fe80bfb0fb2e6f9add1719`). `setup.py` and installation

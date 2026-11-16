@@ -1,6 +1,7 @@
 """Online NVFP4 W4A4 linear backed by cache-dit's native operators."""
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from ...kernels import fp4_gemm
@@ -61,7 +62,31 @@ def _dequantize_fp4(qdata: torch.Tensor, scales: torch.Tensor,
 
 
 class NVFP4Linear(nn.Module):
-  """Linear layer with an offline NVFP4 weight and dynamic NVFP4 activations."""
+  """Online two-level NVFP4 W4A4 replacement for ``torch.nn.Linear``.
+
+  ``from_linear`` quantizes the BF16 weight once and stores three derived,
+  non-persistent buffers: packed E2M1 ``qweight[N,K/2]``, canonical UE4M3
+  ``wscales``, and per-output-channel FP32 ``wglobal_scales[N]``. Bias remains
+  BF16. No serialized FP4 checkpoint, calibration data, TP/DTensor weight, or
+  persistent FP4 state is supported.
+
+  Every forward flattens arbitrary leading dimensions to ``[M,K]``, dynamically
+  quantizes the activation into ``qx/sx/gx``, and evaluates::
+
+    y[m,n] = BF16(wglobal_scales[n] *
+                  (gx[m] * block_scaled_accumulator[m,n]) + bias[n])
+
+  The output shape is then restored to ``[*leading_shape,N]``. Both activation
+  and weight use a per-row FP32 global scale plus a UE4M3 scale per 16 values.
+  The two global scales are folded in the GEMM epilogue, not in a separate
+  pointwise pass. Eager and ``torch.compile(fullgraph=True)`` use the same
+  ``torch.library`` operator and fake metadata.
+
+  On SM120, weights and bias are zero-padded to ``K%256==0`` and ``N%128==0``
+  during ``from_linear``. Activations are padded only when needed, and outputs
+  are sliced back to the original N. Thus arbitrary Linear shapes preserve the
+  original mathematical result while aligned shapes avoid all padding copies.
+  """
 
   def __init__(self,
                in_features: int,
@@ -79,23 +104,29 @@ class NVFP4Linear(nn.Module):
     super().__init__()
     self.in_features = in_features
     self.out_features = out_features
+    self.quantized_in_features = (in_features + 255) // 256 * 256
+    self.quantized_out_features = (out_features + 127) // 128 * 128
     self.register_buffer(
       "qweight",
-      torch.empty((out_features, in_features // 2), dtype=torch.float4_e2m1fn_x2, device=device),
+      torch.empty((self.quantized_out_features, self.quantized_in_features // 2),
+                  dtype=torch.float4_e2m1fn_x2,
+                  device=device),
       persistent=False,
     )
     self.register_buffer(
       "wscales",
-      torch.empty(_scale_shape(out_features, in_features), dtype=torch.float8_e4m3fn,
+      torch.empty(_scale_shape(self.quantized_out_features, self.quantized_in_features),
+                  dtype=torch.float8_e4m3fn,
                   device=device),
       persistent=False,
     )
     self.register_buffer(
       "wglobal_scales",
-      torch.empty((out_features, ), dtype=torch.float32, device=device),
+      torch.empty((self.quantized_out_features, ), dtype=torch.float32, device=device),
       persistent=False,
     )
-    self.bias = nn.Parameter(torch.empty(out_features, dtype=torch.bfloat16, device=device),
+    self.bias = nn.Parameter(torch.empty(
+      self.quantized_out_features, dtype=torch.bfloat16, device=device),
                              requires_grad=False) if bias else None
 
   @classmethod
@@ -120,25 +151,33 @@ class NVFP4Linear(nn.Module):
     if weight.dtype != torch.bfloat16:
       raise ValueError(f"cache-dit NVFP4 requires bfloat16 weights, got {weight.dtype}.")
     out_features, in_features = weight.shape
-    if in_features % 256 != 0 or out_features % 128 != 0:
-      raise ValueError("cache-dit NVFP4 CUTLASS collective requires in_features % 256 == 0 and "
-                       f"out_features % 128 == 0, got ({out_features}, {in_features}).")
     if quantize_device is None:
       quantize_device = weight.device if weight.is_cuda else torch.device("cuda")
 
-    quant_weight = weight.to(device=quantize_device, dtype=torch.bfloat16).contiguous()
-    qweight, wscales, wglobal_scales = fp4_quantize(quant_weight)
     module = cls(in_features, out_features, linear.bias is not None, device=weight.device)
+    quant_weight = weight.to(device=quantize_device, dtype=torch.bfloat16).contiguous()
+    quant_weight = F.pad(
+      quant_weight,
+      (0, module.quantized_in_features - in_features, 0,
+       module.quantized_out_features - out_features),
+    )
+    qweight, wscales, wglobal_scales = fp4_quantize(quant_weight)
     module.qweight.copy_(qweight.to(weight.device))
     module.wscales.copy_(wscales.to(weight.device))
     module.wglobal_scales.copy_(wglobal_scales.to(weight.device))
     if linear.bias is not None:
-      module.bias.data.copy_(linear.bias.detach().to(device=weight.device, dtype=torch.bfloat16))
+      module.bias.data.zero_()
+      module.bias.data[:out_features].copy_(linear.bias.detach().to(device=weight.device,
+                                                                    dtype=torch.bfloat16))
     module._is_inner_quantized = True
     return module
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
-    """Quantize activations dynamically and run the NVFP4 GEMM.
+    """Dynamically quantize activations and run the two-level NVFP4 GEMM.
+
+    Leading dimensions are flattened only for quantization/GEMM and restored
+    afterward. Activation quantization allocates new qdata/scale outputs per
+    call; weight buffers are read-only and reused across calls.
 
     :param x: BF16 activation ``[..., in_features]`` on CUDA.
     :returns: BF16 output ``[..., out_features]``.
@@ -152,8 +191,11 @@ class NVFP4Linear(nn.Module):
                          "`.to(dtype)` on a quantized module.")
     leading_shape = x.shape[:-1]
     flat = x.reshape(-1, self.in_features)
+    if self.quantized_in_features != self.in_features:
+      flat = F.pad(flat, (0, self.quantized_in_features - self.in_features))
     qx, sx, gx = fp4_quantize(flat)
     out = fp4_gemm(qx, self.qweight, sx, self.wscales, gx, self.wglobal_scales, bias=self.bias)
+    out = out[:, :self.out_features]
     return out.reshape(*leading_shape, self.out_features)
 
   def dequantize_weight(self) -> torch.Tensor:
@@ -162,7 +204,8 @@ class NVFP4Linear(nn.Module):
     :returns: Dequantized BF16 weight ``[out_features, in_features]``.
     """
 
-    return _dequantize_fp4(self.qweight, self.wscales, self.wglobal_scales).to(torch.bfloat16)
+    dense = _dequantize_fp4(self.qweight, self.wscales, self.wglobal_scales)
+    return dense[:self.out_features, :self.in_features].to(torch.bfloat16)
 
   def extra_repr(self) -> str:
     """:returns: Compact module description."""

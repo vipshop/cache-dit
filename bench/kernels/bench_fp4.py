@@ -293,26 +293,9 @@ def _bench_one(shape: Shape, args, api) -> list[dict]:
     lambda: fp4_gemm(
       qa_single, qw_single, sa_single, sw_single, ga_single, gw_single, bias=bias, use_native=False
     ),
-    "cache_dit_gemm_nonws":
-    lambda: fp4_gemm(qa_single,
-                     qw_single,
-                     sa_single,
-                     sw_single,
-                     ga_single,
-                     gw_single,
-                     bias=bias,
-                     use_ws=False,
-                     use_native=True),
-    "cache_dit_gemm_ws":
-    lambda: fp4_gemm(qa_single,
-                     qw_single,
-                     sa_single,
-                     sw_single,
-                     ga_single,
-                     gw_single,
-                     bias=bias,
-                     use_ws=True,
-                     use_native=True),
+    "cache_dit_gemm_native":
+    lambda: fp4_gemm(
+      qa_single, qw_single, sa_single, sw_single, ga_single, gw_single, bias=bias, use_native=True),
     "torchao_gemm":
     lambda: torch._scaled_mm(
       qa_single, qw_single.t(), sa_single, sw_single, bias=bias, out_dtype=torch.bfloat16),
