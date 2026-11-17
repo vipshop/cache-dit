@@ -79,9 +79,17 @@ def calculate_psnr(
 
   Ref: https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio
 
-  :param image_true: Images with range [0, 255].
-  :param image_test: Images with range [0, 255].
+  Both inputs are cast to float64 before the residual is computed: on the uint8
+  arrays returned by `cv2.imread`, the unsigned subtraction wraps negative
+  differences modulo 256 and the resulting MSE is far too small (PSNR inflates
+  by 5-21 dB, the more so the larger the difference is).
+
+  :param image_true: Reference image, uint8 `[0, 255]` or float `[0, 255]`.
+  :param image_test: Test image, same dtype/range as `image_true`.
+  :returns: PSNR in dB against a peak of 255; `inf` when the two are identical.
   """
+  image_true = np.asarray(image_true, dtype=np.float64)
+  image_test = np.asarray(image_test, dtype=np.float64)
   mse = np.mean((image_true - image_test) ** 2)
   if mse == 0:
     return float("inf")
