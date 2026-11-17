@@ -213,6 +213,10 @@ def timestep_sets_from_pipeline(pipe) -> List[List[float]]:
   reference_level = getattr(pipe, "reference_noise_aug", None)
   if reference_level is None:
     reference_level = getattr(pipe, "keyframe_noise_aug", None)
+    if reference_level is not None:
+      logger.info(
+        "Reading the conditioning noise level from `keyframe_noise_aug` (%.6g): this pipeline names "
+        "the constant after keyframes instead of references.", reference_level)
   return minimax_h3_adaln_timestep_sets(sigmas, reference_level)
 
 

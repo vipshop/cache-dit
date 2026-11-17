@@ -146,6 +146,10 @@ def test_cp_and_tp_planners_cover_the_transformer_ph3_drives():
 
   _ensure_cp_planners_activated()
   _ensure_tp_planners_activated()
+  # Both `_ensure_*` helpers only activate when nothing is registered yet, so a test session that
+  # loaded another family first would skip them; importing the module registers unconditionally and
+  # keeps this assertion about the planner set rather than about the order files ran in.
+  import cache_dit.distributed.transformers.minimax_h3  # noqa: F401
 
   assert "MiniMaxH3Transformer3DModel" in ContextParallelismPlannerRegister.supported_planners()[1]
   assert "MiniMaxH3Transformer3DModel" in TensorParallelismPlannerRegister.supported_planners()[1]

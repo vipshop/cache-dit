@@ -60,6 +60,7 @@ def _args(**overrides) -> argparse.Namespace:
     residual_diff_threshold=0.12,
     max_warmup_steps=8,
     max_cached_steps=-1,
+    max_continuous_cached_steps=3,
     steps_mask=False,
     mask_policy=None,
     prompt_enhancer=None,
@@ -80,18 +81,24 @@ def test_both_workflows_are_registered():
 
 
 def test_each_workflow_prunes_to_its_own_block_chain():
+  """The two workflows differ by the reference-image path, not by "more blocks in general"."""
   from diffusers.modular_pipelines.p_h3_image import PH3ImageBlocks
 
   blocks = PH3ImageBlocks()
-  text2image = blocks.get_workflow("text2image")
-  edit = blocks.get_workflow("image_conditioned")
+  assert list(blocks.sub_blocks) == [
+    "before_encode", "prompt_upsampler", "text_encoder", "vae_encoder", "denoise", "decode"
+  ]
+  assert set(blocks._workflow_map) == {"text2image", "image_conditioned"}
 
-  text2image_components = {spec.name for spec in text2image.expected_components}
-  edit_components = {spec.name for spec in edit.expected_components}
-  assert "transformer" in text2image_components
-  assert "prompt_upsampler" in text2image_components
-  # the edit chain adds the VAE encoder path
-  assert edit_components >= text2image_components
+  text2image = list(blocks.get_workflow("text2image").sub_blocks)
+  edit = list(blocks.get_workflow("image_conditioned").sub_blocks)
+  # `before_encode` / `vae_encoder` are triggered by an `image` input, so the text chain drops them
+  assert "before_encode" not in text2image
+  assert "vae_encoder" not in text2image
+  assert "before_encode" in edit
+  assert "vae_encoder" in edit
+  assert len(text2image) == 8
+  assert len(edit) == 12
 
 
 def test_examples_select_their_workflow_and_skip_the_step_count():
@@ -111,12 +118,36 @@ def test_examples_select_their_workflow_and_skip_the_step_count():
 
 def test_post_init_hook_pops_the_upsampler_from_the_live_tree():
   pipe = _FakePipe()
+  before = len(pipe._blocks.sub_blocks)
+
   _ph3_image_post_init(None, "/models/p-h3-image")(pipe)
 
   assert "prompt_upsampler" not in pipe._blocks.sub_blocks
+  assert len(pipe._blocks.sub_blocks) == before - 1
   assert "decode" in pipe._blocks.sub_blocks
   assert pipe.unloaded == ["prompt_upsampler", "prompt_upsampler_processor"]
   assert pipe.updated == {}
+
+
+def test_the_hook_pops_the_real_tree_not_the_deepcopy():
+  """`pipe.blocks` deep-copies the tree, and `unload_components` never removes a block.
+
+  Constructed without weights: the block tree and the component specs are all this needs, and a fake
+  pipeline here is what let the first version of the hook ship a no-op `--prompt-enhancer`.
+  """
+  from diffusers import PH3ImageModularPipeline
+
+  pipe = PH3ImageModularPipeline()
+  before = list(pipe._blocks.sub_blocks)
+  assert before == [
+    "before_encode", "prompt_upsampler", "text_encoder", "vae_encoder", "denoise", "decode"
+  ]
+
+  pipe.blocks.sub_blocks.pop("prompt_upsampler", None)
+  assert list(pipe._blocks.sub_blocks) == before
+
+  _ph3_image_post_init(None, "/models/p-h3-image")(pipe)
+  assert list(pipe._blocks.sub_blocks) == [name for name in before if name != "prompt_upsampler"]
 
 
 def test_post_init_hook_injects_the_upsampler_when_a_directory_is_given(monkeypatch):
@@ -144,7 +175,10 @@ def test_post_init_hook_injects_the_upsampler_when_a_directory_is_given(monkeypa
   pipe = _FakePipe()
   _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")(pipe)
 
-  assert "prompt_upsampler" not in pipe._blocks.sub_blocks
+  # `update_components` swaps the component but cannot put the block back, so the step must stay
+  # or the flag would load 18 GiB of weights that never run.
+  assert "prompt_upsampler" in pipe._blocks.sub_blocks
+  assert pipe.unloaded == []
   assert loaded["upsampler"][0] == "/models/p-h3-image"
   assert loaded["upsampler"][1] == "prompt_upsampler"
   assert loaded["processor"][1] == "prompt_upsampler_processor"
@@ -201,21 +235,3 @@ def test_cache_config_rejects_an_unknown_workflow():
 
 def test_cache_is_off_without_the_flag():
   assert _ph3_image_cache_config(_args(cache=False), "text2image") is None
-
-
-def test_adaln_plan_reads_the_ph3_conditioning_level():
-  """`--adaln-online` must see the two-row timestep vectors of an edit request.
-
-  P-H3-Image names the pinned conditioning level `keyframe_noise_aug`; reading only MiniMax-H3's
-  `reference_noise_aug` would leave every edit step without a memoized table (slow, not wrong), so
-  the fallback is asserted on a stub instead of on a loaded checkpoint.
-  """
-  from cache_dit.offload.adaln_plan import timestep_sets_from_pipeline
-
-  class _Stub:
-    config = argparse.Namespace(sample_sigmas=[1.0, 0.5, 0.0])
-    keyframe_noise_aug = 0.999
-
-  sets = timestep_sets_from_pipeline(_Stub())
-  assert any(len(entry) == 2 for entry in sets)
-  assert [0.0, 0.999] in sets

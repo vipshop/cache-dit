@@ -6223,8 +6223,15 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
   it, and `upsampler_dir` then names the repository (or a directory with `prompt_upsampler/` and
   `prompt_upsampler_processor/` subfolders) its weights come from.
 
-  `pipe.blocks` returns a deepcopy, so the pop has to happen on the live `_blocks` tree; the
-  components are already loaded by `load_components()`, hence the explicit `unload_components`.
+  The step is only ever removed when no enhancer directory is given: `update_components` swaps
+  `pipe.prompt_upsampler` but cannot put the block back into `sub_blocks`, so popping first and
+  reloading afterwards would load 18 GiB of weights that never run. The step reads its component off
+  the pipeline at call time (`components.prompt_upsampler`), so swapping the component is enough.
+
+  `pipe.blocks` returns a deepcopy, so the pop has to happen on the live `_blocks` tree, and the
+  popped block is deliberately not bound (a local reference keeps the 18 GiB alive past the
+  `gc.collect()` in `unload_components`). The components are already loaded by `load_components()`,
+  hence the explicit `unload_components`.
 
   :param upsampler_dir: `--prompt-enhancer` value, or None to render the prompt as given.
   :param model_path: The checkpoint the pipeline was loaded from, so an enhancer directory that
@@ -6236,12 +6243,12 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
               and os.path.abspath(upsampler_dir) == os.path.abspath(model_path))
 
   def hook(pipe) -> None:
-    if upsampler_dir is not None and same_dir:
-      # The step stays and its components are the ones `load_components()` already read.
-      return
-    pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
-    pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
     if upsampler_dir is None:
+      pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
+      pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
+      return
+    if same_dir:
+      # The step stays and its components are the ones `load_components()` already read.
       return
     from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
@@ -6277,6 +6284,25 @@ def _ph3_image_quantize_exclusions(args: argparse.Namespace) -> None:
     "adaln_proj",
     "norm_out",
   ]
+
+
+def _ph3_image_bounded(value: int, bound: int, name: str) -> int:
+  """Clamp a cache budget to what the eight-step grid leaves room for.
+
+  The CLI defaults are sized for 30-50 step pipelines, so a P-H3-Image run always clamps them; the
+  message goes out at INFO because the value a run actually used is otherwise invisible in the cache
+  statistics (the tag would say `MC1` without saying that `MC3` was asked for).
+
+  :param value: The value from the CLI.
+  :param bound: Largest value eight steps leave room for.
+  :param name: Option name, for the message.
+  :returns: `min(value, bound)`.
+  """
+  if value <= bound:
+    return value
+  logger.info("P-H3-Image samples in %d steps: using %s=%d instead of %d.", _PH3_IMAGE_STEPS, name,
+              bound, value)
+  return bound
 
 
 def _ph3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
@@ -6339,13 +6365,14 @@ def _ph3_image_cache_config(
   return DBCacheConfig(
     Fn_compute_blocks=1,
     Bn_compute_blocks=1,
-    max_warmup_steps=min(args.max_warmup_steps, 2),
+    max_warmup_steps=_ph3_image_bounded(args.max_warmup_steps, 2, "max_warmup_steps"),
     num_inference_steps=_PH3_IMAGE_STEPS,
     # guidance is distilled into the weights: one forward pass per step, no uncond branch
     enable_separate_cfg=False,
     residual_diff_threshold=threshold,
     max_cached_steps=args.max_cached_steps,
-    max_continuous_cached_steps=1,
+    max_continuous_cached_steps=_ph3_image_bounded(args.max_continuous_cached_steps, 1,
+                                                   "max_continuous_cached_steps"),
     steps_computation_mask=_ph3_image_steps_mask(args),
     steps_computation_policy=("static" if
                               (args.steps_mask or args.mask_policy is not None) else "dynamic"),
@@ -6367,10 +6394,12 @@ def _ph3_image_init_config(
   from diffusers import PH3ImageModularPipeline
 
   if args.num_inference_steps not in (None, _PH3_IMAGE_STEPS):
-    logger.warning(
-      "P-H3-Image samples on the checkpoint's fixed %d-step grid and takes no "
-      "`num_inference_steps`: ignoring --num-inference-steps %d.", _PH3_IMAGE_STEPS,
-      args.num_inference_steps)
+    # A warning would leave the user nowhere to go: the step count is the checkpoint's sigma grid
+    # and P-H3-Image has no `--sigmas`-style escape hatch, so an explicit request is unsatisfiable.
+    raise ValueError(
+      f"P-H3-Image samples on the checkpoint's fixed {_PH3_IMAGE_STEPS}-step grid "
+      f"(`sample_sigmas`) and cannot run {args.num_inference_steps} steps; drop --num_inference_steps "
+      f"or pass {_PH3_IMAGE_STEPS}.")
 
   model_path = _path("PrunaAI/P-H3-Image", args=args)
   return ExampleInitConfig(
