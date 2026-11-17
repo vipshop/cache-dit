@@ -1209,7 +1209,9 @@ FLUX cute+row_major fused eager 7.77 s、compile 5.76 s；203 个 SVDQ 测试通
 - D 从主 accumulator 寄存器读 A 已用真实 `convert_layout_acc_rowcol` 视图做常量坐标映射并通过 13 个 fused/write_dense 用例，但性能为负（M4096 502.7 µs、M8192 945.9 µs）；不是正确性问题，而是寄存器/指令调度不划算。
 - qout 用一次 warp shuffle 交换四个向量的方案字节映射不成立：源 lane 不能在同一条 shuffle 中按四个目标 lane 分别选择不同向量；12 个位级用例失败后已恢复。
 
-剩余 chain 差距不是融合 GEMM 本身。预分配 qout/oscales/D 只省约 4–8 µs，两个 runtime 相同；host enqueue 仅差约 7 µs；fc2 改读缓存的 qout/scales 或 D 也不缩小差距。在线 Event 显示第二段 GEMM 的调用间隔异常大于其独立 kernel 时长，因此下一步应做带 NVTX 的 nsys API/kernel 时间线，定位 launch/host/allocator 间隙，不要继续盲改量化或 D 的算术。
+预分配 qout/oscales/D 只省约 4–8 µs，host enqueue 仅差约 7 µs，fc2 改读缓存 qout/scales 或 D 也不缩小差距。随后给 producer/fused GEMM/fc2 加 NVTX，并在 nsys SQLite 中按 correlationId 关联 runtime launch 与 kernel：M=8192 时 producer 86.2/78.0 µs（cute 更快），fused fc1 877.6/889.2 µs，fc2 **663.6/760.5 µs**，kernel 间 gap 都只有约 0.4 µs。根因是**第二段 full-M GEMM 的形状路径**，不是 host/launch 空隙。
+
+注意一个测量陷阱：早期独立 fc2 行误用了 M=256 的校准激活，得到约 106 µs，不能代表 chain 的 M=4096/8192。修正为 full-M 后，fc2 为 M4096 385.4/435.1 µs、M8192 687.2/782.6 µs，cute 慢 13–14%，与链级差距一致。后续应针对 `M×3072×12288` 的非融合/consumer GEMM 做 tile 与 mainloop 归因。
 
 ### 32.6 回归与边界
 
