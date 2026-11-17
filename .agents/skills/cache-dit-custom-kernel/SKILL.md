@@ -17,6 +17,7 @@ user-invocable: true
 | 接入**模型专属**算子族（`models`） | 算子只服务单个 vendored 模型，要动 `csrc/kernels/models/` 与 `kernels/models/`，或要在模型侧加 `fused_ops.py` 调用点 | 本文 §9 + `references/kernel-integration-chain.md` §2 |
 | 从上游仓库移植算子 | 有 nunchaku / deepcompressor / flashinfer 参照实现 | `references/operator-migration.md` |
 | 改现有算子实现 | 只改 `.cu/.cuh/.h`，schema、`setup.py`、Python 包装都不动 | 本文 §5 + 该族 Python 模块 + 对应测试 |
+| 改 SVDQ 融合输出 / 门控 | 动 `qout/oscales/D`、`write_dense`、`fuse_silu/fuse_glu`、`gate` 或 `lora_layout` 的语义 | 本文 §8.3–8.4 + `references/svdq-nvfp4-cute.md` §32 |
 | 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列专项 ref |
 | SVDQuant 原理 | 推导、误差上界、scale 粒度、低秩残差 | `references/svdquant-mathematics.md` |
 
@@ -93,14 +94,16 @@ SVDQW4A4Linear.quantize / forward_quant
   - `gemm_w4a4_int4.cu` / `gemm_w4a4_fp4.cu`：唯一两个负责把 kernel 实例化进 `.so` 的 TU。
   - `gemm_base.cuh`、`mma.cuh`、`lora.cuh`、`epilogues.cuh`、`gemm_utils.cuh`、`utils.cuh`、`dispatch.h`：共享构件；`epilogues.cuh` 现在只剩 `EpilogueGelu`（其余 `EpilogueQKVProj` / `RMSNormRope` / `PackQKV` / `LiteLA` 已随无调用者的 native 分支删除）。
   - `zgemm.h`：对外只声明 `gemm_w4a4` 与 `quantize_w4a4`。
-- `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合和 TMA pipeline。
-- `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译。公共入口声明在 `quantize.h`。
+- `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合、TMA pipeline，以及**融合 epilogue**（`qout`/`oscales`/`lora_down`/`lora_act_out`/`smooth_factor`/`fuse_silu`；`kFuseOut` 是独立模板维度，非融合实例 SASS 与数值不变）。契约见 `references/svdq-nvfp4-cute.md` §32。
+- `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译；`quantize_glu.cuh` 是两族 producer 共用的 `value * silu(gate)` 成对数学（含 BF16 舍入顺序），改门控语义只改这一处。公共入口声明在 `quantize.h`。
 - cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
 - `csrc/kernels/svdq/runtime.h`：`RuntimeKernel` / `RuntimeParams` 与 `LoraLayout` 的**唯一**定义处。原 `runtime_params.h` 已删除；`LoraLayout` 原先定义在 cute 的 `gemm_w4a4.h`，现由 `runtime.h` 提供、cute 头 include 它。只有 host 侧依赖这个头，device kernel 体不依赖。
 - 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
 
-公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 与 NVFP4 都走同一个 native `gemm_w4a4`，差别只在 packed 权重/scale 格式（`fp4` 开关）；显式 `cute` 时 Python 默认 `lora_layout="row_major"`；显式 native 与 `fused_mlp` 保留 FP32 fragment-D 契约。GEMM 尚未达到相对 native 的 5% 验收目标，见 §8.1。
+公开 `runtime_kernel` 只接受 `None/native/cute`。INT4 与 NVFP4 都走同一个 native `gemm_w4a4`，差别只在 packed 权重/scale 格式（`fp4` 开关）；显式 `cute` 时 Python 默认 `lora_layout="row_major"`。
+
+`fused_mlp` 已不再绑定 `lora_layout`：两个 runtime、两种 D 契约都能跑融合链（native 写 FP32 fragment 原地原子加；`row_major` 先累到 FP32 scratch 再由 `finalize_lora_rows_kernel` 转 BF16）。融合能力清单与硬约束（tile 只能是 BN=256/BK=128、`row_major` 融合 D 只允许 identity rank scale、独立 gate 张量必须 pad 到 256 对齐）见 `references/svdq-nvfp4-cute.md` §32。GEMM 本身尚未达到相对 native 的 5% 验收目标，见 §8.1。
 
 SVDQ 在通用模板之外的偏离（C++ 侧几乎无 `TORCH_CHECK`、形状/通道校验在 Python；`RuntimeParams`/`LoraLayout` 仍属全局 `svdq`）见 `references/kernel-integration-chain.md` §2 与 §4.2，照抄前先看。
 
@@ -109,11 +112,16 @@ SVDQ 在通用模板之外的偏离（C++ 侧几乎无 `TORCH_CHECK`、形状/�
 保持以下数据流，不得重新引入旧工作流适配层：
 
 ```text
-quantize_r32/64/128（或 rank32/K<=3072 的 quantize_uni）
+quantize_r32/64/128（或 rank32/K<=3072 的 quantize_uni；可带 gate）
   -> native packed qact/ascales + row-major BF16 D[M,R]
   -> gemm_w4a4_kernel
   -> A/SFA G2R + B/SFB/D/L1 TMA + NVFP4 MMA + BF16 LoRA-up MMA
+  -> [融合 epilogue] 就地激活 + 重新量化出下一层的 native pack + D（可跳过 dense store）
 ```
+
+融合 epilogue 让 CuTe 侧可以自己终结一条 MLP 链：`bias/wcscales → LoRA-up → 激活 → ÷smooth → qout/oscales`，同时把下一层的 `lora_down` 项归约成 D。链路的**两个方向都合法**：cute 生产者产出的 pack 给 native GEMM 用，native 生产者产出的 FP32 fragment D 给 cute GEMM 用；不要为了"runtime 一致"再造一套 pack。
+
+门控（SwiGLU）只存在于**两族 producer**，不在 GEMM epilogue：门控的操作数要么来自另一个 GEMM（Qwen-Image-2.1 的 `proj`/`gate_layer`），要么宽出单个 N tile（diffusers `SwiGLU` 的 2H 单层）。`quantize_w4a4` 的 `gate` 可选——给独立张量，或省略表示取同一张量的后半段；两种形状共用一条 kernel 路径。
 
 CuTe producer 的两条合法 D 路径：
 
@@ -182,11 +190,21 @@ python -m pytest -q \
 
 CUDA 数值改动还需运行 producer、独立 GEMM、高层 Linear 和 INT4 隔离回归。改名时同时检查 Python 私有 pybind 调用、公开 torch.library 名称、fake 实现、CLI、文档和临时 harness。运行 `pre-commit run --files ...`、`git diff --check` 和 `read_lints`。
 
-FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline。精度结论需说明量化差异；不能仅凭“正常出图”宣称无损。
+动融合 epilogue 或 producer 门控时，这几条是必跑的最小集（都在 `tests/kernels/test_svdquant_cute.py`）：
+
+- `test_fused_gelu_mlp_*` 三组合（native / cute+native / cute+row_major）× M=256/512/1024：M>256 才有 `row/256` 项，只测 M=256 时 qout `base` 与 D `block_stride` 的多块记账完全没有覆盖。
+- `test_write_dense_*`：`write_dense` True/False 的 qout/oscales 必须 `torch.equal`（D 只到原子顺序）。
+- `test_glu_producer_matches_an_explicit_gate`：两族 producer × 两种形状（独立 gate / 单张量后半段），对照"先算 `value*silu(gate)` 再量化"。
+- `test_swiglu_pass_fuses_the_qwen21_shape`（两种 layout）+ `test_swiglu_pass_ignores_ada_layer_norm`。
+- 负例：窄 tile（N=384）必须抛错而不是返回脏数据；`fuse_silu` 与 `qout` 互斥。
+
+FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline，并且**必须再加一条同 runtime 的 unfused 臂**——否则无法把量化收益（约 2.1×）与融合收益（2–3%）分开。精度结论需说明量化差异；不能仅凭"正常出图"宣称无损。
 
 ## 8. SVDQ 当前性能结论与边界
 
-### 8.1 最新状态（2026-11-11，RTX PRO 5000）
+### 8.1 最新状态（2026-11-17，RTX PRO 5000）
+
+**融合能力已补齐（PR #1332，见 §8.4 与 `references/svdq-nvfp4-cute.md` §32）**：CuTe GEMM 有融合 epilogue（qout/oscales + 两种 D 契约 + `write_dense=False`），两族 producer 都有门控，`fused_mlp` 不再绑定 `lora_layout`。链级收益：native 1.25×、cute+row_major 1.17×（M=4096、R=32、n=12288）；e2e 上融合本身只有 +2–3%，其余大头是量化。
 
 - `main` 已合入 PR #1284（mainloop 索引简化）；`dev` 在其上包含 P2 dispatch commit `3ad684c6`。P0 8M×1N、P1 S4/独立 LoRA ring 均已实测失败并回退，证据见 `references/svdq-nvfp4-cute.md` §30。
 - 官方 `bench/kernels/bench_svdquant.py`，5 shape × rank32/64/128：本次会话复测 producer geomean **1.1344×**（15/15，1.0784×–1.2129×）；这些格均不进入小 M fused 新分支，属于无关回归检查，不能把相对历史会话的增量归因于本项改动。既有三轮中位的 row-major kernel-only GEMM **1.0248×**（12/15）、row-major e2e **1.0553×**（14/15）、cute+native-D e2e **1.0462×**（14/15）仍是独立历史口径，不与本次 producer 数字拼接收益。
@@ -206,7 +224,7 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 - 当前统一 CUDA Event 基线见 `references/svdq-nvfp4-cute.md` §17（GPU4，Event50×3轮）。M4096 rank32 kernel-only 120.22us vs native120.24us；完整层 M1024/M4096 分别 62.99/164.62us vs native63.65/168.34us。
 - **rank32 大 shape 仍落后 native**：`8192x3072`/`4096x6144`/`8192x6144`/`16Kx8Kx8K` 的 cute/native 为1.026/1.020/1.047/1.064。rank128 在所有大 shape 略优于 native（0.32%–1.43%）；rank64 在 `8192x6144`/16K 退化。下一条主矛盾是 rank32/64 大 shape。
 - hybrid 的机制是拆掉 A/SFA smem 中转：相对全 TMA，shared 指令/wavefront/bank conflict 降22%/18%/29%，`math_pipe_throttle` 6.00→4.61，静态 FENCE 9→2；代价是 A 重复 G2R load，global 请求升4倍、L1 hit 94.5→55.1%，但 L2 命中87%，总量仍远低于 native。
-- 当前 hybrid 重测逐 k-block `A load -> B/SFB copy -> MMA`：168 regs、零 spill；12格净变化约0，2K rank32 +0.61%，8K/16K 小优0.2%–0.5%，在1%门槛内，已保留。旧“0.12%不保留”是旧 hybrid/nsys 口径。
+- 当前 hybrid 重测逐 k-block `A load -> B/SFB copy -> MMA`：168 regs、零 spill；12格净变化约0，2K rank32 +0.61%，8K/16K 小优0.2%–0.5%，在1%门槛内，已保留。旧"0.12%不保留"是旧 hybrid/nsys 口径。
 - stages 仍只有 S3：S2 被 output overlay 64KiB > pipeline 55.3KiB 拒绝，S4 110.6KiB > 99KiB；G2R 只释放未使用的 SFA 3KiB，A/B 区仍被 D/L1 overlay 占用。要加 stages 必须先解耦 overlay。
 - 剩余 0.737M bank conflict 已定位为 **LoRA BF16 D/L1 的标量 LDS**，不是 SFB。canonical `tile_to_shape(SW64 atom,(BM,rankTile,stages))` + LDSM 已将它降到 **483**，零 spill；M4096 约快0.45%、16K 约快0.42%，已保留。BK64 fallback 必须用 SW32 atom；不要重做 conflict 消除。
 - FlashInfer CuTeDSL 四 shape 比 native 慢9%–15%，不移植。A-only TMA 与 native pack 不兼容（rel_l2=1.30）；producer coalesced 写回无收益（46.81→47.01us）。
@@ -228,11 +246,11 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 **问题**：`fused_gelu_mlp` 走融合 qout 路径时，kernel 仍会跑一遍 `EpilogueDefault`（shmem unpack + 全量 gmem store），把 `[M, N]` dense fp16 写到 HBM，而调用方从不读它。FLUX 类 FF 层（M=4096、N=12288、bf16）每次多写 **96 MiB**。
 
-**契约**：`svdq_gemm_w4a4(..., write_dense=False)` 时 Python 传 `out=None`（pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断），C++ 融合分支的 `if (out.valid())` 为假，于是只留 `EpilogueQuantize`、不加载 `EpilogueDefault`。三条硬约束：
+**契约**：`svdq_gemm_w4a4(..., write_dense=False)` 时 Python 传 `out=None`（pybind 形参是 `std::optional<torch::Tensor>`，`Tensor{}` 不参与 `gemm_w4a4.cu` 的 dtype 推断）。两个 runtime 都支持，但实现不同：native 走 `if (out.valid())` 决定是否加载 `EpilogueDefault`；CuTe 侧**只跳过最后的 TMA store**，FP32→BF16 转换、STSM 进 smem、两次 `__syncthreads` 都必须保留，因为融合量化与 LoRA-down 归约要回读那块 smem tile。三条硬约束：
 
-1. 只有 `runtime='native'`（CuTe GEMM 的唯一输出就是 dense buffer）；
-2. 必须同时给 `qout` + `oscales`（否则 C++ 落到 `else { assert(false) }`，直接 abort）；
-3. 必须给 `smooth_factor`（`EpilogueQuantize` 无条件读它）；NVFP4 还要至少给 `bias` / `lora_up` / `lora_down` / `wcscales` 之一——`out` 缺席后它们是 `gemm_w4a4.cu` 仅剩的 dtype 来源，全为空时 `Config` 推断不出来、kernel 根本不 launch。
+1. 必须同时给 `qout`（`write_dense=False` 没有别的产物落点）；
+2. 必须给 `smooth_factor`（融合量化无条件读它）；
+3. native 侧还要至少给 `bias` / `lora_up` / `lora_down` / `wcscales` 之一——`out` 缺席后它们是 `gemm_w4a4.cu` 仅剩的 dtype 来源，全为空时 `Config` 推断不出来、kernel 根本不 launch。CuTe 入口不靠这个推断（输出 dtype 固定 BF16），但**空指针 TMA 描述符**是它的等价陷阱：`mC` / `tma_c` / `d_ptr` / `l1_ptr` 都从 `out` 派生，CUTLASS 那里只有一句 `assert(false)`，而 host TU 的 `-DNDEBUG` 会把它消掉 → 必须用 `out_or_act` 占位指针构造，再靠 `write_dense` 运行期标志跳过 store。
 
 这几条在 Python 侧 `_svdq_gemm_w4a4` 与公开 `svdq_gemm_w4a4` 各校一次。**注意 C++ 侧的对应检查是启用的**：本仓的 `-DNDEBUG` 只进 host `cflags`，不进 `cuda_cflags`，所以 `assert` 在 nvcc TU 里是活的（现场见过 `Assertion 'lora_down.shape[0] == N' failed`），坏组合会 SIGABRT 而不是"静默跳过"——因此 Python 守卫的价值是**可读的报错**，不是"唯一的防线"。返回值是 `act.new_empty((0, wgt.shape[0]))` 占位张量：dtype 跟随 `act`（即 int8）、**禁止读取**，`numel()==0` 是唯一契约。
 
@@ -248,9 +266,41 @@ FLUX 验收使用同一 seed 对比默认 native、显式 cute 和 BF16 baseline
 
 即：fp16 GELU 回写加二次量化省掉后，整条 MLP 链快 **1.25×**；其中单是 dense store 一项值 **43.3 µs ≈ 4.4%** 与 **+72 MiB** peak（dense buffer 本身 96 MiB，但 `peak` 是 max-live、两链的峰值相位不同，差值不等于 buffer 尺寸，别拿它当 tensor 大小核对）。
 
-`--fused-mlp` 目前只跑 NVFP4。INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=12288/k=3072：`write_dense` 开/关 5742 / 5800 µs）：INT4 native 的 GEMM 比 NVFP4 慢约 25×，所以同样 43 µs 在那里只有 0.8%，落在噪声里 —— "去掉 dense 只省显存不省时间"这个说法**只对 INT4 成立**，NVFP4 上它是实测的 4.4%。`fused_gelu_proj` 不受影响（它必须返回 dense 激活，保持默认 `True`）。
+`--fused-mlp` 现在带 `--runtime {native,cute}` 与 `--lora-layout {native,row_major}`（2026-11-17），并且用 `SVDQW4A4Linear.load_state_dict` 建层，所以被测的确实是目标 runtime 的 pack；同 shape 下 M=4096 的 fused 链：native **1.248×**、cute+row_major **1.168×**、cute+native-D **1.175×**，M=8192 时 1.319×/1.203×/1.211×，peak 分配 192→59 MiB。CuTe 侧比 native 慢 4–12%，差距在 D 归约回读 smem 与 `finalize` 那一次 launch，见 §8.4。
+
+INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=12288/k=3072：`write_dense` 开/关 5742 / 5800 µs）：INT4 native 的 GEMM 比 NVFP4 慢约 25×，所以同样 43 µs 在那里只有 0.8%，落在噪声里 —— "去掉 dense 只省显存不省时间"这个说法**只对 INT4 成立**，NVFP4 上它是实测的 4.4%。`fused_gelu_proj` 不受影响（它必须返回 dense 激活，保持默认 `True`）。
+
+**e2e 上别把量化收益算成融合收益**（2026-11-17 实测，FLUX 1024²/28 步）：base 17.08s → unfused SVDQ 8.07s（**2.1×，全部来自量化**）→ fused 7.84s（融合只再快 **3.1%**）；`--compile` 档 6.00s → 5.90s（**2.0%**，inductor 已经把 GELU/量化链融掉了）。Qwen21 8 步：3.56s → 2.03s → 1.94s（+4.4%）。任何"fused 带来 2× 提速"的说法都是把两件事混在一起。
 
 **回归口径**：`test_fused_gelu_mlp_matches_the_unfused_two_step[int4|nvfp4]` 是 fused 路径的**首个执行覆盖**，同时验证 rel-L2 < 5e-3 / cosine > 0.999 与"flag 真的传下去了"（spy `fused.svdq_gemm_w4a4`）。注意 `fused_gelu_mlp` 的第二个 GEMM 走 `linear.py` 的 import，spy 只能拦到 2 次调用。
+
+### 8.4 融合 epilogue 与 fused SwiGLU 现状（2026-11-17，PR #1332）
+
+能力矩阵（全部已实测，不再是 native-only）：
+
+| 能力 | native GEMM + native producer | cute GEMM + native producer | cute GEMM + row_major producer |
+|---|---|---|---|
+| fused GELU MLP（`fused_gelu_mlp` / `fused_gelu_proj`） | 支持 | 支持 | 支持 |
+| fused SiLU（dense-only，`fuse_silu`） | 支持 | 支持 | 支持 |
+| `write_dense=False` | 支持 | 支持 | 支持 |
+| fused SwiGLU（门控在 producer） | 支持 | 支持 | 支持 |
+| 每链 rel-L2 门槛 | 5e-3 | 5e-3 | 5e-3 |
+
+四条最容易踩的坑（细节与公式见 `references/svdq-nvfp4-cute.md` §32）：
+
+1. **`value_cols` 不能重推**。producer 里"独立 gate 张量"模式下 `actualN` 已经是量化宽度，kernel 再用 `fuse_glu ? actualN/2 : actualN` 推导就会把后半列全读成 0（表现为 qact 50% 字节不匹配，而不是报错）。宽度只能由 host 传进去。
+2. **独立 gate 张量必须 pad 到 256 对齐**。CuTe producer 会走满 padded M（native 有 `maxRows` 谓词所以不需要），漏了就是 assert `gate.numel()/K == M` 失败。
+3. **`silu(gate)` 先舍入到 BF16 再乘 value**。这是模型自身的算术（两个操作数都是 bf16）；在 FP32 里一次舍入会让 fused 链与 unfused 差 2.3%（FP4 码翻转），看起来像"融合改变了数值"。
+4. **`row_major` 融合 D 只允许 identity rank scale**。finalize 折的是"下一层"的 scale，ABI 没有传入口；非 unit scale 必须在 `_require_fusable` 与 C++ 两侧硬拒，否则静默折错系数。
+
+融合实例的边界：只有 BN=256/BK=128 且 main-first 的 tile 有融合实例（`kFuseOut` 独立模板维度，非融合实例 SASS 不动）；其它 tile 必须**显式抛错**，不能让 `if constexpr` 落空成"GEMM 跑了但 qout 是脏数据"。
+
+**测量陷阱（两个都会误导结论）**：
+
+- `cache_dit.metrics.calculate_psnr` 喂 `uint8` 数组时按 256 模减，**虚高约 10 dB**；比 PSNR 前先把图转 float。
+- SVDQ 各档**跨进程不可复现**（producer 的 D 用 relaxed FP32 原子累加）：FLUX 同档重跑 23.7–28.5 dB、Qwen21 31.9–32.6 dB，而 `base` 是 bit 级可复现（重跑 99 dB）。所以 fused↔unfused、native↔cute 的图像差（23–28 dB）**都在噪声带内**，e2e PSNR 不能作为等价性判据；等价性看 kernel 的 qact 逐字节与链 rel-L2。
+
+未做：CuTe 融合链在 chain 级比 native 慢 **9–13%**，但差距**只**来自融合 epilogue 的 D 归约（只出 qout 时 1.03×，加 D 变 1.14×；native 从累加器寄存器直接 MMA，cute 要回读 smem O tile + `row_major` 的 finalize/scratch）。producer 0.82–0.91×、非融合 GEMM 0.97–1.00×，两侧 cute 都不慢，别去动它们。分档数据见 `references/svdq-nvfp4-cute.md` §32.3，方向是把 D 归约改成读累加器寄存器/单 warp 全 K，而不是再拆 kernel。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 

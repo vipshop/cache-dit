@@ -135,7 +135,8 @@ def test_quantize_config_accepts_explicit_native_lora_layout() -> None:
   assert config.svdq_kwargs["lora_layout"] == "native"
 
 
-def test_quantize_config_fused_mlp_keeps_native_default_lora_layout() -> None:
+def test_quantize_config_fused_mlp_keeps_the_cute_row_major_default() -> None:
+  # The fused epilogue writes either D layout, so enabling it must not change the runtime default.
   config = QuantizeConfig(
     quant_type="svdq_nvfp4_r128_dq",
     svdq_kwargs={
@@ -144,19 +145,20 @@ def test_quantize_config_fused_mlp_keeps_native_default_lora_layout() -> None:
     },
   )
 
-  assert config.svdq_kwargs["lora_layout"] == "native"
+  assert config.svdq_kwargs["lora_layout"] is None
 
 
-def test_quantize_config_rejects_row_major_with_fused_mlp() -> None:
-  with pytest.raises(ValueError, match="fused_mlp"):
-    QuantizeConfig(
-      quant_type="svdq_nvfp4_r128_dq",
-      svdq_kwargs={
-        "runtime_kernel": "cute",
-        "lora_layout": "row_major",
-        "fused_mlp": True
-      },
-    )
+def test_quantize_config_accepts_row_major_with_fused_mlp() -> None:
+  config = QuantizeConfig(
+    quant_type="svdq_nvfp4_r128_dq",
+    svdq_kwargs={
+      "runtime_kernel": "cute",
+      "lora_layout": "row_major",
+      "fused_mlp": True
+    },
+  )
+
+  assert config.svdq_kwargs["lora_layout"] == "row_major"
 
 
 def test_quantize_config_strify_appends_weight_svdq_dq_name() -> None:

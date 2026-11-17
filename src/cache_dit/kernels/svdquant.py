@@ -141,6 +141,7 @@ def _call_svdq_quantize_w4a4_native(
   lora_down: torch.Tensor | None,
   lora_act_out: torch.Tensor,
   smooth: torch.Tensor | None,
+  gate: torch.Tensor | None,
   fuse_glu: bool,
   fp4: bool,
 ) -> None:
@@ -156,6 +157,8 @@ def _call_svdq_quantize_w4a4_native(
   :param lora_down: Optional LoRA down-projection tensor.
   :param lora_act_out: Destination buffer for fused LoRA activations.
   :param smooth: Optional smoothing tensor applied before quantization.
+  :param gate: Optional gating half for a fused SwiGLU; when omitted the second half of `input`
+    supplies it.
   :param fuse_glu: Whether GLU fusion should be enabled in the kernel.
   :param fp4: Whether to use the FP4/NVFP4 quantization path.
   """
@@ -164,7 +167,10 @@ def _call_svdq_quantize_w4a4_native(
   rank = 0 if lora_down is None else lora_down.shape[1]
   if rank == 0:
     dummy_rank = 16
-    dummy_lora_down = torch.zeros(input.shape[1],
+    value_channels = input.shape[1]
+    if fuse_glu and gate is None:
+      value_channels //= 2
+    dummy_lora_down = torch.zeros(value_channels,
                                   dummy_rank,
                                   dtype=input.dtype,
                                   device=input.device)
@@ -179,6 +185,7 @@ def _call_svdq_quantize_w4a4_native(
       dummy_lora_down,
       dummy_lora_act_out,
       smooth,
+      gate,
       fuse_glu,
       fp4,
       [],
@@ -193,6 +200,7 @@ def _call_svdq_quantize_w4a4_native(
     lora_down,
     lora_act_out,
     smooth,
+    gate,
     fuse_glu,
     fp4,
     [],
@@ -287,6 +295,7 @@ def _call_svdq_quantize_w4a4(
   lora_down: torch.Tensor | None,
   lora_act: torch.Tensor,
   smooth: torch.Tensor | None,
+  gate: torch.Tensor | None,
   fuse_glu: bool,
   fp4: bool,
   lora_scales: list[float],
@@ -301,6 +310,7 @@ def _call_svdq_quantize_w4a4(
     lora_down=lora_down,
     lora_act=lora_act,
     smooth=smooth,
+    gate=gate,
     fuse_glu=fuse_glu,
     fp4=fp4,
     lora_scales=lora_scales,
@@ -310,7 +320,7 @@ def _call_svdq_quantize_w4a4(
 
 torch.library.define(
   "cache_dit_cuda_ops::svdq_quantize_w4a4",
-  "(Tensor input, Tensor? lora_down, Tensor? smooth, str lora_layout, bool fuse_glu, bool fp4, float[] lora_scales, int pad_size) -> (Tensor output, Tensor oscales, Tensor lora_act)",
+  "(Tensor input, Tensor? lora_down, Tensor? smooth, Tensor? gate, str lora_layout, bool fuse_glu, bool fp4, float[] lora_scales, int pad_size) -> (Tensor output, Tensor oscales, Tensor lora_act)",
 )
 
 
@@ -319,6 +329,7 @@ def _svdq_quantize_w4a4(
   input: torch.Tensor,
   lora_down: torch.Tensor | None,
   smooth: torch.Tensor | None,
+  gate: torch.Tensor | None,
   lora_layout: str,
   fuse_glu: bool,
   fp4: bool,
@@ -328,6 +339,20 @@ def _svdq_quantize_w4a4(
   batch_size, channels = input.shape
   batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
   rank = 0 if lora_down is None else lora_down.shape[1]
+  # A gated activation halves the width: either the caller hands over a separate gate tensor of
+  # the final width, or the second half of `input` supplies it.
+  value_channels = channels
+  if fuse_glu:
+    if gate is None:
+      if channels % 2 != 0:
+        raise ValueError(f"fused GLU over a single tensor needs an even width, got {channels}.")
+      value_channels = channels // 2
+    else:
+      if tuple(gate.shape) != (batch_size, channels):
+        raise ValueError(f"fused GLU expects gate of shape {(batch_size, channels)}, got "
+                         f"{tuple(gate.shape)}.")
+      if not gate.is_contiguous():
+        raise ValueError("fused GLU requires a contiguous gate tensor.")
 
   if _normalize_svdq_lora_layout(lora_layout) == "row_major":
     if smooth is None:
@@ -339,27 +364,37 @@ def _svdq_quantize_w4a4(
     padded_input = input.contiguous()
     if batch_size_pad != batch_size:
       padded_input = torch.nn.functional.pad(padded_input, (0, 0, 0, batch_size_pad - batch_size))
-    output = torch.empty((batch_size_pad, channels // 2), dtype=torch.uint8, device=input.device)
-    oscales = torch.empty(batch_size_pad * channels // 16,
+      if gate is not None:
+        # The CuTe producer walks every padded row, so a separate gate half has to be padded too.
+        gate = torch.nn.functional.pad(gate, (0, 0, 0, batch_size_pad - batch_size))
+    output = torch.empty((batch_size_pad, value_channels // 2),
+                         dtype=torch.uint8,
+                         device=input.device)
+    oscales = torch.empty(batch_size_pad * value_channels // 16,
                           dtype=torch.float8_e4m3fn,
                           device=input.device)
     lora_act = torch.empty((batch_size_pad, rank), dtype=torch.bfloat16, device=input.device)
-    _call_svdq_quantize_w4a4(padded_input, output, oscales, lora_down, lora_act, smooth, False,
-                             True, lora_scales, "row_major")
+    _call_svdq_quantize_w4a4(padded_input, output, oscales, lora_down, lora_act, smooth, gate,
+                             fuse_glu, True, lora_scales, "row_major")
     return output, oscales, lora_act
 
-  output = torch.empty(batch_size_pad, channels // 2, dtype=torch.uint8, device=input.device)
+  output = torch.empty(batch_size_pad, value_channels // 2, dtype=torch.uint8, device=input.device)
   if fp4:
-    if channels % 16 != 0:
-      raise ValueError(f"Expected channels divisible by 16 for FP4 quantization, got {channels}.")
-    oscales = torch.empty(channels // 16,
+    if value_channels % 16 != 0:
+      raise ValueError(f"Expected channels divisible by 16 for FP4 quantization, got "
+                       f"{value_channels}.")
+    oscales = torch.empty(value_channels // 16,
                           batch_size_pad,
                           dtype=torch.float8_e4m3fn,
                           device=input.device)
   else:
-    if channels % 64 != 0:
-      raise ValueError(f"Expected channels divisible by 64 for INT4 quantization, got {channels}.")
-    oscales = torch.empty(channels // 64, batch_size_pad, dtype=input.dtype, device=input.device)
+    if value_channels % 64 != 0:
+      raise ValueError(f"Expected channels divisible by 64 for INT4 quantization, got "
+                       f"{value_channels}.")
+    oscales = torch.empty(value_channels // 64,
+                          batch_size_pad,
+                          dtype=input.dtype,
+                          device=input.device)
   lora_act_out = torch.empty(batch_size_pad, rank, dtype=torch.float32, device=input.device)
 
   _call_svdq_quantize_w4a4_native(
@@ -369,6 +404,7 @@ def _svdq_quantize_w4a4(
     lora_down,
     lora_act_out,
     smooth,
+    gate,
     fuse_glu,
     fp4,
   )
@@ -380,23 +416,26 @@ def _fake_svdq_quantize_w4a4(
   input: torch.Tensor,
   lora_down: torch.Tensor | None,
   smooth: torch.Tensor | None,
+  gate: torch.Tensor | None,
   lora_layout: str,
   fuse_glu: bool,
   fp4: bool,
   lora_scales: list[float],
   pad_size: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-  del smooth, fuse_glu, lora_scales
+  del smooth, lora_scales
   batch_size, channels = input.shape
   batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
   rank = 0 if lora_down is None else lora_down.shape[1]
-  output = input.new_empty((batch_size_pad, channels // 2), dtype=torch.uint8)
+  value_channels = channels if (fuse_glu
+                                and gate is not None) else channels // (2 if fuse_glu else 1)
+  output = input.new_empty((batch_size_pad, value_channels // 2), dtype=torch.uint8)
   if _normalize_svdq_lora_layout(lora_layout) == "row_major":
-    oscales = input.new_empty((batch_size_pad * channels // 16, ), dtype=torch.float8_e4m3fn)
+    oscales = input.new_empty((batch_size_pad * value_channels // 16, ), dtype=torch.float8_e4m3fn)
     lora_act = input.new_empty((batch_size_pad, rank), dtype=torch.bfloat16)
     return output, oscales, lora_act
   oscales = input.new_empty(
-    (channels // (16 if fp4 else 64), batch_size_pad),
+    (value_channels // (16 if fp4 else 64), batch_size_pad),
     dtype=torch.float8_e4m3fn if fp4 else input.dtype,
   )
   lora_act_out = input.new_empty((batch_size_pad, rank), dtype=torch.float32)
@@ -439,7 +478,12 @@ def _svdq_gemm_w4a4(
   write_dense: bool = True,
 ) -> torch.Tensor:
   if _normalize_svdq_runtime(runtime) == "cute":
-    output = torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
+    # The CuTe fused epilogue can skip the dense store, but only when it emits the packed
+    # activation instead; without qout there would be nothing to return at all.
+    if not write_dense:
+      output = None
+    else:
+      output = torch.empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16, device=act.device)
     _call_svdq_gemm_w4a4(
       act=act,
       wgt=wgt,
@@ -463,6 +507,8 @@ def _svdq_gemm_w4a4(
       runtime="cute",
       lora_layout=lora_layout,
     )
+    if output is None:
+      return act.new_empty((0, wgt.shape[0]))
     return output
 
   if _normalize_svdq_lora_layout(lora_layout) != "native":
@@ -548,6 +594,8 @@ def _fake_svdq_gemm_w4a4(
   del smooth_factor, wcscales, act_unsigned, fuse_silu, fp4, alpha, lora_scales
   if _normalize_svdq_runtime(runtime) == "cute":
     _normalize_svdq_lora_layout(lora_layout)
+    if not write_dense:
+      return act.new_empty((0, wgt.shape[0]))
     return act.new_empty((act.shape[0], wgt.shape[0]), dtype=torch.bfloat16)
   if not write_dense:
     return act.new_empty((0, wgt.shape[0]))
@@ -561,6 +609,7 @@ def svdq_quantize_w4a4(
   lora_layout: str = "native",
   fp4: bool = True,
   fuse_glu: bool = False,
+  gate: torch.Tensor | None = None,
   lora_scales: list[float] | None = None,
   pad_size: int = 256,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -576,7 +625,9 @@ def svdq_quantize_w4a4(
   :param smooth: Optional smoothing factors `[in_features]`; required by `'row_major'`.
   :param lora_layout: LoRA-down output layout, either `'native'` or `'row_major'`.
   :param fp4: Whether the packed activations use FP4/NVFP4 instead of INT4.
-  :param fuse_glu: Whether GLU fusion should be enabled in the native kernel.
+  :param fuse_glu: Whether to gate the activations as `value * silu(gate)` before quantizing.
+  :param gate: Optional `[tokens, in_features]` gating half of a fused SwiGLU. When omitted, the
+    second half of `input` supplies it and `input` must be twice as wide as the quantized output.
   :param lora_scales: Optional FP32 scale per 16-rank group, consumed by `'row_major'` and
     defaulting to ones.
   :param pad_size: Token padding multiple required by the packed activation layout.
@@ -590,7 +641,7 @@ def svdq_quantize_w4a4(
   normalized_scales = lora_scales
   if normalized_scales is None:
     normalized_scales = [1.0] * max(1, rank // 16)
-  return torch.ops.cache_dit_cuda_ops.svdq_quantize_w4a4(input, lora_down, smooth,
+  return torch.ops.cache_dit_cuda_ops.svdq_quantize_w4a4(input, lora_down, smooth, gate,
                                                          normalized_layout, fuse_glu, fp4,
                                                          normalized_scales, pad_size)
 
@@ -631,12 +682,18 @@ def svdq_gemm_w4a4(
   and `runtime='cute'` + `lora_layout='row_major'` (row-major BF16 D with the scales folded in).
 
   The trailing `qout`/`oscales`/`lora_down`/`lora_act_out`/`smooth_factor`/`fuse_silu` arguments
-  only exist for the native fused-MLP epilogue chain; the CuTe runtime rejects them.
+  drive the fused-MLP epilogue chain on both runtimes: the activated tile is quantized into the
+  native 4-bit activation pack of the next layer and the next layer's LoRA-down term is reduced in
+  the same kernel. `smooth_factor` is the next layer's row-major smoothing vector (not the packed
+  native one), and `lora_down` is its row-major `[N, R_down]` down-projection.
 
-  `write_dense=False` drops that chain's dense output entirely: the kernel skips its `EpilogueDefault`
-  store and only writes `qout`/`oscales`/`lora_act_out`, which is what a fused-MLP pass needs. It
-  requires `runtime='native'` plus `qout`, `oscales` and `smooth_factor`, and the return value becomes
-  a 0-element placeholder whose dtype and shape carry no meaning.
+  `write_dense=False` drops the dense output entirely: the kernel skips its store and only writes
+  `qout`/`oscales`/`lora_act_out`, which is what a fused-MLP pass needs. It requires `qout`,
+  `oscales` and `smooth_factor`, and the return value becomes a 0-element placeholder whose dtype
+  and shape carry no meaning.
+
+  `lora_act_out` follows `lora_layout`: the native layout receives the packed FP32 fragment D in
+  place, while the row-major layout receives BF16 and is reduced through an internal FP32 scratch.
 
   :param act: Packed activation tensor `[M, K / 2]`.
   :param wgt: Packed weight tensor `[N, K / 2]`.
@@ -672,6 +729,7 @@ def svdq_gemm_w4a4(
   """
   normalized_runtime = _normalize_svdq_runtime(runtime)
   normalized_layout = _normalize_svdq_lora_layout(lora_layout)
+  fused = qout is not None or fuse_silu
   if normalized_runtime == "native" and normalized_layout != "native":
     raise ValueError("runtime='native' only supports lora_layout='native'; use runtime='cute' for "
                      "row-major BF16 D.")
@@ -680,21 +738,21 @@ def svdq_gemm_w4a4(
       raise ValueError("runtime='cute' implements the NVFP4 path only; pass fp4=True.")
     if output_dtype is not None and output_dtype != torch.bfloat16:
       raise ValueError(f"runtime='cute' always produces BF16 output, got {output_dtype}.")
-    if normalized_layout == "row_major" and lora_scales is not None:
+    if normalized_layout == "row_major" and lora_scales is not None and not fused:
       raise ValueError("lora_layout='row_major' expects the per-rank scales folded into D; drop "
-                       "lora_scales.")
-    if (qout is not None or oscales is not None or lora_down is not None or lora_act_out is not None
-        or smooth_factor is not None or fuse_silu):
-      raise ValueError("runtime='cute' does not accept the fused native arguments "
-                       "(qout/oscales/lora_down/lora_act_out/smooth_factor/fuse_silu).")
+                       "lora_scales unless the fused epilogue needs them to fold the next layer.")
+  if fuse_silu and qout is not None:
+    raise ValueError("fuse_silu is the dense-only activation; combine qout with the GELU epilogue "
+                     "instead of asking for both.")
   if not write_dense:
-    if normalized_runtime != "native":
-      raise ValueError("write_dense=False is only available on runtime='native'; the CuTe GEMM "
-                       "always writes the dense output.")
-    if qout is None or oscales is None or smooth_factor is None:
+    if qout is None:
+      raise ValueError("write_dense=False requires qout; the fused epilogue is the only thing that "
+                       "still produces an output once the dense store is skipped.")
+    if oscales is None or smooth_factor is None:
       raise ValueError("write_dense=False requires qout, oscales and smooth_factor; without them "
                        "the kernel has no fused output to write.")
-    if fp4 and all(t is None for t in (bias, lora_up, lora_down, wcscales)):
+    if normalized_runtime == "native" and fp4 and all(
+        t is None for t in (bias, lora_up, lora_down, wcscales)):
       raise ValueError("write_dense=False on the NVFP4 path needs one of "
                        "bias/lora_up/lora_down/wcscales: they are the only dtype sources left "
                        "once the dense output buffer is gone.")

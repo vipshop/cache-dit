@@ -86,18 +86,32 @@ void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
     if (!params.fp4) {
       throw std::runtime_error("runtime='cute' implements the NVFP4 path only; pass fp4=True.");
     }
-    if (qout.has_value() || oscales.has_value() || lora_down.has_value() ||
-        lora_act_out.has_value() || smooth_factor.has_value() || fuse_silu) {
-      throw std::runtime_error(
-        "runtime='cute' does not accept the fused native arguments "
-        "(qout/oscales/lora_down/lora_act_out/smooth_factor/fuse_silu).");
+    // The row-major D contract is BF16, which cannot take part in the cross-CTA reduction, so the
+    // fused epilogue accumulates into an FP32 scratch that a finalize pass then rounds. The native
+    // layout writes the FP32 fragment D in place and only needs its atomic target cleared.
+    torch::Tensor lora_scratch;
+    if (qout.has_value() && lora_act_out.has_value()) {
+      if (layout == LoraLayout::kNative) {
+        lora_act_out->zero_();
+      } else {
+        lora_scratch = at::zeros({lora_act_out->size(0), lora_act_out->size(1)},
+                                 lora_act_out->options().dtype(at::kFloat));
+      }
+    }
+    // `::Tensor` is the global lightweight descriptor; the unqualified name would resolve to
+    // `cache_dit::svdq`, which has no such type.
+    ::Tensor scratch;
+    if (lora_scratch.defined()) {
+      scratch = from_torch(lora_scratch);
     }
     // `::svdq::` is required: inside `cache_dit::svdq` the leftmost `svdq` would otherwise
     // resolve to this namespace, which does not contain the kernel namespaces.
     ::svdq::cute_kernels::gemm_w4a4(
       get_tensor(act), get_tensor(wgt), get_tensor(out), get_tensor(ascales), get_tensor(wscales),
       get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias), get_tensor(wcscales),
-      std::move(lora_scales), params.alpha, layout);
+      std::move(lora_scales), params.alpha, layout, get_tensor(qout), get_tensor(oscales),
+      get_tensor(lora_down), get_tensor(lora_act_out), scratch, get_tensor(smooth_factor),
+      fuse_silu);
     return;
   }
 
@@ -116,8 +130,8 @@ void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
 void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth,
-                   bool fuse_glu, bool fp4, std::vector<float> lora_scales,
-                   const std::string &lora_layout) {
+                   std::optional<torch::Tensor> gate, bool fuse_glu, bool fp4,
+                   std::vector<float> lora_scales, const std::string &lora_layout) {
   const auto layout = parse_lora_layout(lora_layout);
   TorchOpContext ctx;
   if (layout == LoraLayout::kRowMajor) {
@@ -155,12 +169,13 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
       quantize = &::svdq::cute_kernels::quantize_r128;
     }
     quantize(get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
-             get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch);
+             get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch,
+             get_tensor(gate), fuse_glu);
     return;
   }
   ::svdq::native_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),
                                         get_tensor(lora_down), get_tensor(lora_act),
-                                        get_tensor(smooth), fuse_glu, fp4);
+                                        get_tensor(smooth), get_tensor(gate), fuse_glu, fp4);
 }
 
 void register_svdq_ops(py::module_ &ops) {
@@ -172,8 +187,9 @@ void register_svdq_ops(py::module_ &ops) {
          py::arg("fuse_silu"), py::arg("fp4"), py::arg("alpha"), py::arg("wcscales"),
          py::arg("runtime"), py::arg("lora_layout") = "native")
     .def("quantize_w4a4", &quantize_w4a4, py::arg("input"), py::arg("output"), py::arg("ascales"),
-         py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"), py::arg("fuse_glu"),
-         py::arg("fp4"), py::arg("lora_scales"), py::arg("lora_layout") = "native");
+         py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"), py::arg("gate"),
+         py::arg("fuse_glu"), py::arg("fp4"), py::arg("lora_scales"),
+         py::arg("lora_layout") = "native");
 }
 
 }  // namespace cache_dit::svdq

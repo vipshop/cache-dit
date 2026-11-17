@@ -286,12 +286,18 @@ class SVDQW4A4Linear(nn.Module):
 
   def quantize(self,
                x: torch.Tensor,
-               pad_size: int = 256) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+               pad_size: int = 256,
+               fuse_glu: bool = False,
+               gate: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Quantize activations and compute the low-rank down-projection input.
 
-    :param x: Flattened activations with shape `[tokens, in_features]`.
+    :param x: Flattened activations with shape `[tokens, in_features]`. With `fuse_glu` and no
+      `gate` this is twice as wide as the quantized output.
     :param pad_size: Token padding multiple required by the fused activation
       quantizer.
+    :param fuse_glu: Whether to gate the activations as `x * silu(gate)` before quantizing. The GLU
+      producer only exists on the native layout, which is what a fused SwiGLU chain uses.
+    :param gate: Optional gating half with the quantized width.
     :returns: A tuple `(quantized_x, ascales, lora_act_out)` ready for
       `forward_quant`.
     """
@@ -303,15 +309,17 @@ class SVDQW4A4Linear(nn.Module):
 
     if self.lora_layout == "row_major":
       # The CuTe row-major producer consumes the converted pack (`_cute_proj_down` in row-major
-      # layout and the unpacked `_cute_smooth` vector) and folds the per-rank scales into the
-      # emitted BF16 D. The pack is prepared once at load time, but defensive rebuild keeps direct
-      # constructor use working.
+      # layout and the unpacked `_cute_smooth` vector), applies the gate itself, and folds the
+      # per-rank scales into the emitted BF16 D. The pack is prepared once at load time, but
+      # defensive rebuild keeps direct constructor use working.
       if not self._cute_pack_ready:
         self._prepare_cute_pack()
       return svdq_quantize_w4a4(
         input=x,
         lora_down=self._cute_proj_down if self.rank > 0 else None,
         smooth=self._cute_smooth,
+        gate=gate,
+        fuse_glu=fuse_glu,
         lora_layout="row_major",
         fp4=True,
         pad_size=pad_size,
@@ -324,6 +332,8 @@ class SVDQW4A4Linear(nn.Module):
       input=x,
       lora_down=self.proj_down,
       smooth=self.smooth_factor,
+      fuse_glu=fuse_glu,
+      gate=gate,
       lora_layout="native",
       fp4=self.precision == "nvfp4",
       pad_size=pad_size,
@@ -379,6 +389,50 @@ class SVDQW4A4Linear(nn.Module):
                                                           self.proj_down, self.bias, self.wcscales,
                                                           self.smooth_factor)
     self._cute_pack_ready = True
+
+  def fused_gemm_args(self) -> dict[str, object]:
+    """Return the packed-GEMM arguments matching this layer's runtime and D layout.
+
+    A fused chain feeds the first GEMM's quantized output straight into the second layer, so that
+    GEMM must use exactly the packs `forward_quant` would use: the CuTe row-major packs on
+    `runtime_kernel='cute'` and the native fragment-packed parameters otherwise. The returned
+    `lora_down` and `smooth` are the next layer's row-major down-projection and smoothing vector,
+    which the fused epilogue consumes directly; they are deliberately not the packed native
+    `proj_down` / `smooth_factor`.
+
+    :returns: Keyword arguments for `cache_dit.kernels.svdq_gemm_w4a4`, plus the fused-only
+        `lora_down` and `smooth` tensors.
+    :raises RuntimeError: If this layer runs on a FlashInfer chain, which has no fused epilogue.
+    """
+
+    params: dict[str, object] = {
+      "runtime": self.runtime_kernel,
+      "lora_layout": self.lora_layout,
+      "fp4": self.precision == "nvfp4",
+      "alpha": 1.0 if self.wtscale is None else self.wtscale,
+      "bias": self.bias,
+      "lora_down": self.proj_down if self.rank > 0 else None,
+      "smooth": self.smooth_factor,
+      "wgt": self.qweight,
+      "wscales": self.wscales,
+      "lora_up": self.proj_up,
+      "wcscales": self.wcscales,
+    }
+    if self.runtime_kernel == "cute":
+      self._prepare_cute_pack()
+      params.update({
+        "wgt": self._cute_qweight,
+        "wscales": self._cute_wscales,
+        "lora_up": self._cute_proj_up,
+        "bias": self._cute_bias,
+        "wcscales": self._cute_wcscales,
+        "lora_down": self._cute_proj_down if self.rank > 0 else None,
+        "smooth": self._cute_smooth,
+      })
+    elif self.runtime_kernel != "native":
+      raise RuntimeError(f"The fused MLP passes have no epilogue on runtime_kernel="
+                         f"{self.runtime_kernel!r}; use 'native' or 'cute'.")
+    return params
 
   def _prepare_flashinfer_pack(self, force: bool = False) -> None:
     """Derive the FlashInfer pack from the native checkpoint parameters.

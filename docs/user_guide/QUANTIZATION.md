@@ -1073,9 +1073,9 @@ pipe.transformer = cache_dit.load(
 The SVDQ W4A4 entry points are organized around two orthogonal selectors: <span style="color:#c77dff;">runtime</span> (which backend family runs) and <span style="color:#c77dff;">lora_layout</span> (which layout the LoRA-down activation `D` is stored in).
 
 - <span style="color:#c77dff;">runtime</span>: <span style="color:green;">native</span> | <span style="color:green;">cute</span> | <span style="color:green;">flashinfer</span> | <span style="color:green;">flashinfer+cute-dsl</span> | <span style="color:green;">flashinfer+cutlass-sm120</span>. `None`/`native` selects the single native W4A4 GEMM for both INT4 and NVFP4; the rest are NVFP4-only. Bare `flashinfer` maps to `flashinfer+cutlass-sm120`.
-- <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in. For `runtime="cute"`, the default (`None`) is `row_major`; other runtimes default to `native`. The `fused_mlp` configuration keeps its implicit `native` layout because those passes require fragment `D`.
+- <span style="color:#c77dff;">lora_layout</span>: <span style="color:green;">native</span> | <span style="color:green;">row_major</span>. `native` consumes the producer's packed FP32 MMA-fragment `D`, while `row_major` consumes row-major BF16 `D` with the per-rank scales already folded in. For `runtime="cute"`, the default (`None`) is `row_major`; other runtimes default to `native`. `fused_mlp` does not change that default: the fused epilogue writes either layout.
 
-Only four combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, <span style="color:green;">cute+row_major</span>, and <span style="color:green;">flashinfer*+native</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is also mutually exclusive with <span style="color:#c77dff;">fused_mlp</span>, because the fused MLP passes feed the producer output straight into the native GEMM, which only understands the native FP32 fragment `D`. Every `flashinfer` runtime (`flashinfer`, `flashinfer+cute-dsl`, `flashinfer+cutlass-sm120`) runs FlashInfer's own chain, so `lora_layout` is unused and stays `native`.
+Only four combinations are legal: <span style="color:green;">native+native</span>, <span style="color:green;">cute+native</span>, <span style="color:green;">cute+row_major</span>, and <span style="color:green;">flashinfer*+native</span>. `runtime="native"` accepts nothing but `lora_layout="native"`, enforced in both the public wrapper and the op implementation. `lora_layout="row_major"` is accepted with <span style="color:#c77dff;">fused_mlp</span> as well: the CuTe fused epilogue stages the next layer's down-projection slice in shared memory, accumulates the LoRA-down term in an FP32 scratch, and rounds it into the row-major BF16 `D`, so a fused GELU MLP chain can stay entirely on the CuTe runtime. Both fused passes work on either layout: the gate of a SwiGLU block is applied by whichever producer the layout selects (native or CuTe row-major). Because the row-major finalize folds one scale per 16-rank group into the *next* layer's `D` and the ABI has no channel for that layer's scales, a fused row-major chain requires identity per-rank scales, which is what the operator synthesizes when `lora_scales` is omitted. Every `flashinfer` runtime (`flashinfer`, `flashinfer+cute-dsl`, `flashinfer+cutlass-sm120`) runs FlashInfer's own chain, so `lora_layout` is unused and stays `native`.
 
 Both selectors are configurable through `svdq_kwargs` and are carried into every quantized `SVDQW4A4Linear` layer at runtime (the per-rank `lora_scales` contract is a kernel-internal detail; checkpoints do not store it). Explicit `lora_layout="native"` preserves the fragment-D behavior with either runtime. Older cute checkpoints whose metadata omits the layout now resolve to `row_major`; producer and consumer switch together, but D changes from packed FP32 to BF16 and is not expected to remain bitwise identical to the old execution path.
 
@@ -1105,6 +1105,9 @@ python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute \
 python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer
 python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer+cute-dsl
 python3 -m cache_dit.generate flux --svdq-nvfp4-r128-dq --svdq-runtime flashinfer+cute-dsl
+# Fused MLP: works on both runtimes and both D layouts.
+python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-fused-mlp
+python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute --svdq-fused-mlp
 ```
 
 When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requested `runtime_kernel` / `lora_layout` overrides the value recorded in the checkpoint, since both are pure runtime dispatch choices that do not change the serialized tensors.
@@ -1174,7 +1177,7 @@ All three cache-dit paths agree numerically: `rel_l2` against native is 3.1–3.
 
 ## SVDQ with Fused MLP
 
-When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel via the native SVDQ GEMM (``gemm_w4a4`` in C++), eliminating one kernel launch per block.
+When SVDQ quantizes a diffusers transformer whose ``FeedForward`` blocks use plain GELU activation, the default execution path runs three GPU kernels per MLP block: the first quantized GEMM, a separate GELU activation kernel, and the second quantized GEMM.  Enabling fused MLP combines the first GEMM and GELU into a single kernel (``gemm_w4a4``): the activated tile is quantized in-register into the 4-bit activation pack that the second GEMM consumes, and the next layer's LoRA-down term is reduced in the same kernel, eliminating one kernel launch and one full-size HBM write per block. Both runtimes implement it, so the whole chain can stay on ``runtime_kernel="cute"`` with either ``lora_layout``.
 
 The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automatically with most diffusers transformer families — no per-model configuration is needed.
 
@@ -1245,11 +1248,22 @@ pipe.transformer = cache_dit.load(
 )
 ```
 
-When ``fused_mlp`` is enabled, cache-dit applies two complementary passes:
+When ``fused_mlp`` is enabled, cache-dit applies three complementary passes:
 
 | Pass | Targets | Fusion |
 |---|---|---|
 | ``fused_gelu_mlp`` | Standard ``FeedForward`` double blocks | fc1 + GELU + fc2 (qout path, no fp16 HBM write) |
 | ``fused_gelu_proj`` | Single-stream blocks with concat MLP | fc1 + GELU only (fp16 output, concat unchanged) |
+| ``fused_swiglu_mlp`` | Gated MLPs (`down(gate(x) * up(x))`) | gate applied inside the activation producer |
 
-Both passes use generic structural detection — they work with most diffusers transformers (FLUX, SD3, PixArt, HunyuanVideo, Wan, Cosmos, Bria, QwenImage, Chroma, Motif Video, and many more) without per-model code changes.
+All three passes use generic structural detection — they work with most diffusers transformers (FLUX, SD3, PixArt, HunyuanVideo, Wan, Cosmos, Bria, QwenImage, Chroma, Motif Video, and many more) without per-model code changes.
+
+**Gated MLPs (SwiGLU)**
+
+``fused_swiglu_mlp`` covers two shapes: a block that owns ``proj`` / ``gate_layer`` / ``out`` together with an ``nn.SiLU`` (the Qwen-Image-2.1 layout), and a diffusers ``FeedForward`` whose ``net[0]`` is a ``SwiGLU`` wrapper emitting ``2 * inner`` columns. The gate cannot be applied in the GEMM epilogue, because its second operand comes from a different projection; it is fused into the activation producer of ``out`` instead, which replaces the standalone ``silu``/multiply kernel and its ``[tokens, hidden]`` HBM round trip. Both activation producers implement the gate (``value * silu(gate)``) — the native one and the CuTe ``row_major`` one — so the pass runs on either ``lora_layout``, including the CuTe default. ``GEGLU`` is not fused.
+
+```bash
+# Qwen-Image-2.1 style gated MLP on the CuTe GEMM with its default row-major D contract.
+python3 -m cache_dit.generate qwen_image_21_turbo --svdq-nvfp4-r32-dq \
+  --svdq-runtime cute --svdq-fused-mlp
+```

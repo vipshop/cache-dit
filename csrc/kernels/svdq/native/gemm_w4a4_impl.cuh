@@ -270,12 +270,17 @@ void GEMM_W4A4_Launch<GEMMConfig_W4A4_FP16, false>::gemm_w4a4(
 template <typename Config, bool USE_FP4>
 void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor output, Tensor oscales,
                                                       Tensor lora_down, Tensor lora_act_out,
-                                                      Tensor smooth, bool fuse_glu, bool fp4) {
+                                                      Tensor smooth, Tensor gate, bool fuse_glu,
+                                                      bool fp4) {
   const int actualM = input.numel() / input.shape[-1];
   const int actualN = input.shape[-1];
+  // With GLU fusion the quantized width is the gated width. A separate gate tensor already has that
+  // width, while the single-tensor form stores both halves side by side and therefore halves it.
+  const bool split_gate = fuse_glu && gate.valid();
+  const int value_cols = (fuse_glu && !split_gate) ? actualN / 2 : actualN;
 
   const int M = ceilDiv(actualM, GEMM::BLOCK_M) * GEMM::BLOCK_M;
-  const int N = ceilDiv(actualN / (fuse_glu ? 2 : 1), GEMM::BLOCK_N) * GEMM::BLOCK_N;
+  const int N = ceilDiv(value_cols, GEMM::BLOCK_N) * GEMM::BLOCK_N;
 
   assert(output.dtype() == Tensor::INT8);
   assert(output.numel() / output.shape[-1] == M);
@@ -288,6 +293,9 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor outpu
     assert(isTypeMatch<half_t>(oscales.dtype()));
     assert(oscales.numel() == M * N / GEMM::WARP_K);
   }
+
+  assert(!gate.valid() ||
+         (gate.shape[-1] == value_cols && gate.numel() / gate.shape[-1] == actualM));
 
   const int rank = lora_down.shape[1];
 
@@ -309,9 +317,20 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor outpu
     checkCUDA(
       cudaFuncSetAttribute(func, cudaFuncAttributeMaxDynamicSharedMemorySize, kernel::SHMEM_SIZE));
 
+    // The gate half comes either from its own `[M, value_cols]` tensor or from the second half of
+    // the value tensor; both reduce to one base pointer plus a row stride.
+    // A null gate means "not a GLU call": the kernel never dereferences it, so it must not even be
+    // formed from `input` (that pointer would be one full row-range out of bounds).
+    const half_t *gate_ptr = gate.valid()
+                               ? gate.data_ptr<half_t>()
+                               : (fuse_glu ? input.data_ptr<half_t>() + value_cols : nullptr);
+    const int gate_stride = gate.valid() ? static_cast<int>(gate.shape[-1]) : actualN;
+
     func<<<grid, GEMM::WARP_SIZE * GEMM::NUM_WARPS, kernel::SHMEM_SIZE, getCurrentCUDAStream()>>>(
       typename kernel::Arguments{
         .input = input.data_ptr<half_t>(),
+        .gate = gate_ptr,
+        .gate_stride = gate_stride,
         .smooth_factor = smooth.valid() ? smooth.data_ptr<packed_wscale_t>() : nullptr,
         .output = output.data_ptr<packed_act_t>(),
         .oscales = oscales.data_ptr<typename kernel::oscales_t>(),
@@ -322,6 +341,7 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor outpu
         .N = N,
         .actualM = actualM,
         .actualN = actualN,
+        .value_cols = value_cols,
         .alwaysfalse = false,
       });
     checkCUDA(cudaGetLastError());

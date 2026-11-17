@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "quantize.h"
+#include "quantize_glu.cuh"
 
 #include <cute/tensor.hpp>
 #include <cuda_bf16.h>
@@ -164,6 +165,31 @@ struct W4A4QuantizeRankKernel {
     return value;
   }
 
+  /// Gated-linear-unit product of one fragment: `value * silu(gate)`. The value half comes from
+  /// `input`, the gate half either from a separate tensor or from the second half of the same row,
+  /// which is the diffusers SwiGLU column order. The pair math is shared with `quantize_uni.cu`.
+  static __device__ __forceinline__ void apply_glu(PackedBF16 &value, PackedBF16 const &gate) {
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      value.data[i] = glu_pair(value.data[i], gate.data[i]);
+    }
+  }
+
+  /// Fragment-shaped variant for the CuTe TiledCopy/TiledMMA path, which stores the same values in
+  /// an atom layout rather than in four packed pairs.
+  template <class Frag>
+  static __device__ __forceinline__ void apply_glu_fragment(Frag &value, Frag const &gate) {
+    Element *v = value.data();
+    Element const *g = gate.data();
+    const int count = size(value);
+    for (int i = 0; i < count; ++i) {
+      // Element is cutlass::bfloat16_t, so go through float for both directions.
+      const float gf = static_cast<float>(g[i]);
+      const float value_f = static_cast<float>(v[i]);
+      v[i] = Element(value_f * gf * sigmoid_approx_bf16(gf));
+    }
+  }
+
   /// Fire-and-forget FP32 reduction of two adjacent rank columns. The launch zeroes scratch first;
   /// finalization applies scales and rounds only after all K CTAs have contributed.
   static __device__ __forceinline__ void global_add_f32x2(float *addr, float a, float b) {
@@ -305,6 +331,22 @@ struct W4A4QuantizeRankKernel {
     return raw;
   }
 
+  // GLU form of load_a: stage the value tile, then (when `gate` is non-null) the gate tile through
+  // the same shared buffer and multiply the two fragments in registers. The second staging pass is
+  // why the caller must not keep an asynchronous copy in flight on this buffer.
+  template <class TiledMma, class CopyA>
+  static __device__ __forceinline__ auto load_a_glu(const __nv_bfloat16 *input, int input_stride,
+                                                    const __nv_bfloat16 *gate, int gate_stride,
+                                                    int row0, int k0, bool valid, Element *stage,
+                                                    TiledMma const &mma, CopyA const &copy_a) {
+    auto value = load_a(input, input_stride, row0, k0, valid, stage, mma, copy_a);
+    if (gate != nullptr) {
+      auto gated = load_a(gate, gate_stride, row0, k0, valid, stage, mma, copy_a);
+      apply_glu_fragment(value, gated);
+    }
+    return value;
+  }
+
   // Issue, but do not wait for, an asynchronous A tile copy. The position-independent swizzle view
   // expresses the same physical layout as read_a without baking the shared base address into layout
   // algebra. The caller owns the cp.async group fence and must wait before consuming the stage.
@@ -441,12 +483,11 @@ struct W4A4QuantizeRankKernel {
 // The launcher zeroes M*R scratch floats before launch and invokes finalize_lora_bf16_kernel after
 // this kernel on the same stream, ensuring all atomics complete before scaling and BF16 conversion.
 template <int kRankTiles, int kWarps, int kMaxSlices = 2, bool kAsyncA = true>
-__global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ input,
-                                             const __nv_bfloat16 *__restrict__ smooth,
-                                             const __nv_bfloat16 *__restrict__ lora_down,
-                                             uint8_t *__restrict__ qact,
-                                             uint8_t *__restrict__ ascales,
-                                             float *__restrict__ lora_scratch, int M, int K) {
+__global__ void quantize_w4a4_split_k_kernel(
+  const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate, int gate_stride,
+  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+  const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
+  uint8_t *__restrict__ ascales, float *__restrict__ lora_scratch, int M, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   static_assert(!(kAsyncA && kMaxSlices > 2), "async A pipeline supports at most two K64 slices");
   using Traits = QuantizeTraits;
@@ -461,6 +502,9 @@ __global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ i
   const int k_end = min(k_begin + kKChunk, K);
   const int k_slices = (k_end - k_begin) / 64;
   const int row0 = blockIdx.x * (kWarps * 32) + warp * 32;
+  // A gate load needs the A staging buffer twice, which the async pipeline cannot express: with a
+  // gate present both schedules fall back to the synchronous two-pass load.
+  const bool use_async_a = kAsyncA && gate == nullptr;
   // Dynamic shared layout: [per-warp A stage(s)] [all CTA B tiles]. A and B are disjoint, so B
   // prefetch never overwrites activation staging. Async A uses two stages and forms group A;
   // issue_b_cta then forms group B. cp_async_wait<1> waits for A while allowing the newer B group
@@ -470,14 +514,18 @@ __global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ i
   Element *a_base1 = a_base0 + (kAStages - 1) * Traits::kAChunkElems;
   Element *b_base = shared + kAElements;
   if constexpr (kAsyncA) {
-    Kernel::issue_a(input, K, row0, k_begin, true, a_base0);
-    Kernel::issue_a(input, K, row0, k_begin + 64, k_slices > 1, a_base1);
-    cp_async_fence();
+    if (use_async_a) {
+      Kernel::issue_a(input, input_stride, row0, k_begin, true, a_base0);
+      Kernel::issue_a(input, input_stride, row0, k_begin + 64, k_slices > 1, a_base1);
+      cp_async_fence();
+    }
   }
   Kernel::issue_b_cta<kRankTiles, kMaxSlices>(lora_down, k_begin, k_slices, b_base);
   if constexpr (kAsyncA) {
-    cp_async_wait<1>();
-    __syncwarp();
+    if (use_async_a) {
+      cp_async_wait<1>();
+      __syncwarp();
+    }
   }
 
   typename Traits::TiledMma mma;
@@ -485,10 +533,12 @@ __global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ i
   auto read_or_load = [&](int slice, Element *stage) {
     const bool valid = slice < k_slices;
     if constexpr (kAsyncA) {
-      return Kernel::read_a(input, K, row0, k_begin + slice * 64, valid, stage, mma);
-    } else {
-      return Kernel::load_a(input, K, row0, k_begin + slice * 64, valid, stage, mma, copy_a);
+      if (use_async_a) {
+        return Kernel::read_a(input, input_stride, row0, k_begin + slice * 64, valid, stage, mma);
+      }
     }
+    return Kernel::load_a_glu(input, input_stride, gate, gate_stride, row0, k_begin + slice * 64,
+                              valid, stage, mma, copy_a);
   };
   // Keep A fragments in registers across quantization and LoRA MMA. Synchronous schedules safely
   // reuse a_base0 after load_a's trailing warp barrier; asynchronous schedules use the two stages.
@@ -592,7 +642,8 @@ __global__ void quantize_w4a4_split_k_kernel(const __nv_bfloat16 *__restrict__ i
 template <int kRankTiles, int kWarps, int kReductionBuffers, int kRankSplits>
 __global__ void __launch_bounds__(kWarps * 32, 1)
   quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict__ input,
-                                  const __nv_bfloat16 *__restrict__ smooth,
+                                  const __nv_bfloat16 *__restrict__ gate, int gate_stride,
+                                  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
                                   const __nv_bfloat16 *__restrict__ lora_down,
                                   uint8_t *__restrict__ qact, uint8_t *__restrict__ ascales,
                                   __nv_bfloat16 *__restrict__ lora_act, LoraScaleParams scales,
@@ -633,7 +684,8 @@ __global__ void __launch_bounds__(kWarps * 32, 1)
   // fragment remains live across both phases, so each input tile is read from global memory once.
   for (int k0 = warp * 64; k0 < K; k0 += kWarps * 64) {
     Kernel::issue_b_warp(lora_down, kRank, k0, rank0, 0, b_base);
-    auto raw = Kernel::load_a(input, K, row0, k0, true, a_base, mma, copy_a);
+    auto raw = Kernel::load_a_glu(input, input_stride, gate, gate_stride, row0, k0, true, a_base,
+                                  mma, copy_a);
     if (kRankSplits == 1 || blockIdx.y == 0) {
       __nv_bfloat162 smooth0[4];
       __nv_bfloat162 smooth1[4];
@@ -801,6 +853,11 @@ __global__ void finalize_lora_bf16_kernel(const float *__restrict__ scratch,
 // fused and split-K launches use the same current CUDA stream.
 struct QuantizeLaunchArgs {
   const __nv_bfloat16 *input;
+  // Null selects the plain producer. Otherwise the gate tile is read from this pointer with
+  // `gate_stride`; the host resolves the second-half form to `input + K` before filling the struct.
+  const __nv_bfloat16 *gate;
+  int gate_stride;
+  int input_stride;
   const __nv_bfloat16 *smooth;
   const __nv_bfloat16 *lora_down;
   uint8_t *qact;
@@ -837,8 +894,9 @@ void launch_quantize_split_k(QuantizeLaunchArgs const &args, float *scratch) {
   checkCUDA(
     cudaMemsetAsync(scratch, 0, static_cast<size_t>(args.M) * kRank * sizeof(float), args.stream));
   kernel<<<dim3(args.M / (kWarps * 32), (args.K + kKChunk - 1) / kKChunk), dim3(kWarps * 32),
-           kSmemBytes, args.stream>>>(args.input, args.smooth, args.lora_down, args.qact,
-                                      args.ascales, scratch, args.M, args.K);
+           kSmemBytes, args.stream>>>(args.input, args.gate, args.gate_stride, args.input_stride,
+                                      args.smooth, args.lora_down, args.qact, args.ascales, scratch,
+                                      args.M, args.K);
   const int total = args.M * kRank;
   finalize_lora_bf16_kernel<kRankTiles, kWarps>
     <<<(total / 8 + 255) / 256, 256, 0, args.stream>>>(scratch, args.lora_act, args.scales, total);
@@ -865,8 +923,8 @@ void launch_quantize_fused(QuantizeLaunchArgs const &args) {
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
   }
   kernel<<<dim3(args.M / 32, kRankSplits), dim3(kWarps * 32), kSmemBytes, args.stream>>>(
-    args.input, args.smooth, args.lora_down, args.qact, args.ascales, args.lora_act, args.scales,
-    args.M, args.K);
+    args.input, args.gate, args.gate_stride, args.input_stride, args.smooth, args.lora_down,
+    args.qact, args.ascales, args.lora_act, args.scales, args.M, args.K);
 }
 
 // Host-side entry instantiated by quantize_r32/r64/r128. kRankTiles is fixed by the including TU,
@@ -881,7 +939,8 @@ void launch_quantize_fused(QuantizeLaunchArgs const &args) {
 template <int kRankTiles>
 void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                    svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                   std::vector<float> lora_scales, svdq::Tensor lora_scratch) {
+                   std::vector<float> lora_scales, svdq::Tensor lora_scratch, svdq::Tensor gate,
+                   bool fuse_glu) {
   static_assert(kRankTiles == 2 || kRankTiles == 4 || kRankTiles == 8);
   constexpr int kRank = kRankTiles * 16;
   W4A4QuantizeRankKernel::require(
@@ -895,10 +954,20 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
     "quantize_cute output must be INT8 and ascales FP8_E4M3");
   W4A4QuantizeRankKernel::require(input.is_contiguous() && smooth.is_contiguous(),
                                   "input and smooth must be contiguous");
-  const int K = input.shape[-1];
-  W4A4QuantizeRankKernel::require(K > 0,
+  const int input_cols = input.shape[-1];
+  W4A4QuantizeRankKernel::require(input_cols > 0,
                                   "quantize_cute requires a non-empty input channel dimension");
-  const int M = input.numel() / K;
+  const int M = input.numel() / input_cols;
+  // A separate gate tensor already carries the quantized width; the single-tensor form stores the
+  // value and gate halves side by side and therefore halves it.
+  const bool split_gate = fuse_glu && gate.valid();
+  const int K = (fuse_glu && !split_gate) ? input_cols / 2 : input_cols;
+  if (split_gate) {
+    W4A4QuantizeRankKernel::require(
+      gate.dtype() == svdq::Tensor::BF16 && gate.is_contiguous() && gate.shape[-1] == K &&
+        gate.numel() / K == M,
+      "quantize_cute gate must be a contiguous BF16 [M, K] tensor with the quantized width");
+  }
   const int rank = lora_down.valid() ? lora_down.shape[-1] : 0;
   W4A4QuantizeRankKernel::require(
     M % 256 == 0 && K % 64 == 0,
@@ -921,8 +990,14 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
 
   LoraScaleParams scales{};
   for (size_t i = 0; i < lora_scales.size(); ++i) scales.values[i] = lora_scales[i];
+  const __nv_bfloat16 *input_ptr = input.data_ptr<__nv_bfloat16>();
+  const __nv_bfloat16 *gate_ptr =
+    split_gate ? gate.data_ptr<__nv_bfloat16>() : (fuse_glu ? input_ptr + K : nullptr);
   const QuantizeLaunchArgs args{
-    input.data_ptr<__nv_bfloat16>(),
+    input_ptr,
+    gate_ptr,
+    split_gate ? gate.shape[-1] : input_cols,
+    input_cols,
     smooth.data_ptr<__nv_bfloat16>(),
     lora_down.data_ptr<__nv_bfloat16>(),
     output.data_ptr<uint8_t>(),

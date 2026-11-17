@@ -63,8 +63,11 @@ namespace cache_dit::svdq {
 
 // Single public W4A4 GEMM entry. Python/native callers provide the full optional ABI once; the
 // definition normalizes the host parameters and selects the already-compiled kernel family. The
-// fused arguments (qout/oscales/lora_down/lora_act_out/smooth_factor/fuse_silu) belong to the
-// native kernel only, so the CuTe branch rejects them instead of silently dropping their meaning.
+// fused arguments (qout/oscales/lora_down/lora_act_out/smooth_factor/fuse_silu) are supported by
+// both families: the CuTe GEMM quantizes its activated tile into the same native pack and reduces
+// the next layer's LoRA-down term, so a fused chain can stay entirely on either runtime. The
+// row-major D layout needs an FP32 scratch for its cross-CTA reduction, which this layer allocates
+// and hands to the CuTe entry as `lora_scratch`.
 void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
                std::optional<torch::Tensor> out, std::optional<torch::Tensor> qout,
                std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
@@ -81,8 +84,8 @@ void gemm_w4a4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
 void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth,
-                   bool fuse_glu, bool fp4, std::vector<float> lora_scales,
-                   const std::string &lora_layout);
+                   std::optional<torch::Tensor> gate, bool fuse_glu, bool fp4,
+                   std::vector<float> lora_scales, const std::string &lora_layout);
 
 // Hooks the two public dispatchers onto the extension's `ops` submodule.
 void register_svdq_ops(pybind11::module_ &ops);

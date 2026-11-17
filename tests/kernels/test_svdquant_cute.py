@@ -746,7 +746,9 @@ def test_native_layout_keeps_native_d_contract(monkeypatch) -> None:
   assert gemm_seen["lora_layout"] == "native"
 
 
-def test_fused_passes_reject_row_major() -> None:
+def test_fused_passes_reject_flashinfer_runtime() -> None:
+  """Only the two runtimes with a fused epilogue may take part in a fused chain."""
+
   from cache_dit.quantization.svdquant.fused import fused_gelu_proj
 
   fc1 = SVDQW4A4Linear(128,
@@ -755,7 +757,8 @@ def test_fused_passes_reject_row_major() -> None:
                        precision="nvfp4",
                        runtime_kernel="cute",
                        lora_layout="row_major")
-  with pytest.raises(RuntimeError, match="only support lora_layout='native'"):
+  fc1.runtime_kernel = "flashinfer+cutlass-sm120"
+  with pytest.raises(RuntimeError, match="no epilogue on runtime_kernel"):
     fused_gelu_proj(torch.empty(256, 128, dtype=torch.bfloat16), fc1)
 
 
@@ -793,7 +796,8 @@ def test_gemm_w4a4_fake_registration() -> None:
     assert output.dtype == torch.bfloat16
   # write_dense=False has to stay shape-consistent with the real kernel so that tracing does
   # not diverge from eager execution.
-  for runtime, write_dense in (("native", False), ("native", True), ("cute", True)):
+  for runtime, write_dense in (("native", False), ("native", True), ("cute", True), ("cute",
+                                                                                     False)):
     output = torch.ops.cache_dit_cuda_ops.svdq_gemm_w4a4(
       act=act,
       wgt=wgt,
@@ -828,7 +832,7 @@ def test_gemm_w4a4_fake_registration() -> None:
   smooth = torch.empty(128, dtype=torch.bfloat16, device="meta")
   for lora_layout in ("row_major", "native"):
     quantized, scales, lora_act = torch.ops.cache_dit_cuda_ops.svdq_quantize_w4a4(
-      input, lora_down, smooth, lora_layout, False, True, [1.0, 1.0], 256)
+      input, lora_down, smooth, None, lora_layout, False, True, [1.0, 1.0], 256)
     assert quantized.shape == (256, 64)
     assert quantized.dtype == torch.uint8
     assert scales.dtype == torch.float8_e4m3fn
@@ -841,3 +845,355 @@ def test_gemm_w4a4_fake_registration() -> None:
       # The native producer keeps the [K / 16, M] scale layout and the FP32 fragment D.
       assert scales.shape == (8, 256)
       assert lora_act.dtype == torch.float32
+
+
+def _build_quantized(runtime: str, layout: str, in_features: int, out_features: int, rank: int,
+                     calibration: torch.Tensor) -> SVDQW4A4Linear:
+  """Quantize one dense Linear and load it into the requested runtime wrapper.
+
+  :param runtime: `'native'` or `'cute'`.
+  :param layout: LoRA-down layout; `'native'` keeps the packed FP32 fragment contract.
+  :param in_features: Logical input width.
+  :param out_features: Logical output width.
+  :param rank: LoRA rank.
+  :param calibration: Activations used by the PTQ pass.
+  :returns: An eval-mode `SVDQW4A4Linear` holding the quantized weights.
+  """
+
+  linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
+  state_dict = quantize_linear_svdq_w4a4(
+    linear,
+    [calibration],
+    rank=rank,
+    precision="nvfp4",
+    device="cuda:0",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True,
+  )
+  layer = SVDQW4A4Linear(in_features,
+                         out_features,
+                         rank=rank,
+                         precision="nvfp4",
+                         runtime_kernel=runtime,
+                         lora_layout=layout,
+                         torch_dtype=torch.bfloat16).cuda().eval()
+  layer.load_state_dict(state_dict)
+  if runtime == "cute":
+    layer._prepare_cute_pack()
+  return layer
+
+
+def _fused_mlp_forward(
+    x: torch.Tensor, fc1: SVDQW4A4Linear, fc2: SVDQW4A4Linear,
+    write_dense: bool) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Run `fc2(gelu(fc1(x)))` through one fused GEMM plus the second layer.
+
+  :param x: Activations `[M, in_features]`.
+  :param fc1: First quantized layer (input -> hidden).
+  :param fc2: Second quantized layer (hidden -> output).
+  :param write_dense: Whether the fused GEMM should also store the activated dense tile.
+  :returns:`(output, qout, oscales, lora_act_out)`; the last three are the fused epilogue packs.
+  """
+
+  hidden = fc1.out_features
+  tokens = x.shape[0]
+  first = fc1.fused_gemm_args()
+  second = fc2.fused_gemm_args()
+  qact, ascales, lora_act = fc1.quantize(x)
+  qout = torch.empty(tokens, hidden // 2, dtype=torch.uint8, device=x.device)
+  oscales = torch.empty(tokens * hidden // 16, dtype=torch.float8_e4m3fn, device=x.device)
+  lora_act_out = torch.empty(tokens,
+                             fc2.rank,
+                             dtype=torch.float32 if fc1.lora_layout == "native" else torch.bfloat16,
+                             device=x.device)
+  svdq_gemm_w4a4(
+    act=qact,
+    wgt=first["wgt"],
+    ascales=ascales,
+    wscales=first["wscales"],
+    lora_act_in=lora_act,
+    lora_up=first["lora_up"],
+    bias=first["bias"],
+    wcscales=first["wcscales"],
+    runtime=first["runtime"],
+    lora_layout=first["lora_layout"],
+    fp4=first["fp4"],
+    alpha=first["alpha"],
+    qout=qout,
+    oscales=oscales,
+    lora_down=second["lora_down"],
+    lora_act_out=lora_act_out,
+    smooth_factor=second["smooth"],
+    write_dense=write_dense,
+  )
+  return fc2.forward_quant(qout, oscales, lora_act_out), qout, oscales, lora_act_out
+
+
+@pytest.mark.parametrize(("runtime", "layout"), [
+  ("native", "native"),
+  ("cute", "native"),
+  ("cute", "row_major"),
+])
+def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> None:
+  """The fused GEMM must reproduce `fc2(gelu(fc1(x)))` on both runtimes and both D layouts."""
+
+  _require_sm120()
+  torch.manual_seed(20261120)
+  in_features, hidden, rank = 256, 512, 32
+  x = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
+  fc1 = _build_quantized(runtime, layout, in_features, hidden, rank, x)
+  fc2 = _build_quantized(runtime, layout, hidden, in_features, rank,
+                         torch.randn(256, hidden, dtype=torch.bfloat16, device="cuda:0"))
+
+  with torch.inference_mode():
+    qact, ascales, lora_act = fc1.quantize(x)
+    dense = fc1.forward_quant(qact, ascales, lora_act)
+    activated = torch.nn.functional.gelu(dense, approximate="tanh")
+    q2, sf2, d2 = fc2.quantize(activated)
+    expected = fc2.forward_quant(q2, sf2, d2)
+
+    fused, qout, _, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
+
+  assert torch.isfinite(fused).all()
+  assert _relative_l2(fused, expected) < 5e-3
+  # The fused quantizer reproduces the producer's activation pack, so the second GEMM sees the same
+  # input as the unfused chain up to the single FP4 rounding.
+  assert _relative_l2(qout.view(torch.uint8).float(), q2.view(torch.uint8).float()) < 0.02
+
+
+@pytest.mark.parametrize(("runtime", "layout"), [
+  ("native", "native"),
+  ("cute", "native"),
+  ("cute", "row_major"),
+])
+def test_fused_write_dense_false_preserves_the_packs(runtime: str, layout: str) -> None:
+  """Skipping the dense store must not change qout/oscales/D."""
+
+  _require_sm120()
+  torch.manual_seed(20261121)
+  in_features, hidden, rank = 256, 512, 32
+  x = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
+  fc1 = _build_quantized(runtime, layout, in_features, hidden, rank, x)
+  fc2 = _build_quantized(runtime, layout, hidden, in_features, rank,
+                         torch.randn(256, hidden, dtype=torch.bfloat16, device="cuda:0"))
+
+  with torch.inference_mode():
+    y_fused, qout_fused, sf_fused, d_fused = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
+    y_dense, qout_dense, sf_dense, d_dense = _fused_mlp_forward(x, fc1, fc2, write_dense=True)
+
+  assert torch.equal(qout_fused, qout_dense)
+  assert torch.equal(sf_fused.view(torch.uint8), sf_dense.view(torch.uint8))
+  # D is produced by an atomic reduction over the N blocks, whose order is not fixed.
+  assert _relative_l2(d_fused, d_dense) < 1e-3
+  assert _relative_l2(y_fused, y_dense) < 1e-3
+
+
+def _logical_d(layout: str, d: torch.Tensor) -> torch.Tensor:
+  """Return the logical `[M, R]` view of a producer D output."""
+
+  return _decode_fragment_d(d) if layout == "native" else d.float()
+
+
+@pytest.mark.parametrize(("runtime", "layout"), [("native", "native"), ("cute", "row_major")])
+@pytest.mark.parametrize("mode", ["gate_tensor", "half_split"])
+def test_glu_producer_matches_an_explicit_gate(mode: str, runtime: str, layout: str) -> None:
+  """`value * silu(gate)` must equal quantizing that product directly.
+
+  Both accepted shapes are covered (a separate gate tensor and the half split of one `[tokens, 2 *
+  hidden]` tensor), and so is both producer families: the native one and the CuTe row-major one that
+  the default CuTe dispatch selects.
+  """
+
+  _require_sm120()
+  torch.manual_seed(20261122)
+  tokens, hidden, rank = 256, 512, 32
+  up = torch.randn(tokens, hidden, dtype=torch.bfloat16, device="cuda:0")
+  gate = torch.randn(tokens, hidden, dtype=torch.bfloat16, device="cuda:0")
+  down = _build_quantized(runtime, layout, hidden, hidden, rank, up)
+
+  gated = (up.float() * torch.nn.functional.silu(gate.float())).bfloat16()
+  with torch.inference_mode():
+    q_ref, sf_ref, d_ref = down.quantize(gated)
+    if mode == "gate_tensor":
+      q_glu, sf_glu, d_glu = down.quantize(up, gate=gate, fuse_glu=True)
+    else:
+      stacked = torch.cat([up, gate], dim=-1).contiguous()
+      q_glu, sf_glu, d_glu = down.quantize(stacked, fuse_glu=True)
+
+  assert q_glu.shape == q_ref.shape and sf_glu.shape == sf_ref.shape
+  # The kernel multiplies in BF16 and evaluates sigmoid with the approximate instruction, while the
+  # reference multiplies in FP32, so a small share of the FP4 codes lands on the neighbouring level.
+  mismatch = (q_glu.view(torch.uint8) != q_ref.view(torch.uint8)).float().mean().item()
+  assert mismatch < 2e-2
+  assert _relative_l2(_logical_d(layout, d_glu), _logical_d(layout, d_ref)) < 1e-2
+
+
+class _SwiGLUBlock(nn.Module):
+  """Minimal Qwen-Image-2.1 shape: `out(silu(gate_layer(x)) * proj(x))`."""
+
+  def __init__(self, hidden: int, mlp_hidden: int) -> None:
+    super().__init__()
+    self.proj = nn.Linear(hidden, mlp_hidden, bias=False)
+    self.out = nn.Linear(mlp_hidden, hidden, bias=False)
+    self.gate_layer = nn.Linear(hidden, mlp_hidden, bias=False)
+    self.activation_fn = nn.SiLU()
+
+  def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    return self.out(self.activation_fn(self.gate_layer(hidden_states)) * self.proj(hidden_states))
+
+
+@pytest.mark.parametrize("layout", ["native", "row_major"])
+def test_swiglu_pass_fuses_the_qwen21_shape(layout: str) -> None:
+  """The pass must detect the triple-linear gated block and stay numerically faithful.
+
+  Both CuTe LoRA-down layouts are covered: `row_major` is the runtime default, so a fused SwiGLU
+  chain has to work there and not only on the packed native fragment contract.
+  """
+
+  from cache_dit.quantization.svdquant.passes import apply_passes
+  from cache_dit.quantization.svdquant.passes import FusedSwiGluMlpPass
+
+  _require_sm120()
+  torch.manual_seed(20261123)
+  hidden, mlp_hidden, rank = 256, 512, 32
+  block = _SwiGLUBlock(hidden, mlp_hidden).cuda().to(torch.bfloat16).eval()
+  x = torch.randn(256, hidden, dtype=torch.bfloat16, device="cuda:0")
+
+  # Quantize the three projections in place, then let the pass rewrite the block's forward.
+  for name, calibration in (("proj", x), ("gate_layer", x)):
+    linear = getattr(block, name)
+    state = quantize_linear_svdq_w4a4(linear, [calibration],
+                                      rank=rank,
+                                      precision="nvfp4",
+                                      device="cuda:0",
+                                      torch_dtype=torch.bfloat16,
+                                      return_state_dict=True)
+    layer = SVDQW4A4Linear(hidden,
+                           mlp_hidden,
+                           rank=rank,
+                           precision="nvfp4",
+                           runtime_kernel="cute",
+                           lora_layout=layout,
+                           bias=False,
+                           torch_dtype=torch.bfloat16).cuda().eval()
+    layer.load_state_dict(state)
+    setattr(block, name, layer)
+  state = quantize_linear_svdq_w4a4(
+    block.out, [torch.randn(256, mlp_hidden, dtype=torch.bfloat16, device="cuda:0")],
+    rank=rank,
+    precision="nvfp4",
+    device="cuda:0",
+    torch_dtype=torch.bfloat16,
+    return_state_dict=True)
+  out_layer = SVDQW4A4Linear(mlp_hidden,
+                             hidden,
+                             rank=rank,
+                             precision="nvfp4",
+                             runtime_kernel="cute",
+                             lora_layout=layout,
+                             bias=False,
+                             torch_dtype=torch.bfloat16).cuda().eval()
+  out_layer.load_state_dict(state)
+  block.out = out_layer
+
+  with torch.inference_mode():
+    reference = block(x)
+
+  targets = FusedSwiGluMlpPass().detect(block)
+  assert len(targets) == 1, "the gated block must be detected exactly once"
+  apply_passes(block, ["fused_swiglu_mlp"])
+
+  with torch.inference_mode():
+    fused = block(x)
+
+  assert torch.isfinite(fused).all()
+  assert _relative_l2(fused, reference) < 5e-3
+
+
+def test_swiglu_pass_ignores_ada_layer_norm() -> None:
+  """A modulation block with one projection and a SiLU must never be mistaken for a gated MLP."""
+
+  from cache_dit.quantization.svdquant.passes import FusedSwiGluMlpPass
+
+  class _AdaNorm(nn.Module):
+
+    def __init__(self) -> None:
+      super().__init__()
+      self.silu = nn.SiLU()
+      self.linear = nn.Linear(64, 128, bias=False)
+      self.norm = nn.LayerNorm(128, elementwise_affine=False, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+      return self.norm(hidden_states) * (1 + self.linear(self.silu(cond)))
+
+  block = _AdaNorm()
+  block.linear = SVDQW4A4Linear(64, 128, rank=32, precision="nvfp4", bias=False)
+  assert FusedSwiGluMlpPass().detect(block) == []
+
+
+@pytest.mark.parametrize(("runtime", "layout"), [("cute", "native"), ("cute", "row_major")])
+@pytest.mark.parametrize("tokens", [512, 1024])
+def test_fused_mlp_handles_multiple_row_blocks(runtime: str, layout: str, tokens: int) -> None:
+  """`row / 256` terms of the qout base and of the D block stride need more than one row block."""
+
+  _require_sm120()
+  torch.manual_seed(20261124 + tokens)
+  in_features, hidden, rank = 256, 512, 32
+  x = torch.randn(tokens, in_features, dtype=torch.bfloat16, device="cuda:0")
+  fc1 = _build_quantized(runtime, layout, in_features, hidden, rank, x)
+  fc2 = _build_quantized(runtime, layout, hidden, in_features, rank,
+                         torch.randn(tokens, hidden, dtype=torch.bfloat16, device="cuda:0"))
+
+  with torch.inference_mode():
+    qact, ascales, lora_act = fc1.quantize(x)
+    dense = fc1.forward_quant(qact, ascales, lora_act)
+    activated = torch.nn.functional.gelu(dense, approximate="tanh")
+    q2, sf2, d2 = fc2.quantize(activated)
+    expected = fc2.forward_quant(q2, sf2, d2)
+    fused, qout, _, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
+
+  assert torch.isfinite(fused).all()
+  assert _relative_l2(fused, expected) < 5e-3
+  mismatch = (qout.view(torch.uint8) != q2.view(torch.uint8)).float().mean().item()
+  assert mismatch < 2e-2
+
+
+def test_fused_epilogue_rejects_the_narrow_tile() -> None:
+  """N=384 selects BN=128, which has no fused instance; that has to raise, not return garbage."""
+
+  _require_sm120()
+  act = torch.zeros(256, 64, dtype=torch.uint8, device="cuda:0")
+  wgt = torch.zeros(384, 64, dtype=torch.uint8, device="cuda:0")
+  ascales = torch.zeros(256 * 128 // 16, dtype=torch.float8_e4m3fn, device="cuda:0")
+  wscales = torch.zeros(384 * 128 // 16, dtype=torch.float8_e4m3fn, device="cuda:0")
+  with pytest.raises(RuntimeError, match="BN=256/BK=128"):
+    svdq_gemm_w4a4(
+      act=act,
+      wgt=wgt,
+      ascales=ascales,
+      wscales=wscales,
+      runtime="cute",
+      fp4=True,
+      qout=torch.empty(256, 192, dtype=torch.uint8, device="cuda:0"),
+      oscales=torch.empty(384 // 16, 256, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      smooth_factor=torch.ones(384, dtype=torch.bfloat16, device="cuda:0"),
+    )
+
+
+def test_fuse_silu_and_qout_are_mutually_exclusive() -> None:
+  """SiLU belongs to the dense-only epilogue; asking for both would silently drop one."""
+
+  _require_sm120()
+  with pytest.raises(ValueError, match="dense-only activation"):
+    svdq_gemm_w4a4(
+      act=torch.zeros(256, 64, dtype=torch.uint8, device="cuda:0"),
+      wgt=torch.zeros(256, 64, dtype=torch.uint8, device="cuda:0"),
+      ascales=torch.zeros(256 * 128 // 16, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      wscales=torch.zeros(256 * 128 // 16, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      runtime="cute",
+      fp4=True,
+      fuse_silu=True,
+      qout=torch.empty(256, 128, dtype=torch.uint8, device="cuda:0"),
+      oscales=torch.empty(256 // 16, 256, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      smooth_factor=torch.ones(256, dtype=torch.bfloat16, device="cuda:0"),
+    )

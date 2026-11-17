@@ -369,11 +369,9 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
-  # SVDQW4A4Linear defaults the ordinary CuTe path to row-major D. The fused MLP passes cannot
-  # consume that layout, so preserve their previous implicit native-fragment contract.
-  if (resolved["runtime_kernel"] == "cute" and resolved["fused_mlp"]
-      and resolved["lora_layout"] is None):
-    resolved["lora_layout"] = "native"
+  # The fused epilogue is layout agnostic: it writes the native FP32 fragment D in place or reduces
+  # into an FP32 scratch and rounds it to the row-major BF16 D, so `fused_mlp` no longer forces a
+  # layout and the CuTe default (row_major) stays in effect.
   _warn_about_aggressive_svdq_few_shot_relax_factor(resolved)
   return resolved
 
@@ -613,11 +611,9 @@ class QuantizeConfig:
           "svdq_kwargs['lora_layout'] = 'row_major' requires "
           "svdq_kwargs['runtime_kernel'] = 'cute'; it selects the CuTe producer's row-major "
           "BF16 D.")
-      if self.svdq_kwargs["lora_layout"] == "row_major" and self.svdq_kwargs["fused_mlp"]:
-        raise ValueError(
-          "svdq_kwargs['lora_layout'] = 'row_major' is not supported with "
-          "svdq_kwargs['fused_mlp'] = True; the fused MLP passes consume the native FP32 "
-          "fragment D.")
+      # `row_major` is accepted with `fused_mlp`: the GELU passes run on either layout. Only the
+      # SwiGLU pass needs the native activation producer, and it skips (with a warning) instead of
+      # failing the whole quantization when the layout is row-major.
       if self.is_svdq_dq():
         if self.calibrate_fn is not None:
           raise ValueError("calibrate_fn is not supported for SVDQuant dynamic quantization.")

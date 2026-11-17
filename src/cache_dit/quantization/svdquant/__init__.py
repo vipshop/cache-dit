@@ -41,12 +41,14 @@ Notes:
 from .dtensor import SVDQW4A4ShardLinear
 from .fused import fused_gelu_mlp
 from .fused import fused_gelu_proj
+from .fused import fused_swiglu_mlp
 from .linear import SVDQW4A4Linear
 from .passes import apply_passes
 from .passes import BasePass
 from .passes import DEFAULT_FUSED_MLP_PASSES
 from .passes import FusedGeluMlpPass
 from .passes import FusedGeluProjPass
+from .passes import FusedSwiGluMlpPass
 from .passes import get_pass
 from .passes import register_pass
 from .quantizer import CalibrationInputs
@@ -62,7 +64,9 @@ __all__ = [
   "FusedGeluMlpPass",
   "fused_gelu_mlp",
   "fused_gelu_proj",
+  "fused_swiglu_mlp",
   "FusedGeluProjPass",
+  "FusedSwiGluMlpPass",
   "get_pass",
   "register_pass",
   "CalibrationInputs",

@@ -278,9 +278,11 @@ def test_svdquant_write_dense_false_rejects_unsupported_combinations() -> None:
   oscales = torch.empty(2, 256, dtype=dtype)
   smooth_factor = torch.empty(128, dtype=dtype)
 
-  with pytest.raises(ValueError, match="requires qout, oscales and smooth_factor"):
+  with pytest.raises(ValueError, match="write_dense=False requires qout"):
     svdq_gemm_w4a4(**common)
-  with pytest.raises(ValueError, match="only available on runtime='native'"):
+  # The CuTe runtime serves the fused chain too, so the dense store can only be dropped together
+  # with a packed activation to replace it.
+  with pytest.raises(ValueError, match="write_dense=False requires qout"):
     svdq_gemm_w4a4(**{**common, "fp4": True}, runtime="cute")
   with pytest.raises(ValueError, match="only dtype sources"):
     svdq_gemm_w4a4(**{

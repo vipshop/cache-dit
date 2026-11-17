@@ -11,7 +11,9 @@ namespace svdq::cute_kernels {
 // The operator produces two logically independent outputs from the same input tile:
 //   1. Activation quantization: (input / smooth) is reduced to per-K32 scales and E2M1 values.
 //      `output` and `ascales` use the native 256-row MMA-fragment pack consumed by the CuTe GEMM;
-//      they are not ordinary row-major [M,K/2] and [M,K/32] tensors. `output` is exposed as INT8
+//      they are not ordinary row-major [M,K/2] and [M,K/32] tensors. With `fuse_glu` the stored
+//      width is the gated width: `K` below always means that width, while the input row stride is
+//      read from the tensor itself. `output` is exposed as INT8
 //      storage and `ascales` as FP8_E4M3 storage, matching the existing native producer bit layout.
 //   2. LoRA-down projection: D = input @ lora_down. `lora_down` is contiguous row-major [K,R]
 //      BF16, and `lora_act` is contiguous row-major [M,R] BF16. The R16 scale in `lora_scales`
@@ -41,21 +43,25 @@ constexpr bool is_specialized_rank(int rank) { return rank == 32 || rank == 64 |
 /// For rank == 0, LoRA tensors are not required and only qact/ascales are produced.
 void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {});
+                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
+                  svdq::Tensor gate = {}, bool fuse_glu = false);
 
 /// Rank-32 CuTe TiledMMA/TiledCopy producer. Requires two values in `lora_scales` (R32/R16).
 void quantize_r32(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {});
+                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
+                  svdq::Tensor gate = {}, bool fuse_glu = false);
 
 /// Rank-64 CuTe TiledMMA/TiledCopy producer. Requires four values in `lora_scales` (R64/R16).
 void quantize_r64(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {});
+                  std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
+                  svdq::Tensor gate = {}, bool fuse_glu = false);
 
 /// Rank-128 CuTe TiledMMA/TiledCopy producer. Requires eight values in `lora_scales` (R128/R16).
 void quantize_r128(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                    svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
-                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {});
+                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
+                   svdq::Tensor gate = {}, bool fuse_glu = false);
 
 }  // namespace svdq::cute_kernels
