@@ -1167,7 +1167,28 @@ e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 
 视觉验收（PR #1332 的 `pr/svdq-cute-fused/`，在 `pr-assets` 分支）：FLUX 5 臂 × 4 prompt（3 个含文字）+ 512²/256² 同坐标裁切、Qwen21 默认与文字 prompt + 字形裁切。字形全部完好；文字 prompt 在 8 步采样下会改变构图（约 10 dB vs base），但两个量化臂之间仍 19 dB，属于 turbo 模型对亚百分比扰动的混沌放大。
 
-### 32.4 回归与边界
+### 32.4 逐指令归因与已落地的 B 修复（2026-11-17）
+
+用 NCU `--section SourceCounters` 抓 SASS，再用 `--import --page source --print-source sass --csv` 解析每条指令的采样与执行次数。修复前 cute 的 D 区段（最后 4 条高执行次数 HMMA 附近）有 **15.04M 条动态指令 / 6839 个采样**，热点是 16 条 `LDS.U16`（3287 采样）、8 条 `PRMT`（1723）、4 条通用 `LD.E`（539），HMMA 本身只有 356 个采样。native 对应区段为 **3.29M / 1808**，且没有这条标量 smem 取数路径。这直接说明问题在 D 的操作数供给，而不是 HMMA 数量或张量 FLOPs。
+
+已落地的修复（`0d343149` 的 A 按字写入 + 本次 B 修复）：
+
+- A：按 32-bit 字写入 fragment，避免编译器为每个 bf16 对插 `PRMT`；
+- B：`lora_down` 暂存从 `[k][rank]` 改成 **`[rank][k]` 转置 + 行距 `kBN+8`**，并用 `make_smem_ptr` 显式构造 smem tensor。这样既让 B 的 k 对连续，又避免 32 个 lane 挤在 4 个 bank 上；裸指针导致的通用 `LD.E` 也随之消失；
+- D 的 k-loop 改为全展开，和 native 一样不再每 16 列付出一次循环/分支开销。
+
+效果（同进程同权重、CUDA Event median）：
+
+| 指标 | native | cute+row_major 修复前 | cute+row_major 修复后 |
+|---|---:|---:|---:|
+| qout+D，M=4096 | 480.9 µs | 547.9 µs | **521.0 µs** |
+| 融合链，M=4096 | 938.2 µs | 1015.4 µs（1.088×） | **990.7 µs（1.056×）** |
+| 融合链，M=8192 | 1694.8 µs | 1894.2 µs（1.127×） | **1843.6 µs（1.088×）** |
+| FLUX e2e，28 步 | 7.84 s | 7.87 s | **7.86 s** |
+
+修复后 D 区段采样降到 2560、动态指令降到 1.56M，热点变为 HMMA/REDG 与流水收尾 barrier。剩余差距约 5.6%（M=4096）/8.8%（M=8192），不再能归因于某一条可单独删除的装载；A/B 置零只再省约 10 µs，奇偶双累加器、per-warp 32 行、全量预取都已实测无效或更差。
+
+### 32.5 回归与边界
 
 - `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例。
 - 全量 SVDQ 回归 197 passed（含 source manifest）。

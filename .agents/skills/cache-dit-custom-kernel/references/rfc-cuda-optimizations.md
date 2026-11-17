@@ -36,7 +36,7 @@
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。row-major e2e 1.0553×、cute+native-D 1.0462×（单会话）；需重复会话与 FLUX 稳定验收后才能关闭。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 - [x] CDK-7：融合输出（PR #1332，2026-11-17）。CuTe GEMM 有融合 epilogue（qout/oscales + native FP32 fragment / row-major BF16 两种 D + `write_dense=False`），两族 producer 都实现 `value * silu(gate)`，`fused_mlp` 不再绑定 `lora_layout`。链级 native 1.25×、cute+row_major 1.17×；e2e 融合本身 +2–3%。契约与实测见 `svdq-nvfp4-cute.md` §32。
-- [ ] CDK-8：CuTe 融合链追平 native（当前差 9–13%）。NCU 已归因：加 D 带来的成本 +24.5M 指令 / +14.2M smem wavefronts，就是 A 操作数的逐元素标量 smem 读；barrier 与原子都不是瓶颈。已试并失败：LDSM 读 A（rank/分区惯用法不匹配）、A 从累加器寄存器取（坐标匹配没有编译期折叠，代码爆炸 550→867 µs）、成对 uint32 载入（仅 0.7% 且引入错误）。下一步唯一可行路径：host 侧枚举 `tScA`×`tScC_rc` 坐标生成 `constexpr` 置换表，kernel 只做寄存器搬运。详见 `svdq-nvfp4-cute.md` §32.3。
+- [ ] CDK-8：CuTe 融合链追平 native（B 操作数转置/填充 smem 修复后差 5.6%@M4096、8.8%@M8192；e2e 已持平）。NCU 已归因：加 D 带来的成本 +24.5M 指令 / +14.2M smem wavefronts，就是 A 操作数的逐元素标量 smem 读；barrier 与原子都不是瓶颈。已试并失败：LDSM 读 A（rank/分区惯用法不匹配）、A 从累加器寄存器取（坐标匹配没有编译期折叠，代码爆炸 550→867 µs）、成对 uint32 载入（仅 0.7% 且引入错误）。下一步唯一可行路径：host 侧枚举 `tScA`×`tScC_rc` 坐标生成 `constexpr` 置换表，kernel 只做寄存器搬运。详见 `svdq-nvfp4-cute.md` §32.3。
 
 ## 4. CDK-3：Producer CuTe 化设计约束（已完成）
 

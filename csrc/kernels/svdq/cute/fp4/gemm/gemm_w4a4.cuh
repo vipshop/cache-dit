@@ -462,8 +462,11 @@ struct W4A4CuteTraits {
   // next layer's down projection next to it. That slice must live outside the O tile, because the
   // O tile overlay is still live at that point.
   static constexpr int kOTileBytes = cosize_v<SmemLayoutO> * static_cast<int>(sizeof(ElementO));
+  // The B operand is transposed while staged, so its k pairs are contiguous for the MMA fragment.
+  // Eight extra elements per row keep the 32-bit reads off the same shared-memory banks.
+  static constexpr int kDownStageStride = kBN + 8;
   static_assert(!kFuseOut || kSmemBytes - kOTileBytes >=
-                               kBN * kRankTile * static_cast<int>(sizeof(ElementLora)),
+                               kRankTile * kDownStageStride * static_cast<int>(sizeof(ElementLora)),
                 "the fused epilogue needs a down-projection staging slice after the O tile");
 
   // TMA transaction sizes feed mbarrier.expect_tx; they count bytes, not CuTe's 4-bit logical
@@ -1193,17 +1196,22 @@ class W4A4GemmKernel {
       // One [kBN, kRankTile] down slice is 16-32 KiB at r32/r64, so stage it once per rank tile
       // with 16-byte loads instead of issuing one scalar global load per element inside the k-loop.
       constexpr int kVecsPerRow = kRankTile / 8;
+      auto s_down_t = make_tensor(make_smem_ptr(s_down),
+                                  make_layout(make_shape(Int<kRankTile>{}, Int<kBN>{}),
+                                              make_stride(Int<Traits::kDownStageStride>{}, _1{})));
       for (int task = tid; task < kBN * kVecsPerRow; task += Traits::kNumThreads) {
-        const int row = task / kVecsPerRow;
-        const int col = (task % kVecsPerRow) * 8;
-        const int64_t src = static_cast<int64_t>(n0 + row) * rank_down + rt * kRankTile + col;
-        *reinterpret_cast<uint4 *>(s_down + row * kRankTile + col) =
-          *reinterpret_cast<uint4 const *>(lora_down + src);
+        const int c = task / kVecsPerRow;
+        const int r0 = (task % kVecsPerRow) * 8;
+        const int64_t src = static_cast<int64_t>(n0 + c) * rank_down + rt * kRankTile + r0;
+        const uint4 packed = *reinterpret_cast<uint4 const *>(lora_down + src);
+        const auto *values = reinterpret_cast<ElementLora const *>(&packed);
+#pragma unroll
+        for (int j = 0; j < 8; ++j) s_down_t(r0 + j, c) = values[j];
       }
       __syncthreads();
       auto tCrD = partition_fragment_C(down_mma, Shape<Int<kBM>, Int<kRankTile>>{});
       clear(tCrD);
-#pragma unroll 1
+#pragma unroll
       for (int kk = 0; kk < kBN / 16; ++kk) {
         // The BF16 MMA consumes 32-bit registers holding two adjacent columns, so a fragment is
         // already word packed. Writing the words directly avoids both the per-element 16-bit shared
@@ -1219,7 +1227,7 @@ class W4A4GemmKernel {
         for (int i = 0; i < size(tCrB); ++i) {
           const int r = get<0>(tScB(i));
           const int c = kk * 16 + get<1>(tScB(i));
-          tCrB(i) = s_down[c * kRankTile + r];
+          tCrB(i) = s_down_t(r, c);
         }
         cute::gemm(down_mma, tCrA, tCrB, tCrD);
       }
