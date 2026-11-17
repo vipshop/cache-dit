@@ -6,6 +6,7 @@ from .cache_contexts import (
   TaylorSeerCalibratorConfig,
   DMDCalibratorConfig,
   FoCaCalibratorConfig,
+  SVDCalibratorConfig,
   DBPruneConfig,
   CalibratorConfig,
 )
@@ -36,13 +37,14 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     kwargs: dict = copy.deepcopy(cache_kwargs)
     cache_context_kwargs = {}
 
-    # TaylorSeer, DMD, and FoCa are mutually exclusive.
+    # TaylorSeer, DMD, FoCa, and SVD-Cache are mutually exclusive.
     enable_taylorseer = kwargs.get("enable_taylorseer", False)
     enable_dmd = kwargs.get("enable_dmd", False)
     enable_foca = kwargs.get("enable_foca", False)
-    if sum([enable_taylorseer, enable_dmd, enable_foca]) > 1:
-      raise ValueError("`enable_taylorseer`, `enable_dmd`, and `enable_foca` are mutually "
-                       "exclusive. Please set only one of them to true.")
+    enable_svd = kwargs.get("enable_svd", False)
+    if sum([enable_taylorseer, enable_dmd, enable_foca, enable_svd]) > 1:
+      raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, and `enable_svd` are "
+                       "mutually exclusive. Please set only one of them to true.")
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -83,6 +85,26 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         enable_calibrator=kwargs.get("enable_foca"),
         enable_encoder_calibrator=kwargs.get("enable_encoder_foca", False),
         calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+      ))
+    elif enable_svd:
+      cache_context_kwargs["calibrator_config"] = (SVDCalibratorConfig(
+        enable_calibrator=kwargs.get("enable_svd"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_svd", kwargs.get("enable_svd")),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        svd_tau=kwargs.get("svd_tau", 0.9),
+        svd_beta=kwargs.get("svd_beta", 0.9),
+        svd_max_rank=kwargs.get("svd_max_rank", 0),
+        svd_predictor=kwargs.get("svd_predictor", "ema"),
+        svd_order=kwargs.get("svd_order", 1),
+      ) if not reset else SVDCalibratorConfig().reset(
+        enable_calibrator=kwargs.get("enable_svd"),
+        enable_encoder_calibrator=kwargs.get("enable_encoder_svd", kwargs.get("enable_svd")),
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        svd_tau=kwargs.get("svd_tau", 0.9),
+        svd_beta=kwargs.get("svd_beta", 0.9),
+        svd_max_rank=kwargs.get("svd_max_rank", 0),
+        svd_predictor=kwargs.get("svd_predictor", "ema"),
+        svd_order=kwargs.get("svd_order", 1),
       ))
 
     if "cache_type" not in kwargs:

@@ -5,6 +5,7 @@ from .calibrators import (
   TaylorSeerCalibratorConfig,
   FoCaCalibratorConfig,
   DMDCalibratorConfig,
+  SVDCalibratorConfig,
 )
 from .cache_config import (
   BasicCacheConfig,
