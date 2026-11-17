@@ -12,9 +12,9 @@ quietly different model:
    either exists upstream (then the vendored scheduler only has to be a numerical stand-in) or does
    not (then the vendored overrides are what make the model the released one);
 3. the LoRA mixin still routes both checkpoint partitions;
-4. TE-P still resolves `Qwen3VLForConditionalGeneration`, and VAE-P still does **not** resolve the
-   MiniMax-H3 autoencoders (Pika's VAE therefore cannot be parallelized, and that is a documented
-   limitation rather than a silent fallback).
+4. TE-P still resolves `Qwen3VLForConditionalGeneration`, and VAE-P resolves the video autoencoder
+   (`AutoencoderKLMiniMaxH3`, 34% of a single-GPU run) but not the audio one — the audio VAE is never
+   offered to `--parallel-vae`, so that half stays a documented limitation.
 """
 import inspect
 import sys

@@ -165,5 +165,8 @@ class AutoencoderKLMiniMaxH3DataParallelismPlanner(AutoEncoderDataParallelismPla
       decoded = self._stitch_tiles(rows, y_overlaps, x_overlaps) if rank == 0 else None
       return _send_result(decoded, z.device)
 
-    auto_encoder.__class__._decode_clip = new_decode_clip
+    # Bind on the instance, not the class: `dispatch.py` only refuses to apply twice through
+    # `_is_parallelized`, so a class-level patch would leak into every other
+    # `AutoencoderKLMiniMaxH3` living in the same process with this rank's group and comm.
+    auto_encoder._decode_clip = new_decode_clip.__get__(auto_encoder)
     return auto_encoder

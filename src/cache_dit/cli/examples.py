@@ -5490,20 +5490,6 @@ _PIKA_H3_FLEX_CACHE_THRESHOLDS = {
 }
 
 
-def _pika_h3_flex_blocks():
-  """Build the vendored Pika H3 Flex block tree.
-
-  Only the vendored pipeline takes this factory: `ModularPipeline._blocks_class_name` looks the block
-  class up in the `diffusers` namespace, which the vendored one is not exported from. The official
-  pipeline resolves its own `diffusers.PikaH3FlexBlocks`.
-
-  :returns: A fresh `PikaH3FlexBlocks` instance.
-  """
-  from ..models.pipelines.pika_h3_flex import PikaH3FlexBlocks
-
-  return PikaH3FlexBlocks()
-
-
 def _pika_h3_flex_vendored_binding():
   """Bind the vendored pipeline explicitly, for the diagnostic entry points.
 
