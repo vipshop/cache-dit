@@ -1,0 +1,164 @@
+# 现有 cache 能力与已评论文的全景对照
+
+本文件是"判有没有"的事实基础。数字全部标注来源，跨来源的数字**不可直接比较**（见 §4.3）。
+
+> 论文主张 → cache-dit 对应物的映射表在 `SKILL.md` §2（不在本文件）；本文件 §2 是四篇已评论文的算法骨架，§3 是逐维总表。
+
+## 1. cache-dit 现有的 cache 面（截至 2026-11-17）
+
+### 1.1 算法枚举
+
+| `CacheType` | 语义 | 跳过粒度 |
+|---|---|---|
+| `NONE` | 不缓存 | — |
+| `DBCache` | Dual Block Cache：Fn 块算完 → 判 diff → 跳过 `[Fn, N-Bn)` → Bn 块算 | 块区间 |
+| `DBPrune` | 同款判定，但**逐 block** 决策，可动态放宽阈值 | 单 block |
+
+`TaylorSeer / DMD / FoCa` **不是算法**，是 DBCache 的 forecast 插件（`calibrator_type` 三选一，互斥）。
+`SCM` **不是算法**，是外部注入的步调度（`steps_computation_mask`，1=必算 / 0=可缓存）。
+
+### 1.2 判定与状态
+
+| 机制 | 位置 | 语义 |
+|---|---|---|
+| `can_cache()` | `caching/cache_contexts/cache_manager.py` | warmup → 步掩码 → `max_cached_steps` → `max_continuous_cached_steps` → 累积 diff 上限 → 阈值 |
+| `similarity()` | 同上 | `mean\|t1−t2\| / mean\|t1\|`（相对 L1）；`threshold<=0` 永不算，`>=1` 永远算 |
+| 累积守卫 | 同上 | `max_accumulated_residual_diff_threshold`（默认 `None`=关） |
+| 上下文刷新 | 同上 + `cache_context.py` | 每次 `__call__` 重建；`num_inference_steps` 达标；`force_refresh_step_hint`（`once`/`repeat`） |
+| 统计落盘 | `cache_blocks/pattern_utils.py` | `_cached_steps` / `_residual_diffs` / `_pruned_blocks` 挂到模块上 |
+
+### 1.3 三个 calibrator 的机制
+
+| 预测器 | 数学 | 状态 | 是否随 horizon 演化 | 额外显存 |
+|---|---|---|---|---|
+| TaylorSeer | 有限差分阶梯 + `Σ (1/i!)·dⁱY·elapsedⁱ` | `dY_prev` / `dY_current` 两条阶梯 | 是（`elapsedⁱ`） | ≈2×order |
+| DMD | 窗口快照拟合 `Y_{t+1}≈A Y_t`，`Y_{t+k}=Φ(λ^k⊙b)` | ≤6 份完整快照 | 是（`λ^k`） | **6×** |
+| FoCa | 线性外推 `2*F_k − F_km1`（系数 (2, −1)）+ Heun 校正 | 4 张量 | 是 | 4× |
+
+三者共同的边界（`dmd.py` 顶部注释写明的设计）：**只替换 `Bn_residual` 这一个操作数**，`H(t,Fn)` 永远现算，因此不改阈值、不改 diff 追踪、不改累积守卫。
+
+### 1.4 DMD 与 SVD-Cache 的区别（最容易混淆的一对）
+
+两者都叫 SVD，作用的轴完全不同：
+
+| 维度 | `DMDCalibrator` | SVD-Cache |
+|---|---|---|
+| 本质 | 时间维动态模型（拟合 propagator） | 空间维坐标变换（拆 `F∈R^{N×D}`） |
+| SVD 作用对象 | 快照矩阵 `[d, n]`，n≤5 是时间列 | 特征矩阵 `[N, D]`，token × channel |
+| 秩的语义 | 时间模态数，被窗口长度卡在 ≤5 | 空间主成分数，τ=0.9 时 FLUX 上 5/3072 |
+| 预测式 | `Y_{t+k}=Φ(λ^k⊙b)`，随 horizon 变 | `F̂ = EMA(F_k) + R`，**无 horizon 参数** |
+| 类别 | 外推（可过冲/发散，有 `isfinite` 兜底） | order-0 复用 + 平滑（有界，但"停更"） |
+| 拟合频率 | 每窗口 SVD+eig+lstsq（fp64/complex128） | 一次 basis，之后每步 2 个瘦 GEMM |
+| 生效门槛 | ≥4 个**等间距**快照，否则回退 Taylor | 1 个 anchor + 一套 basis |
+| 与调度 cadence | 强耦合（只取最长等间距后缀） | 无耦合 |
+| 架构槽位 | 与 Taylor/FoCa 互斥的 predictor | 可**包住**任意 predictor |
+
+## 2. 四篇已评论文的骨架
+
+### 2.1 HiCache（arXiv 2508.16984）
+
+```
+缓存侧: Δ^{k+1}F = (Δ^k F_new - Δ^k F_prev) / Δt_hist      （与 TaylorSeer 完全同式）
+预测侧: F̂ = F₀ + Σ_{k=1..N} (1/k!) · H̃_k(Δt) · Δ^k F
+        H̃_k(x) = σ^k H_k(σx)，H 为 physicist Hermite，递推 H_{k+1}=2xH_k-2kH_{k-1}
+超参: N_interval（固定）、N_order ≤4、σ≈0.4~0.5
+```
+
+与 cache-dit 的差别：**数学上只差一行基函数**；工程上差"逐层 vs 块组"的粒度，与"固定 interval vs 自适应阈值"的调度。
+
+### 2.2 MagCache（arXiv 2506.09045）
+
+```
+残差: r_t = v_θ(x_t,t) - x_t                 （x 空间，模型输出级）
+幅度律: γ_t = mean_tokens(||r_t||₂ / ||r_{t-1}||₂)   ← 离线校准一次，per-model
+误差: ε_skip(t̂,t) = 1 - Π γ_i ;  E_t = E_{t-1} + ε_skip
+跳过: E_t ≤ δ 且 (t - t̂) ≤ K，否则重算并清零
+保护: 前 20% 强制算
+```
+
+**必须离线校准**：决策发生在算之前，而 γ_{t+1} 需要 r_{t+1}；运行期无法自测（末段 γ 骤降正是最需要它的地方）。两个守卫与 cache-dit 的 `max_continuous_cached_steps` / `max_accumulated_residual_diff_threshold` 语义等价，差别只是"预测误差 vs 实测误差"。
+
+### 2.3 SVD-Cache（arXiv 2601.07396）
+
+```
+离线（参考 prompt）: 只留 V_C ∈ R^{D×k}, σ_C ∈ R^k（σ 与 V 跨 prompt 不变）
+每步: U = F V_C diag(σ_C)^{-1} ;  F_k = U_k diag(σ_C,k) V_{C,k}^T ;  R = F - F_k
+      F̂_k = β F̂_k,prev + (1-β) F_k  (β=0.9)   # 主成分 EMA 平滑
+      F̂  = F̂_k + R                            # 残差冻结复用
+超参: τ(0.85~0.9) → k ; β=0.9 ; 固定 interval N
+```
+
+与 HiCache 打同一个靶子的两个方向：HiCache 换更好的基去打外推，SVD-Cache 直接不外推尾巴。可组合（论文 Fig 5(b)：SVD+Taylor > Taylor）。
+
+### 2.4 DiCache（arXiv 2508.17356）
+
+```
+首步全跑，R ← y - x
+每步: 跑前 m 层 → y^m_t ;  Σerror += L1rel(y^m_t, y^m_{t+1})
+      Σerror ≤ δ → y_t = x_t + R          （整步复用，探针结果被丢弃）
+      else       → 从第 m+1 层续算，刷新 R，Σerror ← 0
+DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
+             r_t = r^{tβ} + γ̂ (r^{tα} - r^{tβ})
+超参: m=1（三模型统一）、δ=0.1~0.4
+```
+
+与 DBCache 的对应：探针=`Fn`、`L1rel`=`similarity()`、`Σerror`=累积守卫、`resume from probed layer`=Fn 结构。**唯一新件是 DCTA**（双锚 + 实测距离比系数，零 SVD/零拟合/sample-adaptive）。
+
+## 3. 逐维总表
+
+| 维度 | DBCache | HiCache | MagCache | SVD-Cache | DiCache |
+|---|---|---|---|---|---|
+| 跳过粒度 | 块区间 | **整步/逐层**（论文）→ 在 cache-dit 只能是块组 | 整步 | 块区间 | 整步 |
+| 判定信号 | 运行期实测相对 L1 | 论文用固定间隔；接进 cache-dit 后复用阈值 | 离线 γ 曲线累积 | 复用阈值 | 运行期实测（浅层探针）累积 |
+| 缓存内容 | `Bn_residual` / `hidden_states` | 逐层特征（论文）/ 块组张量（cache-dit 内） | 整步残差 `r_t` | 块边界 `F` 的主成分+残差 | 整步残差 `r_t = y-x` |
+| 替代算子 | 直接复用 | Hermite 外推 | 直接复用 | 主成分 EMA + 尾巴冻结 | 直接复用 / DCTA 双锚 |
+| 离线产物 | 无 | σ（调参，非文件） | **γ 曲线（per-model）** | **V_C/σ_C（per-model）** | 无 |
+| 额外显存 | 1× 块组 | 逐层则数倍 / 块组则 ≈2×order | 1× 步输出 | 1× 块组 + D×k | 1× 步输出 + 1× 探针残差 |
+| 额外算力 | 2 次 mean | 0 | 0 | 2 个瘦 GEMM | 2 次 mean（+m 层探针，已算） |
+| 时间感知 | 有（elapsed） | 有 | 有 | **无** | 有（累积） |
+| 论文覆盖的层 | ①②③ | ①②③（固定 interval + 逐层缓存 + 外推）；在 cache-dit 里落在 ③ | ①② | ③ | ①②（+③ DCTA） |
+
+## 4. 数字
+
+### 4.1 cache-dit 同 harness 基线（`docs/benchmark/HYBRID_CACHE.md`，FLUX.1-dev，DrawBench）
+
+| 配置 | TFLOPs | 加速 | ImageReward | CLIP |
+|---|---|---|---|---|
+| FLUX 50 步 | 3726.87 | 1.00× | 0.9898 | 32.404 |
+| DBCache(S) | 1400.08 | 2.66× | **1.0065** | 32.838 |
+| DBCache(S)+TS | 1153.05 | 3.23× | **1.0221** | 32.819 |
+| TaylorSeer(N=4,O=2) | 1042.27 | 3.57× | 0.9857 | 32.413 |
+| DBCache(M) | 944.75 | 3.94× | 0.9997 | 32.849 |
+| DBCache(M)+TS | 944.75 | 3.94× | 1.0107 | 32.865 |
+| FoCa(N=5) | 893.54 | 4.16× | 1.0029 | 32.948 |
+| TaylorSeer(N=7,O=2) | 670.44 | 5.54× | **0.9128** | 32.128 |
+| DBCache(F) | 651.90 | 5.72× | 0.9271 | 32.552 |
+| **DBCache(F)+TS** | 651.90 | **5.72×** | **0.9526** | 32.568 |
+| FoCa(N=8) | 596.07 | 6.24× | 0.9502 | 32.706 |
+| DBCache(U)+TS | 505.47 | 7.37× | 0.8645 | 32.719 |
+
+读法：**≤4x 已达 SOTA，>5x 明显掉队（0.9526 @5.72x）**——这就是"新算法必须有 >5x 增量"的由来。
+
+### 4.2 各论文自述（**只能在自己列内比较**）
+
+| 论文 | 设置 | 关键数字 |
+|---|---|---|
+| HiCache | FLUX，N=7,O=2 | Taylor IR 0.9572 → HiCache **0.9979**（同 670.44 TFLOPs）；N=9 时 0.8562 → 0.9113；σ 消融：σ=1.0 时 IR 仅 0.759（比 Taylor 更差） |
+| SVD-Cache | FLUX | N=5 893.54T IR 1.0123；N=7 670.44T IR 0.9938；N=8 596.07T IR 0.9769。HunyuanVideo N=6 VBench 80.46 @5359T（原模型 80.66） |
+| MagCache | Wan2.1 1.3B 50 步 | 2.14×/PSNR 23.42；2.68×/PSNR 21.54。HunyuanVideo 2.25×/34.51；Flux 2.57×/24.46、2.82×/21.35 |
+| DiCache | WAN 2.1 / HunyuanVideo / Flux | 2.45×/26.45dB/0.8885；2.34×/32.79dB/0.9396；3.22×/22.39dB/0.8211；DCTA 同加速 +0.81 dB；TaylorSeer 在 HunyuanVideo **OOM** |
+
+### 4.3 为什么这些数字不能横向比
+
+- 同一 TaylorSeer(N=7,O=2)@670.44 TFLOPs 的 ImageReward：**0.9572 / 0.9698 / 0.9128**（三个来源），极差 0.057 > 各论文宣称的增益（+0.02~0.05）。
+- MagCache 与 DiCache 在 HunyuanVideo 上互相矛盾：2.25× 报 34.51 dB vs 2.34× 报 32.79 dB（prompt 集 100 vs 300 条）。
+- 同算力档（2.66× vs 2.82×，同属 2.7 档）：块级复用（DBCache-S）PSNR 31.53 vs 整步复用（MagCache-Flux）21.35——10 dB 的差距**远超**任何 harness 噪声，反映的是方法学差异（整步复用丢掉全部 block 贡献）。
+- 结论：**判定只能靠自己在固定 seed / 固定 prompt / raw float 下跑 A/B。**
+
+## 5. 复核用的原始出处
+
+- cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/utils.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
+- HiCache：Algorithm 1/2/3（p.5、A.2）、Eq.(10)、Table 1（FLUX）、Table 4（σ 消融）、A.7 Listing 1
+- MagCache：Eq.(3)(4)(6)(7)(8)(9)(10)(11)、Sec 3.3、Table 1/2/3、A.3/A.4
+- SVD-Cache：Eq.(4)-(11)、Sec 3.3-3.5、Table 1/2/3、Fig 5(b)(c)(d)
+- DiCache：Eq.(3)(4)(5)(6)、Algorithm 1（p.6）、Eq.(7)-(11)、Fig 3(d)（m=1~3 相关 0.8）、Table 1/2
