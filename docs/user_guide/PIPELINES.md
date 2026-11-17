@@ -76,7 +76,10 @@ from cache_dit.models.pipelines.longcat_video_avatar import LongCatVideoAvatarPi
 from cache_dit.models.pipelines.mova import MOVAPipeline
 from cache_dit.models.pipelines.magi2.pipeline import Magi2PreviewPipeline
 from cache_dit.models.pipelines.fast_h3 import FastH3ModularPipeline
-from cache_dit.models.pipelines.pika_h3_flex import PikaH3FlexModularPipeline
+# Pika H3 Flex is a diffusers modular pipeline (`diffusers.PikaH3FlexModularPipeline`);
+# `resolve_pika_h3_flex()` returns the official class plus its block factory and reference
+# package, and falls back to the vendored copy on diffusers < 0.43.
+from cache_dit.models.pipelines.pika_h3_flex import resolve_pika_h3_flex
 
 # Fused variants of diffusers pipelines
 from cache_dit.models.pipelines.flux2_klein import _Flux2KleinPipeline
@@ -102,6 +105,6 @@ torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel ulyss
 - **Return values.** Image models return `.images`. Video models return `.frames` (SANA-Video 2.0 adds `.fps`; MOVA and MAGI-2 Preview add `.audio` and `.sampling_rate`; MAGI-2 returns a plain `dict`). LongCat-Video Avatar returns a bare `np.ndarray`. The two modular pipelines (Fast-H3, Pika H3 Flex) return the whole `PipelineState` unless you pass `output=` — `output="videos"` or `output=["videos", "audio", "sampling_rate"]`.
 - **CFG bookkeeping.** Caching assumes a fixed number of transformer forwards per step. Pipelines that run one forward per CFG branch need `guidance_scale > 1` (MOSS-Image, Boogu-Image, HiDream-O1-Image, LingBot-Video, MOVA, Wan2.2-S2V); distilled ones need exactly `1.0` (LongLive 2.0, HY-Nomas, CausVid-Wan). The adapter is inferred from the pipeline class, so do not set `enable_separate_cfg` by hand — a mismatch raises instead of silently halving the step count.
 - **Fused variants.** `_Flux2KleinPipeline` / `_QwenImage21Pipeline` upgrade the transformer inside `from_pretrained`. FLUX.3-Klein is a diffusers modular pipeline with no cache-dit subclass: load `Flux3DistilledModularPipeline` and call `upgrade_transformer(pipe.transformer)` **before** `enable_cache` / compile / offload. `CACHE_DIT_FUSED_OPS` (see [Environment Variables](./ENV.md)) decides whether the fused operators are installed.
-- **Extra assembly.** A few models need one preparation step before `from_pretrained`: CausVid-Wan takes a `transformer=` built by `build_causvid_transformer(...)`, LongLive 2.0 wants its `model_bf16.pt` converted with `python -m cache_dit.models.pipelines.longlive2.convert`, Pika H3 Flex needs `load_components(workflow=...)` plus the released adapter fused, and MAGI-2 Preview only supports text conditioning (`image=` raises `NotImplementedError`). The CLI example of each model is the working recipe.
+- **Extra assembly.** A few models need one preparation step before `from_pretrained`: CausVid-Wan takes a `transformer=` built by `build_causvid_transformer(...)`, LongLive 2.0 wants its `model_bf16.pt` converted with `python -m cache_dit.models.pipelines.longlive2.convert`, Pika H3 Flex needs `load_components(workflow=...)` plus the released adapter fused into the transformer (and unloaded again, so the offloader never serves pre-merge weights), and MAGI-2 Preview only supports text conditioning (`image=` raises `NotImplementedError`). The CLI example of each model is the working recipe.
 
 `enable_cache` matches a built-in pipeline by class-name prefix, and all of the classes above are pre-registered, so no custom `BlockAdapter` is needed. See [Unified Cache APIs](./CACHE_API.md), [Context Parallelism](./CONTEXT_PARALLEL.md), [Tensor Parallelism](./TENSOR_PARALLEL.md) and [Low-Bits Quantization](./QUANTIZATION.md) for the optimization knobs themselves.

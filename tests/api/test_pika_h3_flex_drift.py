@@ -17,6 +17,7 @@ quietly different model:
    limitation rather than a silent fallback).
 """
 import inspect
+import sys
 
 import pytest
 import torch
@@ -26,7 +27,10 @@ from diffusers import (
 )
 from diffusers.loaders import MiniMaxH3LoraLoaderMixin
 
-from cache_dit.models.pipelines.pika_h3_flex import PikaH3FlexScheduler
+from cache_dit.models.pipelines.pika_h3_flex import (
+  PikaH3FlexScheduler,
+  resolve_pika_h3_flex,
+)
 from cache_dit.distributed.autoencoders.planners import _activate_auto_encoder_dp_planners
 from cache_dit.distributed.autoencoders.register import AutoEncoderDataParallelismPlannerRegister
 from cache_dit.distributed.text_encoders.planners import _activate_text_encoder_tp_planners
@@ -35,13 +39,22 @@ from cache_dit.distributed.text_encoders.register import TextEncoderTensorParall
 # The released six-step ladder, as a base grid the scheduler shifts (video shift 12 / audio shift 3).
 _BASE_SIGMAS = [step / 1000.0 for step in (1000, 750, 500, 250, 100, 40, 0)]
 
-# What the installed diffusers knows about the re-noising update. The vendored scheduler is the
-# fallback for a release that knows nothing about it, so which half of each guard applies depends on
-# this, not on a version string.
-_INIT_PARAMETERS = inspect.signature(MiniMaxH3Scheduler.__init__).parameters
-_HAS_PACKAGED_RE_NOISING = ("stochastic_sampling" in _INIT_PARAMETERS
-                            and "shift_provided_sigmas" in _INIT_PARAMETERS and "generator"
-                            in inspect.signature(MiniMaxH3Scheduler.step).parameters)
+
+def _has_packaged_re_noising() -> bool:
+  """Whether the installed diffusers owns the re-noising update.
+
+  The vendored scheduler is the fallback for a release that knows nothing about it, so which half of
+  each guard applies depends on this, not on a version string. It is a function rather than a module
+  constant so the fallback half stays testable on a release that does have the contract — the branch
+  is exercised through `monkeypatch`, otherwise it would be dead code on any modern diffusers.
+
+  :returns: `True` when `stochastic_sampling`, `shift_provided_sigmas` and `step(generator=...)` are
+    part of the installed scheduler.
+  """
+
+  parameters = inspect.signature(MiniMaxH3Scheduler.__init__).parameters
+  return ("stochastic_sampling" in parameters and "shift_provided_sigmas" in parameters
+          and "generator" in inspect.signature(MiniMaxH3Scheduler.step).parameters)
 
 
 def _tiny_transformer() -> MiniMaxH3Transformer3DModel:
@@ -69,7 +82,7 @@ def _upstream_scheduler(shift: float) -> MiniMaxH3Scheduler:
   A release without the packaged switch cannot be configured at all, which is exactly what the
   vendored subclass exists for.
   """
-  if not _HAS_PACKAGED_RE_NOISING:
+  if not _has_packaged_re_noising():
     return MiniMaxH3Scheduler(shift=shift)
   return MiniMaxH3Scheduler(shift=shift, stochastic_sampling=True, shift_provided_sigmas=True)
 
@@ -88,63 +101,72 @@ def test_transformer_keeps_the_planner_module_tree():
 
 
 def test_scheduler_re_noising_contract_against_the_installed_release():
-  if _HAS_PACKAGED_RE_NOISING:
-    # The installed release owns the contract, so the integration can use it directly and the vendored
-    # subclass only has to stay a numerical stand-in. Answering this differently is the drift: the
-    # resolver would pick a class the checkpoint was not trained for.
-    scheduler = _upstream_scheduler(12.0)
-    scheduler.set_timesteps(sigmas=_BASE_SIGMAS)
-    assert scheduler.num_inference_steps == 6
-    return
-  # No packaged contract: the vendored subclass is what makes the run the released model, so its four
-  # overrides have to be there.
-  assert "generator" not in inspect.signature(MiniMaxH3Scheduler.step).parameters
-  assert "stochastic_sampling" not in _INIT_PARAMETERS
-  assert "scale_noise" in PikaH3FlexScheduler.__dict__
-  assert "step" in PikaH3FlexScheduler.__dict__
-  assert "set_timesteps" in PikaH3FlexScheduler.__dict__
+  if not _has_packaged_re_noising():
+    pytest.skip("the installed diffusers has no re-noising contract to compare against")
+  # The installed release owns the contract, so the integration can use it directly and the vendored
+  # subclass only has to stay a numerical stand-in. Answering this differently is the drift: the
+  # resolver would pick a class the checkpoint was not trained for, so assert it does not.
+  scheduler = _upstream_scheduler(12.0)
+  scheduler.set_timesteps(sigmas=_BASE_SIGMAS)
+  assert scheduler.num_inference_steps == 6
+  assert resolve_pika_h3_flex().is_upstream
+  assert not resolve_pika_h3_flex().reference_package.startswith("cache_dit")
+
+
+def test_vendored_scheduler_supplies_the_whole_re_noising_surface():
+  # What the fallback contributes on a release without the packaged update. Asserted unconditionally:
+  # it is the half of the contract that the vendored copy owns on every diffusers, and making it
+  # version-conditional is how it would silently rot.
+  for name in ("scale_noise", "step", "set_timesteps"):
+    assert name in PikaH3FlexScheduler.__dict__, f"`{name}` must stay overridden"
+  scheduler = PikaH3FlexScheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
+  assert scheduler.config["stochastic_sampling"] is True
+  assert scheduler.config["shift_provided_sigmas"] is True
 
 
 def test_vendored_scheduler_reproduces_the_installed_re_noising_update():
   """The fallback must sample what the installed release samples, whatever that release is."""
   vendored = PikaH3FlexScheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
   vendored.set_timesteps(sigmas=_BASE_SIGMAS)
-  upstream = _upstream_scheduler(12.0)
-  if _HAS_PACKAGED_RE_NOISING:
-    upstream.set_timesteps(sigmas=_BASE_SIGMAS)
-    assert vendored.sigmas.tolist() == pytest.approx(upstream.sigmas.tolist(), abs=1e-6)
-    assert vendored.timesteps.tolist() == pytest.approx(upstream.timesteps.tolist(), abs=1e-6)
 
   shape = (2, 3)
   vendored_sample = torch.randn(shape,
                                 generator=torch.Generator().manual_seed(11),
                                 dtype=torch.float32)
-  upstream_sample = vendored_sample.clone()
   vendored_generator = torch.Generator().manual_seed(23)
-  upstream_generator = torch.Generator().manual_seed(23)
-  for index, (timestep, other) in enumerate(zip(vendored.timesteps, upstream.timesteps)):
+  # The arithmetic of the re-noising update, reconstructed independently of both implementations:
+  # `x0 = x + sigma * v`, then `x_next = (1 - sigma') * x0 + sigma' * noise`, where the noise is drawn
+  # per step and skipped once `sigma'` reaches zero.
+  expected = vendored_sample.clone()
+  expected_generator = torch.Generator().manual_seed(23)
+  for index, timestep in enumerate(vendored.timesteps):
     velocity = torch.ones(shape, dtype=torch.float32) * (index + 1)
     vendored_sample = vendored.step(velocity,
                                     timestep,
                                     vendored_sample,
                                     generator=vendored_generator,
                                     return_dict=False)[0]
-    if _HAS_PACKAGED_RE_NOISING:
-      upstream_sample = upstream.step(velocity,
-                                      other,
-                                      upstream_sample,
-                                      generator=upstream_generator,
-                                      return_dict=False)[0]
-    else:
-      # Without the packaged update the comparison is against the documented re-noising arithmetic:
-      # `x0 = x + sigma * v`, then `x_next = (1 - sigma') * x0 + sigma' * noise`.
-      sigma = vendored.sigmas[index].item()
-      sigma_next = vendored.sigmas[index + 1].item()
-      noise = torch.randn(shape, generator=upstream_generator, dtype=torch.float32)
-      upstream_sample = (1 - sigma_next) * (upstream_sample + sigma * velocity) + sigma_next * noise
+    sigma = vendored.sigmas[index].item()
+    sigma_next = vendored.sigmas[index + 1].item()
+    expected = (1 - sigma_next) * (expected + sigma * velocity)
+    if sigma_next != 0:
+      expected = expected + sigma_next * torch.randn(
+        shape, generator=expected_generator, dtype=torch.float32)
 
-  # A different sampler (base class, bf16 cast, unshifted grid) would miss this by orders of magnitude.
-  assert torch.allclose(vendored_sample, upstream_sample.to(vendored_sample.dtype), atol=1e-6)
+  assert torch.allclose(vendored_sample, expected, atol=1e-6)
+  if _has_packaged_re_noising():
+    # ... and the installed release agrees with that reconstruction, so the stand-in is numerically
+    # identical rather than merely close to somebody's reading of the paper.
+    upstream = _upstream_scheduler(12.0)
+    upstream.set_timesteps(sigmas=_BASE_SIGMAS)
+    assert vendored.sigmas.tolist() == pytest.approx(upstream.sigmas.tolist(), abs=1e-6)
+    assert vendored.timesteps.tolist() == pytest.approx(upstream.timesteps.tolist(), abs=1e-6)
+    sample = torch.randn(shape, generator=torch.Generator().manual_seed(11), dtype=torch.float32)
+    generator = torch.Generator().manual_seed(23)
+    for index, timestep in enumerate(upstream.timesteps):
+      velocity = torch.ones(shape, dtype=torch.float32) * (index + 1)
+      sample = upstream.step(velocity, timestep, sample, generator=generator, return_dict=False)[0]
+    assert torch.allclose(sample, expected, atol=1e-6)
 
 
 def test_scheduler_keeps_the_re_noising_config_keys_across_a_from_config_round_trip():
@@ -199,14 +221,27 @@ def test_te_parallelism_resolves_the_qwen3vl_conditioner():
   assert len(AutoEncoderDataParallelismPlannerRegister.supported_planners()[1]) > 0
 
 
-def test_vae_parallelism_does_not_cover_the_minimax_h3_autoencoders():
-  # Documents a limitation instead of a capability: the audio VAE is never offered to `--parallel-vae`
-  # either (`utils.py` only appends `pipe.vae`), so VAE-P is out of scope for Pika H3 Flex.
+def test_vae_parallelism_covers_the_video_autoencoder_but_not_the_audio_one():
+  # Pika decodes 124 frames through the video VAE, so VAE-P has to resolve it. The audio VAE is never
+  # offered to `--parallel-vae` (`utils.py` only appends `pipe.vae`), so it stays uncovered — that half
+  # is a limitation worth pinning, while the video half is a capability.
   _activate_auto_encoder_dp_planners()
   assert len(AutoEncoderDataParallelismPlannerRegister.supported_planners()[1]) > 0
-  for name in ("AutoencoderKLMiniMaxH3", "AutoencoderKLMiniMaxH3Audio"):
-    with pytest.raises(ValueError, match="No planner registered"):
-      AutoEncoderDataParallelismPlannerRegister.get_planner(name)
+  assert AutoEncoderDataParallelismPlannerRegister.get_planner("AutoencoderKLMiniMaxH3") is not None
+  with pytest.raises(ValueError, match="No planner registered"):
+    AutoEncoderDataParallelismPlannerRegister.get_planner("AutoencoderKLMiniMaxH3Audio")
+
+
+def test_vendored_scheduler_arithmetic_does_not_lean_on_the_installed_release(monkeypatch):
+  # The reconstruction above must not secretly be the upstream path: with `step` out of order the test
+  # still has to pass, which proves it compares against the arithmetic and not against the release.
+  monkeypatch.setattr(sys.modules[__name__], "_has_packaged_re_noising", lambda: False)
+
+  def _unreachable(*args, **kwargs):
+    raise AssertionError("the installed scheduler was used as the reference")
+
+  monkeypatch.setattr(MiniMaxH3Scheduler, "step", _unreachable)
+  test_vendored_scheduler_reproduces_the_installed_re_noising_update()
 
 
 def test_reference_embedding_is_fp32_bounded():

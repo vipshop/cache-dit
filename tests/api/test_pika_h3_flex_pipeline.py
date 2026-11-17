@@ -17,6 +17,7 @@ import os
 from types import SimpleNamespace
 
 import inspect
+from unittest import mock
 
 import pytest
 import torch
@@ -228,25 +229,35 @@ def test_row_timestep_plan_groups_the_three_noise_levels():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an execution device")
-def test_row_timestep_plan_accepts_indices_on_the_execution_device():
+def test_row_timestep_plan_brings_the_indices_back_to_the_host():
   # The layout step moves the indices to the execution device (`prepare_layout`), while the plan itself
-  # is built on CPU on every real run. `build_row_timesteps` takes them back to the host, which is what
-  # upstream does too; without that cast the CPU write is indexed by an accelerator tensor. torch >= 2.0
-  # tolerates that by syncing the device, so the failure mode here is a per-step host sync rather than
-  # an exception — this case pins the contract (device-independent plan), not a traceback.
+  # is built on CPU on every real run. `build_row_timesteps` takes them back to the host, as upstream
+  # does. torch >= 2.0 tolerates indexing a CPU tensor with an accelerator one by syncing, so the old
+  # code returned the right plan at the price of a host sync per step: a spy decides whether the cast
+  # happened, where an `assertRaises` cannot.
   video_indices = torch.tensor([2, 3, 4, 5], device="cuda")
   audio_indices = torch.tensor([6, 7], device="cuda")
-  timesteps, inverse = PikaH3FlexSetTimestepsStep.build_row_timesteps(
-    video_indices,
-    audio_indices,
-    num_condition_video_rows=1,
-    num_condition_audio_rows=0,
-    num_text_tokens=2,
-    video_timestep=0.9,
-    audio_timestep=0.5,
-    condition_video_timestep=0.999,
-    condition_audio_timestep=1.0,
-  )
+  hosted = []
+
+  def _spy(tensor, *args, **kwargs):
+    hosted.append(tensor.device.type)
+    return original_cpu(tensor, *args, **kwargs)
+
+  original_cpu = torch.Tensor.cpu
+  with mock.patch.object(torch.Tensor, "cpu", _spy):
+    timesteps, inverse = PikaH3FlexSetTimestepsStep.build_row_timesteps(
+      video_indices,
+      audio_indices,
+      num_condition_video_rows=1,
+      num_condition_audio_rows=0,
+      num_text_tokens=2,
+      video_timestep=0.9,
+      audio_timestep=0.5,
+      condition_video_timestep=0.999,
+      condition_audio_timestep=1.0,
+    )
+  # One cast per index tensor, both from the accelerator.
+  assert hosted == ["cuda", "cuda"]
   # Same plan as the CPU call: the device the indices arrive on must not change the result.
   assert timesteps.tolist() == pytest.approx([0.5, 0.9, 0.999], abs=1e-6)
   assert inverse.tolist() == [1, 1, 2, 1, 1, 1, 0, 0]
