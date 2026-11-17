@@ -6214,7 +6214,7 @@ _PH3_IMAGE_REQUEST = (
   "lanterns, a scooter headlight flaring through the drizzle.")
 
 
-def _ph3_image_post_init(upsampler_dir: Optional[str]):
+def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
   """Build the `post_init_hook` that decides what happens to the prompt-upsampler step.
 
   The pipeline ships a Qwen3.5 prompt upsampler as one of its six top-level blocks. Benchmarking
@@ -6227,10 +6227,18 @@ def _ph3_image_post_init(upsampler_dir: Optional[str]):
   components are already loaded by `load_components()`, hence the explicit `unload_components`.
 
   :param upsampler_dir: `--prompt-enhancer` value, or None to render the prompt as given.
+  :param model_path: The checkpoint the pipeline was loaded from, so an enhancer directory that
+      points at it keeps the components `load_components()` already read instead of reloading them.
   :returns: The hook `ExampleInitConfig.post_init_hook` expects.
   """
 
+  same_dir = (upsampler_dir is not None
+              and os.path.abspath(upsampler_dir) == os.path.abspath(model_path))
+
   def hook(pipe) -> None:
+    if upsampler_dir is not None and same_dir:
+      # The step stays and its components are the ones `load_components()` already read.
+      return
     pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
     pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
     if upsampler_dir is None:
@@ -6364,9 +6372,10 @@ def _ph3_image_init_config(
       "`num_inference_steps`: ignoring --num-inference-steps %d.", _PH3_IMAGE_STEPS,
       args.num_inference_steps)
 
+  model_path = _path("PrunaAI/P-H3-Image", args=args)
   return ExampleInitConfig(
     task_type=task_type,
-    model_name_or_path=_path("PrunaAI/P-H3-Image", args=args),
+    model_name_or_path=model_path,
     pipeline_class=PH3ImageModularPipeline,
     bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
     modular_workflow=workflow,
@@ -6378,7 +6387,7 @@ def _ph3_image_init_config(
       "prompt_upsampler": torch.bfloat16,
       "default": torch.float32,
     },
-    post_init_hook=_ph3_image_post_init(getattr(args, "prompt_enhancer", None)),
+    post_init_hook=_ph3_image_post_init(getattr(args, "prompt_enhancer", None), model_path),
     extra_optimize_kwargs={"cache_config": _ph3_image_cache_config(args, workflow)},
   )
 

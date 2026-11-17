@@ -111,7 +111,7 @@ def test_examples_select_their_workflow_and_skip_the_step_count():
 
 def test_post_init_hook_pops_the_upsampler_from_the_live_tree():
   pipe = _FakePipe()
-  _ph3_image_post_init(None)(pipe)
+  _ph3_image_post_init(None, "/models/p-h3-image")(pipe)
 
   assert "prompt_upsampler" not in pipe._blocks.sub_blocks
   assert "decode" in pipe._blocks.sub_blocks
@@ -142,13 +142,35 @@ def test_post_init_hook_injects_the_upsampler_when_a_directory_is_given(monkeypa
   monkeypatch.setattr(transformers, "AutoProcessor", _FakeProcessor)
 
   pipe = _FakePipe()
-  _ph3_image_post_init("/models/p-h3-image")(pipe)
+  _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")(pipe)
 
   assert "prompt_upsampler" not in pipe._blocks.sub_blocks
   assert loaded["upsampler"][0] == "/models/p-h3-image"
   assert loaded["upsampler"][1] == "prompt_upsampler"
   assert loaded["processor"][1] == "prompt_upsampler_processor"
   assert set(pipe.updated) == {"prompt_upsampler", "prompt_upsampler_processor"}
+
+
+def test_post_init_hook_keeps_the_step_when_the_directory_is_the_checkpoint(monkeypatch):
+  """Pointing `--prompt-enhancer` at the checkpoint itself must keep the loaded components.
+
+  Popping the step here would render the short request verbatim while still paying the upsampler's
+  residency: the flag would look accepted and change the prompt distribution anyway.
+  """
+  import transformers
+
+  def _fail(*args, **kwargs):
+    raise AssertionError("the already-loaded upsampler must not be reloaded")
+
+  monkeypatch.setattr(transformers, "Qwen3_5ForConditionalGeneration", _fail)
+  monkeypatch.setattr(transformers, "AutoProcessor", _fail)
+
+  pipe = _FakePipe()
+  _ph3_image_post_init("/models/p-h3-image", "/models/p-h3-image")(pipe)
+
+  assert "prompt_upsampler" in pipe._blocks.sub_blocks
+  assert pipe.unloaded == []
+  assert pipe.updated == {}
 
 
 def test_cache_config_matches_the_eight_step_grid():
