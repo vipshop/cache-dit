@@ -170,7 +170,7 @@ for gamma in ratios:
 1. **逐比特**：`max_cached_steps=0` + `residual_diff_threshold=0.0` → `assert_close(atol=0, rtol=0)`。多流模型每条流都断言。
 2. **强制命中**：`residual_diff_threshold=1e9`（或 `>=1.0` 短路）→ 断言第二条流不是 `None` 也没被冻结。
 3. **真命中**：`cached_steps > 0`，且 executed steps（DBCache 侧只有 `accumulated_executed_steps`，没有 block 计数）或 `actual_blocks`（Prune 侧）能证明真跳过了计算。**只看 PSNR=inf 会假绿**（零缓存时也是 inf）。
-4. **口径**：raw float 自算 PSNR（`calculate_psnr` 的 peak 硬编码 255，喂 float 会 +48.13 dB 虚高）；固定 seed。
+4. **口径**：`calculate_psnr` 的 peak 固定 255（#1335 修的是 uint8 回绕，不是量纲），float[0,1] 仍会 +48.13 dB 虚高——要么自算（`data_range=1`），要么先乘 255；固定 seed。
 5. **量化/并行组合**：只在确实要发版时才跑，且必须单独归因（compile 会顺带打开 TF32，VAE 也会变快）。
 6. **与 DBCache 同 harness 对照**：新算法必须给出"同 FLOPs / 同 seed / 同 prompt 下 vs DBCache(同档位)"，否则数字无意义。
 

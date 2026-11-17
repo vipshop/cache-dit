@@ -87,7 +87,7 @@ user-invocable: true
 
 ## 6. 验收纪律（不可协商）
 
-- **raw float 自算 PSNR**：`calculate_psnr` 把 peak 硬编码成 255，喂 float[0,1] 会白送 +48.13 dB。
+- **PSNR 量纲**：`calculate_psnr` 的 peak 固定为 255（#1335 只修了 uint8 模减法回绕，**没有**改量纲假设），喂 float[0,1] 仍旧白送 +48.13 dB。要么自算（`data_range=1`），要么先把输入乘 255。
 - **固定 seed**（默认 0），同配置重复跑必须先得到逐比特一致，才谈跨配置比较。
 - **`cached_steps > 0` + executed steps（DBCache）/ `actual_blocks`（Prune）** 两列必给，否则"零缓存"也能全绿。
 - **`max_cached_steps=0` → 逐比特**回归用例，每个新预测器/策略都要有。
