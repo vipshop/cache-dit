@@ -1111,7 +1111,17 @@ chain 级（`bench/kernels/bench_svdquant.py --fused-mlp --runtime ... --lora-la
 | 8192 | cute/row_major | 2277.9 µs | 1895.4 µs | 1948.7 µs | 1.203× | 116.5 |
 | 8192 | cute/native | 2315.0 µs | 1912.3 µs | 1969.4 µs | 1.211× | 117.5 |
 
-CuTe 融合链比 native 慢 4–12%；拆开看是 D 归约回读 smem（native 直接用累加器寄存器）+ `row_major` 的一次 finalize launch + FP32 scratch 清零。要收这个差距就改 D 归约的取数方式，不要再拆 kernel。
+CuTe 融合链比 native 慢 9–13%（M=4096 1.089×、M=8192 1.127×）。同进程同权重、buffer 全预分配的逐段拆解（CUDA Event median，us，r32，n=12288/k=3072）：
+
+| 阶段 | M=4096 native | M=4096 cute+rm | 比值 | M=8192 native | M=8192 cute+rm | 比值 |
+|---|---:|---:|---:|---:|---:|---:|
+| producer（仅 quantize） | 50.4 | 46.0 | 0.91× | 77.1 | 63.4 | 0.82× |
+| 非融合 GEMM（fc1 / fc2） | 440.5 / 106.3 | 430.4 / 103.8 | 0.98× | 799.4 / 106.5 | 800.0 / 103.5 | 1.00× / 0.97× |
+| 融合 GEMM：只出 qout | 455.2 | 475.3 | 1.04× | 869.7 | 891.5 | 1.03× |
+| 融合 GEMM：qout + D（mlp epilogue） | 479.1 | 550.5 | **1.15×** | 908.3 | 1035.7 | **1.14×** |
+| 链：unfused / fused | 1161.9 / 935.2 | 1191.7 / 1018.4 | 1.03× / **1.09×** | 2206.4 / 1680.5 | 2275.9 / 1894.2 | 1.03× / **1.13×** |
+
+结论：**producer 与非融合 GEMM 两侧 cute 都不慢（0.82–1.00×），差距全部来自融合 epilogue 的 D 归约**——只出 qout 时仅 1.03–1.04×，加上 D 就跳到 1.14–1.15×：native 从累加器寄存器直接 MMA 只多花 24 µs（4096）/ 39 µs（8192），cute 因为要回读 smem O tile 当 A 操作数、`row_major` 还要多一次 finalize launch 和 FP32 scratch 清零，多花 75 µs / 144 µs（3.1–3.7×）。所以 CDK-8 的落点很明确：改 D 归约的取数（累加器寄存器 / 单 warp 全 K），不要动 producer 与主 GEMM，更不要再拆 kernel。
 
 e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 

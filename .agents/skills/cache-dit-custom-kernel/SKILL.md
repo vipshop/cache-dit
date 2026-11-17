@@ -300,7 +300,7 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 - `cache_dit.metrics.calculate_psnr` 喂 `uint8` 数组时按 256 模减，**虚高约 10 dB**；比 PSNR 前先把图转 float。
 - SVDQ 各档**跨进程不可复现**（producer 的 D 用 relaxed FP32 原子累加）：FLUX 同档重跑 23.7–28.5 dB、Qwen21 31.9–32.6 dB，而 `base` 是 bit 级可复现（重跑 99 dB）。所以 fused↔unfused、native↔cute 的图像差（23–28 dB）**都在噪声带内**，e2e PSNR 不能作为等价性判据；等价性看 kernel 的 qact 逐字节与链 rel-L2。
 
-未做：CuTe 融合链在 chain 级仍比 native 慢 4–12%（D 归约回读 smem + `finalize` 一次 launch + FP32 scratch 清零）。要收这个差距，方向是把 D 归约改成读累加器寄存器/单 warp 全 K，而不是再拆 kernel。
+未做：CuTe 融合链在 chain 级比 native 慢 **9–13%**，但差距**只**来自融合 epilogue 的 D 归约（只出 qout 时 1.03×，加 D 变 1.14×；native 从累加器寄存器直接 MMA，cute 要回读 smem O tile + `row_major` 的 finalize/scratch）。producer 0.82–0.91×、非融合 GEMM 0.97–1.00×，两侧 cute 都不慢，别去动它们。分档数据见 `references/svdq-nvfp4-cute.md` §32.3，方向是把 D 归约改成读累加器寄存器/单 warp 全 K，而不是再拆 kernel。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
