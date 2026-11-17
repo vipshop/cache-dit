@@ -1192,7 +1192,7 @@ e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 
 ### 32.5 CDK-8 第二轮：量化、B 预读与链级固定成本（2026-11-17）
 
-本轮只使用 GPU 4/5。`9f4b7e71` 将 `smooth` 改为 8×BF16 的 `uint4` 读、O tile 保留 shared 地址空间，并按 row pair 合并 qout/oscales 写；`38f00b8e` 将 D 的 B staging 改成每线程先发完 4 个 `LDG.128` 再写 smem，消除 STS 逐组等待 LDG 的串行依赖。融合实例现由 `cute/fp4/gemm/fused.cu` 独立编译；`kFuseDown` 将 qout-only 与 qout+D 分开，普通 GEMM TU 不再编译融合 epilogue。`finalize_lora_rows_kernel` 因多 TU 改为内部链接。
+本轮只使用 GPU 4/5。`9f4b7e71` 将 `smooth` 改为 8×BF16 的 `uint4` 读、O tile 保留 shared 地址空间，并按 row pair 合并 qout/oscales 写；`38f00b8e` 将 D 的 B staging 改成每线程先发完 4 个 `LDG.128` 再写 smem，消除 STS 逐组等待 LDG 的串行依赖。融合实例现由 `cute/fp4/gemm/gemm_fused.cu` 独立编译；`kFuseDown` 将 qout-only 与 qout+D 分开，普通 GEMM TU 不再编译融合 epilogue。`finalize_lora_rows_kernel` 因多 TU 改为内部链接。
 
 最终同进程 CUDA Event 对照：
 
@@ -1213,8 +1213,30 @@ FLUX cute+row_major fused eager 7.77 s、compile 5.76 s；203 个 SVDQ 测试通
 
 注意一个测量陷阱：早期独立 fc2 行误用了 M=256 的校准激活，得到约 106 µs，不能代表 chain 的 M=4096/8192。修正为 full-M 后，fc2 为 M4096 385.4/435.1 µs、M8192 687.2/782.6 µs，cute 慢 13–14%，与链级差距一致。后续应针对 `M×3072×12288` 的非融合/consumer GEMM 做 tile 与 mainloop 归因。
 
-### 32.6 回归与边界
+### 32.6 full-M fc2：large-K row-major 纯 G2R 特化（2026-11-17）
 
-- `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例。
-- 全量 SVDQ 回归 197 passed（含 source manifest）。
-- 未做：INT4 融合链的 e2e（INT4 GEMM 比 NVFP4 慢约 25×，dense store 占比只有 0.8%）；CuTe 融合链的剩余链级差距转 issue #1336（见 32.4，本轮不再继续改 kernel）；`row_major` 的 non-unit rank scale 融合（需要给 ABI 加"下一层 scale"入口，当前硬拒）。
+针对 `M×3072×12288` 的 consumer GEMM，同 GPU 同进程基线为 M4096 native/cute 387–389/429–435 µs、M8192 699/787 µs。NCU 显示两边 tensor pipe 都约 88.6%，但 cute 多约 4.7% 动态指令，SASS PC sampling 额外集中在 `SYNCS.PHASECHK`、`BRA`、`LDSM`、`EXIT`；no-LoRA 消融只改变 native 约 0.2%、cute 约 1.1%，所以主因不是 LoRA-up。NCU duration 会把两 kernel 压到接近，不用它判定墙钟收益。
+
+以下单变量实验均无收益并已回滚：fc2 强制 main-first（基本等价）、`BN128/BK64`（M8192 约 1539 µs）、`BK64+S6`（M8192 约 1010 µs）、最后一个子块提前 release stage（基本等价）、producer 从 128 缩到 32 线程并去掉 setmaxnreg（约 2.9× 退化）。不要重复这些配置。
+
+最终保留 `cute/fp4/gemm/gemm_large_k.cu`：复用 native `gemm_w4a4_fp4_kernel` 的纯 G2R FP4 主循环（fragment-packed A/B/SF，warp 内双缓冲，无 TMA producer/mbarrier pipeline），新增 `RowMajorLoraUp` epilogue，把 CuTe producer 的 row-major BF16 D 按 native A-fragment 坐标公式做 32-bit pair load，L1 直接读 native `proj_up` pack。仅非融合、row-major、`M>=4096 && N<=4096 && K>=8192` 且有 bias/wcscales 时启用；`linear.py` 在该分支传 native B/SF/L1 pack，C++ 用二维 native `wscales` 与一维 flat CuTe `wscales` 区分内部 pack。公开 ABI、D layout、其他 shape 和融合 fc1 均不变。实例化文件统一为 `gemm_fused.cu` / `gemm_large_k.cu`。
+
+| 验收项 | M=4096 native / large-K cute | M=8192 native / large-K cute |
+|---|---:|---:|
+| fc2 CUDA Event（最终同进程复测） | 384.9 / **364.9 µs**（cute 快 5.2%） | 682.0 / **658.3 µs**（快 3.5%） |
+| fc2 独立稳态 nsys kernel median | 361.1 / **341.8 µs** | 664.7 / **641.9 µs** |
+| 完整 fused chain Event（最终同进程复测） | 932.2 / **943.0 µs**（1.012×） | 1674.4 / **1661.8 µs**（0.992×） |
+
+Code Review 无阻塞项；收尾补充了 native `wscales=[K/16,N]` 的 launch 前形状防护。large-K 继承 native 的 BF16 residual epilogue（`alpha*P` 先舍入 BF16，再做 packed hfma2 residual scale/bias），原 CuTe TMA 路径则在 FP32 中完成 residual epilogue；两者数学契约一致但非 bitwise 等价。测试在同一 qact/ascales/D 上对拍 large-K/TMA（rel-L2 < 5e-3），并用 `torch.profiler` 断言实际命中 `gemm_w4a4_large_k_kernel`，避免静默回退产生假阳性。
+
+最终统一 bench 中，`cute` 是生产 dispatch，`cute-row-major` 强制 flat-pack TMA，保留可复现基线。rank32/64/128 均通过且快于 native：M4096 约快 5.1–5.4%，M8192 约快 2.3–3.0%；M4096/r32 的 TMA→large-K 为 414.8→361.9 µs，M8192/r32 为 776.6→674.3 µs。近阈值补测 M2048/3072 时生产路径与 TMA 一致（未误命中），`4096×4096×12288` 的 native/large-K/TMA 为 491.2/474.6/531.6 µs。旧 5 shape 不命中 dispatch，保持 TMA 路径。
+
+large-K NCU 为 238 registers、17.41 KiB 静态 smem、零 spill，tensor throughput 92.47%。FLUX.1-dev 同 seed `20261117`、28 步，native/cute fused eager 为 **7.84/7.73 s**，compile 为 **5.82/5.74 s**；两者日志均确认对 38 个目标应用 fused pass。完整 SVDQ 回归 **234 passed**。统一 bench 默认 shape 已加入两档 full-M fc2，并跑完 7 shapes × rank32/64/128。
+
+测量边界：native 与 large-K kernel 在 M4096 逐次交替 profile 会扰动 G2R 的缓存/时钟状态，出现过与独立稳态和 Event 相反的 402 µs；large-K-only/nsys 与 native-only/nsys 的同口径独立稳态结果分别为 341.8/361.1 µs。验收以独立稳态 kernel median + 同进程 chain Event 为准，不能把受交替缓存污染的样本当回退。
+
+### 32.7 回归与边界
+
+- `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例；large-K 另覆盖 2 个 grid-swap 臂 × rank32/64/128、large-K/TMA 同输入对拍、实际 kernel 名、7 个 dispatch 边界及 2 个 native-pack 负例。
+- 最终回归命令（五个既有 SVDQ 文件 + `test_cuda_ext_manifest.py`）为 **234 passed**（含 source manifest）。
+- 未做：INT4 融合链的 e2e（INT4 GEMM 比 NVFP4 慢约 25×，dense store 占比只有 0.8%）；`row_major` 的 non-unit rank scale 融合（需要给 ABI 加"下一层 scale"入口，当前硬拒）。
