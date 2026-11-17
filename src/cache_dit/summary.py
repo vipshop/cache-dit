@@ -509,12 +509,14 @@ def supported_matrix() -> str | None:
       "VisualCloze",
       "MiniMaxH3",
       "MiniMaxH3Image",
+      "PH3Image",
     ]
     _pipelines_supported_tensor_parallelism += [
       "Wan",
       "VisualCloze",
       "MiniMaxH3",
       "MiniMaxH3Image",
+      "PH3Image",
     ]
 
     # Generate the supported matrix, markdown table format

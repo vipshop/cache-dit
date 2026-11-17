@@ -113,6 +113,8 @@ __all__ = [
   "minimax_h3_image_example",
   "minimax_h3_image_edit_example",
   "flux3_fused_example",
+  "ph3_image_example",
+  "ph3_image_edit_example",
 ]
 
 # Please note that the following environment variables is only for debugging and
@@ -176,6 +178,7 @@ _env_path_mapping = {
   "ANY_FLOW_FAR_DIR": "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers",
   "MINIMAX_H3_DIR": "MiniMaxAI/MiniMax-H3",
   "MINIMAX_H3_IMAGE_DIR": "MiniMaxAI/MiniMax-H3-Image",
+  "PH3_IMAGE_DIR": "PrunaAI/P-H3-Image",
   "FASTH3_DIR": "FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree",
   "FASTH3_V2_DIR": "FastVideo/FastVideo-FastH3-8-Step-V2",
   "PRX_PIXEL_DIR": "Photoroom/prxpixel-t2i",
@@ -6178,5 +6181,291 @@ def minimax_h3_image_edit_example(args: argparse.Namespace, **kwargs) -> Example
       width=width,
       use_num_inference_steps=False,
       extra_input_kwargs={"min_generation_area": min_generation_area},
+    ),
+  )
+
+
+# P-H3-Image samples on the checkpoint's own sigma grid (`sample_sigmas` in `modular_model_index`),
+# which is 9 points, i.e. 8 denoising evaluations. The grid is not a request parameter.
+_PH3_IMAGE_STEPS = 8
+_PH3_IMAGE_DEFAULT_SIZE = 1024
+# The model works best at 8 megapixels (`2912x2912`, `3872x2176`, `2176x3872`); the CLI default stays
+# small because the 62 GiB transformer leaves little headroom on a single card.
+_PH3_IMAGE_PROMPT = (
+  "A rain-soaked night market in Taipei seen at eye level: a woman in a yellow plastic raincoat holds "
+  "a clear umbrella, the fabric beaded with water, while steam rises from a cast-iron griddle of "
+  "scallion pancakes in the foreground. Behind her, three glass display cases glow with warm tungsten "
+  "light, their reflections smeared across the wet granite pavement; a row of red paper lanterns hangs "
+  "above the stalls, each one slightly out of focus as it recedes into the crowd. To the right, a man "
+  "in a grey hoodie is counting coins into a small plastic tray, and a scooter's headlight flares "
+  "through the drizzle, throwing long diagonal streaks across the ground. The colour palette is built "
+  "from sodium-orange highlights against deep teal shadows, with the cool blue of a vending machine "
+  "breaking the warmth on the left. Fine details: individual droplets on the umbrella ribs, "
+  "condensation on the display glass, the woven texture of the bamboo steamer lids, and the faint "
+  "chromatic fringing of the headlight. Shot on a 35mm lens at f/2, shallow depth of field, natural "
+  "grain, no text or watermark.")
+_PH3_IMAGE_EDIT_PROMPT = (
+  "Relight the scene with warm late-afternoon sunlight coming from the left, keeping the subject, "
+  "pose, framing and every background element unchanged.")
+# The request the upsampler is meant to expand: a short brief, not the caption it writes.
+_PH3_IMAGE_REQUEST = (
+  "A rain-soaked night market in Taipei at eye level, a woman in a yellow raincoat under a clear "
+  "umbrella, steam rising from a scallion-pancake griddle, warm tungsten display cases, red paper "
+  "lanterns, a scooter headlight flaring through the drizzle.")
+
+
+def _ph3_image_post_init(upsampler_dir: Optional[str]):
+  """Build the `post_init_hook` that decides what happens to the prompt-upsampler step.
+
+  The pipeline ships a Qwen3.5 prompt upsampler as one of its six top-level blocks. Benchmarking
+  pops it: the upsampler rewrites the prompt (a different input distribution), dominates the measured
+  latency and cannot be parallelised (`--parallel-text` only covers `text_encoder`). Production keeps
+  it, and `upsampler_dir` then names the repository (or a directory with `prompt_upsampler/` and
+  `prompt_upsampler_processor/` subfolders) its weights come from.
+
+  `pipe.blocks` returns a deepcopy, so the pop has to happen on the live `_blocks` tree; the
+  components are already loaded by `load_components()`, hence the explicit `unload_components`.
+
+  :param upsampler_dir: `--prompt-enhancer` value, or None to render the prompt as given.
+  :returns: The hook `ExampleInitConfig.post_init_hook` expects.
+  """
+
+  def hook(pipe) -> None:
+    pipe._blocks.sub_blocks.pop("prompt_upsampler", None)
+    pipe.unload_components(["prompt_upsampler", "prompt_upsampler_processor"])
+    if upsampler_dir is None:
+      return
+    from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+
+    pipe.update_components(
+      prompt_upsampler=Qwen3_5ForConditionalGeneration.from_pretrained(upsampler_dir,
+                                                                       subfolder="prompt_upsampler",
+                                                                       dtype=torch.bfloat16),
+      prompt_upsampler_processor=AutoProcessor.from_pretrained(
+        upsampler_dir, subfolder="prompt_upsampler_processor"),
+    )
+
+  return hook
+
+
+def _ph3_image_quantize_exclusions(args: argparse.Namespace) -> None:
+  """Install the P-H3-Image default quantization exclusions on ``args``.
+
+  The list is MiniMax-H3's: the same `_keep_in_fp32_modules` pin these projections to float32, which
+  torchao's per-row float8 path rejects, and the per-block AdaLN tables are read by every token of
+  every step, so an error there accumulates coherently instead of averaging out.
+
+  :param args: CLI arguments, updated in place when the user did not pass the flag.
+  """
+  if not args.quantize or getattr(args, "quantize_exclude_layers", None):
+    return
+  args.quantize_exclude_layers = [
+    "proj_in",
+    "audio_proj_in",
+    "proj_out",
+    "audio_proj_out",
+    "time_embedder",
+    "rope",
+    "adaln_proj",
+    "norm_out",
+  ]
+
+
+def _ph3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
+  """Resolve the computation mask of an eight-step P-H3-Image run.
+
+  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
+  """
+  if not args.cache:
+    return None
+  if args.mask_policy is not None:
+    # `--mask-policy` asserts on a step count, which this pipeline takes from the checkpoint.
+    if args.num_inference_steps is None:
+      args.num_inference_steps = _PH3_IMAGE_STEPS
+    return steps_mask(mask_policy=args.mask_policy, total_steps=_PH3_IMAGE_STEPS)
+  if not args.steps_mask:
+    return None
+  # Two cached steps in the middle of the schedule, everything else computed. The widest sigma jumps
+  # sit at the end of the grid, so the last two steps always compute.
+  return steps_mask(
+    compute_bins=[3, 1, 2],
+    cache_bins=[1, 1],
+    total_steps=_PH3_IMAGE_STEPS,
+  )
+
+
+# Per-workflow starting point for the residual threshold. The measured residual diffs of this
+# eight-step distilled checkpoint sit at 0.067-0.084, so the CLI default and a raised 0.20 both
+# accept the same three of eight steps (`max_continuous_cached_steps` caps the rest); there is no
+# threshold window between them to exploit, and the default is kept because it is the milder of the
+# two. A value the user passes explicitly always wins.
+_PH3_IMAGE_CACHE_THRESHOLDS = {
+  "text2image": DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+  "image_conditioned": DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+}
+
+
+def _ph3_image_cache_config(
+  args: argparse.Namespace,
+  workflow: str = "text2image",
+) -> Optional[DBCacheConfig]:
+  """DBCache config for the eight-step, guidance-distilled P-H3-Image transformer.
+
+  Only the block stack is cached; `token_refiner` runs once per step over the text stream alone and
+  carries no AdaLN parameters. Eight steps leave very little room for a warmup, so `max_warmup_steps`
+  is capped at 2: a longer warmup would pin the cached steps to the widest sigma jumps of the grid.
+
+  :param args: CLI arguments.
+  :param workflow: `text2image` or `image_conditioned`; selects the default threshold.
+  :returns: The DBCache config, or None when caching is disabled.
+  """
+  if not args.cache:
+    return None
+  if workflow not in _PH3_IMAGE_CACHE_THRESHOLDS:
+    raise ValueError(f"No P-H3-Image cache preset for workflow '{workflow}'; expected one of "
+                     f"{sorted(_PH3_IMAGE_CACHE_THRESHOLDS)}.")
+  threshold = args.residual_diff_threshold
+  if threshold == DEFAULT_RESIDUAL_DIFF_THRESHOLD:
+    threshold = _PH3_IMAGE_CACHE_THRESHOLDS[workflow]
+  return DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=1,
+    max_warmup_steps=min(args.max_warmup_steps, 2),
+    num_inference_steps=_PH3_IMAGE_STEPS,
+    # guidance is distilled into the weights: one forward pass per step, no uncond branch
+    enable_separate_cfg=False,
+    residual_diff_threshold=threshold,
+    max_cached_steps=args.max_cached_steps,
+    max_continuous_cached_steps=1,
+    steps_computation_mask=_ph3_image_steps_mask(args),
+    steps_computation_policy=("static" if
+                              (args.steps_mask or args.mask_policy is not None) else "dynamic"),
+  )
+
+
+def _ph3_image_init_config(
+  args: argparse.Namespace,
+  task_type: ExampleType,
+  workflow: str,
+) -> ExampleInitConfig:
+  """Build the P-H3-Image init config for one workflow.
+
+  :param args: CLI arguments.
+  :param task_type: Task the example drives.
+  :param workflow: Modular workflow to prune the blocks to.
+  :returns: The init config.
+  """
+  from diffusers import PH3ImageModularPipeline
+
+  if args.num_inference_steps not in (None, _PH3_IMAGE_STEPS):
+    logger.warning(
+      "P-H3-Image samples on the checkpoint's fixed %d-step grid and takes no "
+      "`num_inference_steps`: ignoring --num-inference-steps %d.", _PH3_IMAGE_STEPS,
+      args.num_inference_steps)
+
+  return ExampleInitConfig(
+    task_type=task_type,
+    model_name_or_path=_path("PrunaAI/P-H3-Image", args=args),
+    pipeline_class=PH3ImageModularPipeline,
+    bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
+    modular_workflow=workflow,
+    # The VAE ships float32 and its encoder is pinned to it (`_keep_in_fp32_modules`), so only the
+    # conditioner, the transformer and the upsampler run bfloat16.
+    modular_component_dtypes={
+      "transformer": torch.bfloat16,
+      "text_encoder": torch.bfloat16,
+      "prompt_upsampler": torch.bfloat16,
+      "default": torch.float32,
+    },
+    post_init_hook=_ph3_image_post_init(getattr(args, "prompt_enhancer", None)),
+    extra_optimize_kwargs={"cache_config": _ph3_image_cache_config(args, workflow)},
+  )
+
+
+def _ph3_image_request(
+  args: argparse.Namespace,
+  default_prompt: str,
+) -> Tuple[str, int, int]:
+  """Resolve the prompt and the canvas of a P-H3-Image request.
+
+  With `--prompt-enhancer` the upsampler step stays in the pipeline and writes the caption, so the
+  prompt handed to it is a short request; otherwise the pipeline renders the prompt verbatim and the
+  checkpoint expects the long caption its upsampler would have produced.
+
+  :param args: CLI arguments.
+  :param default_prompt: Prompt to use when `--prompt` is absent.
+  :returns: The prompt, the height and the width in pixels.
+  """
+  prompt = args.prompt if args.prompt is not None else default_prompt
+  height = args.height or _PH3_IMAGE_DEFAULT_SIZE
+  width = args.width or _PH3_IMAGE_DEFAULT_SIZE
+  return prompt, height, width
+
+
+@ExampleRegister.register("ph3_image", default="PrunaAI/P-H3-Image")
+def ph3_image_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Text-to-image with P-H3-Image.
+
+  P-H3-Image is MiniMax-H3's post-trained image model: the same transformer, one packed sequence of
+  `[text | audio | image]` rows denoised in eight guidance-free steps, and the two audio rows it
+  carries are discarded at decode. It works best at 8 megapixels (`2912x2912`, `3872x2176`,
+  `2176x3872`); this example generates at 1024x1024 unless `--height/--width` say otherwise.
+
+  The prompt-upampler step is popped by default (`--prompt-enhancer <dir>` keeps it), so the prompt
+  is rendered verbatim: feed the long caption the upsampler would have produced, not a short request.
+
+  :param args: CLI arguments.
+  :returns: The P-H3-Image text2image example.
+  """
+  _ph3_image_quantize_exclusions(args)
+  default_prompt = (_PH3_IMAGE_REQUEST
+                    if getattr(args, "prompt_enhancer", None) is not None else _PH3_IMAGE_PROMPT)
+  prompt, height, width = _ph3_image_request(args, default_prompt)
+
+  return Example(
+    args=args,
+    init_config=_ph3_image_init_config(args, ExampleType.T2I, "text2image"),
+    input_data=ExampleInputData(
+      prompt=prompt,
+      height=height,
+      width=width,
+      # The schedule is the checkpoint, not a request parameter.
+      use_num_inference_steps=False,
+    ),
+  )
+
+
+@ExampleRegister.register("ph3_image_edit", default="PrunaAI/P-H3-Image")
+def ph3_image_edit_example(args: argparse.Namespace, **kwargs) -> Example:
+  """Instruction-based image editing with P-H3-Image.
+
+  Passing `image` selects the `image_conditioned` workflow: the pipeline resizes the image to edit
+  onto a 32-aligned canvas (its own size, at least `canvas_min_pixels`), encodes it into the
+  conditioning latents and packs its rows in front of the generated rows. `skip_image_resize` leaves
+  that geometry to the pipeline; resizing here as well would resample twice and change the number of
+  packed reference rows. `image` may be a list of up to 8 images — the first is edited, the rest are
+  references addressed as `<Picture 2>`, `<Picture 3>`, ...
+
+  :param args: CLI arguments.
+  :returns: The P-H3-Image image_conditioned example.
+  """
+  _ph3_image_quantize_exclusions(args)
+  prompt, height, width = _ph3_image_request(args, _PH3_IMAGE_EDIT_PROMPT)
+
+  reference = None
+  if args.image_path is None:
+    reference = load_image(_minimax_h3_demo_asset("first_frame.png")).convert("RGB")
+
+  return Example(
+    args=args,
+    init_config=_ph3_image_init_config(args, ExampleType.IE2I, "image_conditioned"),
+    input_data=ExampleInputData(
+      prompt=prompt,
+      image=reference,
+      skip_image_resize=True,
+      height=height,
+      width=width,
+      use_num_inference_steps=False,
     ),
   )

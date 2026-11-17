@@ -196,6 +196,12 @@ def install_adaln_plan_cache(
 def timestep_sets_from_pipeline(pipe) -> List[List[float]]:
   """Read the fixed sampling grid of a MiniMax-H3 pipeline.
 
+  The noise level the conditioning rows are pinned at is named after the task that first needed it:
+  MiniMax-H3's own pipelines expose `reference_noise_aug`, while P-H3-Image calls the same constant
+  `keyframe_noise_aug`. Reading only the first name silently drops the two-row timestep vectors the
+  `image_conditioned` workflow visits, and every one of those steps then misses the memoized table
+  and streams its 520 MiB projection again — correct, but no faster than `--adaln-host-residency`.
+
   :param pipe: MiniMax-H3(-Image) modular pipeline.
   :returns: One sorted timestep vector per distinct embedding the grid produces.
   :raises ValueError: When the pipeline does not expose its `sample_sigmas`.
@@ -204,7 +210,10 @@ def timestep_sets_from_pipeline(pipe) -> List[List[float]]:
   if sigmas is None:
     raise ValueError("--adaln-online reads the checkpoint's fixed sampling grid from "
                      "`config.sample_sigmas`, which this pipeline does not expose.")
-  return minimax_h3_adaln_timestep_sets(sigmas, getattr(pipe, "reference_noise_aug", None))
+  reference_level = getattr(pipe, "reference_noise_aug", None)
+  if reference_level is None:
+    reference_level = getattr(pipe, "keyframe_noise_aug", None)
+  return minimax_h3_adaln_timestep_sets(sigmas, reference_level)
 
 
 def minimax_h3_adaln_timestep_sets(sigmas: Sequence[float],
