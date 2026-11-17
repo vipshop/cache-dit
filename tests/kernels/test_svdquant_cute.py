@@ -934,12 +934,13 @@ def _fused_mlp_forward(
   ("cute", "native"),
   ("cute", "row_major"),
 ])
-def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> None:
+@pytest.mark.parametrize("rank", [32, 64, 128])
+def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str, rank: int) -> None:
   """The fused GEMM must reproduce `fc2(gelu(fc1(x)))` on both runtimes and both D layouts."""
 
   _require_sm120()
   torch.manual_seed(20261120)
-  in_features, hidden, rank = 256, 512, 32
+  in_features, hidden = 256, 512
   x = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
   fc1 = _build_quantized(runtime, layout, in_features, hidden, rank, x)
   fc2 = _build_quantized(runtime, layout, hidden, in_features, rank,
@@ -952,13 +953,18 @@ def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> No
     q2, sf2, d2 = fc2.quantize(activated)
     expected = fc2.forward_quant(q2, sf2, d2)
 
-    fused, qout, _, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
+    fused, qout, oscales, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
 
   assert torch.isfinite(fused).all()
   assert _relative_l2(fused, expected) < 5e-3
-  # The fused quantizer reproduces the producer's activation pack, so the second GEMM sees the same
-  # input as the unfused chain up to the single FP4 rounding.
-  assert _relative_l2(qout.view(torch.uint8).float(), q2.view(torch.uint8).float()) < 0.02
+  # The rank32 row-major case is bit-reproducible here, so the fused quantizer must emit exactly
+  # the same native pack through a different data path. Higher-rank split-K producers use relaxed
+  # atomics and can change the last input bits before quantization, as can native fragment D.
+  if layout == "row_major" and rank == 32:
+    assert torch.equal(qout, q2)
+    assert torch.equal(oscales.view(torch.uint8), sf2.view(torch.uint8))
+  else:
+    assert _relative_l2(qout.view(torch.uint8).float(), q2.view(torch.uint8).float()) < 0.02
 
 
 @pytest.mark.parametrize(("runtime", "layout"), [

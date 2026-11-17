@@ -1190,7 +1190,30 @@ e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 
 **本轮到此收敛**：剩余链级差距已单独记录为 issue #1336（含根因、已证伪路线、后续实验与验收标准），不在 PR #1332 继续扩大范围。e2e 已持平（native 7.84 s / cute 7.86 s），所以该 issue 是链级优化，不是功能或 e2e 回归修复。
 
-### 32.5 回归与边界
+### 32.5 CDK-8 第二轮：量化、B 预读与链级固定成本（2026-11-17）
+
+本轮只使用 GPU 4/5。`9f4b7e71` 将 `smooth` 改为 8×BF16 的 `uint4` 读、O tile 保留 shared 地址空间，并按 row pair 合并 qout/oscales 写；`38f00b8e` 将 D 的 B staging 改成每线程先发完 4 个 `LDG.128` 再写 smem，消除 STS 逐组等待 LDG 的串行依赖。融合实例现由 `cute/fp4/gemm/fused.cu` 独立编译；`kFuseDown` 将 qout-only 与 qout+D 分开，普通 GEMM TU 不再编译融合 epilogue。`finalize_lora_rows_kernel` 因多 TU 改为内部链接。
+
+最终同进程 CUDA Event 对照：
+
+| 指标 | M=4096 native / cute+row_major | M=8192 native / cute+row_major |
+|---|---:|---:|
+| 融合 qout+D kernel | 480.8 / 486.1 µs（1.011×） | 896.9 / 900.6 µs（1.004×） |
+| 完整 fused chain | 931.5 / 958.7 µs（1.029×） | 1671.8 / 1755.6 µs（1.050×） |
+
+FLUX cute+row_major fused eager 7.77 s、compile 5.76 s；203 个 SVDQ 测试通过（新增 rank32/64/128）。
+
+已证伪/回滚，不要原样重复：
+
+- native packed B 直接 gmem 读、以及双缓冲预取都更差（M4096 约 512–513 µs，M8192 约 955–956 µs）；B 的 gmem 延迟需要由 CTA 共享 staging 吸收。
+- D 从主 accumulator 寄存器读 A 已用真实 `convert_layout_acc_rowcol` 视图做常量坐标映射并通过 13 个 fused/write_dense 用例，但性能为负（M4096 502.7 µs、M8192 945.9 µs）；不是正确性问题，而是寄存器/指令调度不划算。
+- qout 用一次 warp shuffle 交换四个向量的方案字节映射不成立：源 lane 不能在同一条 shuffle 中按四个目标 lane 分别选择不同向量；12 个位级用例失败后已恢复。
+
+预分配 qout/oscales/D 只省约 4–8 µs，host enqueue 仅差约 7 µs，fc2 改读缓存 qout/scales 或 D 也不缩小差距。随后给 producer/fused GEMM/fc2 加 NVTX，并在 nsys SQLite 中按 correlationId 关联 runtime launch 与 kernel：M=8192 时 producer 86.2/78.0 µs（cute 更快），fused fc1 877.6/889.2 µs，fc2 **663.6/760.5 µs**，kernel 间 gap 都只有约 0.4 µs。根因是**第二段 full-M GEMM 的形状路径**，不是 host/launch 空隙。
+
+注意一个测量陷阱：早期独立 fc2 行误用了 M=256 的校准激活，得到约 106 µs，不能代表 chain 的 M=4096/8192。修正为 full-M 后，fc2 为 M4096 385.4/435.1 µs、M8192 687.2/782.6 µs，cute 慢 13–14%，与链级差距一致。后续应针对 `M×3072×12288` 的非融合/consumer GEMM 做 tile 与 mainloop 归因。
+
+### 32.6 回归与边界
 
 - `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例。
 - 全量 SVDQ 回归 197 passed（含 source manifest）。

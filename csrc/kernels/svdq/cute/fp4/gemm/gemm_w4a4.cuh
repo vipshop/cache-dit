@@ -25,6 +25,7 @@
 #include <cutlass/numeric_types.h>
 
 #include "common.h"
+#include "runtime.h"
 
 namespace svdq::cute_kernels {
 
@@ -303,15 +304,31 @@ struct F32DLoraScales {
   float values[8];
 };
 
+// Host-only arguments shared by the plain dispatcher and the separately compiled fused TU.
+struct FusedLaunchArgs {
+  uint8_t *qout = nullptr;
+  uint32_t *oscales = nullptr;
+  cutlass::bfloat16_t const *smooth = nullptr;
+  cutlass::bfloat16_t const *lora_down = nullptr;
+  float *d_atomic = nullptr;
+  cutlass::bfloat16_t *d_final = nullptr;
+  F32DLoraScales down_scales{};
+  int rank_down = 0;
+  bool write_dense = true;
+  bool fuse_silu = false;
+};
+
 template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true,
-          bool kF32DLora_ = false, bool kFuseOut_ = false>
+          bool kF32DLora_ = false, bool kFuseOut_ = false, bool kFuseDown_ = false>
 struct W4A4CuteTraits {
   static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr bool kF32DLora = kF32DLora_;
+  static constexpr bool kFuseDown = kFuseDown_;
   // Fused-output epilogue: quantize the activated tile into the native qact/ascales pack and
   // reduce the LoRA-down term, so the next layer needs no separate producer launch. It is a
   // separate instantiation so the default path keeps its exact SASS and numerics.
   static constexpr bool kFuseOut = kFuseOut_;
+  static_assert(!kFuseDown || kFuseOut, "the LoRA-down epilogue requires kFuseOut");
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -1091,62 +1108,82 @@ class W4A4GemmKernel {
                                                              uint32_t *oscales,
                                                              cutlass::bfloat16_t const *smooth) {
     constexpr int kBlocks = kBN / 64;
-    constexpr int kTasks = kBM * kBlocks;
+    constexpr int kTasks = (kBM / 2) * kBlocks;
+    auto sO_packed = recast<uint4 const>(sO);
     for (int task = tid; task < kTasks; task += Traits::kNumThreads) {
-      const int tile_row = task / kBlocks;
+      const int pair = task / kBlocks;
       const int block = n0 / 64 + task % kBlocks;
-      const int row = m0 + tile_row;
       const int col0 = block * 64;
-      uint32_t words[8];
-      float scale[4];
-      __nv_bfloat162 div[32];
-      // The SW128 output layout keeps eight consecutive BF16 codes in one 16-byte segment, so the
-      // 64 values of this block come back in eight vector loads instead of 64 scalar ones.
-      uint4 packs[8];
+      // A row and its +8 partner occupy even/odd words of one 64-byte pack window. The second half
+      // of each 16-row group starts at the next 16-row panel, hence the discontinuous row mapping.
+      const int h = pair % 16;
+      const int tile_row0 = 32 * (pair / 16) + (h < 8 ? h : h + 8);
+      uint4 smooth_packs[8];
 #pragma unroll
       for (int g = 0; g < 8; ++g) {
-        const int c = (task % kBlocks) * 64 + g * 8;
-        packs[g] = *reinterpret_cast<uint4 const *>(&sO(tile_row, c));
+        smooth_packs[g] = *reinterpret_cast<uint4 const *>(smooth + col0 + g * 8);
       }
-      auto const *src = reinterpret_cast<cutlass::bfloat16_t const *>(packs);
+      uint32_t words[2][8];
+      uint32_t scale_words[2];
 #pragma unroll
-      for (int j = 0; j < 32; ++j) {
-        const cutlass::bfloat16_t s0 = smooth[col0 + j * 2];
-        const cutlass::bfloat16_t s1 = smooth[col0 + j * 2 + 1];
-        div[j] = __float22bfloat162_rn(
-          make_float2(__fdividef(epi_to_float(src[j * 2]), epi_to_float(s0)),
-                      __fdividef(epi_to_float(src[j * 2 + 1]), epi_to_float(s1))));
-      }
-      // Group scales are shared by two eight-column words, so they are derived before packing.
+      for (int side = 0; side < 2; ++side) {
+        const int tile_row = tile_row0 + side * 8;
+        uint32_t *row_words = words[side];
+        float scale[4];
+        __nv_bfloat162 div[32];
+        uint4 packs[8];
 #pragma unroll
-      for (int g = 0; g < 4; ++g) {
-        float amax = 0.0f;
-#pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          const float2 f = __bfloat1622float2(div[g * 8 + j]);
-          amax = fmaxf(amax, fmaxf(fabsf(f.x), fabsf(f.y)));
+        for (int g = 0; g < 8; ++g) {
+          packs[g] = sO_packed(tile_row, (task % kBlocks) * 8 + g);
         }
-        scale[g] = fminf(amax / 6.0f, 448.0f);
+        auto const *src = reinterpret_cast<cutlass::bfloat16_t const *>(packs);
+#pragma unroll
+        for (int g = 0; g < 8; ++g) {
+          const auto *scales = reinterpret_cast<cutlass::bfloat16_t const *>(&smooth_packs[g]);
+#pragma unroll
+          for (int j = 0; j < 4; ++j) {
+            const int index = g * 8 + j * 2;
+            div[g * 4 + j] = __float22bfloat162_rn(make_float2(
+              __fdividef(epi_to_float(src[index]), epi_to_float(scales[j * 2])),
+              __fdividef(epi_to_float(src[index + 1]), epi_to_float(scales[j * 2 + 1]))));
+          }
+        }
+#pragma unroll
+        for (int g = 0; g < 4; ++g) {
+          float amax = 0.0f;
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            const float2 f = __bfloat1622float2(div[g * 8 + j]);
+            amax = fmaxf(amax, fmaxf(fabsf(f.x), fabsf(f.y)));
+          }
+          scale[g] = fminf(amax / 6.0f, 448.0f);
+        }
+        scale_words[side] = epi_pack_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));
+#pragma unroll
+        for (int w = 0; w < 8; ++w) {
+          const float rscale = epi_rcp(scale[w / 2]);
+          uint32_t word = 0;
+#pragma unroll
+          for (int p = 0; p < 4; ++p) {
+            const float2 f = __bfloat1622float2(div[w * 4 + p]);
+            word |= epi_pack_fp4(f.x * rscale, f.y * rscale) << (p * 8);
+          }
+          row_words[w] = word;
+        }
       }
+      const int row = m0 + tile_row0;
       const int64_t base =
         (static_cast<int64_t>(row / 256) * (N / 64) + block) * 8 + (row % 256) / 32;
-      oscales[base * 32 + 4 * (row % 8) + (row % 32) / 8] =
-        epi_pack_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));
-#pragma unroll
-      for (int w = 0; w < 8; ++w) {
-        const float rscale = epi_rcp(scale[w / 2]);
-        uint32_t word = 0;
-#pragma unroll
-        for (int p = 0; p < 4; ++p) {
-          const float2 f = __bfloat1622float2(div[w * 4 + p]);
-          word |= epi_pack_fp4(f.x * rscale, f.y * rscale) << (p * 8);
-        }
-        words[w] = word;
-      }
-      const int local = 16 * (row % 8) + ((row % 16) / 8) + 128 * ((row % 32) / 16);
-      uint32_t *dst = reinterpret_cast<uint32_t *>(qout) + base * 256 + local;
-#pragma unroll
-      for (int w = 0; w < 8; ++w) dst[4 * (w % 4) + 2 * (w / 4)] = words[w];
+      uint32_t *scale_dst = oscales + base * 32 + 4 * (row % 8) + (row % 32) / 8;
+      *reinterpret_cast<uint2 *>(scale_dst) = make_uint2(scale_words[0], scale_words[1]);
+      const int local = 16 * (row % 8) + 128 * ((row % 32) / 16);
+      uint4 *dst =
+        reinterpret_cast<uint4 *>(reinterpret_cast<uint32_t *>(qout) + base * 256 + local);
+      // Even/odd row words interleave as w0,w4,w1,w5,w2,w6,w3,w7 within the native pack.
+      dst[0] = make_uint4(words[0][0], words[1][0], words[0][4], words[1][4]);
+      dst[1] = make_uint4(words[0][1], words[1][1], words[0][5], words[1][5]);
+      dst[2] = make_uint4(words[0][2], words[1][2], words[0][6], words[1][6]);
+      dst[3] = make_uint4(words[0][3], words[1][3], words[0][7], words[1][7]);
     }
   }
 
@@ -1199,12 +1236,24 @@ class W4A4GemmKernel {
       auto s_down_t = make_tensor(make_smem_ptr(s_down),
                                   make_layout(make_shape(Int<kRankTile>{}, Int<kBN>{}),
                                               make_stride(Int<Traits::kDownStageStride>{}, _1{})));
-      for (int task = tid; task < kBN * kVecsPerRow; task += Traits::kNumThreads) {
+      constexpr int kDownTasks = kBN * kVecsPerRow;
+      constexpr int kDownTasksPerThread = kDownTasks / Traits::kNumThreads;
+      static_assert(kDownTasksPerThread * Traits::kNumThreads == kDownTasks);
+      uint4 down_packs[kDownTasksPerThread];
+#pragma unroll
+      for (int t = 0; t < kDownTasksPerThread; ++t) {
+        const int task = tid + t * Traits::kNumThreads;
         const int c = task / kVecsPerRow;
         const int r0 = (task % kVecsPerRow) * 8;
         const int64_t src = static_cast<int64_t>(n0 + c) * rank_down + rt * kRankTile + r0;
-        const uint4 packed = *reinterpret_cast<uint4 const *>(lora_down + src);
-        const auto *values = reinterpret_cast<ElementLora const *>(&packed);
+        down_packs[t] = *reinterpret_cast<uint4 const *>(lora_down + src);
+      }
+#pragma unroll
+      for (int t = 0; t < kDownTasksPerThread; ++t) {
+        const int task = tid + t * Traits::kNumThreads;
+        const int c = task / kVecsPerRow;
+        const int r0 = (task % kVecsPerRow) * 8;
+        const auto *values = reinterpret_cast<ElementLora const *>(&down_packs[t]);
 #pragma unroll
         for (int j = 0; j < 8; ++j) s_down_t(r0 + j, c) = values[j];
       }
@@ -1560,10 +1609,12 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     if (qout != nullptr) {
       Gemm::fused_quantize_tile(sO, tid, m0, n0, N, qout, oscales, smooth);
     }
-    if (rank_down > 0) {
-      auto *s_down = reinterpret_cast<cutlass::bfloat16_t *>(reinterpret_cast<uint8_t *>(shm) +
-                                                             Traits::kOTileBytes);
-      Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic, s_down);
+    if constexpr (Traits::kFuseDown) {
+      if (rank_down > 0) {
+        auto *s_down = reinterpret_cast<cutlass::bfloat16_t *>(reinterpret_cast<uint8_t *>(shm) +
+                                                               Traits::kOTileBytes);
+        Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic, s_down);
+      }
     }
   } else {
     Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);
@@ -1579,9 +1630,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 // performs the single rounding that the row-major D contract expects. Four consecutive columns
 // always belong to one 16-rank group because rank is a multiple of 32, so one scale covers a
 // whole vector.
-__global__ void finalize_lora_rows_kernel(float const *__restrict__ scratch,
-                                          cutlass::bfloat16_t *__restrict__ out,
-                                          F32DLoraScales scales, int vectors, int vectors_per_row) {
+static __global__ void finalize_lora_rows_kernel(float const *__restrict__ scratch,
+                                                 cutlass::bfloat16_t *__restrict__ out,
+                                                 F32DLoraScales scales, int vectors,
+                                                 int vectors_per_row) {
   const int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index >= vectors) return;
   const float scale = scales.values[(index % vectors_per_row) / 4];
@@ -1612,9 +1664,9 @@ inline void launch_finalize_lora_rows(float const *scratch, cutlass::bfloat16_t 
 //      change. The cache holds at most 32 entries and is cleared wholesale when full; it is not
 //      an LRU cache. Device-specific dynamic-smem opt-in is likewise performed only once.
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
-// The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
+// Plain instances live in gemm_w4a4.cu; fused instances are parallel-compiled in fused.cu.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true,
-          bool kF32DLora = false, bool kFuseOut = false>
+          bool kF32DLora = false, bool kFuseOut = false, bool kFuseDown = false>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
                       cutlass::bfloat16_t const *lora_act_in, float const *lora_act_f32,
@@ -1624,7 +1676,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::bfloat16_t const *smooth, cutlass::bfloat16_t const *lora_down,
                       float *d_atomic, cutlass::bfloat16_t *d_final, F32DLoraScales down_scales,
                       int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut>;
+  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;
@@ -1701,7 +1753,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
     lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
     d_atomic, write_dense, rank_down, fuse_silu);
-  if constexpr (kFuseOut && !kF32DLora) {
+  if constexpr (kFuseOut && kFuseDown && !kF32DLora) {
     // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
     // scattered FP32 scratch is rounded here once, after every CTA has contributed.
     if (d_final != nullptr && rank_down > 0) {
@@ -1709,5 +1761,14 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
     }
   }
 }
+
+// Defined in fused.cu so the four fused instantiations compile independently of the plain GEMM TU.
+void launch_gemm_w4a4_fused(void const *act, void const *wgt, void *out,
+                            cutlass::float_ue4m3_t const *act_sf,
+                            cutlass::float_ue4m3_t const *wgt_sf, void const *lora_act_in,
+                            cutlass::bfloat16_t const *lora_up, cutlass::bfloat16_t const *bias,
+                            cutlass::bfloat16_t const *wcscales, F32DLoraScales scales, float alpha,
+                            int M, int N, int K, int rank, LoraLayout lora_layout,
+                            FusedLaunchArgs const &fused, cudaStream_t stream);
 
 }  // namespace svdq::cute_kernels
