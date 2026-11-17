@@ -1131,6 +1131,24 @@ NCU 归因（M=4096，r32，同一 shape，`qout` vs `qout + D`）：加 D 带�
 2. **A 直接从累加器寄存器取**（native 的做法）：正确性通过（20 个 fused 用例全绿），但把"坐标匹配"写成 `#pragma unroll` 的编译期搜索会被 nvcc 当成**运行期**比较（`tScC_rc` 的坐标取出来是 runtime int），全展开后代码爆炸：qout+D 从 550 µs 涨到 **867 µs**。要用这条路，必须把 (A slot → C register) 的置换做成**真正的编译期常量表**（host 侧用 CuTe 布局代数算出来再 `constexpr` 嵌进 kernel），不能靠循环搜索。
 3. **成对 uint32 载入**（4 次 32-bit 代替 8 次 16-bit）：收益只有 0.7%（550.7→546.7 µs），而且我的 slot/half 推导在 M≥512 和 row_major 上都引入错误（6 个用例失败）——A fragment 的 (row, k) → slot 映射不能靠"行 % 16 / 8"猜，得从 `tScA` 的真实坐标推。
 
+完整消融表（M=4096，r32，cute+row_major，基线 qout+D = 547.9 µs；负值=变快）：
+
+| 改动 | Δ | 判读 |
+|---|---:|---|
+| 去掉原子加 | −1 µs | 原子不是瓶颈 |
+| A 改常量（不读 smem） | −10 µs | A 读只占 13% |
+| B 改常量（不读 `s_down`） | −19 µs | B 读有 bank conflict |
+| A+B 都改常量 | −31 µs | 剩 40 µs 纯 MMA |
+| 去掉 D 的 MMA | −45 µs | MMA 占 60% |
+| 全量预取 A/B | +8 µs | 更差（寄存器压力） |
+| 奇偶 k-step 双累加器（ILP 翻倍） | +7 µs | 更差 |
+| down MMA 改 per-warp 32 行 | −2 µs | 无差别 |
+| A 按 32-bit 字写入 fragment（去 PRMT） | −3.8 µs | 已落地（`0d343149`） |
+
+native 对照（NCU）：D 的 tensor ops 与 HMMA 条数与 cute **完全相同**（都是 3.22e9 ops / 约 786k 条 `HMMA.16816.F32.BF16`），但 native 的 D 只花 16–25 µs。stall 侧 native `math_pipe_throttle` 3.61 vs cute 2.27（native 更吃满 tensor 流水），cute 多出 `long_scoreboard` 1.73 vs 1.03、`mio_throttle` 0.50 vs 0.16、`sleeping` 0.71 vs 0。occupancy 几乎相同（16.56% vs 17.87%），所以"epilogue 被其它 CTA 主循环覆盖"的解释不成立。
+
+结论：差距是**同样的 HMMA 在 cute epilogue 里的 issue 效率**，不是多算、不是原子、不是某一项能单独删掉的开销。唯一还没做的决定性测量是逐指令 stall 采样（`cute_prof.ncu-rep` / `native_prof.ncu-rep` 已存 `.tmp/svdq-cute-fused/`），做完再决定是否重写 epilogue 的取数路径。
+
 建议的下一步（CDK-8 实施路径）：在 host 侧用同一套 CuTe 布局代数把 `tScA` 与 `tScC_rc` 的坐标对全部枚举出来，生成 128 项的 `constexpr int8_t` 置换表（-1 表示该值不在本 lane），kernel 里只做 `tCrA(i) = tCrC_bf16(table[i][kk])`。这样既删掉 smem 回读，又不会触发编译期搜索。
 
 e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
