@@ -153,3 +153,39 @@ def test_cp_and_tp_planners_cover_the_transformer_ph3_drives():
 
   assert "MiniMaxH3Transformer3DModel" in ContextParallelismPlannerRegister.supported_planners()[1]
   assert "MiniMaxH3Transformer3DModel" in TensorParallelismPlannerRegister.supported_planners()[1]
+
+
+def test_enable_cache_takes_the_pipeline_not_only_the_transformer():
+  """The adapter path itself has to work, not just `enable_cache(transformer)`.
+
+  `test_forward_signature_preserved_after_enable_cache` hands cache-dit the transformer, which skips
+  the prefix match, the whitelist and the adapter's `resolve_transformer`. This one drives the public
+  entry point with a real `PH3ImageModularPipeline` so a broken adapter cannot hide behind a
+  transformer-level test.
+  """
+  from diffusers import PH3ImageModularPipeline
+
+  pipe = PH3ImageModularPipeline()
+  pipe.update_components(transformer=_tiny_transformer())
+  transformer = pipe.transformer
+  signature_before = inspect.signature(transformer.forward)
+
+  returned = cache_dit.enable_cache(
+    pipe,
+    cache_config=DBCacheConfig(
+      Fn_compute_blocks=1,
+      Bn_compute_blocks=1,
+      residual_diff_threshold=0.12,
+      max_warmup_steps=2,
+      num_inference_steps=8,
+      enable_separate_cfg=False,
+      max_continuous_cached_steps=1,
+    ),
+  )
+
+  assert returned is pipe
+  # The adapter resolved the pipeline's own transformer and marked it cached in place.
+  assert pipe.transformer is transformer
+  assert getattr(transformer, "_is_cached", False) is True
+  assert tuple(inspect.signature(transformer.forward).parameters) == tuple(
+    signature_before.parameters)

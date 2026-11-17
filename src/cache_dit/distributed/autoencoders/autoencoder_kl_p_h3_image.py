@@ -122,10 +122,23 @@ class AutoencoderKLPH3ImageDataParallelismPlanner(AutoEncoderDataParallelismPlan
 
     original_decode = auto_encoder.__class__._decode_clip
     original_encode = auto_encoder.__class__._encode_clip
+    warned = []
+
+    def _warn_serial_path(use_tiling: bool) -> None:
+      # VAE-P with tiling off is a silent downgrade: every rank decodes the whole image, so the run
+      # costs world_size times the serial VAE and gains nothing. Say it once, on rank 0.
+      if use_tiling or world_size == 1 or warned or rank != 0:
+        return
+      warned.append(True)
+      logger.warning(
+        "VAE-P is a no-op for %s: tiling is disabled, so every rank runs the serial "
+        "_encode_clip/_decode_clip path and the decode is %d times the single-card work.",
+        type(auto_encoder).__name__, world_size)
 
     @functools.wraps(original_decode)
     def new_decode_clip(self, z, *args, **kwargs):
       if not self.use_tiling or world_size == 1:
+        _warn_serial_path(self.use_tiling)
         return original_decode(self, z, *args, **kwargs)
 
       ratio = self.spatial_compression_ratio
@@ -163,6 +176,7 @@ class AutoencoderKLPH3ImageDataParallelismPlanner(AutoEncoderDataParallelismPlan
     @functools.wraps(original_encode)
     def new_encode_clip(self, x, *args, **kwargs):
       if not self.use_tiling or world_size == 1:
+        _warn_serial_path(self.use_tiling)
         return original_encode(self, x, *args, **kwargs)
 
       height = x.shape[-2]

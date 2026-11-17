@@ -39,8 +39,8 @@ class _FakePipe:
     self.updated = {}
 
   def unload_components(self, names):
-    for name in names:
-      self._blocks.sub_blocks.pop(name, None)
+    # The real API clears the components and never touches the block tree; faking a pop here is what
+    # let the first version of the hook ship a no-op `--prompt-enhancer`.
     self.unloaded.extend(names)
 
   def update_components(self, **kwargs):
@@ -150,55 +150,70 @@ def test_the_hook_pops_the_real_tree_not_the_deepcopy():
   assert list(pipe._blocks.sub_blocks) == [name for name in before if name != "prompt_upsampler"]
 
 
-def test_post_init_hook_injects_the_upsampler_when_a_directory_is_given(monkeypatch):
-  loaded = {}
+def _stub_component_loaders(monkeypatch, loaded):
+  """Record `from_pretrained` calls and return an uninitialised instance of the requested class.
 
-  class _FakeUpsampler:
-
-    @classmethod
-    def from_pretrained(cls, path, subfolder=None, dtype=None):
-      loaded["upsampler"] = (path, subfolder, dtype)
-      return cls()
-
-  class _FakeProcessor:
-
-    @classmethod
-    def from_pretrained(cls, path, subfolder=None):
-      loaded["processor"] = (path, subfolder)
-      return cls()
-
-  import transformers
-
-  monkeypatch.setattr(transformers, "Qwen3_5ForConditionalGeneration", _FakeUpsampler)
-  monkeypatch.setattr(transformers, "AutoProcessor", _FakeProcessor)
-
-  pipe = _FakePipe()
-  _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")(pipe)
-
-  # `update_components` swaps the component but cannot put the block back, so the step must stay
-  # or the flag would load 18 GiB of weights that never run.
-  assert "prompt_upsampler" in pipe._blocks.sub_blocks
-  assert pipe.unloaded == []
-  assert loaded["upsampler"][0] == "/models/p-h3-image"
-  assert loaded["upsampler"][1] == "prompt_upsampler"
-  assert loaded["processor"][1] == "prompt_upsampler_processor"
-  assert set(pipe.updated) == {"prompt_upsampler", "prompt_upsampler_processor"}
-
-
-def test_post_init_hook_keeps_the_step_when_the_directory_is_the_checkpoint(monkeypatch):
-  """Pointing `--prompt-enhancer` at the checkpoint itself must keep the loaded components.
-
-  Popping the step here would render the short request verbatim while still paying the upsampler's
-  residency: the flag would look accepted and change the prompt distribution anyway.
+  Patching `transformers.<Name>` does not work once `_LazyModule` has materialised the class (its
+  `__getattribute__` wins over the instance dict), so the patch goes on the base methods the classes
+  actually use. Returning `cls.__new__(cls)` keeps the real type, i.e. `update_components` cannot
+  reject it, while no weights are read.
   """
   import transformers
 
-  def _fail(*args, **kwargs):
-    raise AssertionError("the already-loaded upsampler must not be reloaded")
+  def _record(cls, path, subfolder=None, dtype=None, **kwargs):
+    loaded.setdefault("calls", []).append((cls.__name__, path, subfolder, dtype))
+    return cls.__new__(cls)
 
-  monkeypatch.setattr(transformers, "Qwen3_5ForConditionalGeneration", _fail)
-  monkeypatch.setattr(transformers, "AutoProcessor", _fail)
+  monkeypatch.setattr(transformers.PreTrainedModel, "from_pretrained", classmethod(_record))
+  monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", classmethod(_record))
 
+
+def test_post_init_hook_keeps_the_step_on_a_real_pipeline_for_a_foreign_directory(monkeypatch):
+  """A foreign enhancer directory swaps the component and leaves the block tree alone.
+
+  Real `PH3ImageModularPipeline`, no weights: the point is that the step survives a reload, because
+  `update_components` cannot put a popped block back.
+  """
+  from diffusers import PH3ImageModularPipeline
+
+  loaded = {}
+  _stub_component_loaders(monkeypatch, loaded)
+
+  pipe = PH3ImageModularPipeline()
+  before = list(pipe._blocks.sub_blocks)
+  _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")(pipe)
+
+  assert list(pipe._blocks.sub_blocks) == before
+  assert [(name, path, subfolder) for name, path, subfolder, _ in loaded["calls"]] == [
+    ("Qwen3_5ForConditionalGeneration", "/models/p-h3-image", "prompt_upsampler"),
+    ("AutoProcessor", "/models/p-h3-image", "prompt_upsampler_processor"),
+  ]
+  assert type(pipe.prompt_upsampler).__name__ == "Qwen3_5ForConditionalGeneration"
+  assert type(pipe.prompt_upsampler_processor).__name__ == "AutoProcessor"
+
+
+def test_post_init_hook_refuses_the_enhancer_under_torchrun(monkeypatch):
+  """Every rank would load its own 18.8 GiB copy and no `--parallel*` option covers it."""
+  monkeypatch.setenv("WORLD_SIZE", "2")
+  try:
+    _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")
+  except ValueError as error:
+    assert "--prompt-enhancer" in str(error)
+  else:
+    raise AssertionError("the enhancer must be rejected before a process group exists")
+
+  monkeypatch.setenv("WORLD_SIZE", "1")
+  assert _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint") is not None
+
+
+def test_post_init_hook_keeps_the_step_when_the_directory_is_the_checkpoint():
+  """Pointing `--prompt-enhancer` at the checkpoint itself must keep the loaded components.
+
+  Popping the step here would render the short request verbatim while still paying the upsampler's
+  residency: the flag would look accepted and change the prompt distribution anyway. No loader runs
+  on this path at all, so the test needs no stubbing: `unloaded`/`updated` staying empty is the
+  assertion.
+  """
   pipe = _FakePipe()
   _ph3_image_post_init("/models/p-h3-image", "/models/p-h3-image")(pipe)
 

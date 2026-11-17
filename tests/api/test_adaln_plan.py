@@ -27,7 +27,12 @@ def test_adaln_plan_reads_the_ph3_conditioning_level():
 
 
 def test_adaln_plan_prefers_the_reference_name_when_both_exist():
-  """MiniMax-H3-Image exposes both names; the reference one wins, so the fallback stays unused."""
+  """A pipeline exposing both names resolves to `reference_noise_aug`, so the fallback stays unused.
+
+  Neither shipped checkpoint does: MiniMax-H3-Image only declares `reference_noise_aug`, P-H3-Image
+  only `keyframe_noise_aug`. The stub covers the ordering rule itself, so a future checkpoint that
+  carries both cannot flip the meaning silently.
+  """
 
   class _Stub:
     config = argparse.Namespace(sample_sigmas=[1.0, 0.5, 0.0])

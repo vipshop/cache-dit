@@ -94,8 +94,8 @@ def _worker(rank: int, port: int) -> None:
     AutoencoderKLPH3ImageDataParallelismPlanner().parallelize_tiling(auto_encoder=vae,
                                                                      dp_mesh=_Mesh())
 
-    torch.testing.assert_close(vae._decode_clip(latent), expected_decode)
-    torch.testing.assert_close(vae._encode_clip(pixels), expected_encode)
+    torch.testing.assert_close(vae._decode_clip(latent), expected_decode, rtol=0, atol=0)
+    torch.testing.assert_close(vae._encode_clip(pixels), expected_encode, rtol=0, atol=0)
     dist.barrier()
   finally:
     dist.destroy_process_group()

@@ -6239,6 +6239,13 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
   :returns: The hook `ExampleInitConfig.post_init_hook` expects.
   """
 
+  if upsampler_dir is not None and int(os.environ.get("WORLD_SIZE", "1") or 1) > 1:
+    raise ValueError(
+      "--prompt-enhancer keeps an 18.8 GiB upsampler resident, and an example is built before the "
+      "process group exists, so under torchrun every rank would load its own copy and no "
+      "`--parallel*` option covers it. Expand the prompt on one GPU first (or run single-card), "
+      "pass the result as `--prompt`, and drop the flag.")
+
   same_dir = (upsampler_dir is not None
               and os.path.abspath(upsampler_dir) == os.path.abspath(model_path))
 
