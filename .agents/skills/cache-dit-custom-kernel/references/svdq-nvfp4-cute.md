@@ -1123,6 +1123,16 @@ CuTe 融合链比 native 慢 9–13%（M=4096 1.089×、M=8192 1.127×）。同�
 
 结论：**producer 与非融合 GEMM 两侧 cute 都不慢（0.82–1.00×），差距全部来自融合 epilogue 的 D 归约**——只出 qout 时仅 1.03–1.04×，加上 D 就跳到 1.14–1.15×：native 从累加器寄存器直接 MMA 只多花 24 µs（4096）/ 39 µs（8192），cute 因为要回读 smem O tile 当 A 操作数、`row_major` 还要多一次 finalize launch 和 FP32 scratch 清零，多花 75 µs / 144 µs（3.1–3.7×）。所以 CDK-8 的落点很明确：改 D 归约的取数（累加器寄存器 / 单 warp 全 K），不要动 producer 与主 GEMM，更不要再拆 kernel。
 
+NCU 归因（M=4096，r32，同一 shape，`qout` vs `qout + D`）：加 D 带来 **+24.5M 指令（+27%）**、**+14.2M smem-load wavefronts（+51%）**，而 barrier / lg_throttle 停顿只有 0.18 / 0.27（不是同步或原子瓶颈），DRAM 占 4.6%（也不是带宽）。即成本就是"每 k-step 8 次标量 smem 读 + 每次重算 swizzle 地址"。
+
+三条已试过且**失败**的路子，别再原样重跑：
+
+1. **LDSM（`SM75_U32x4_LDSM_N`）读 A**：`partition_S`/`retile_D` 的惯用法在 `(kBM, kBN)` 这种 rank-2 源上对不上（3 次构建全部卡在 `copy.hpp` 的 "CopyAtom rank-mismatch" / underscore "Mismatched Ranks"）。LoRA-up 能这么写是因为它的源天然是 `(kBM, kRankTile, kStages)` rank-3 tile、dest fragment 也由同一 tile 推出。要用 LDSM，必须把源改成 rank-3 且 fragment 从同类型 tile 推（`retile_D` 的 rank 才会一致）。
+2. **A 直接从累加器寄存器取**（native 的做法）：正确性通过（20 个 fused 用例全绿），但把"坐标匹配"写成 `#pragma unroll` 的编译期搜索会被 nvcc 当成**运行期**比较（`tScC_rc` 的坐标取出来是 runtime int），全展开后代码爆炸：qout+D 从 550 µs 涨到 **867 µs**。要用这条路，必须把 (A slot → C register) 的置换做成**真正的编译期常量表**（host 侧用 CuTe 布局代数算出来再 `constexpr` 嵌进 kernel），不能靠循环搜索。
+3. **成对 uint32 载入**（4 次 32-bit 代替 8 次 16-bit）：收益只有 0.7%（550.7→546.7 µs），而且我的 slot/half 推导在 M≥512 和 row_major 上都引入错误（6 个用例失败）——A fragment 的 (row, k) → slot 映射不能靠"行 % 16 / 8"猜，得从 `tScA` 的真实坐标推。
+
+建议的下一步（CDK-8 实施路径）：在 host 侧用同一套 CuTe 布局代数把 `tScA` 与 `tScC_rc` 的坐标对全部枚举出来，生成 128 项的 `constexpr int8_t` 置换表（-1 表示该值不在本 lane），kernel 里只做 `tCrA(i) = tCrC_bf16(table[i][kk])`。这样既删掉 smem 回读，又不会触发编译期搜索。
+
 e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 
 | 臂 | eager | compile |
