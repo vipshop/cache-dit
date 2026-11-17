@@ -952,13 +952,18 @@ def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> No
     q2, sf2, d2 = fc2.quantize(activated)
     expected = fc2.forward_quant(q2, sf2, d2)
 
-    fused, qout, _, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
+    fused, qout, oscales, _ = _fused_mlp_forward(x, fc1, fc2, write_dense=False)
 
   assert torch.isfinite(fused).all()
   assert _relative_l2(fused, expected) < 5e-3
-  # The fused quantizer reproduces the producer's activation pack, so the second GEMM sees the same
-  # input as the unfused chain up to the single FP4 rounding.
-  assert _relative_l2(qout.view(torch.uint8).float(), q2.view(torch.uint8).float()) < 0.02
+  # Row-major D is bit-reproducible here, so the fused quantizer must be a different data path to
+  # exactly the same native pack. These comparisons guard the paired-row vectorized stores. Native
+  # fragment D uses relaxed atomics and can change the last input bits before quantization.
+  if layout == "row_major":
+    assert torch.equal(qout, q2)
+    assert torch.equal(oscales.view(torch.uint8), sf2.view(torch.uint8))
+  else:
+    assert _relative_l2(qout.view(torch.uint8).float(), q2.view(torch.uint8).float()) < 0.02
 
 
 @pytest.mark.parametrize(("runtime", "layout"), [

@@ -1091,62 +1091,82 @@ class W4A4GemmKernel {
                                                              uint32_t *oscales,
                                                              cutlass::bfloat16_t const *smooth) {
     constexpr int kBlocks = kBN / 64;
-    constexpr int kTasks = kBM * kBlocks;
+    constexpr int kTasks = (kBM / 2) * kBlocks;
+    auto sO_packed = recast<uint4 const>(sO);
     for (int task = tid; task < kTasks; task += Traits::kNumThreads) {
-      const int tile_row = task / kBlocks;
+      const int pair = task / kBlocks;
       const int block = n0 / 64 + task % kBlocks;
-      const int row = m0 + tile_row;
       const int col0 = block * 64;
-      uint32_t words[8];
-      float scale[4];
-      __nv_bfloat162 div[32];
-      // The SW128 output layout keeps eight consecutive BF16 codes in one 16-byte segment, so the
-      // 64 values of this block come back in eight vector loads instead of 64 scalar ones.
-      uint4 packs[8];
+      // A row and its +8 partner occupy even/odd words of one 64-byte pack window. The second half
+      // of each 16-row group starts at the next 16-row panel, hence the discontinuous row mapping.
+      const int h = pair % 16;
+      const int tile_row0 = 32 * (pair / 16) + (h < 8 ? h : h + 8);
+      uint4 smooth_packs[8];
 #pragma unroll
       for (int g = 0; g < 8; ++g) {
-        const int c = (task % kBlocks) * 64 + g * 8;
-        packs[g] = *reinterpret_cast<uint4 const *>(&sO(tile_row, c));
+        smooth_packs[g] = *reinterpret_cast<uint4 const *>(smooth + col0 + g * 8);
       }
-      auto const *src = reinterpret_cast<cutlass::bfloat16_t const *>(packs);
+      uint32_t words[2][8];
+      uint32_t scale_words[2];
 #pragma unroll
-      for (int j = 0; j < 32; ++j) {
-        const cutlass::bfloat16_t s0 = smooth[col0 + j * 2];
-        const cutlass::bfloat16_t s1 = smooth[col0 + j * 2 + 1];
-        div[j] = __float22bfloat162_rn(
-          make_float2(__fdividef(epi_to_float(src[j * 2]), epi_to_float(s0)),
-                      __fdividef(epi_to_float(src[j * 2 + 1]), epi_to_float(s1))));
-      }
-      // Group scales are shared by two eight-column words, so they are derived before packing.
+      for (int side = 0; side < 2; ++side) {
+        const int tile_row = tile_row0 + side * 8;
+        uint32_t *row_words = words[side];
+        float scale[4];
+        __nv_bfloat162 div[32];
+        uint4 packs[8];
 #pragma unroll
-      for (int g = 0; g < 4; ++g) {
-        float amax = 0.0f;
-#pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          const float2 f = __bfloat1622float2(div[g * 8 + j]);
-          amax = fmaxf(amax, fmaxf(fabsf(f.x), fabsf(f.y)));
+        for (int g = 0; g < 8; ++g) {
+          packs[g] = sO_packed(tile_row, (task % kBlocks) * 8 + g);
         }
-        scale[g] = fminf(amax / 6.0f, 448.0f);
+        auto const *src = reinterpret_cast<cutlass::bfloat16_t const *>(packs);
+#pragma unroll
+        for (int g = 0; g < 8; ++g) {
+          const auto *scales = reinterpret_cast<cutlass::bfloat16_t const *>(&smooth_packs[g]);
+#pragma unroll
+          for (int j = 0; j < 4; ++j) {
+            const int index = g * 8 + j * 2;
+            div[g * 4 + j] = __float22bfloat162_rn(make_float2(
+              __fdividef(epi_to_float(src[index]), epi_to_float(scales[j * 2])),
+              __fdividef(epi_to_float(src[index + 1]), epi_to_float(scales[j * 2 + 1]))));
+          }
+        }
+#pragma unroll
+        for (int g = 0; g < 4; ++g) {
+          float amax = 0.0f;
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            const float2 f = __bfloat1622float2(div[g * 8 + j]);
+            amax = fmaxf(amax, fmaxf(fabsf(f.x), fabsf(f.y)));
+          }
+          scale[g] = fminf(amax / 6.0f, 448.0f);
+        }
+        scale_words[side] = epi_pack_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));
+#pragma unroll
+        for (int w = 0; w < 8; ++w) {
+          const float rscale = epi_rcp(scale[w / 2]);
+          uint32_t word = 0;
+#pragma unroll
+          for (int p = 0; p < 4; ++p) {
+            const float2 f = __bfloat1622float2(div[w * 4 + p]);
+            word |= epi_pack_fp4(f.x * rscale, f.y * rscale) << (p * 8);
+          }
+          row_words[w] = word;
+        }
       }
+      const int row = m0 + tile_row0;
       const int64_t base =
         (static_cast<int64_t>(row / 256) * (N / 64) + block) * 8 + (row % 256) / 32;
-      oscales[base * 32 + 4 * (row % 8) + (row % 32) / 8] =
-        epi_pack_fp8(make_float4(scale[0], scale[1], scale[2], scale[3]));
-#pragma unroll
-      for (int w = 0; w < 8; ++w) {
-        const float rscale = epi_rcp(scale[w / 2]);
-        uint32_t word = 0;
-#pragma unroll
-        for (int p = 0; p < 4; ++p) {
-          const float2 f = __bfloat1622float2(div[w * 4 + p]);
-          word |= epi_pack_fp4(f.x * rscale, f.y * rscale) << (p * 8);
-        }
-        words[w] = word;
-      }
-      const int local = 16 * (row % 8) + ((row % 16) / 8) + 128 * ((row % 32) / 16);
-      uint32_t *dst = reinterpret_cast<uint32_t *>(qout) + base * 256 + local;
-#pragma unroll
-      for (int w = 0; w < 8; ++w) dst[4 * (w % 4) + 2 * (w / 4)] = words[w];
+      uint32_t *scale_dst = oscales + base * 32 + 4 * (row % 8) + (row % 32) / 8;
+      *reinterpret_cast<uint2 *>(scale_dst) = make_uint2(scale_words[0], scale_words[1]);
+      const int local = 16 * (row % 8) + 128 * ((row % 32) / 16);
+      uint4 *dst =
+        reinterpret_cast<uint4 *>(reinterpret_cast<uint32_t *>(qout) + base * 256 + local);
+      // Even/odd row words interleave as w0,w4,w1,w5,w2,w6,w3,w7 within the native pack.
+      dst[0] = make_uint4(words[0][0], words[1][0], words[0][4], words[1][4]);
+      dst[1] = make_uint4(words[0][1], words[1][1], words[0][5], words[1][5]);
+      dst[2] = make_uint4(words[0][2], words[1][2], words[0][6], words[1][6]);
+      dst[3] = make_uint4(words[0][3], words[1][3], words[0][7], words[1][7]);
     }
   }
 
