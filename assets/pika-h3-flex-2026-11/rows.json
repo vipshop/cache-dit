@@ -1,0 +1,107 @@
+[
+  {
+    "label": "single-GPU bf16 + offload, sync (correctness reference)",
+    "latency": 85.05,
+    "quality": 60.0,
+    "repro": true,
+    "note": "PSNR inf"
+  },
+  {
+    "label": "+ async transfer (speed reference)",
+    "latency": 69.85,
+    "quality": 60.0,
+    "repro": true,
+    "note": "PSNR inf"
+  },
+  {
+    "label": "+ compile (async)",
+    "latency": 51.27,
+    "quality": 19.43,
+    "repro": false,
+    "note": "18.32"
+  },
+  {
+    "label": "compile rerun = noise floor",
+    "latency": 67.26,
+    "quality": 18.32,
+    "repro": false,
+    "note": "18.32"
+  },
+  {
+    "label": "cache rdt 0.8 (async, SSIM 0.54)",
+    "latency": 59.36,
+    "quality": 17.2,
+    "repro": true,
+    "note": "15.78"
+  },
+  {
+    "label": "CP2 + ulysses_anything (async)",
+    "latency": 56.51,
+    "quality": 19.51,
+    "repro": true,
+    "note": "17.45"
+  },
+  {
+    "label": "CP2 + compile (async)",
+    "latency": 39.61,
+    "quality": 19.28,
+    "repro": false,
+    "note": "17.31"
+  },
+  {
+    "label": "CP2 + ulysses_anything + VAE-P (async)",
+    "latency": 41.11,
+    "quality": 19.51,
+    "repro": true,
+    "note": "17.45"
+  },
+  {
+    "label": "CP2 + VAE-P + compile (async)",
+    "latency": 32.36,
+    "quality": 21.03,
+    "repro": false,
+    "note": "18.76"
+  },
+  {
+    "label": "TP2 (sync: async OOM)",
+    "latency": 139.41,
+    "quality": 19.58,
+    "repro": true,
+    "note": "17.10"
+  },
+  {
+    "label": "TP2 + VAE-P (sync)",
+    "latency": 115.15,
+    "quality": 19.58,
+    "repro": true,
+    "note": 17.1
+  },
+  {
+    "label": "TP2 + TE-P (sync)",
+    "latency": 154.86,
+    "quality": 19.52,
+    "repro": true,
+    "note": "16.56"
+  },
+  {
+    "label": "TP2 + CP2, 4 GPUs (sync)",
+    "latency": 142.03,
+    "quality": 19.24,
+    "repro": true,
+    "note": "16.83"
+  },
+  {
+    "label": "fp8 per-row + compile (sync)",
+    "latency": 95.95,
+    "quality": 15.29,
+    "repro": false,
+    "note": "13.93"
+  },
+  {
+    "label": "W4A4 nvfp4 r64 + compile (sync)",
+    "latency": 51.99,
+    "quality": 12.99,
+    "repro": false,
+    "note": "11.95"
+  }
+]
