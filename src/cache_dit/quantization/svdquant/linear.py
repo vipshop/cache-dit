@@ -300,7 +300,6 @@ class SVDQW4A4Linear(nn.Module):
     :param gate: Optional gating half with the quantized width.
     :returns: A tuple `(quantized_x, ascales, lora_act_out)` ready for
       `forward_quant`.
-    :raises RuntimeError: If GLU fusion is requested on the row-major layout.
     """
 
     if self.runtime_kernel.startswith("flashinfer"):
@@ -309,20 +308,18 @@ class SVDQW4A4Linear(nn.Module):
         "FlashInfer's `svdquant_linear`; call `forward` instead of `quantize`/`forward_quant`.")
 
     if self.lora_layout == "row_major":
-      if fuse_glu or gate is not None:
-        raise RuntimeError(
-          "The CuTe row-major producer has no GLU fusion; use lora_layout='native' for a fused "
-          "SwiGLU chain.")
       # The CuTe row-major producer consumes the converted pack (`_cute_proj_down` in row-major
-      # layout and the unpacked `_cute_smooth` vector) and folds the per-rank scales into the
-      # emitted BF16 D. The pack is prepared once at load time, but defensive rebuild keeps direct
-      # constructor use working.
+      # layout and the unpacked `_cute_smooth` vector), applies the gate itself, and folds the
+      # per-rank scales into the emitted BF16 D. The pack is prepared once at load time, but
+      # defensive rebuild keeps direct constructor use working.
       if not self._cute_pack_ready:
         self._prepare_cute_pack()
       return svdq_quantize_w4a4(
         input=x,
         lora_down=self._cute_proj_down if self.rank > 0 else None,
         smooth=self._cute_smooth,
+        gate=gate,
+        fuse_glu=fuse_glu,
         lora_layout="row_major",
         fp4=True,
         pad_size=pad_size,

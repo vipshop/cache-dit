@@ -988,12 +988,20 @@ def test_fused_write_dense_false_preserves_the_packs(runtime: str, layout: str) 
   assert _relative_l2(y_fused, y_dense) < 1e-3
 
 
+def _logical_d(layout: str, d: torch.Tensor) -> torch.Tensor:
+  """Return the logical `[M, R]` view of a producer D output."""
+
+  return _decode_fragment_d(d) if layout == "native" else d.float()
+
+
+@pytest.mark.parametrize(("runtime", "layout"), [("native", "native"), ("cute", "row_major")])
 @pytest.mark.parametrize("mode", ["gate_tensor", "half_split"])
-def test_native_glu_producer_matches_an_explicit_gate(mode: str) -> None:
+def test_glu_producer_matches_an_explicit_gate(mode: str, runtime: str, layout: str) -> None:
   """`value * silu(gate)` must equal quantizing that product directly.
 
-  Both accepted shapes are covered: a separate gate tensor and the interleaved-free half split of
-  one `[tokens, 2 * hidden]` tensor.
+  Both accepted shapes are covered (a separate gate tensor and the half split of one `[tokens, 2 *
+  hidden]` tensor), and so is both producer families: the native one and the CuTe row-major one that
+  the default CuTe dispatch selects.
   """
 
   _require_sm120()
@@ -1001,7 +1009,7 @@ def test_native_glu_producer_matches_an_explicit_gate(mode: str) -> None:
   tokens, hidden, rank = 256, 512, 32
   up = torch.randn(tokens, hidden, dtype=torch.bfloat16, device="cuda:0")
   gate = torch.randn(tokens, hidden, dtype=torch.bfloat16, device="cuda:0")
-  down = _build_quantized("native", "native", hidden, hidden, rank, up)
+  down = _build_quantized(runtime, layout, hidden, hidden, rank, up)
 
   gated = (up.float() * torch.nn.functional.silu(gate.float())).bfloat16()
   with torch.inference_mode():
@@ -1017,7 +1025,7 @@ def test_native_glu_producer_matches_an_explicit_gate(mode: str) -> None:
   # reference multiplies in FP32, so a small share of the FP4 codes lands on the neighbouring level.
   mismatch = (q_glu.view(torch.uint8) != q_ref.view(torch.uint8)).float().mean().item()
   assert mismatch < 2e-2
-  assert _relative_l2(_decode_fragment_d(d_glu), _decode_fragment_d(d_ref)) < 1e-2
+  assert _relative_l2(_logical_d(layout, d_glu), _logical_d(layout, d_ref)) < 1e-2
 
 
 class _SwiGLUBlock(nn.Module):
@@ -1034,8 +1042,13 @@ class _SwiGLUBlock(nn.Module):
     return self.out(self.activation_fn(self.gate_layer(hidden_states)) * self.proj(hidden_states))
 
 
-def test_swiglu_pass_fuses_the_qwen21_shape() -> None:
-  """The pass must detect the triple-linear gated block and stay numerically faithful."""
+@pytest.mark.parametrize("layout", ["native", "row_major"])
+def test_swiglu_pass_fuses_the_qwen21_shape(layout: str) -> None:
+  """The pass must detect the triple-linear gated block and stay numerically faithful.
+
+  Both CuTe LoRA-down layouts are covered: `row_major` is the runtime default, so a fused SwiGLU
+  chain has to work there and not only on the packed native fragment contract.
+  """
 
   from cache_dit.quantization.svdquant.passes import apply_passes
   from cache_dit.quantization.svdquant.passes import FusedSwiGluMlpPass
@@ -1060,7 +1073,7 @@ def test_swiglu_pass_fuses_the_qwen21_shape() -> None:
                            rank=rank,
                            precision="nvfp4",
                            runtime_kernel="cute",
-                           lora_layout="native",
+                           lora_layout=layout,
                            bias=False,
                            torch_dtype=torch.bfloat16).cuda().eval()
     layer.load_state_dict(state)
@@ -1077,7 +1090,7 @@ def test_swiglu_pass_fuses_the_qwen21_shape() -> None:
                              rank=rank,
                              precision="nvfp4",
                              runtime_kernel="cute",
-                             lora_layout="native",
+                             lora_layout=layout,
                              bias=False,
                              torch_dtype=torch.bfloat16).cuda().eval()
   out_layer.load_state_dict(state)

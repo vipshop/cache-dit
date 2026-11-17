@@ -27,8 +27,13 @@ def _require_fusable(*modules: nn.Module) -> None:
   live on a runtime that implements the fused epilogue and share one LoRA-down layout: the D the
   first GEMM writes is exactly what the second one reads back.
 
+  A row-major chain additionally requires identity per-rank LoRA scales: the finalize step folds
+  the *next* layer's scales into D and the ABI has no channel to supply them, so anything but the
+  synthesized identity would silently fold the wrong coefficients.
+
   :param modules: Quantized linear layers involved in the fused pass.
-  :raises RuntimeError: If a layer uses a FlashInfer chain or the layouts disagree.
+  :raises RuntimeError: If a layer uses a FlashInfer chain, the layouts disagree, or a row-major
+    layer carries explicit non-identity scales.
   """
 
   layouts = set()
@@ -41,6 +46,13 @@ def _require_fusable(*modules: nn.Module) -> None:
   if len(layouts) > 1:
     raise RuntimeError("The fused MLP passes need one LoRA-down layout for the whole chain, got "
                        f"{sorted(layouts)}; the first GEMM writes the D the second one reads.")
+  if "row_major" in layouts:
+    for module in modules:
+      explicit = getattr(module, "lora_scales", None)
+      if explicit is not None and any(scale != 1.0 for scale in explicit):
+        raise RuntimeError(
+          f"{type(module).__name__} carries explicit per-rank LoRA scales {list(explicit)}; the "
+          "fused row-major epilogue can only fold the identity scales of the next layer's D.")
 
 
 @torch.compiler.disable

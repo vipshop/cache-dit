@@ -548,22 +548,11 @@ class FusedSwiGluMlpPass(BasePass):
       if target is None:
         continue
       up, gate, down = target
-      # The fused chain bypasses the TP collectives inside SVDQW4A4ShardLinear.forward, and the
-      # producer-side gate only exists on the native LoRA-down layout.
+      # The fused chain bypasses the TP collectives inside SVDQW4A4ShardLinear.forward.
       if any(isinstance(layer, SVDQW4A4ShardLinear) for layer in (up, gate, down) if layer):
         logger.warning_once(
           "Gated MLP %s uses TP-sharded SVDQ layers — skipping fused SwiGLU.",
           parent_name,
-        )
-        continue
-      if getattr(down, "lora_layout", "native") != "native":
-        # Not `warning_once`: with the CuTe row-major default this silently disables the pass for
-        # every gated model, and a one-shot record is easy to miss in a long log.
-        logger.warning(
-          "Gated MLP %s uses lora_layout=%r — skipping fused SwiGLU; the gate is applied by the "
-          "native activation producer, so pass --svdq-lora-layout native to fuse it.",
-          parent_name,
-          getattr(down, "lora_layout", "native"),
         )
         continue
       targets.append({

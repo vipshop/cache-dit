@@ -138,11 +138,6 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     if (!fp4) {
       throw std::runtime_error("lora_layout='row_major' implements the NVFP4 producer only.");
     }
-    if (fuse_glu || gate.has_value()) {
-      throw std::runtime_error(
-        "lora_layout='row_major' does not implement the GLU producer; pass lora_layout='native' "
-        "for a fused SwiGLU chain so the native producer applies value * silu(gate).");
-    }
     const int64_t rank = lora_down && lora_down->dim() > 0 ? lora_down->size(-1) : 0;
     const int64_t K = input && input->dim() > 0 ? input->size(-1) : 0;
     if (input && input->dim() > 0 && K <= 0) {
@@ -174,7 +169,8 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
       quantize = &::svdq::cute_kernels::quantize_r128;
     }
     quantize(get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
-             get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch);
+             get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch,
+             get_tensor(gate), fuse_glu);
     return;
   }
   ::svdq::native_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),

@@ -458,6 +458,14 @@ struct W4A4CuteTraits {
   static_assert(!kFuseOut || !kLoRAFirst,
                 "the fused epilogue requires the main-first order so D sees the final accumulator");
 
+  // The fused epilogue re-reads the staged BF16 tile and stages one [kBN, kRankTile] slice of the
+  // next layer's down projection next to it. That slice must live outside the O tile, because the
+  // O tile overlay is still live at that point.
+  static constexpr int kOTileBytes = cosize_v<SmemLayoutO> * static_cast<int>(sizeof(ElementO));
+  static_assert(!kFuseOut || kSmemBytes - kOTileBytes >=
+                               kBN * kRankTile * static_cast<int>(sizeof(ElementLora)),
+                "the fused epilogue needs a down-projection staging slice after the O tile");
+
   // TMA transaction sizes feed mbarrier.expect_tx; they count bytes, not CuTe's 4-bit logical
   // elements. Main stages have no A/SFA TMA transaction because those operands use G2R. LoRA
   // stages replace the transaction with exactly D+L1 bytes. Mixing these budgets would leave the
@@ -1089,15 +1097,22 @@ class W4A4GemmKernel {
       uint32_t words[8];
       float scale[4];
       __nv_bfloat162 div[32];
+      // The SW128 output layout keeps eight consecutive BF16 codes in one 16-byte segment, so the
+      // 64 values of this block come back in eight vector loads instead of 64 scalar ones.
+      uint4 packs[8];
+#pragma unroll
+      for (int g = 0; g < 8; ++g) {
+        const int c = (task % kBlocks) * 64 + g * 8;
+        packs[g] = *reinterpret_cast<uint4 const *>(&sO(tile_row, c));
+      }
+      auto const *src = reinterpret_cast<cutlass::bfloat16_t const *>(packs);
 #pragma unroll
       for (int j = 0; j < 32; ++j) {
-        const int c = (task % kBlocks) * 64 + j * 2;
-        const cutlass::bfloat16_t v0 = sO(tile_row, c);
-        const cutlass::bfloat16_t v1 = sO(tile_row, c + 1);
         const cutlass::bfloat16_t s0 = smooth[col0 + j * 2];
         const cutlass::bfloat16_t s1 = smooth[col0 + j * 2 + 1];
-        div[j] = __float22bfloat162_rn(make_float2(__fdividef(epi_to_float(v0), epi_to_float(s0)),
-                                                   __fdividef(epi_to_float(v1), epi_to_float(s1))));
+        div[j] = __float22bfloat162_rn(
+          make_float2(__fdividef(epi_to_float(src[j * 2]), epi_to_float(s0)),
+                      __fdividef(epi_to_float(src[j * 2 + 1]), epi_to_float(s1))));
       }
       // Group scales are shared by two eight-column words, so they are derived before packing.
 #pragma unroll
@@ -1156,7 +1171,8 @@ class W4A4GemmKernel {
   __device__ __forceinline__ static void fused_lora_down(SmemO const &sO, int tid, int m0, int n0,
                                                          int rank_down,
                                                          cutlass::bfloat16_t const *lora_down,
-                                                         float *d_atomic) {
+                                                         float *d_atomic,
+                                                         cutlass::bfloat16_t *s_down) {
     using ElementLora = typename Traits::ElementLora;
     auto down_mma = make_tiled_mma(typename Traits::LoraAtom{}, Layout<Shape<_8, _1, _1>>{});
     auto thr_down = down_mma.get_thread_slice(tid);
@@ -1174,6 +1190,17 @@ class W4A4GemmKernel {
     const int64_t block_stride = static_cast<int64_t>(rank_tiles) * 4096;
 #pragma unroll 1
     for (int rt = 0; rt < rank_down / kRankTile; ++rt) {
+      // One [kBN, kRankTile] down slice is 16-32 KiB at r32/r64, so stage it once per rank tile
+      // with 16-byte loads instead of issuing one scalar global load per element inside the k-loop.
+      constexpr int kVecsPerRow = kRankTile / 8;
+      for (int task = tid; task < kBN * kVecsPerRow; task += Traits::kNumThreads) {
+        const int row = task / kVecsPerRow;
+        const int col = (task % kVecsPerRow) * 8;
+        const int64_t src = static_cast<int64_t>(n0 + row) * rank_down + rt * kRankTile + col;
+        *reinterpret_cast<uint4 *>(s_down + row * kRankTile + col) =
+          *reinterpret_cast<uint4 const *>(lora_down + src);
+      }
+      __syncthreads();
       auto tCrD = partition_fragment_C(down_mma, Shape<Int<kBM>, Int<kRankTile>>{});
       clear(tCrD);
 #pragma unroll 1
@@ -1186,12 +1213,9 @@ class W4A4GemmKernel {
         }
 #pragma unroll
         for (int i = 0; i < size(tCrB); ++i) {
-          const int r = rt * kRankTile + get<0>(tScB(i));
-          const int c = n0 + kk * 16 + get<1>(tScB(i));
-          // Row-major [N, R_down]: one __ldg per element, then a BF16 copy into the B fragment.
-          tCrB(i) =
-            static_cast<ElementLora>(__ldg(reinterpret_cast<__nv_bfloat16 const *>(lora_down) +
-                                           static_cast<int64_t>(c) * rank_down + r));
+          const int r = get<0>(tScB(i));
+          const int c = kk * 16 + get<1>(tScB(i));
+          tCrB(i) = s_down[c * kRankTile + r];
         }
         cute::gemm(down_mma, tCrA, tCrB, tCrD);
       }
@@ -1525,7 +1549,9 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
       Gemm::fused_quantize_tile(sO, tid, m0, n0, N, qout, oscales, smooth);
     }
     if (rank_down > 0) {
-      Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic);
+      auto *s_down = reinterpret_cast<cutlass::bfloat16_t *>(reinterpret_cast<uint8_t *>(shm) +
+                                                             Traits::kOTileBytes);
+      Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic, s_down);
     }
   } else {
     Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);

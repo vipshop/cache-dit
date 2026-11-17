@@ -535,7 +535,14 @@ class MlpCase:
   fc2: SVDQW4A4Linear
 
 
-def prepare_mlp_case(m: int, n: int, k: int, rank: int, seed: int, device: torch.device) -> MlpCase:
+def prepare_mlp_case(m: int,
+                     n: int,
+                     k: int,
+                     rank: int,
+                     seed: int,
+                     device: torch.device,
+                     runtime: str = "native",
+                     lora_layout: str | None = None) -> MlpCase:
   """Quantize a two-layer MLP shaped like a DiT feed-forward block.
 
   :param m: Number of tokens.
@@ -543,6 +550,8 @@ def prepare_mlp_case(m: int, n: int, k: int, rank: int, seed: int, device: torch
   :param k: Model width, i.e. fc1's input and fc2's output.
   :param rank: LoRA rank used for both layers.
   :param seed: Random seed for the source weights and activations.
+  :param runtime: `'native'` or `'cute'`; the chain runs entirely on the selected GEMM.
+  :param lora_layout: LoRA-down layout for CuTe; `None` resolves to that runtime's default.
   :param device: CUDA device.
   :returns: The case, with both layers quantized to the NVFP4 native pack like the other rows.
   """
@@ -552,20 +561,32 @@ def prepare_mlp_case(m: int, n: int, k: int, rank: int, seed: int, device: torch
   fc1_linear = torch.nn.Linear(k, n, bias=True).to(device=device, dtype=torch.bfloat16)
   fc2_linear = torch.nn.Linear(n, k, bias=True).to(device=device, dtype=torch.bfloat16)
   calibration = x[:min(256, m)]
-  fc1 = quantize_linear_svdq_w4a4(fc1_linear, [calibration],
-                                  rank=rank,
-                                  precision="nvfp4",
-                                  device=device,
-                                  torch_dtype=torch.bfloat16)
+  layout = lora_layout or ("row_major" if runtime == "cute" else "native")
+
+  def build(linear: torch.nn.Linear, activations: torch.Tensor) -> SVDQW4A4Linear:
+    state = quantize_linear_svdq_w4a4(linear, [activations],
+                                      rank=rank,
+                                      precision="nvfp4",
+                                      device=device,
+                                      torch_dtype=torch.bfloat16,
+                                      return_state_dict=True)
+    layer = SVDQW4A4Linear(linear.in_features,
+                           linear.out_features,
+                           rank=rank,
+                           precision="nvfp4",
+                           runtime_kernel=runtime,
+                           lora_layout=layout,
+                           torch_dtype=torch.bfloat16).to(device).eval()
+    # load_state_dict rebuilds the runtime-specific pack, which is what selects the CuTe epilogue.
+    layer.load_state_dict(state)
+    return layer
+
+  fc1 = build(fc1_linear, calibration)
   # Calibrate fc2 on the distribution it actually consumes, without building a graph for the
   # whole token batch just to keep a calibration slice.
   with torch.no_grad():
     hidden = F.gelu(fc1_linear(calibration), approximate="tanh")
-  fc2 = quantize_linear_svdq_w4a4(fc2_linear, [hidden],
-                                  rank=rank,
-                                  precision="nvfp4",
-                                  device=device,
-                                  torch_dtype=torch.bfloat16)
+  fc2 = build(fc2_linear, hidden)
   fc1.requires_grad_(False)
   fc2.requires_grad_(False)
   return MlpCase(x=x, fc1=fc1, fc2=fc2)
@@ -622,9 +643,17 @@ def peak_mib(fn) -> float:
   return (torch.cuda.max_memory_allocated() - base) / 2 ** 20
 
 
-def run_mlp_case(m: int, n: int, k: int, rank: int, seed: int, warmup: int, iterations: int,
-                 device: torch.device) -> list[dict]:
-  case = prepare_mlp_case(m, n, k, rank, seed, device)
+def run_mlp_case(m: int,
+                 n: int,
+                 k: int,
+                 rank: int,
+                 seed: int,
+                 warmup: int,
+                 iterations: int,
+                 device: torch.device,
+                 runtime: str = "native",
+                 lora_layout: str | None = None) -> list[dict]:
+  case = prepare_mlp_case(m, n, k, rank, seed, device, runtime, lora_layout)
   rows = []
   with torch.inference_mode():
     reference = _unfused_mlp(case)
@@ -643,6 +672,8 @@ def run_mlp_case(m: int, n: int, k: int, rank: int, seed: int, warmup: int, iter
         "n": n,
         "k": k,
         "rank": rank,
+        "runtime": runtime,
+        "lora_layout": case.fc1.lora_layout,
         "chain": name,
         "median_us": elapsed,
         "speedup_vs_unfused": baseline_us / elapsed,
@@ -658,9 +689,11 @@ def emit_mlp_rows(rows: list[dict], as_json: bool) -> None:
     for row in rows:
       print(json.dumps(row))
     return
-  print("m,n,k,rank,chain,median_us,speedup_vs_unfused,rel_l2_vs_unfused,peak_mib,finite")
+  print("m,n,k,rank,runtime,lora_layout,chain,median_us,speedup_vs_unfused,"
+        "rel_l2_vs_unfused,peak_mib,finite")
   for row in rows:
-    print(f"{row['m']},{row['n']},{row['k']},{row['rank']},{row['chain']},"
+    print(f"{row['m']},{row['n']},{row['k']},{row['rank']},{row['runtime']},"
+          f"{row['lora_layout']},{row['chain']},"
           f"{row['median_us']:.2f},{row['speedup_vs_unfused']:.4f},"
           f"{row['rel_l2_vs_unfused']:.3e},{row['peak_mib']:.1f},{row['finite']}")
 
@@ -698,6 +731,14 @@ def main() -> None:
   parser.add_argument("--fused-mlp",
                       action="store_true",
                       help="benchmark the two-layer fused MLP chain instead of single GEMMs")
+  parser.add_argument("--runtime",
+                      default="native",
+                      choices=("native", "cute"),
+                      help="GEMM runtime for both layers of the --fused-mlp chain")
+  parser.add_argument("--lora-layout",
+                      default=None,
+                      choices=("native", "row_major"),
+                      help="LoRA-down layout for --fused-mlp; default: the runtime's own default")
   args = parser.parse_args()
 
   shapes = parse_shapes(args.shape)
@@ -709,13 +750,24 @@ def main() -> None:
 
   if args.fused_mlp:
     if args.impl != ",".join(DEFAULT_IMPLS) or args.flashinfer_path:
-      print("[bench] --fused-mlp is native-runtime only; --impl/--flashinfer-path are ignored",
+      print("[bench] --fused-mlp benches the two-layer chain; --impl/--flashinfer-path are ignored",
             file=sys.stderr)
+    if args.lora_layout == "row_major" and args.runtime != "cute":
+      parser.error("--lora-layout row_major requires --runtime cute")
     mlp_rows = []
     for m, n, k in shapes:
       for rank in ranks:
-        mlp_rows.extend(run_mlp_case(m, n, k, rank, args.seed, args.warmup, args.iterations,
-                                     device))
+        mlp_rows.extend(
+          run_mlp_case(m,
+                       n,
+                       k,
+                       rank,
+                       args.seed,
+                       args.warmup,
+                       args.iterations,
+                       device,
+                       runtime=args.runtime,
+                       lora_layout=args.lora_layout))
     emit_mlp_rows(mlp_rows, args.json)
     return
 

@@ -364,6 +364,9 @@ def _svdq_quantize_w4a4(
     padded_input = input.contiguous()
     if batch_size_pad != batch_size:
       padded_input = torch.nn.functional.pad(padded_input, (0, 0, 0, batch_size_pad - batch_size))
+      if gate is not None:
+        # The CuTe producer walks every padded row, so a separate gate half has to be padded too.
+        gate = torch.nn.functional.pad(gate, (0, 0, 0, batch_size_pad - batch_size))
     output = torch.empty((batch_size_pad, value_channels // 2),
                          dtype=torch.uint8,
                          device=input.device)
@@ -371,8 +374,8 @@ def _svdq_quantize_w4a4(
                           dtype=torch.float8_e4m3fn,
                           device=input.device)
     lora_act = torch.empty((batch_size_pad, rank), dtype=torch.bfloat16, device=input.device)
-    _call_svdq_quantize_w4a4(padded_input, output, oscales, lora_down, lora_act, smooth, None,
-                             False, True, lora_scales, "row_major")
+    _call_svdq_quantize_w4a4(padded_input, output, oscales, lora_down, lora_act, smooth, gate,
+                             fuse_glu, True, lora_scales, "row_major")
     return output, oscales, lora_act
 
   output = torch.empty(batch_size_pad, value_channels // 2, dtype=torch.uint8, device=input.device)
