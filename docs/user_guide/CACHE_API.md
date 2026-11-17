@@ -628,19 +628,118 @@ FoCA has no algorithm-specific hyper-parameters — the prediction formula adapt
 
 </details>
 
-## TaylorSeer vs DMD vs FoCa: When to Use Which
+## SVD-Cache Calibrator: Token × Channel Low-Rank Split
+
+<div id="svd-cache"></div>
+
+**<span style="color:#c77dff;">SVD-Cache</span>** is a **subspace-split** calibrator: instead of extrapolating the whole cached tensor, it decomposes it in the **token × channel plane** into a low-rank principal part and a high-frequency residual, smooths the principal part across steps, and freezes the residual. It needs no training and — unlike most subspace caching methods — **no offline calibration file**: the basis is estimated at run time from the first full-compute feature of the current inference. [arXiv:2601.07396](https://arxiv.org/abs/2601.07396)
+
+> **Naming note**: SVD-Cache is a **caching** calibrator. It is unrelated to **SVDQuant** (`--quantize-type svdq_*`), which is a weight-quantization backend. On the command line SVD-Cache is spelled `--calibrator svd` (or `--calibrator svd-calibrator`).
+
+> ⚠️ **Measured status (FLUX.1-dev, 1024², 28 steps, seed 0, RTX PRO 5000, 2 prompts, torch 2.15.0, 2026-11-17)**: on this harness **neither predictor beats the plain-reuse baseline often enough to recommend it**, so treat SVD-Cache as reproduction/experimental support:
+>
+> | Configuration (rdt 0.12, 14/28 cached, ~1.9x) | latency | PSNR (dB) | SSIM |
+> |---|---|---|---|
+> | DBCache (plain reuse) | 8.85s | 23.11 | 0.8848 |
+> | + TaylorSeer | 8.86s | **24.21** | **0.9123** |
+> | + DMD | 8.91s | 23.49 | 0.9074 |
+> | + SVD-Cache `predictor=ema` (β 0.9) | 9.48s | 20.62 | 0.8051 |
+> | + SVD-Cache `predictor=taylor` (order 1) | 9.47s | 23.38 | 0.8882 |
+> | + SVD-Cache `predictor=taylor` (order 1, τ 0.999 ⇒ k≈1100) | 9.51s | 23.81 | 0.8990 |
+>
+> | Configuration (rdt 0.6 + mcc 6, 23/28 cached, ~4.9x) | latency | PSNR (dB) | SSIM |
+> |---|---|---|---|
+> | DBCache (plain reuse) | 3.48s | 15.95 | 0.6023 |
+> | + TaylorSeer | 3.48s | 15.63 | **0.6081** |
+> | + SVD-Cache `ema` β 0.9 / β 0.5 | 4.13s | 15.04 / 15.89 | 0.5446 / 0.6006 |
+> | + SVD-Cache `taylor` order 1 / order 2 | 4.12s | 15.56 / 15.71 | 0.5881 / 0.5832 |
+>
+> Reading it: (a) the **EMA** path is a convex blend of two real anchors, so it can only relax reuse — it never extrapolates, and `svd_beta → 0` reproduces plain reuse exactly (measured 15.89 vs 15.95 dB); (b) the **Taylor** path does extrapolate and recovers most of that loss (+2.8 dB at 1.9x), but still trails the plain `TaylorSeer` calibrator while costing ~0.6 s more per image; (c) the loss is **caused by freezing the residual**, not by the predictor: raising τ from 0.9 (k=5, residual ≈10% energy) to 0.999 (k≈1100) recovers +0.43 dB, and the same feature is what the plain `TaylorSeer` calibrator extrapolates instead of freezing. The measured rank at τ=0.9 is tiny (4–5/3072 for hidden states, 2/512 for encoder), matching the paper's claim. **For production use `--calibrator taylorseer` (or `dmd`).**
+
+### Mathematical Principle
+
+For a cached block tensor $Y \in \mathbb{R}^{N \times D}$ and a basis $V_C \in \mathbb{R}^{D \times k}$, $\sigma_C \in \mathbb{R}^{k}$ fitted on an earlier full-compute feature:
+
+$$P(Y) = \underbrace{\left(\frac{Y V_C}{\sigma_C}\right)}_{U} \sigma_C V_C^\top, \qquad R = Y - P(Y)$$
+
+$P(Y)$ is the part of the feature that lives in the retained principal subspace (the global structure), $R$ is everything else (the high-frequency tail). The forecast for a cached step is
+
+$$\hat{F} = \mathcal{P}\!\left(P(Y)\right) + R$$
+
+where $\mathcal{P}$ is the configured **predictor**:
+
+- **`predictor="ema"`** (default) — the paper's per-step smoothing, $\mathcal{P} = \mathrm{EMA}_\beta$. Every full-compute step blends the new principal part in ($\hat{P} \leftarrow \beta \hat{P} + (1-\beta) P(Y)$) and every cached step advances the same blend one more tick towards the anchor, so the principal stream **lags**. It is bounded by construction ($\beta^j \to 0$, $\hat{F} \to Y_{anchor}$) and `svd_beta=0` reproduces plain reuse — but by the same token it can only interpolate between two real anchors, never extrapolate.
+- **`predictor="taylor"`** — the paper's SVD + Taylor combination (Fig. 5(b)). A divided-difference Taylor ladder is kept on the **low-rank coefficients** $c = Y V_C$ (shape $[M, k]$, $k \approx 4$ here) and extrapolated by the elapsed step count, then projected back: $\mathcal{P}(P) = \left(\sum_i \frac{1}{i!} \Delta^i c \cdot e^i\right) V_C^\top$. The truncation acts as a low-pass filter on the derivative estimate, and the extra cost is one $[M,k] \times [k,D]$ GEMM per cached step.
+
+- **Basis**: fitted once per stream per inference, with the rank chosen by retained energy — the smallest $k$ with $\sum_{i \leq k} \sigma_i^2 \geq \tau \sum_i \sigma_i^2$ ($\tau$ = `svd_tau`, default 0.9), then optionally capped by `svd_max_rank`. The rank actually used is logged (`SVD-Cache basis fitted: rank=k/…`). The basis is **frozen for the whole inference**: the Taylor ladder lives in it, so refitting would invalidate every stored coefficient.
+- **Residual**: frozen from the last full-compute step. This is the assumption the measurements above contradict — the high-frequency tail moves *fastest* between steps, so freezing it is where the quality is lost.
+
+The calibrator only replaces the `Bn_residual` operand of DBCache's fusion ($H(F_n)_t + R_{B_n}$); the threshold logic, the counters, and the skip granularity are untouched, exactly like TaylorSeer/DMD/FoCa.
+
+```python
+import cache_dit
+from cache_dit import DBCacheConfig, SVDCalibratorConfig
+
+# DBCache + SVD-Cache calibrator (the basis is fitted on the fly)
+cache_dit.enable_cache(
+  pipe,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,  # Bn=0 since SVD-Cache replaces Bn calibrator
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=SVDCalibratorConfig(
+    svd_tau=0.9,          # energy retained by the principal subspace
+    svd_predictor="ema",  # "ema" (paper smoothing) or "taylor" (SVD + Taylor)
+    svd_beta=0.9,         # EMA coefficient, only used by predictor="ema"
+    svd_order=1,          # Taylor orders, only used by predictor="taylor"
+    svd_max_rank=0,       # 0 = energy-based rank, uncapped
+  ),
+)
+```
+
+Or from the command line:
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator svd \
+        --calibrator-params "tau=0.9,beta=0.9" --save-path flux.cache.svd.png
+python3 -m cache_dit.generate flux --cache --calibrator svd \
+        --calibrator-params "predictor=taylor,order=1,tau=0.9" --save-path flux.cache.svd.taylor.png
+```
+
+<details markdown="1">
+<summary>📖 SVD-Cache Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `svd_tau` | `float` | 0.9 | Cumulative squared-singular-value energy retained by the principal subspace, in (0, 1]. Smaller keeps a smaller subspace. |
+| `svd_predictor` | `str` | `"ema"` | How the principal part is forecast: `"ema"` (paper smoothing) or `"taylor"` (SVD + Taylor, paper Fig. 5(b)). |
+| `svd_beta` | `float` | 0.9 | EMA coefficient of the principal stream in [0, 1); only used by `predictor="ema"`. 0 reproduces plain reuse. |
+| `svd_order` | `int` | 1 | Taylor orders kept by `predictor="taylor"`; ignored by `"ema"`. |
+| `svd_max_rank` | `int` | 0 | Hard cap on the retained rank; 0 keeps the energy-based choice. |
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Whether to enable the calibrator for encoder hidden states. |
+| `calibrator_cache_type` | `str` | `"residual"` | Cache type: `"residual"` or `"hidden_states"`. |
+
+The basis is fitted once per stream, so the cost is dominated by a single economy SVD (`O(N·D²)`) plus 2 thin GEMMs per full-compute step; the extra memory is roughly 3× one block group plus the `D × k` basis.
+
+</details>
+
+## TaylorSeer vs DMD vs FoCa vs SVD-Cache: When to Use Which
 
 <div align="center" markdown="1">
 
-| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) | FoCa (ODE Heun) |
-|:---|:---|:---|:---|
-| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule |
-| **Anchor** | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step |
-| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot |
-| **Per-step cost** | O(1) | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops |
-| **Hyper-parameters** | `taylorseer_order` (default 1) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive |
-| **Best for** | DiT DDPM | Flow-matching | General-purpose; simpler than DMD |
-| **Memory** | 2× tensors (derivative ladder) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) |
+| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
+|:---|:---|:---|:---|:---|
+| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
+| **Anchor** | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
+| **Per-step cost** | O(1) | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
+| **Hyper-parameters** | `taylorseer_order` (default 1) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
+| **Best for** | DiT DDPM | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
+| **Memory** | 2× tensors (derivative ladder) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
 
 </div>
 

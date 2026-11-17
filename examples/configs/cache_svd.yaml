@@ -1,0 +1,15 @@
+cache_config:
+  max_warmup_steps: 8
+  warmup_interval: 2
+  max_cached_steps: -1
+  max_continuous_cached_steps: 2
+  Fn_compute_blocks: 1
+  Bn_compute_blocks: 0
+  residual_diff_threshold: 0.12
+  enable_svd: true
+  svd_tau: 0.9
+  # "ema" (paper smoothing) or "taylor" (SVD + Taylor, paper Fig. 5(b))
+  svd_predictor: "ema"
+  svd_beta: 0.9
+  svd_order: 1
+  svd_max_rank: 0

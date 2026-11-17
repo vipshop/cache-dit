@@ -46,6 +46,7 @@ from .caching import CalibratorConfig
 from .caching import TaylorSeerCalibratorConfig
 from .caching import FoCaCalibratorConfig
 from .caching import DMDCalibratorConfig
+from .caching import SVDCalibratorConfig
 from .caching import supported_pipelines
 from .caching import get_adapter
 from .caching import BlockAdapterRegister

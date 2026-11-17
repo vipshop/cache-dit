@@ -2,6 +2,7 @@ from .base import CalibratorBase
 from .taylorseer import TaylorSeerCalibrator
 from .foca import FoCaCalibrator
 from .dmd import DMDCalibrator
+from .svd import SVDCalibrator, validate_svd_params
 
 import dataclasses
 from typing import Any, Dict
@@ -261,6 +262,124 @@ class FoCaCalibratorConfig(CalibratorConfig):
     return {}
 
 
+def _tag_number(value: float) -> str:
+  """Render a hyper-parameter compactly for summary tags and artifact filenames.
+
+  :param value: Numeric hyper-parameter value.
+  :returns: `0.9` as `9`, `0.85` as `85`, `1.0` as `1`.
+  """
+
+  text = f"{value:g}"
+  return text[2:] if text.startswith("0.") else text
+
+
+@dataclasses.dataclass
+class SVDCalibratorConfig(CalibratorConfig):
+  """Config for the SVD-Cache low-rank split calibrator.
+
+  Splits the cached block tensor in the token x channel plane into a rank-k principal part and a
+  high-frequency residual, EMA-smooths the principal stream, freezes the residual, and reuses their
+  sum for the cached steps. NOTE: this is SVD-Cache (arXiv 2601.07396), not SVDQuant — the latter is
+  a weight-quantization backend selected with `--quantize-type svdq_*`.
+  """
+
+  # enable_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for hidden_states (or hidden_states residual),
+  #     such as taylorseer, foca, dmd, svd, and so on.
+  enable_calibrator: bool = True
+  # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+  #     residual), such as taylorseer, foca, dmd, svd, and so on.
+  enable_encoder_calibrator: bool = True
+  # calibrator_type (`str`, *required*,  defaults to 'svd'):
+  #    The specific type for calibrator, taylorseer, foca, dmd or svd, etc.
+  calibrator_type: str = "svd"
+  # svd_tau (`float`, *optional*, defaults to 0.9):
+  #    Cumulative squared-singular-value energy retained by the principal subspace,
+  #    in (0, 1]. 0.85-0.9 keeps a handful of directions on image DiTs; 1.0 keeps the
+  #    full rank and therefore reproduces plain reuse (unit tests only).
+  svd_tau: float = 0.9
+  # svd_beta (`float`, *optional*, defaults to 0.9):
+  #    EMA coefficient of the principal stream, in [0, 1). 0 makes the forecast
+  #    identical to DBCache's plain reuse; larger values smooth harder across steps.
+  svd_beta: float = 0.9
+  # svd_max_rank (`int`, *optional*, defaults to 0):
+  #    Hard cap on the retained rank; 0 keeps the energy-based choice.
+  svd_max_rank: int = 0
+  # svd_predictor (`str`, *optional*, defaults to 'ema'):
+  #    How the principal part is forecast: 'ema' is the paper's per-step smoothing of the
+  #    principal stream, 'taylor' is the SVD + Taylor combination (paper Fig. 5(b)) which
+  #    keeps a Taylor ladder on the low-rank coefficients and extrapolates it forward.
+  svd_predictor: str = "ema"
+  # svd_order (`int`, *optional*, defaults to 1):
+  #    Taylor orders kept by the 'taylor' predictor; ignored by 'ema'.
+  svd_order: int = 1
+
+  def __post_init__(self):
+    """Validate the SVD-Cache hyper-parameters at construction time.
+
+    :raises ValueError: When any field is outside its domain, so a bad YAML/CLI value fails while
+        the config is built instead of in the middle of the first diffusion run.
+    """
+
+    validate_svd_params(self.svd_tau, self.svd_beta, self.svd_max_rank, self.svd_predictor,
+                        self.svd_order)
+
+  def strify(self, **kwargs) -> str:
+    """Return a compact tag that includes the energy target and the predictor.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A compact SVD-Cache tag for logs, summaries, or filenames.
+    """
+
+    tau = _tag_number(self.svd_tau)
+    rank = f"R{self.svd_max_rank}" if self.svd_max_rank else ""
+    if kwargs.get("details", False):
+      predictor = (f"taylor{self.svd_order}"
+                   if self.svd_predictor == "taylor" else f"ema, B={self.svd_beta}")
+      return f"SVD_T({self.svd_tau}, {predictor}, R={self.svd_max_rank})"
+    if self.svd_predictor == "taylor":
+      return f"SVDT{tau}T{self.svd_order}{rank}"
+    return f"SVDT{tau}B{_tag_number(self.svd_beta)}{rank}"
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `SVDCalibrator` init kwargs.
+
+    :returns: Keyword arguments expected by `SVDCalibrator`.
+    """
+
+    kwargs = self.calibrator_kwargs.copy()
+    kwargs["tau"] = self.svd_tau
+    kwargs["beta"] = self.svd_beta
+    kwargs["max_rank"] = self.svd_max_rank
+    kwargs["predictor"] = self.svd_predictor
+    kwargs["n_derivatives"] = self.svd_order
+    return kwargs
+
+
+_CALIBRATOR_ALIASES = {
+  "svd-calibrator": "svd",
+  "svd-cache": "svd",
+  "svdcache": "svd",
+  "taylorseer-calibrator": "taylorseer",
+  "dmd-calibrator": "dmd",
+  "foca-calibrator": "foca",
+}
+
+
+def normalize_calibrator_type(calibrator_type: str) -> str:
+  """Normalize a calibrator name so long forms resolve to the canonical short name.
+
+  :param calibrator_type: Canonical name or a long/alias form, e.g. `svd-calibrator`.
+  :returns: The canonical calibrator name, lower-cased.
+  """
+
+  key = str(calibrator_type).strip().lower()
+  return _CALIBRATOR_ALIASES.get(key, key)
+
+
 class Calibrator:
   """Factory that instantiates supported calibrator implementations."""
 
@@ -268,6 +387,7 @@ class Calibrator:
     "taylorseer",
     "dmd",
     "foca",
+    "svd",
   ]
 
   def __new__(
@@ -280,14 +400,17 @@ class Calibrator:
     :returns: The concrete calibrator implementation.
     """
 
-    assert (calibrator_config.calibrator_type in cls._supported_calibrators
+    calibrator_type = normalize_calibrator_type(calibrator_config.calibrator_type)
+    assert (calibrator_type in cls._supported_calibrators
             ), f"Calibrator {calibrator_config.calibrator_type} is not supported now!"
 
-    if calibrator_config.calibrator_type.lower() == "taylorseer":
+    if calibrator_type == "taylorseer":
       return TaylorSeerCalibrator(**calibrator_config.to_kwargs())
-    elif calibrator_config.calibrator_type.lower() == "dmd":
+    elif calibrator_type == "dmd":
       return DMDCalibrator(**calibrator_config.to_kwargs())
-    elif calibrator_config.calibrator_type.lower() == "foca":
+    elif calibrator_type == "foca":
       return FoCaCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_type == "svd":
+      return SVDCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
