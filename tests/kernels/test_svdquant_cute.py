@@ -934,12 +934,13 @@ def _fused_mlp_forward(
   ("cute", "native"),
   ("cute", "row_major"),
 ])
-def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> None:
+@pytest.mark.parametrize("rank", [32, 64, 128])
+def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str, rank: int) -> None:
   """The fused GEMM must reproduce `fc2(gelu(fc1(x)))` on both runtimes and both D layouts."""
 
   _require_sm120()
   torch.manual_seed(20261120)
-  in_features, hidden, rank = 256, 512, 32
+  in_features, hidden = 256, 512
   x = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
   fc1 = _build_quantized(runtime, layout, in_features, hidden, rank, x)
   fc2 = _build_quantized(runtime, layout, hidden, in_features, rank,
@@ -956,10 +957,10 @@ def test_fused_mlp_matches_the_unfused_two_step(runtime: str, layout: str) -> No
 
   assert torch.isfinite(fused).all()
   assert _relative_l2(fused, expected) < 5e-3
-  # Row-major D is bit-reproducible here, so the fused quantizer must be a different data path to
-  # exactly the same native pack. These comparisons guard the paired-row vectorized stores. Native
-  # fragment D uses relaxed atomics and can change the last input bits before quantization.
-  if layout == "row_major":
+  # The rank32 row-major case is bit-reproducible here, so the fused quantizer must emit exactly
+  # the same native pack through a different data path. Higher-rank split-K producers use relaxed
+  # atomics and can change the last input bits before quantization, as can native fragment D.
+  if layout == "row_major" and rank == 32:
     assert torch.equal(qout, q2)
     assert torch.equal(oscales.view(torch.uint8), sf2.view(torch.uint8))
   else:

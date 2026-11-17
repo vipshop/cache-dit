@@ -25,6 +25,7 @@
 #include <cutlass/numeric_types.h>
 
 #include "common.h"
+#include "runtime.h"
 
 namespace svdq::cute_kernels {
 
@@ -303,15 +304,31 @@ struct F32DLoraScales {
   float values[8];
 };
 
+// Host-only arguments shared by the plain dispatcher and the separately compiled fused TU.
+struct FusedLaunchArgs {
+  uint8_t *qout = nullptr;
+  uint32_t *oscales = nullptr;
+  cutlass::bfloat16_t const *smooth = nullptr;
+  cutlass::bfloat16_t const *lora_down = nullptr;
+  float *d_atomic = nullptr;
+  cutlass::bfloat16_t *d_final = nullptr;
+  F32DLoraScales down_scales{};
+  int rank_down = 0;
+  bool write_dense = true;
+  bool fuse_silu = false;
+};
+
 template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true,
-          bool kF32DLora_ = false, bool kFuseOut_ = false>
+          bool kF32DLora_ = false, bool kFuseOut_ = false, bool kFuseDown_ = false>
 struct W4A4CuteTraits {
   static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr bool kF32DLora = kF32DLora_;
+  static constexpr bool kFuseDown = kFuseDown_;
   // Fused-output epilogue: quantize the activated tile into the native qact/ascales pack and
   // reduce the LoRA-down term, so the next layer needs no separate producer launch. It is a
   // separate instantiation so the default path keeps its exact SASS and numerics.
   static constexpr bool kFuseOut = kFuseOut_;
+  static_assert(!kFuseDown || kFuseOut, "the LoRA-down epilogue requires kFuseOut");
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -1219,12 +1236,24 @@ class W4A4GemmKernel {
       auto s_down_t = make_tensor(make_smem_ptr(s_down),
                                   make_layout(make_shape(Int<kRankTile>{}, Int<kBN>{}),
                                               make_stride(Int<Traits::kDownStageStride>{}, _1{})));
-      for (int task = tid; task < kBN * kVecsPerRow; task += Traits::kNumThreads) {
+      constexpr int kDownTasks = kBN * kVecsPerRow;
+      constexpr int kDownTasksPerThread = kDownTasks / Traits::kNumThreads;
+      static_assert(kDownTasksPerThread * Traits::kNumThreads == kDownTasks);
+      uint4 down_packs[kDownTasksPerThread];
+#pragma unroll
+      for (int t = 0; t < kDownTasksPerThread; ++t) {
+        const int task = tid + t * Traits::kNumThreads;
         const int c = task / kVecsPerRow;
         const int r0 = (task % kVecsPerRow) * 8;
         const int64_t src = static_cast<int64_t>(n0 + c) * rank_down + rt * kRankTile + r0;
-        const uint4 packed = *reinterpret_cast<uint4 const *>(lora_down + src);
-        const auto *values = reinterpret_cast<ElementLora const *>(&packed);
+        down_packs[t] = *reinterpret_cast<uint4 const *>(lora_down + src);
+      }
+#pragma unroll
+      for (int t = 0; t < kDownTasksPerThread; ++t) {
+        const int task = tid + t * Traits::kNumThreads;
+        const int c = task / kVecsPerRow;
+        const int r0 = (task % kVecsPerRow) * 8;
+        const auto *values = reinterpret_cast<ElementLora const *>(&down_packs[t]);
 #pragma unroll
         for (int j = 0; j < 8; ++j) s_down_t(r0 + j, c) = values[j];
       }
@@ -1580,10 +1609,12 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     if (qout != nullptr) {
       Gemm::fused_quantize_tile(sO, tid, m0, n0, N, qout, oscales, smooth);
     }
-    if (rank_down > 0) {
-      auto *s_down = reinterpret_cast<cutlass::bfloat16_t *>(reinterpret_cast<uint8_t *>(shm) +
-                                                             Traits::kOTileBytes);
-      Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic, s_down);
+    if constexpr (Traits::kFuseDown) {
+      if (rank_down > 0) {
+        auto *s_down = reinterpret_cast<cutlass::bfloat16_t *>(reinterpret_cast<uint8_t *>(shm) +
+                                                               Traits::kOTileBytes);
+        Gemm::fused_lora_down(sO, tid, m0, n0, rank_down, lora_down, d_atomic, s_down);
+      }
     }
   } else {
     Gemm::tma_store_C(tma, mC, c_slice, shm, tid, tiled_mma, tCrC);
@@ -1599,9 +1630,10 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 // performs the single rounding that the row-major D contract expects. Four consecutive columns
 // always belong to one 16-rank group because rank is a multiple of 32, so one scale covers a
 // whole vector.
-__global__ void finalize_lora_rows_kernel(float const *__restrict__ scratch,
-                                          cutlass::bfloat16_t *__restrict__ out,
-                                          F32DLoraScales scales, int vectors, int vectors_per_row) {
+static __global__ void finalize_lora_rows_kernel(float const *__restrict__ scratch,
+                                                 cutlass::bfloat16_t *__restrict__ out,
+                                                 F32DLoraScales scales, int vectors,
+                                                 int vectors_per_row) {
   const int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index >= vectors) return;
   const float scale = scales.values[(index % vectors_per_row) / 4];
@@ -1632,9 +1664,9 @@ inline void launch_finalize_lora_rows(float const *scratch, cutlass::bfloat16_t 
 //      change. The cache holds at most 32 entries and is cleared wholesale when full; it is not
 //      an LRU cache. Device-specific dynamic-smem opt-in is likewise performed only once.
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
-// The template is instantiated only from gemm_w4a4_cute.cu, keeping SM120 atoms out of other TUs.
+// Plain instances live in gemm_w4a4.cu; fused instances are parallel-compiled in fused.cu.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true,
-          bool kF32DLora = false, bool kFuseOut = false>
+          bool kF32DLora = false, bool kFuseOut = false, bool kFuseDown = false>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
                       cutlass::bfloat16_t const *lora_act_in, float const *lora_act_f32,
@@ -1644,7 +1676,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::bfloat16_t const *smooth, cutlass::bfloat16_t const *lora_down,
                       float *d_atomic, cutlass::bfloat16_t *d_final, F32DLoraScales down_scales,
                       int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut>;
+  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;
@@ -1721,7 +1753,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
     lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
     d_atomic, write_dense, rank_down, fuse_silu);
-  if constexpr (kFuseOut && !kF32DLora) {
+  if constexpr (kFuseOut && kFuseDown && !kF32DLora) {
     // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
     // scattered FP32 scratch is rounded here once, after every CTA has contributed.
     if (d_final != nullptr && rank_down > 0) {
@@ -1729,5 +1761,14 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
     }
   }
 }
+
+// Defined in fused.cu so the four fused instantiations compile independently of the plain GEMM TU.
+void launch_gemm_w4a4_fused(void const *act, void const *wgt, void *out,
+                            cutlass::float_ue4m3_t const *act_sf,
+                            cutlass::float_ue4m3_t const *wgt_sf, void const *lora_act_in,
+                            cutlass::bfloat16_t const *lora_up, cutlass::bfloat16_t const *bias,
+                            cutlass::bfloat16_t const *wcscales, F32DLoraScales scales, float alpha,
+                            int M, int N, int K, int rank, LoraLayout lora_layout,
+                            FusedLaunchArgs const &fused, cudaStream_t stream);
 
 }  // namespace svdq::cute_kernels

@@ -15,21 +15,6 @@ constexpr int kMainFirstMinM = 16384;
 constexpr int kMainFirstWideM = 8192;
 constexpr int kMainFirstWideN = 6144;
 
-// Everything the fused epilogue needs on top of the plain GEMM arguments. Grouping them keeps the
-// tile dispatch readable and makes the "all empty means the original path" contract explicit.
-struct FusedLaunchArgs {
-  uint8_t *qout = nullptr;
-  uint32_t *oscales = nullptr;
-  cutlass::bfloat16_t const *smooth = nullptr;
-  cutlass::bfloat16_t const *lora_down = nullptr;
-  float *d_atomic = nullptr;
-  cutlass::bfloat16_t *d_final = nullptr;
-  F32DLoraScales down_scales{};
-  int rank_down = 0;
-  bool write_dense = true;
-  bool fuse_silu = false;
-};
-
 // Dispatches one compiled tile configuration. `LoraLayout::kNative` always runs main-first because
 // its gather reads gmem directly into MMA registers and never enters the residual inverse-scale
 // division. For row-major BF16, the measured split is: 16K rows always run main-first; at 8K rows,
@@ -49,11 +34,10 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
                              float alpha, int M, int N, int K, int rank, LoraLayout lora_layout,
                              FusedLaunchArgs const &fused, cudaStream_t stream) {
   using ElementLora = cutlass::bfloat16_t;
-  auto launch = [&](auto native_fragment_tag, auto lora_first_tag, auto fuse_tag) {
+  auto launch = [&](auto native_fragment_tag, auto lora_first_tag) {
     constexpr bool kNativeFragment = decltype(native_fragment_tag)::value;
     constexpr bool kLoRAFirst = decltype(lora_first_tag)::value;
-    constexpr bool kFuse = decltype(fuse_tag)::value;
-    launch_gemm_w4a4<kBN, kStages, kBK, kLoRAFirst, kNativeFragment, kFuse>(
+    launch_gemm_w4a4<kBN, kStages, kBK, kLoRAFirst, kNativeFragment, false>(
       act, wgt, out, act_sf, wgt_sf,
       kNativeFragment ? nullptr : static_cast<ElementLora const *>(lora_act_in),
       kNativeFragment ? static_cast<float const *>(lora_act_in) : nullptr, lora_up, bias, wcscales,
@@ -63,11 +47,8 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
   };
   if constexpr (kBN == 256 && kBK == 128) {
     if (fused.qout != nullptr || fused.fuse_silu) {
-      if (lora_layout == LoraLayout::kNative) {
-        launch(std::true_type{}, std::false_type{}, std::true_type{});
-      } else {
-        launch(std::false_type{}, std::false_type{}, std::true_type{});
-      }
+      launch_gemm_w4a4_fused(act, wgt, out, act_sf, wgt_sf, lora_act_in, lora_up, bias, wcscales,
+                             scales, alpha, M, N, K, rank, lora_layout, fused, stream);
       return;
     }
   } else if (fused.qout != nullptr || fused.fuse_silu) {
@@ -78,11 +59,11 @@ void launch_gemm_w4a4_config(void const *act, void const *wgt, void *out,
       "only; use N % 256 == 0 and K % 128 == 0.");
   }
   if (lora_layout == LoraLayout::kNative) {
-    launch(std::true_type{}, std::false_type{}, std::false_type{});
+    launch(std::true_type{}, std::false_type{});
   } else if (M >= kMainFirstMinM || (M >= kMainFirstWideM && N >= kMainFirstWideN)) {
-    launch(std::false_type{}, std::false_type{}, std::false_type{});
+    launch(std::false_type{}, std::false_type{});
   } else {
-    launch(std::false_type{}, std::true_type{}, std::false_type{});
+    launch(std::false_type{}, std::true_type{});
   }
 }
 
