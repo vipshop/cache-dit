@@ -70,7 +70,7 @@ user-invocable: true
 | 论文 / 方案 | 裁定 | 一句话理由 |
 |---|---|---|
 | **HiCache**（Hermite 基） | **可接，优先级中低，成本最低** | 与 `TaylorSeerCalibrator` 数学同构，只差 `approximate()` 里的基；建议做成 Taylor 的 `basis` 开关（约 40 行）。风险：σ 需 per-model 调，σ=1 时论文实测比 Taylor 更差 |
-| **SVD-Cache**（子空间拆分） | **优先级最高，未实施** | 攻击的是 cache-dit 的 >5x 短板（论文自报 5.55x/6.24x 优于其自身基线，**待同 harness 复现**）；可包住现有 predictor；离线 basis 满足闸 3 的豁免条件。风险：5.55x 时 IR 反超基线（可疑）、k=5 的极端低秩假设需重测 |
+| **SVD-Cache**（子空间拆分） | **v1 已实施（2026-11-17，负结果，不建议生产用）** | `SVDCalibrator` 已接入（`calibrators/svd.py`，两种 predictor：`ema` / `taylor`，在线 basis）。FLUX.1-dev 1024² 28 步同 harness 实测：1.9x 档 reuse 23.11dB / `ema` 20.62dB / `taylor` 23.38dB / TaylorSeer 24.21dB；4.9x 档 15.95 / 15.56（o1） / 15.63dB。结论：`ema` 是两锚点凸组合、只能后向平滑；`taylor` 才是论文 Fig 5(b) 那支，能追回大部分但**仍不如全张量 TaylorSeer**，且多 ~0.6s/图；损失来自**冻结残差**（τ 0.9→0.999、k 5→1100 只补回 +0.43dB），不是 predictor 本身。详见 `references/landscape.md` §4.4 |
 | **MagCache**（幅度律 + 整步跳） | **不接**；只在"固定调度更好"被验证后考虑给 `steps_mask` 加一个 policy | 两个守卫 cache-dit 已有；同算力整步复用比块级复用差 ~10 dB；需 per-model γ 曲线，且运行期无法自测 |
 | **DiCache**（探针 + 整步跳 + DCTA） | **不接**（2026-11-17 裁定） | "when" 与 DBCache 逐项同源；档位在舒适区；整步复用丢当前步信息属降级；DCTA 需改 `approximate()` 签名穿主路径，收益不抵成本 |
 | **TaylorSeer / FoCa / DMD** | 已实现 | 三者互斥，`calibrator_type` 三选一 |

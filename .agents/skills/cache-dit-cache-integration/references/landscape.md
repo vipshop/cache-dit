@@ -90,6 +90,8 @@
 
 与 HiCache 打同一个靶子的两个方向：HiCache 换更好的基去打外推，SVD-Cache 直接不外推尾巴。可组合（论文 Fig 5(b)：SVD+Taylor > Taylor）。
 
+**cache-dit 落地（2026-11-17）**：`SVDCalibrator` 两种 predictor 都实现了——`ema`（论文原式）与 `taylor`（Fig 5(b) 组合，差商阶梯建在 `[M,k]` 系数上）。实测秩 τ=0.9 → hidden 4–5/3072、encoder 2/512，与论文 k≈5 一致；τ=0.999 → k≈1100。数字与机理见 §4.4。
+
 ### 2.4 DiCache（arXiv 2508.17356）
 
 ```
@@ -154,6 +156,31 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 - MagCache 与 DiCache 在 HunyuanVideo 上互相矛盾：2.25× 报 34.51 dB vs 2.34× 报 32.79 dB（prompt 集 100 vs 300 条）。
 - 同算力档（2.66× vs 2.82×，同属 2.7 档）：块级复用（DBCache-S）PSNR 31.53 vs 整步复用（MagCache-Flux）21.35——10 dB 的差距**远超**任何 harness 噪声，反映的是方法学差异（整步复用丢掉全部 block 贡献）。
 - 结论：**判定只能靠自己在固定 seed / 固定 prompt / raw float 下跑 A/B。**
+
+### 4.4 SVD-Cache 在 cache-dit 内的同 harness 实测（2026-11-17，FLUX.1-dev 1024²，28 步，seed 0，2 prompt，RTX PRO 5000，torch 2.15.0）
+
+行 = `--cache --ws 1`，psnr 用 `cache-dit-metrics --psnr-type skimage`（uint8 PNG 口径），全部 warmup 后计时：
+
+| 工作点 | 配置 | latency | 加速 | PSNR(dB) | SSIM |
+|---|---|---|---|---|---|
+| rdt 0.12，14/28 命中 | DBCache（reuse） | 8.85s | 1.94x | 23.11 | 0.8848 |
+| 同上 | + TaylorSeer | 8.86s | 1.94x | **24.21** | **0.9123** |
+| 同上 | + DMD | 8.91s | 1.93x | 23.49 | 0.9074 |
+| 同上 | + SVD `ema` β0.9 | 9.48s | 1.81x | 20.62 | 0.8051 |
+| 同上 | + SVD `taylor` o1 | 9.47s | 1.81x | 23.38 | 0.8882 |
+| 同上 | + SVD `taylor` o1，τ0.999（k≈1100） | 9.51s | 1.81x | 23.81 | 0.8990 |
+| rdt 0.6+mcc6，23/28 命中 | DBCache（reuse） | 3.48s | 4.94x | 15.95 | 0.6023 |
+| 同上 | + TaylorSeer | 3.48s | 4.94x | 15.63 | **0.6081** |
+| 同上 | + SVD `ema` β0.9 / β0.5 | 4.13s | 4.16x | 15.04 / 15.89 | 0.5446 / 0.6006 |
+| 同上 | + SVD `taylor` o1 / o2 | 4.12s | 4.16x | 15.56 / 15.71 | 0.5881 / 0.5832 |
+
+三条可复用的判读：
+
+1. **`ema` 结构上不可能赢 reuse。** `EMA(P)+R` 是「上一个锚点主成分」与「当前锚点主成分」的凸组合，落不到真实锚点之外，`β→0` 精确退化为 reuse（4.94x 档实测 15.89 vs 15.95）。凡是「平滑主成分 + 冻结残差」的变体，都可以先按这条判死，不必跑满矩阵。
+2. **`taylor` 是唯一有前向外推的分支**，但也只追回大部分差距（23.38 vs reuse 23.11、TaylorSeer 24.21），代价是 +0.6s/图（basis SVD + 每跳过步一次 `[M,k]@[k,D]` GEMM），而全张量 TaylorSeer 的额外成本是 O(1)。
+3. **损失来自冻结残差，不是 predictor。** 把 τ 从 0.9（k=5，残差占 ~10% 能量）抬到 0.999（k≈1100，残差≈0）就补回 +0.43dB（23.38→23.81）；剩下与 TaylorSeer 的 0.4dB 差距来自子空间截断本身。机理：**高频尾巴是逐步变化最快的分量**，把它冻结等于每步都注入一个过期误差——与论文「残差变化慢」的前提相反。
+
+→ 生产建议：`--calibrator taylorseer`（或 `dmd`）。SVD-Cache 保留为复现/实验能力，`svd.py` 顶部注释与 `docs/user_guide/CACHE_API.md` 都写明了这张表与机理。
 
 ## 5. 复核用的原始出处
 
