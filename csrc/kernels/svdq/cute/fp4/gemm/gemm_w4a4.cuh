@@ -1664,7 +1664,7 @@ inline void launch_finalize_lora_rows(float const *scratch, cutlass::bfloat16_t 
 //      change. The cache holds at most 32 entries and is cleared wholesale when full; it is not
 //      an LRU cache. Device-specific dynamic-smem opt-in is likewise performed only once.
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
-// Plain instances live in gemm_w4a4.cu; fused instances are parallel-compiled in fused.cu.
+// Plain instances live in gemm_w4a4.cu; fused instances are parallel-compiled in gemm_fused.cu.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true,
           bool kF32DLora = false, bool kFuseOut = false, bool kFuseDown = false>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
@@ -1762,7 +1762,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   }
 }
 
-// Defined in fused.cu so the four fused instantiations compile independently of the plain GEMM TU.
+// Defined in gemm_fused.cu so the four fused instantiations compile independently of the plain GEMM
+// TU.
 void launch_gemm_w4a4_fused(void const *act, void const *wgt, void *out,
                             cutlass::float_ue4m3_t const *act_sf,
                             cutlass::float_ue4m3_t const *wgt_sf, void const *lora_act_in,

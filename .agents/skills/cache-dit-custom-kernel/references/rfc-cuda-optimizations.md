@@ -36,7 +36,7 @@
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。row-major e2e 1.0553×、cute+native-D 1.0462×（单会话）；需重复会话与 FLUX 稳定验收后才能关闭。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
 - [x] CDK-7：融合输出（PR #1332，2026-11-17）。CuTe GEMM 有融合 epilogue（qout/oscales + native FP32 fragment / row-major BF16 两种 D + `write_dense=False`），两族 producer 都实现 `value * silu(gate)`，`fused_mlp` 不再绑定 `lora_layout`。链级 native 1.25×、cute+row_major 1.17×；e2e 融合本身 +2–3%。契约与实测见 `svdq-nvfp4-cute.md` §32。
-- [ ] CDK-8：CuTe 融合链追平 native（issue #1336）。量化向量化/行对写与 B 的四路 LDG 预读后，fused fc1 的 qout+D kernel 已追平（1.011×@M4096、1.004×@M8192），FLUX eager 7.77 s、compile 5.76 s。NVTX+nsys correlation 已把剩余链级差距定位到 **full-M fc2 的 GEMM kernel**：M8192 native 663.6 µs / cute 760.5 µs，kernel 间 gap 仅约 0.4 µs；不是 host/launch/allocator。下一步针对 `M×3072×12288` 的 consumer GEMM 做 tile/mainloop 归因。B 直接 gmem 读、B 双缓冲、寄存器 D 均已实测负收益，不要重复。详见 `svdq-nvfp4-cute.md` §32.5。
+- [x] CDK-8：CuTe 融合链追平 native（issue #1336）。fused fc1 qout+D 已持平；full-M fc2 新增 `gemm_large_k.cu` 纯 G2R 特化，复用 native 主循环并保留 row-major BF16 D。最终同进程 fc2 Event 从落后 13–14% 变为 M4096/M8192 快约 5.2%/3.5%，完整 chain 为 1.012×/0.992×；FLUX native/cute eager 为 7.84/7.73 s、compile 为 5.82/5.74 s。rank32/64/128、234 回归与统一 7×3 bench 通过。详见 `svdq-nvfp4-cute.md` §32.6。
 
 ## 4. CDK-3：Producer CuTe 化设计约束（已完成）
 
@@ -82,7 +82,7 @@ GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验
 3. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：手搓 MMA/ldmatrix + 手写 swizzle，42.9K conflict、occupancy 29.7% 虽可改，但改造与回归成本高，不作为近期项。
 4. **大 M fused 不再优化**：rank32/16K 的 DRAM/Mem 已 90.2%，是带宽墙；小 M fused dispatch 不改变这个结论。
 5. **剩余小 M 差距**：M=1 的 producer 仍比 native 慢。若继续，先研究低 CTA 并行度与调用开销；完整 FLUX e2e 稳定性仍属 CDK-5，不能用本项替代。
-6. **融合链追平 native（CDK-8，转独立专题 #1336）**：fused fc1 已接近持平，剩余差距由 full-M fc2（`M×3072×12288`）的 CuTe GEMM 慢约 13–14% 主导。下一步分析该形状的 tile/mainloop；不要再拆 `[M,N]` HBM kernel，也不要重复已证伪的 B 直读、寄存器 D、ILP/warp 形状微调。
+6. **融合链追平 native（CDK-8，已完成）**：large-K fc2 由 `gemm_large_k.cu` 的纯 G2R kernel 处理，保留 row-major D；其他 shape 仍走 TMA。后续不要重复已证伪的 small-producer、BK64/S6、BN128/BK64、寄存器 D 或 fused epilogue B 直读路线。
 
 ### 6.3 调度与验收
 

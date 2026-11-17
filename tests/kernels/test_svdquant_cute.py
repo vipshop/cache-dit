@@ -170,6 +170,97 @@ def test_row_major_quantize_rejects_non_bf16_lora_down(rank: int) -> None:
     svdq_quantize_w4a4(x, lora_down, smooth, lora_layout="row_major", fp4=True)
 
 
+@pytest.mark.parametrize(("m", "rank"), [(4096, 32), (4096, 64), (4096, 128), (8192, 32),
+                                         (8192, 64), (8192, 128)])
+def test_cute_large_k_g2r_matches_native(m: int, rank: int) -> None:
+  """Exercise G2R on both grid-swap arms and compare it with native and the TMA path."""
+
+  _require_sm120()
+  torch.manual_seed(20261117)
+  in_features, out_features = 12288, 3072
+  linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
+  calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
+  state_dict = quantize_linear_svdq_w4a4(linear, [calibration],
+                                         rank=rank,
+                                         precision="nvfp4",
+                                         device="cuda:0",
+                                         torch_dtype=torch.bfloat16,
+                                         return_state_dict=True)
+  native = SVDQW4A4Linear(in_features,
+                          out_features,
+                          rank=rank,
+                          precision="nvfp4",
+                          runtime_kernel="native",
+                          torch_dtype=torch.bfloat16).cuda().eval()
+  cute = SVDQW4A4Linear(in_features,
+                        out_features,
+                        rank=rank,
+                        precision="nvfp4",
+                        runtime_kernel="cute",
+                        lora_layout="row_major",
+                        torch_dtype=torch.bfloat16).cuda().eval()
+  native.load_state_dict(state_dict)
+  cute.load_state_dict(state_dict)
+  x = torch.randn(m, in_features, dtype=torch.bfloat16, device="cuda:0")
+  with torch.inference_mode():
+    y_native = native(x)
+    qact, ascales, lora_act = cute.quantize(x)
+    y_tma = svdq_gemm_w4a4(
+      act=qact,
+      wgt=cute._cute_qweight,
+      ascales=ascales,
+      wscales=cute._cute_wscales,
+      lora_act_in=lora_act,
+      lora_up=cute._cute_proj_up,
+      bias=cute._cute_bias,
+      wcscales=cute._cute_wcscales,
+      runtime="cute",
+      lora_layout="row_major",
+      fp4=True,
+      alpha=cute.wtscale,
+    )
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
+      y_cute = cute.forward_quant(qact, ascales, lora_act)
+      torch.cuda.synchronize()
+
+  kernel_names = {event.key for event in prof.key_averages()}
+  assert any("gemm_w4a4_large_k_kernel" in name for name in kernel_names)
+  assert torch.isfinite(y_cute).all()
+  assert _relative_l2(y_cute, y_native) < 5e-3
+  # large-K inherits native's BF16 residual epilogue, whereas TMA keeps it in FP32 until the final
+  # store. They are not bitwise equal, but this rounding difference must stay within the usual
+  # kernel parity tolerance on exactly the same packed inputs.
+  path_rel_l2 = _relative_l2(y_cute, y_tma)
+  max_abs = (y_cute.float() - y_tma.float()).abs().max().item()
+  assert path_rel_l2 < 5e-3, f"large-K/TMA rel_l2={path_rel_l2}, max_abs={max_abs}"
+
+
+@pytest.mark.parametrize(("m", "k", "transpose_wscales", "error"), [
+  (256, 128, False, "large-K non-fused"),
+  (4096, 8192, True, "native fragment-packed wscales must have shape"),
+])
+def test_cute_rejects_misrouted_native_weight_pack(m: int, k: int, transpose_wscales: bool,
+                                                   error: str) -> None:
+  _require_sm120()
+  n, rank = 128, 32
+  scale_shape = (n, k // 16) if transpose_wscales else (k // 16, n)
+  with pytest.raises(RuntimeError, match=error):
+    svdq_gemm_w4a4(
+      act=torch.zeros(m, k // 2, dtype=torch.uint8, device="cuda:0"),
+      wgt=torch.zeros(n, k // 2, dtype=torch.int8, device="cuda:0"),
+      ascales=torch.zeros(m * k // 16, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      wscales=torch.zeros(scale_shape, dtype=torch.float8_e4m3fn, device="cuda:0"),
+      lora_act_in=torch.zeros(m, rank, dtype=torch.bfloat16, device="cuda:0"),
+      lora_up=torch.zeros(n, rank, dtype=torch.bfloat16, device="cuda:0"),
+      bias=torch.zeros(n, dtype=torch.bfloat16, device="cuda:0"),
+      wcscales=torch.ones(n, dtype=torch.bfloat16, device="cuda:0"),
+      runtime="cute",
+      lora_layout="row_major",
+      fp4=True,
+      alpha=1.0,
+    )
+
+
 @pytest.mark.parametrize("rank", [32, 64, 128])
 def test_cute_gemm_matches_native_runtime(rank: int) -> None:
   _require_sm120()
@@ -712,8 +803,53 @@ def test_row_major_forward_quant_passes_layout(monkeypatch) -> None:
 
   assert seen["runtime"] == "cute"
   assert seen["lora_layout"] == "row_major"
+  assert seen["wgt"] is module._cute_qweight
+  assert seen["wscales"] is module._cute_wscales
   # Row-major D already carries the per-rank scales, so the GEMM call must not pass them.
   assert "lora_scales" not in seen
+
+
+@pytest.mark.parametrize(
+  ("in_features", "out_features", "m", "bias", "with_wcscales", "expect_large_k"), [
+    (12288, 3072, 4096, True, True, True),
+    (12288, 3072, 2048, True, True, False),
+    (8064, 3072, 4096, True, True, False),
+    (8192, 4096, 4096, True, True, True),
+    (8192, 4224, 4096, True, True, False),
+    (12288, 3072, 4096, False, True, False),
+    (12288, 3072, 4096, True, False, False),
+  ])
+def test_large_k_g2r_selects_native_weight_pack(monkeypatch, in_features, out_features, m, bias,
+                                                with_wcscales, expect_large_k) -> None:
+  import cache_dit.quantization.svdquant.linear as svdq_linear
+
+  module = SVDQW4A4Linear(in_features,
+                          out_features,
+                          rank=32,
+                          bias=bias,
+                          precision="nvfp4",
+                          runtime_kernel="cute",
+                          lora_layout="row_major")
+  module.load_state_dict(module.state_dict())
+  if not with_wcscales:
+    module.wcscales = None
+  seen: dict[str, object] = {}
+
+  def fake_gemm(**kwargs):
+    seen.update(kwargs)
+    return torch.empty(0)
+
+  monkeypatch.setattr(svdq_linear, "svdq_gemm_w4a4", fake_gemm)
+  module.forward_quant(torch.empty(m, in_features // 2, dtype=torch.uint8),
+                       torch.empty(0, dtype=torch.float8_e4m3fn),
+                       torch.empty(m, 32, dtype=torch.bfloat16))
+
+  assert seen["wgt"] is (module.qweight if expect_large_k else module._cute_qweight)
+  assert seen["wscales"] is (module.wscales if expect_large_k else module._cute_wscales)
+  assert seen["lora_up"] is (module.proj_up if expect_large_k else module._cute_proj_up)
+  assert seen["bias"] is (module.bias if expect_large_k else module._cute_bias)
+  assert seen["wcscales"] is (module.wcscales if expect_large_k else module._cute_wcscales)
+  assert seen["lora_layout"] == "row_major"
 
 
 def test_native_layout_keeps_native_d_contract(monkeypatch) -> None:

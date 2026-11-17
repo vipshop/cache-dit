@@ -70,4 +70,11 @@ void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tenso
                svdq::Tensor lora_down, svdq::Tensor lora_act_out, svdq::Tensor lora_scratch,
                svdq::Tensor smooth_factor, bool fuse_silu);
 
+// Internal large-K row-major-D path. All B/SF/L1 tensors use the native fragment pack; the public
+// wrapper keeps the existing flat CuTe pack on the TMA path.
+void launch_gemm_w4a4_large_k(void const *act, void const *wgt, void *out, void const *act_sf,
+                              void const *wgt_sf, void const *lora_act, void const *lora_up,
+                              void const *bias, void const *wcscales, float alpha, int M, int N,
+                              int K, int rank, cudaStream_t stream);
+
 }  // namespace svdq::cute_kernels

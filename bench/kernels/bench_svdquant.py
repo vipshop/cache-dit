@@ -5,8 +5,10 @@ The benchmark reports three timings per runtime. `quantize` is the native activa
 LoRA-down reduction (shared by both runtimes), `quantize-row-major` is the CuTe producer that emits
 row-major BF16 D instead, `native`/`cute`/`cute-row-major` are *kernel-only* GEMM timings (each
 pack is prepared once and only the GEMM is timed), and the `*+e2e` rows measure quantize + GEMM.
-`speedup_vs_native` compares against the matching native baseline, so kernel rows use the
-kernel-only baseline and e2e rows use the e2e baseline. FlashInfer activation quantization uses its
+`cute` uses the production dispatcher; `cute-row-major` forces the flat-pack TMA GEMM so large-K
+optimizations retain a direct before/after baseline. `speedup_vs_native` compares against the
+matching native baseline, so kernel rows use the kernel-only baseline and e2e rows use the e2e
+baseline. FlashInfer activation quantization uses its
 own standard 128x4 pack; native/cute use cache-dit's own activation pack.
 
 `--fused-mlp` switches to the two-layer MLP chain instead of a single GEMM: `(m, n, k)` then means
@@ -68,6 +70,9 @@ DEFAULT_SHAPES = (
   (4096, 6144, 3072),
   (8192, 6144, 3072),
   (16384, 8192, 8192),
+  # Full-M consumer fc2 in the fused MLP chain: large K, narrow N.
+  (4096, 3072, 12288),
+  (8192, 3072, 12288),
 )
 DEFAULT_IMPLS = (
   "quantize",
@@ -271,7 +276,11 @@ def _row_major_quantize(x: torch.Tensor, module: SVDQW4A4Linear):
 
 
 def _cute_row_major_call(case: Case):
-  """Run the CuTe GEMM on the row-major BF16 D produced by the CuTe producer."""
+  """Force the flat-pack CuTe TMA GEMM, bypassing production large-K dispatch.
+
+  Keeping this direct call makes the replaced TMA implementation reproducible on the full-M fc2
+  shapes. The `cute` row remains the production entry point and may select the large-K G2R kernel.
+  """
   module = case.cute_module
   return svdq_gemm_w4a4(
     act=case.qact_rm,
@@ -290,23 +299,9 @@ def _cute_row_major_call(case: Case):
 
 
 def _cute_row_major_e2e(case: Case):
-  """Row-major pipeline: CuTe producer plus the matching CuTe GEMM."""
-  module = case.cute_module
-  qact, a_sf, lora_act = _row_major_quantize(case.x, module)
-  out = svdq_gemm_w4a4(
-    act=qact,
-    wgt=module._cute_qweight,
-    ascales=a_sf,
-    wscales=module._cute_wscales,
-    lora_act_in=lora_act,
-    lora_up=module._cute_proj_up,
-    bias=module._cute_bias,
-    wcscales=module._cute_wcscales,
-    runtime="cute",
-    lora_layout="row_major",
-    fp4=True,
-    alpha=module.wtscale,
-  )
+  """Row-major pipeline: CuTe producer plus the matching production CuTe GEMM."""
+  qact, a_sf, lora_act = _row_major_quantize(case.x, case.cute_module)
+  out = case.cute_module.forward_quant(qact, a_sf, lora_act)
   return out[:case.x.shape[0]]
 
 

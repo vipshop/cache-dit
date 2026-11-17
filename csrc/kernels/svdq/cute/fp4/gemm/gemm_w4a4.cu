@@ -262,6 +262,22 @@ void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tenso
   auto const *wcscales_ptr =
     wcscales.valid() ? static_cast<ElementLora const *>(wcscales.data_ptr()) : nullptr;
 
+  const bool native_fragment_pack = wscales.ndims() == 2;
+  const bool use_large_k = native_fragment_pack && !fused && lora_layout == LoraLayout::kRowMajor &&
+                           bias_ptr != nullptr && wcscales_ptr != nullptr && M >= 4096 &&
+                           N <= 4096 && K >= 8192 && M % 256 == 0 && N % 128 == 0 && K % 64 == 0;
+  if (native_fragment_pack) {
+    require(wscales.size(0) * 16 == K && wscales.size(1) == N,
+            "native fragment-packed wscales must have shape [K/16, N]");
+    require(use_large_k,
+            "native fragment-packed weights on the CuTe runtime require the large-K non-fused "
+            "row-major-D path with bias and wcscales");
+    launch_gemm_w4a4_large_k(act.data_ptr(), wgt.data_ptr(), out_ptr, ascales.data_ptr(),
+                             wscales.data_ptr(), lora_act_ptr, lora_up_ptr, bias_ptr, wcscales_ptr,
+                             alpha, M, N, K, rank, getCurrentCUDAStream());
+    checkCUDA(cudaGetLastError());
+    return;
+  }
   if (N % 256 == 0 && K % 128 == 0) {
     require(rank % 32 == 0, "rank must be a multiple of 32 when BN=256 and BK=128");
     launch_gemm_w4a4_config<256, 3, 128>(

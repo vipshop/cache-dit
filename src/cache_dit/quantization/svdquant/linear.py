@@ -509,15 +509,22 @@ class SVDQW4A4Linear(nn.Module):
         raise RuntimeError(
           "The CuTe weight pack is not built. Load the module with `load_state_dict` (or call "
           "`_prepare_cute_pack`) before running the CuTe runtime.")
+      # Keep these geometry conditions in sync with the native-pack guard in gemm_w4a4.cu.
+      use_large_k = (self.lora_layout == "row_major" and self.bias is not None
+                     and self.wcscales is not None and quantized_x.shape[0] >= 4096
+                     and self._padded_out_features <= 4096 and self._padded_in_features >= 8192)
+      # The large-K G2R kernel consumes the native fragment-packed B/SF/L1 tensors directly. The
+      # wscales rank distinguishes that internal pack from the flat CuTe TMA pack, so no public ABI
+      # or dispatch flag is needed. D remains row-major BF16 in both cases.
       result = svdq_gemm_w4a4(
         act=quantized_x,
-        wgt=self._cute_qweight,
+        wgt=self.qweight if use_large_k else self._cute_qweight,
         ascales=ascales,
-        wscales=self._cute_wscales,
+        wscales=self.wscales if use_large_k else self._cute_wscales,
         lora_act_in=lora_act if self.rank > 0 else None,
-        lora_up=self._cute_proj_up if self.rank > 0 else None,
-        bias=self._cute_bias,
-        wcscales=self._cute_wcscales,
+        lora_up=(self.proj_up if use_large_k else self._cute_proj_up) if self.rank > 0 else None,
+        bias=self.bias if use_large_k else self._cute_bias,
+        wcscales=self.wcscales if use_large_k else self._cute_wcscales,
         runtime="cute",
         lora_layout=self.lora_layout,
         fp4=True,
