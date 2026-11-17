@@ -11,6 +11,7 @@ Each skill is a `SKILL.md` router plus a `references/` folder, and works with an
 | [`cache-dit-model-integration`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-model-integration) | Supporting a new DiT: BlockAdapter / ForwardPattern, Context Parallelism, Tensor Parallelism, TE-P, VAE-P, the `generate` CLI entry and the tests. Also runs the speed + PSNR/SSIM performance matrix for a model that is already supported. |
 | [`cache-dit-quantization`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-quantization) | Choosing or extending quantization: TorchAO (fp8/int8/int4/nvfp4), cache-dit's own FP8 path, SVDQuant W4A4 PTQ and DQ, `QuantizeConfig`, regional quantize, precision plans and per-layer observers. |
 | [`cache-dit-custom-kernel`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-custom-kernel) | Operators under `csrc/kernels/`: the CUDA → pybind → Python → `torch.library` integration chain, ports from other projects, reproducible builds, profiling and optimization. |
+| [`cache-dit-cache-integration`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-cache-integration) | Deciding whether a new caching paper is worth integrating, and where it lands: the three-layer split (skip timing / skip granularity / replacement operator), the DBCache / DBPrune / `CalibratorBase` seams, the 12-point paper triage, the already-judged cases (HiCache / MagCache / SVD-Cache / DiCache), and the acceptance gate (raw-float PSNR, `cached_steps > 0`, bit-exact at `max_cached_steps=0`). |
 
 ## Install
 
@@ -32,6 +33,10 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 
 # Work on an operator.
 /cache-dit-custom-kernel "Speed up the SVDQ NVFP4 producer on sm120 (NCU)."
+
+# Evaluate a caching paper before writing any code.
+/cache-dit-cache-integration "Is this paper worth adding as a DBCache calibrator?"
+/cache-dit-cache-integration "Triage the 2026 cache papers and rank them by integration value."
 ```
 
 The prompt does not need to spell out the procedure: each skill starts with a route check (is this a new model, a second-pass optimization of a model diffusers already ships, a benchmark, or a fix?), then loads only the references that route needs.
