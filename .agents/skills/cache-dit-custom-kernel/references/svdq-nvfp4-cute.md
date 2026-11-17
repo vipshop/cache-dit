@@ -863,7 +863,7 @@ split-K producer：256 行 CTA、8 warps、K128 切片、rank chunk=1；D 写 fr
   - rank64/rank128：本节测量时全部走 split-K；小 M 例外已于 §31 落地。
 - 特化 split-K：rank32/K>3072 用 K128 double-A async；rank64/K≤3072 用 K256，rank64/K>3072 用 K128 async；rank128 在本节测量时全 K256，M≤256/K≤3072 的 K128 例外见 §31。
 - rank64/128 fused 实例仍编译并做过独立数值验收；本节测量时 `svdq.cpp` 未选中，rank64 小 M 的新实测与启用条件见 §31。
-- Python 普通 CuTe 路径默认 `lora_layout="row_major"`，显式 native 与 `fused_mlp` 保持 FP32 fragment D。
+- Python 普通 CuTe 路径默认 `lora_layout="row_major"`，显式 native 保持 FP32 fragment D。（`fused_mlp` 曾同样强制 native fragment D；该限制已于 2026-11-17 解除，见 §32。）
 
 ### 29.2 测量口径
 
@@ -1053,3 +1053,84 @@ CACHEGLOBAL 的总 conflicts 降至 95,802，总 shared wavefront 从 2.292M 降
 - profiler 测试精确检查 rank64 fused、rank128 M256 K128 async 与 M512 K256；rank64 还验证 identity-smooth qact/ascales 对 native bitwise、重复输出 bitwise。
 - 小 M 官方复现命令：`python bench/kernels/bench_svdquant.py --shape 256x3072x3072 --shape 512x3072x3072 --shape 768x3072x3072 --rank 64 --rank 128 --impl quantize,quantize-row-major --warmup 10 --iterations 50`。
 - 当前只完成独立 producer 与真实形状测量；未据此关闭 CDK-5 的完整 FLUX e2e 稳定验收。M=1 仍慢于 native，后续先研究调用开销与低 CTA 并行度，不再回到 bank-conflict 计数。
+
+## 32. 融合 epilogue 与 fused SwiGLU（2026-11-17，PR #1332）
+
+本节是「CuTe runtime 自己终结一条 MLP 链」的契约与实测。改 `cute/fp4/gemm/gemm_w4a4.*`、`cute/fp4/quantize/*`、`native/gemm_base.cuh` 的 `load_act_to_fpsum`、或 `src/.../svdquant/{fused,passes,linear}.py` 前先读完。
+
+### 32.1 融合 epilogue 契约
+
+入口 `svdq::cute_kernels::gemm_w4a4` 增加 `qout` / `oscales` / `lora_down` / `lora_act_out` / `smooth_factor` / `fuse_silu`；`out` 可无效（`write_dense=False`）。执行顺序与 native 一致：`bias/wcscales → LoRA-up → 激活 → ÷smooth → 量化 → (D 归约)`。
+
+`qout` **必须**写 native 256 行 interleaved pack（下一层无论哪个 runtime 都直接消费），逐字节对齐 native producer：
+
+- 词索引：`base*256 + local + 4*(w%4) + 2*(w/4)`，其中 `local = 16*(row%8) + ((row%16)/8) + 128*((row%32)/16)`、`base = ((row/256)*(N/64) + block)*8 + (row%256)/32`；
+- `scale = min(amax/6, 448)`，`rcp.approx.ftz.f32`，`cvt.rn.satfinite.e2m1x2/e4m3x2`，even column 落低 nibble；
+- `oscales` 词索引 `base*32 + 4*(row%8) + (row%32)/8`，一词 4 个 E4M3 覆盖同一 K64 块的 4 个 K16 组；
+- 读侧互逆关系见 `load_act_A_g2r`（uint4 索引 `(block_base*2+old_mt)*32 + lane`），改一边必须改另一边。
+
+D 两种契约（由 `lora_layout` 选，compile-time `kF32DLora`）：
+
+| layout | 写法 | 精度 | 消费者 |
+|---|---|---|---|
+| `native` | FP32 native fragment，跨 N-block `atomicAdd`，host 先 `zero_()` | FP32 | cute `gemm_f32d_lora` 或 native GEMM 原地读 |
+| `row_major` | 先累到 FP32 scratch，kernel 后 `finalize_lora_rows_kernel` 折 per-rank scale 转 BF16 | BF16 | cute `gemm_bf16_lora` |
+
+BF16 没有原子加，所以 `row_major` 必须走 scratch+finalize；`row_major` 的 finalize 折的是**下一层**的 scale，ABI 没有传入口 → 只允许 identity，非 unit scale 在 `_require_fusable` 与 C++ 两侧硬拒。
+
+实现要点：
+
+- 融合实例只在 **BN=256/BK=128/main-first** 上实例化（两种 D 契约各一个；`kFuseOut` 是独立模板维度，非融合实例的 SASS 与数值不变）；其它 tile 必须显式抛错。
+- D 归约用 `make_tiled_mma(LoraAtom, Layout<Shape<_8,_1,_1>>{})`：每 warp 一行面板、K 覆盖整个 CTA 列块，因此**不需要跨 warp 归约**，只跨 CTA 原子加。A 操作数是回读的 smem O tile，B 是下一层的 `lora_down[N, R]`。
+- `lora_down` 切片（`[BN, R]`，r32 16 KiB）在 O tile 之后的 smem 尾巴里暂存，16B 向量加载；不要在 k-loop 里逐元素 `__ldg`（第一版就这么写，M=4096 链慢 23 µs）。
+- 量化回读同样走 8 次 `uint4`（SW128 保证 8 个连续 bf16 在同一个 16B 段），别用 64 次标量 smem 读。
+
+### 32.2 门控为什么在 producer、怎么接
+
+门控的操作数拿不到：Qwen-Image-2.1 的 `QwenImage21SwiGLUFeedForward` 是三个独立 Linear（`proj`/`gate_layer`/`out` + `nn.SiLU`），gate 来自另一个 GEMM；diffusers `FeedForward(activation_fn='swiglu')` 是单个 `proj` 出 `2H` 再 `chunk(2,-1)`，半个 hidden 远宽于一个 N tile。
+
+统一 ABI：`quantize_w4a4(..., gate, fuse_glu)`。`gate` 有效 → `value = input`、`gate` 独立张量（A 型）；无效 → gate 取 `input` 同一行 `+value_cols`（B 型）。语义固定 `value * silu(gate)`（diffusers 约定：value 在前）。两族 producer（`quantize_impl.cuh` 的 r32/64/128 与 `quantize_uni.cu`）都要实现，成对数学统一放在 `quantize_glu.cuh`：
+
+- `silu(gate)` **先舍入到 BF16**，再乘 value —— 模型自身就是这样算（两个操作数都是 bf16）。FP32 一次舍入会让 fused 链与 unfused 差 **2.3%**（FP4 码翻转），看着像"融合改数值"，其实是不对齐模型语义。
+- `value_cols` 必须由 host 传（`Arguments.value_cols`），kernel 里不能重推：独立 gate 模式下 `actualN` 已是量化宽度。
+- 独立 gate 张量要 **pad 到 256 对齐**（CuTe producer 走满 padded M；native 有 `maxRows` 谓词所以不需要）。
+- 门控后的值同时喂量化和 LoRA-down MMA（`raw_all` / fragment 只有一份，别只改 quant 副本）。
+
+Python 侧：`SVDQW4A4Linear.fused_gemm_args()` 按自身 runtime 返回打包好的权重（`_cute_*` 或 native pack），所以 `fused.py` 里没有 `if runtime == 'cute'`；`fused_swiglu_mlp(x, up, down, gate=None)` 与 `FusedSwiGluMlpPass`（注册名 `fused_swiglu_mlp`，在 `DEFAULT_FUSED_MLP_PASSES` 末位）覆盖两种形状。pass 用 padded 宽度比较（`_padded_out_features == down._padded_in_features`），否则 hidden 非 128 对齐时会在推理期才炸；`GEGLU` 与 TP 分片跳过。
+
+### 32.3 实测（RTX PRO 5000 72GB / sm120，torch 2.15）
+
+chain 级（`bench/kernels/bench_svdquant.py --fused-mlp --runtime ... --lora-layout ...`，r32，fc1 `k→n`、fc2 `n→k`，n=12288、k=3072，warmup 5 / iters 20）：
+
+| M | runtime/layout | unfused | fused | fused+dense | 加速 | peak MiB |
+|---|---|---:|---:|---:|---:|---:|
+| 4096 | native/native | 1161.0 µs | 934.5 µs | 978.6 µs | 1.248× | 59.5 |
+| 4096 | cute/row_major | 1186.5 µs | 1018.0 µs | 1055.7 µs | 1.168× | 58.2 |
+| 4096 | cute/native | 1206.6 µs | 1032.7 µs | 1067.0 µs | 1.175× | 58.8 |
+| 8192 | native/native | 2183.0 µs | 1656.7 µs | 1721.6 µs | 1.319× | 117.5 |
+| 8192 | cute/row_major | 2277.9 µs | 1895.4 µs | 1948.7 µs | 1.203× | 116.5 |
+| 8192 | cute/native | 2315.0 µs | 1912.3 µs | 1969.4 µs | 1.211× | 117.5 |
+
+CuTe 融合链比 native 慢 4–12%；拆开看是 D 归约回读 smem（native 直接用累加器寄存器）+ `row_major` 的一次 finalize launch + FP32 scratch 清零。要收这个差距就改 D 归约的取数方式，不要再拆 kernel。
+
+e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
+
+| 臂 | eager | compile |
+|---|---:|---:|
+| base | 17.08 s | 15.03 s |
+| native unfused | 8.075 s | 6.005 s |
+| native fused | 7.835 s | 5.890 s |
+| cute+row_major unfused | 8.065 s | 6.020 s |
+| cute+row_major fused | 7.870 s | 5.895 s |
+
+即：量化 vs base 约 **2.1×**，融合本身 **+2.5–3.1%**（eager）/ **+2.0–2.1%**（compile），compile 相对 eager 1.33×。Qwen21 8 步：base 3.56 → unfused 2.03 → fused 1.94 s（+4.4%），日志 `Applying fused_swiglu_mlp pass to 32 target(s)` 是"真的生效"的判据。
+
+图像层（同一 seed，`base` 重跑 bit 相等）：SVDQ 各档跨进程不可复现（D 用 relaxed FP32 原子累加），同档重跑 FLUX 23.7–28.5 dB / Qwen21 31.9–32.6 dB；fused↔unfused（24.05 / 23.27 dB）与 native↔cute（23.24 dB）都落在噪声带内，所以 **e2e PSNR 不能判等价**。另：`cache_dit.metrics.calculate_psnr` 喂 `uint8` 会按 256 模减、虚高约 10 dB，比较前先转 float。
+
+视觉验收（PR #1332 的 `pr/svdq-cute-fused/`，在 `pr-assets` 分支）：FLUX 5 臂 × 4 prompt（3 个含文字）+ 512²/256² 同坐标裁切、Qwen21 默认与文字 prompt + 字形裁切。字形全部完好；文字 prompt 在 8 步采样下会改变构图（约 10 dB vs base），但两个量化臂之间仍 19 dB，属于 turbo 模型对亚百分比扰动的混沌放大。
+
+### 32.4 回归与边界
+
+- `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例。
+- 全量 SVDQ 回归 197 passed（含 source manifest）。
+- 未做：INT4 融合链的 e2e（INT4 GEMM 比 NVFP4 慢约 25×，dense store 占比只有 0.8%）；CuTe 融合链与 native 的 4–12% 差距（见 32.3）；`row_major` 的 non-unit rank scale 融合（需要给 ABI 加"下一层 scale"入口，当前硬拒）。

@@ -35,6 +35,8 @@
 - [ ] CDK-4：GEMM 快于 native 至少 5%。kernel-only geomean 1.0248×；Tensor 84.2%、DRAM 12.9%、无 spill，已到当前 TMA/G2R + 单 CTA 结构的局部最优。
 - [ ] CDK-5：完整工作流 e2e 快至少 5%。row-major e2e 1.0553×、cute+native-D 1.0462×（单会话）；需重复会话与 FLUX 稳定验收后才能关闭。
 - [x] CDK-6：使用 `tools/build_fast.sh` 和 `tools/nvcc` 的 ccache 构建链路。
+- [x] CDK-7：融合输出（PR #1332，2026-11-17）。CuTe GEMM 有融合 epilogue（qout/oscales + native FP32 fragment / row-major BF16 两种 D + `write_dense=False`），两族 producer 都实现 `value * silu(gate)`，`fused_mlp` 不再绑定 `lora_layout`。链级 native 1.25×、cute+row_major 1.17×；e2e 融合本身 +2–3%。契约与实测见 `svdq-nvfp4-cute.md` §32。
+- [ ] CDK-8：CuTe 融合链追平 native（当前差 4–12%）。归因在 D 归约回读 smem、`row_major` 的 finalize launch 与 FP32 scratch 清零；方向是改 D 归约的取数（累加器寄存器 / 单 warp 全 K），不是再拆 kernel。
 
 ## 4. CDK-3：Producer CuTe 化设计约束（已完成）
 
@@ -80,6 +82,7 @@ GEMM 达标后再讨论默认 runtime 切回 CuTe；最终仍需 CDK-5 独立验
 3. **uni 路径保持现状**（`quantize_uni.cu`，rank32/K≤3072 四格）：手搓 MMA/ldmatrix + 手写 swizzle，42.9K conflict、occupancy 29.7% 虽可改，但改造与回归成本高，不作为近期项。
 4. **大 M fused 不再优化**：rank32/16K 的 DRAM/Mem 已 90.2%，是带宽墙；小 M fused dispatch 不改变这个结论。
 5. **剩余小 M 差距**：M=1 的 producer 仍比 native 慢。若继续，先研究低 CTA 并行度与调用开销；完整 FLUX e2e 稳定性仍属 CDK-5，不能用本项替代。
+6. **融合链追平 native（CDK-8，进行中）**：chain 级 M=4096/R=32/n=12288 native 934.5 µs vs cute 1018.0 µs（1.168× vs 1.248×）。差距不在主 GEMM（unfused 两侧持平），而在融合 epilogue：D 归约的 A 操作数要回读 smem O tile（native 直接用累加器寄存器）、`row_major` 多一次 finalize launch、FP32 scratch 每次 `zero_()`。已做：`lora_down` 切片 smem 暂存（16B 向量加载）、量化回读改 8 次 `uint4`（1041→1018 µs）。下一步候选：D 归约改单 warp 覆盖全 K 以减少回读、或把 O tile 直接以 bf16 分块喂 MMA 而不过一遍通用 smem 布局。不要用"再拆一个 kernel"来换，那会回到多一次 `[M,N]` HBM 往返。
 
 ### 6.3 调度与验收
 
