@@ -1205,11 +1205,15 @@ class W4A4GemmKernel {
       clear(tCrD);
 #pragma unroll 1
       for (int kk = 0; kk < kBN / 16; ++kk) {
+        // The BF16 MMA consumes 32-bit registers holding two adjacent columns, so a fragment is
+        // already word packed. Writing the words directly avoids both the per-element 16-bit shared
+        // loads and the PRMT the compiler would otherwise insert to re-pack every pair.
+        auto *a_words = reinterpret_cast<uint32_t *>(tCrA.data());
 #pragma unroll
-        for (int i = 0; i < size(tCrA); ++i) {
-          const int r = get<0>(tScA(i));
-          const int c = kk * 16 + get<1>(tScA(i));
-          tCrA(i) = sO(r, c);
+        for (int w = 0; w < size(tCrA) / 2; ++w) {
+          const int r = get<0>(tScA(2 * w));
+          const int c = kk * 16 + get<1>(tScA(2 * w));
+          a_words[w] = *reinterpret_cast<uint32_t const *>(&sO(r, c));
         }
 #pragma unroll
         for (int i = 0; i < size(tCrB); ++i) {
