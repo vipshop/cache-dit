@@ -1188,8 +1188,10 @@ e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
 
 修复后 D 区段采样降到 2560、动态指令降到 1.56M，热点变为 HMMA/REDG 与流水收尾 barrier。剩余差距约 5.6%（M=4096）/8.8%（M=8192），不再能归因于某一条可单独删除的装载；A/B 置零只再省约 10 µs，奇偶双累加器、per-warp 32 行、全量预取都已实测无效或更差。
 
+**本轮到此收敛**：剩余链级差距已单独记录为 issue #1336（含根因、已证伪路线、后续实验与验收标准），不在 PR #1332 继续扩大范围。e2e 已持平（native 7.84 s / cute 7.86 s），所以该 issue 是链级优化，不是功能或 e2e 回归修复。
+
 ### 32.5 回归与边界
 
 - `tests/kernels/test_svdquant_cute.py`：fused 三组合 × M=256/512/1024、`write_dense` 相等、GLU 两族×两形状、SwiGLU pass 两 layout、AdaLayerNorm 负例、窄 tile 与 `fuse_silu×qout` 负例。
 - 全量 SVDQ 回归 197 passed（含 source manifest）。
-- 未做：INT4 融合链的 e2e（INT4 GEMM 比 NVFP4 慢约 25×，dense store 占比只有 0.8%）；CuTe 融合链与 native 的 4–12% 差距（见 32.3）；`row_major` 的 non-unit rank scale 融合（需要给 ABI 加"下一层 scale"入口，当前硬拒）。
+- 未做：INT4 融合链的 e2e（INT4 GEMM 比 NVFP4 慢约 25×，dense store 占比只有 0.8%）；CuTe 融合链的剩余链级差距转 issue #1336（见 32.4，本轮不再继续改 kernel）；`row_major` 的 non-unit rank scale 融合（需要给 ABI 加"下一层 scale"入口，当前硬拒）。
