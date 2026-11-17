@@ -19,13 +19,16 @@ from ..caching import enable_cache, steps_mask
 from ..attention import set_attn_backend
 from ..caching import (
   BlockAdapter,
+  CalibratorConfig,
   DBCacheConfig,
   DMDCalibratorConfig,
   FoCaCalibratorConfig,
+  SVDCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
 )
+from ..caching.cache_contexts.calibrators import normalize_calibrator_type
 from ..utils import assign_transformer
 from ..utils import declare_repeated_blocks
 from ..utils import iter_transformer_modules
@@ -120,6 +123,174 @@ def parse_extra_input_kwargs(s: str) -> Optional[Dict[str, Any]]:
       f"--extra-input-kwargs expects a dict literal, got {type(result).__name__}. "
       f"Expected format: \"{{'key1': value1, 'key2': value2, ...}}\"")
   return result
+
+
+# `--calibrator-params` short keys per calibrator: key -> (config field, caster).
+_CALIBRATOR_PARAM_SPECS: Dict[str, Dict[str, Tuple[str, Any]]] = {
+  "taylorseer": {
+    "order": ("taylorseer_order", int),
+  },
+  "dmd": {
+    "history": ("dmd_history", int),
+    "rank": ("dmd_rank", int),
+    "ridge": ("dmd_ridge", float),
+    "svd_precision": ("dmd_svd_precision", str),
+  },
+  "foca": {},
+  "svd": {
+    "tau": ("svd_tau", float),
+    "beta": ("svd_beta", float),
+    "max_rank": ("svd_max_rank", int),
+    "predictor": ("svd_predictor", str),
+    "order": ("svd_order", int),
+  },
+}
+
+# Keys every calibrator accepts; they live on `CalibratorConfig` itself.
+_COMMON_CALIBRATOR_PARAM_SPECS: Dict[str, Tuple[str, Any]] = {
+  "calibrator_cache_type": ("calibrator_cache_type", str),
+  "cache_type": ("calibrator_cache_type", str),  # deprecated alias
+  "encoder": ("enable_encoder_calibrator", bool),
+  "enable_encoder_calibrator": ("enable_encoder_calibrator", bool),
+}
+
+_CALIBRATOR_PARAM_CHOICES = {
+  "calibrator_cache_type": ("residual", "hidden_states"),
+  "dmd_svd_precision": ("low", "medium", "high"),
+  "svd_predictor": ("ema", "taylor"),
+}
+
+# Legacy value flags: field -> (default, calibrator that owns it).
+_LEGACY_CALIBRATOR_VALUE_FLAGS = {
+  "taylorseer_order": (1, "taylorseer"),
+  "dmd_history": (6, "dmd"),
+  "dmd_svd_precision": ("medium", "dmd"),
+}
+
+_CALIBRATOR_CONFIG_CLASSES = {
+  "taylorseer": TaylorSeerCalibratorConfig,
+  "dmd": DMDCalibratorConfig,
+  "foca": FoCaCalibratorConfig,
+  "svd": SVDCalibratorConfig,
+}
+
+
+def _parse_calibrator_arg(value: str) -> str:
+  """Normalize a `--calibrator` value into its canonical short name.
+
+  :param value: Raw argument value, e.g. `svd`, `svd-calibrator`, or `svd-cache`.
+  :returns: The canonical calibrator name.
+  """
+
+  name = normalize_calibrator_type(value)
+  if name not in _CALIBRATOR_CONFIG_CLASSES:
+    raise argparse.ArgumentTypeError(
+      f"Unknown calibrator '{value}'. Expected one of "
+      f"{sorted(_CALIBRATOR_CONFIG_CLASSES)}; long forms such as 'svd-calibrator' are accepted.")
+  return name
+
+
+def _parse_calibrator_params(value: str) -> Optional[Dict[str, str]]:
+  """Parse `--calibrator-params "k=v,k=v"` into a raw key -> value mapping.
+
+  Only the syntax is validated here; keys are resolved against the selected calibrator later, in
+  :func:`resolve_calibrator_params`, because argparse does not guarantee `--calibrator` is parsed
+  before this flag.
+
+  :param value: Raw argument value.
+  :returns: The raw string mapping, or None for an empty value.
+  """
+
+  if value is None or value.strip() == "":
+    return None
+  params: Dict[str, str] = {}
+  for item in value.split(","):
+    item = item.strip()
+    if not item:
+      continue
+    key, sep, raw = item.partition("=")
+    if sep == "" or key.strip() == "":
+      raise argparse.ArgumentTypeError(
+        f"Invalid --calibrator-params entry '{item}'. Expected 'key=value' pairs, "
+        f"e.g. 'tau=0.9,beta=0.9'.")
+    params[key.strip().lower()] = raw.strip()
+  return params
+
+
+def _coerce_calibrator_param(field: str, caster: Any, text: str) -> Any:
+  """Coerce one `--calibrator-params` value into the type its config field expects.
+
+  :param field: Target config field name (used for enum validation).
+  :param caster: `bool`, `int`, `float`, or `str`.
+  :param text: Raw value text.
+  :returns: The coerced value.
+  """
+
+  if caster is bool:
+    low = text.strip().lower()
+    if low in ("1", "true", "yes", "on"):
+      value = True
+    elif low in ("0", "false", "no", "off"):
+      value = False
+    else:
+      raise ValueError(f"'{field}' expects a boolean, got '{text}'.")
+    return value
+  value = caster(text)
+  choices = _CALIBRATOR_PARAM_CHOICES.get(field)
+  if choices is not None and value not in choices:
+    raise ValueError(f"'{field}' expects one of {list(choices)}, got '{value}'.")
+  return value
+
+
+def resolve_calibrator_params(calibrator_type: str, raw: Optional[Dict[str,
+                                                                       str]]) -> Dict[str, Any]:
+  """Map raw `--calibrator-params` keys onto config fields of the selected calibrator.
+
+  :param calibrator_type: Canonical calibrator name.
+  :param raw: Raw key -> value mapping from the command line.
+  :returns: Config field -> coerced value mapping.
+  """
+
+  if not raw:
+    return {}
+  spec = dict(_CALIBRATOR_PARAM_SPECS.get(calibrator_type, {}))
+  spec.update(_COMMON_CALIBRATOR_PARAM_SPECS)
+  valid_keys = sorted(key for key in spec if key != "cache_type")
+  resolved: Dict[str, Any] = {}
+  for key, text in raw.items():
+    if key not in spec:
+      raise ValueError(f"Unknown --calibrator-params key '{key}' for calibrator "
+                       f"'{calibrator_type}'. Valid keys: {valid_keys}.")
+    if key == "cache_type":
+      logger.warning("--calibrator-params 'cache_type' is deprecated; use "
+                     "'calibrator_cache_type' instead.")
+    field, caster = spec[key]
+    resolved[field] = _coerce_calibrator_param(field, caster, text)
+  return resolved
+
+
+def build_calibrator_config(args) -> Optional[CalibratorConfig]:
+  """Build the calibrator config selected on the command line.
+
+  Legacy value flags (`--taylorseer-order`, `--dmd-history`, `--dmd-svd-precision`) provide the
+  defaults and `--calibrator-params` overrides them.
+
+  :param args: Parsed command line arguments.
+  :returns: The calibrator config, or None when no calibrator was requested.
+  """
+
+  calibrator_type = getattr(args, "calibrator", None)
+  if calibrator_type is None:
+    return None
+  params = getattr(args, "calibrator_fields", None) or {}
+  fields: Dict[str, Any] = {}
+  if calibrator_type == "taylorseer":
+    fields["taylorseer_order"] = args.taylorseer_order
+  elif calibrator_type == "dmd":
+    fields["dmd_history"] = args.dmd_history
+    fields["dmd_svd_precision"] = args.dmd_svd_precision
+  fields.update(params)
+  return _CALIBRATOR_CONFIG_CLASSES[calibrator_type](**fields)
 
 
 def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespace:
@@ -437,6 +608,23 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Enable FoCa (Forecast then Calibrate) ODE-based calibrator for CacheDiT",
+  )
+  parser.add_argument(
+    "--calibrator",
+    type=_parse_calibrator_arg,
+    default=None,
+    help="DBCache calibrator to enable: taylorseer, dmd, foca, or svd (SVD-Cache). "
+    "Long forms such as 'svd-calibrator' are accepted. Requires --cache. "
+    "The legacy --taylorseer/--dmd/--foca flags still work and map here.",
+  )
+  parser.add_argument(
+    "--calibrator-params",
+    type=_parse_calibrator_params,
+    default=None,
+    help="Calibrator options as a comma separated key=value list, e.g. "
+    "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
+    "'history=6,svd_precision=low' for dmd, "
+    "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
   )
   parser.add_argument(
     "--steps-mask",
@@ -1534,6 +1722,46 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
+
+  # Calibrator selection: the legacy flags map onto --calibrator, and the raw
+  # --calibrator-params keys are resolved once the calibrator is known.
+  legacy_flags = [name for name in ("taylorseer", "dmd", "foca") if getattr(args, name, False)]
+  if len(legacy_flags) > 1:
+    raise ValueError(f"Legacy calibrator flags are mutually exclusive, got "
+                     f"{['--' + name for name in legacy_flags]}.")
+  from_legacy = False
+  if legacy_flags:
+    legacy = legacy_flags[0]
+    if args.calibrator is not None and args.calibrator != legacy:
+      raise ValueError(f"--calibrator {args.calibrator} conflicts with --{legacy}.")
+    if args.calibrator is None:
+      args.calibrator = legacy
+      from_legacy = True
+      logger.warning(f"--{legacy} is deprecated; use --calibrator {legacy} instead.")
+  if args.calibrator is not None and args.config_path is not None:
+    if from_legacy and args.calibrator_params is None:
+      # Keep the legacy flags' historical behavior: a config file owns the settings, so the
+      # flag is ignored instead of turning a previously working command into an error.
+      logger.warning(f"--{args.calibrator} is ignored because --config-path is set.")
+      args.calibrator = None
+    else:
+      raise ValueError("--calibrator/--calibrator-params cannot be combined with --config-path; "
+                       "set the calibrator inside the config file instead.")
+  if args.calibrator is None and args.calibrator_params:
+    raise ValueError("--calibrator-params requires --calibrator.")
+  args.calibrator_fields = None
+  if args.calibrator is not None:
+    # Keep the legacy flags' historical behavior (silently unused without --cache);
+    # only the unified entry point is strict.
+    if not args.cache and not from_legacy:
+      raise ValueError(f"--calibrator {args.calibrator} requires --cache.")
+    # Keep `calibrator_params` in its raw form so post-processing stays idempotent; the
+    # resolved config-field mapping lives in `calibrator_fields`.
+    args.calibrator_fields = resolve_calibrator_params(args.calibrator, args.calibrator_params)
+    for field, (default, owner) in _LEGACY_CALIBRATOR_VALUE_FLAGS.items():
+      if owner != args.calibrator and getattr(args, field) != default:
+        logger.warning(f"--{field.replace('_', '-')} is ignored by --calibrator "
+                       f"{args.calibrator}.")
 
   return args
 
@@ -3085,10 +3313,7 @@ def maybe_apply_optimization(
           force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
           force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
         ) if cache_config is None and args.cache else cache_config),
-        calibrator_config=(FoCaCalibratorConfig() if args.foca else DMDCalibratorConfig(
-          dmd_history=args.dmd_history, dmd_svd_precision=args.dmd_svd_precision)
-                           if args.dmd else TaylorSeerCalibratorConfig(
-                             taylorseer_order=args.taylorseer_order) if args.taylorseer else None),
+        calibrator_config=build_calibrator_config(args),
         params_modifiers=kwargs.get("params_modifiers", None),
         parallelism_config=(ParallelismConfig(
           ulysses_size=ulysses_size,

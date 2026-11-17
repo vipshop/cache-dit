@@ -22,6 +22,7 @@ from .cache_contexts import CalibratorConfig
 from .cache_contexts import TaylorSeerCalibratorConfig
 from .cache_contexts import FoCaCalibratorConfig
 from .cache_contexts import DMDCalibratorConfig
+from .cache_contexts import SVDCalibratorConfig
 
 from .cache_blocks import CachedBlocks
 from .cache_blocks import PrunedBlocks

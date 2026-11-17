@@ -132,6 +132,7 @@ python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
 python3 -m cache_dit.generate flux --cache --taylorseer
+python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
 python3 -m cache_dit.generate flux_nunchaku --cache
 python3 -m cache_dit.generate qwen_image --cache
 python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast
@@ -429,6 +430,28 @@ options:
   --taylorseer          Enable TaylorSeer for CacheDiT
   --taylorseer-order TAYLORSEER_ORDER, -order TAYLORSEER_ORDER
                         TaylorSeer order
+  --dmd                 Enable DMD (Dynamic Mode Decomposition / Prony)
+                        exponential-basis calibrator for CacheDiT
+  --dmd-history DMD_HISTORY
+                        DMD snapshot-history window length
+  --dmd-svd-precision {low,medium,high}, --dmd-svd {low,medium,high}
+                        DMD SVD precision mode: medium (default, balanced),
+                        low (randomised), high (accurate)
+  --foca                Enable FoCa (Forecast then Calibrate) ODE-based
+                        calibrator for CacheDiT
+  --calibrator CALIBRATOR
+                        DBCache calibrator to enable: taylorseer, dmd, foca,
+                        or svd (SVD-Cache). Long forms such as 'svd-
+                        calibrator' are accepted. Requires --cache. The legacy
+                        --taylorseer/--dmd/--foca flags still work and map
+                        here.
+  --calibrator-params CALIBRATOR_PARAMS
+                        Calibrator options as a comma separated key=value
+                        list, e.g. 'tau=0.9,beta=0.9' or
+                        'predictor=taylor,order=1' for svd,
+                        'history=6,svd_precision=low' for dmd, or
+                        'calibrator_cache_type=hidden_states,encoder=false'
+                        for any calibrator.
   --steps-mask          Enable steps mask for CacheDiT
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy
