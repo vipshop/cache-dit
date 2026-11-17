@@ -16,6 +16,8 @@ import argparse
 import os
 from types import SimpleNamespace
 
+import inspect
+
 import pytest
 import torch
 
@@ -143,11 +145,16 @@ def test_scheduler_contract_rejects_three_kinds_of_degradation():
   good = PikaH3FlexScheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
   assert_scheduler_contract(good, "scheduler")
 
-  # 1. the installed base class, even with the hidden config keys set to True.
-  hidden = dict(MiniMaxH3Scheduler(shift=12.0).config)
-  hidden.update(stochastic_sampling=True, shift_provided_sigmas=True)
-  degraded = MiniMaxH3Scheduler.from_config(hidden)
-  assert degraded.config["stochastic_sampling"] is True  # the config key proves nothing
+  # 1. the installed base class, even with the hidden config keys set to True. `from_config` cannot
+  # demonstrate that any more: it drops every key its class lists in `_use_default_values`, so the
+  # switch would silently fall back to the default. Build the base class with the switch instead, and
+  # keep the version guard for a release whose base class does not take it yet.
+  base_parameters = inspect.signature(MiniMaxH3Scheduler.__init__).parameters
+  if "stochastic_sampling" in base_parameters:
+    degraded = MiniMaxH3Scheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
+    assert degraded.config["stochastic_sampling"] is True  # the config key proves nothing
+  else:
+    degraded = MiniMaxH3Scheduler(shift=12.0)
   with pytest.raises(ValueError, match="not `PikaH3FlexScheduler`"):
     assert_scheduler_contract(degraded, "scheduler")
 
@@ -217,6 +224,31 @@ def test_row_timestep_plan_groups_the_three_noise_levels():
   assert timesteps.tolist() == pytest.approx([0.5, 0.9, 0.999], abs=1e-6)
   # Rows: 2 text, 4 video (the first one the pinned conditioning row), 2 audio. Text rows never reach
   # an output head and inherit the video timestep.
+  assert inverse.tolist() == [1, 1, 2, 1, 1, 1, 0, 0]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs an execution device")
+def test_row_timestep_plan_accepts_indices_on_the_execution_device():
+  # The layout step moves the indices to the execution device (`prepare_layout`), while the plan itself
+  # is built on CPU on every real run. `build_row_timesteps` takes them back to the host, which is what
+  # upstream does too; without that cast the CPU write is indexed by an accelerator tensor. torch >= 2.0
+  # tolerates that by syncing the device, so the failure mode here is a per-step host sync rather than
+  # an exception — this case pins the contract (device-independent plan), not a traceback.
+  video_indices = torch.tensor([2, 3, 4, 5], device="cuda")
+  audio_indices = torch.tensor([6, 7], device="cuda")
+  timesteps, inverse = PikaH3FlexSetTimestepsStep.build_row_timesteps(
+    video_indices,
+    audio_indices,
+    num_condition_video_rows=1,
+    num_condition_audio_rows=0,
+    num_text_tokens=2,
+    video_timestep=0.9,
+    audio_timestep=0.5,
+    condition_video_timestep=0.999,
+    condition_audio_timestep=1.0,
+  )
+  # Same plan as the CPU call: the device the indices arrive on must not change the result.
+  assert timesteps.tolist() == pytest.approx([0.5, 0.9, 0.999], abs=1e-6)
   assert inverse.tolist() == [1, 1, 2, 1, 1, 1, 0, 0]
 
 

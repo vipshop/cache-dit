@@ -9,6 +9,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Hybrid Cache|Context Parallel|Tensor Parallel|
 |:---|:---:|:---:|:---:|
+|Pika H3 Flex (T2VA)|✖️|✅|✅|
+|Pika H3 Flex (FL2VA)|✖️|✅|✅|
+|Pika H3 Flex (REF2VA)|✖️|✅|✅|
 |MiniMax-H3-Image (T2I)|✅|✅|✅|
 |MiniMax-H3-Image (Edit)|✅|✅|✅|
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
@@ -140,6 +143,9 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 
 |📚Models: `🤗70+`|Text Encoder Parallel|AutoEncoder(VAE) Parallel|
 |:---|:---:|:---:|
+|Pika H3 Flex (T2VA)|✅|✖️|
+|Pika H3 Flex (FL2VA)|✅|✖️|
+|Pika H3 Flex (REF2VA)|✅|✖️|
 |MiniMax-H3-Image (T2I)|✅|✅|
 |MiniMax-H3-Image (Edit)|✅|✅|
 |FLUX.2-Klein-9b-kv|✅|✅|

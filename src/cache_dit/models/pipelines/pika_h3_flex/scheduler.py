@@ -17,16 +17,29 @@ commit `d0b9b1b5a540e5f9df2f8ec236347bf9c5aa7d1f`
   The installed release casts, and `1 - 0.999` evaluated in bfloat16 is ~2% short of `1e-3`, which the
   bf16 forward amplifies; the only caller (`keyframe_noise_aug = 0.999`) is exactly that case.
 
+A newer parent absorbs some of that, which changes what this subclass has to do rather than what it has
+to be: once `MiniMaxH3Scheduler.__init__` names `stochastic_sampling` / `shift_provided_sigmas`, its own
+`register_to_config` merges the parent defaults over this subclass' config (see `__init__`), and the
+`deprecate()` tuple `set_timesteps` used to raise on has reached its removal version. Both are handled
+here so the fallback keeps working on every supported diffusers, and a diffusers that already ships the
+re-noising branch makes this class a numerically identical stand-in — which is what the drift test
+depends on.
+
 Pika H3 Flex holds two instances per request — `shift = 12.0` for video rows and `3.0` for audio rows
 — and both are stepped inside one transformer call.
 """
+
+import inspect
 
 import torch
 from diffusers import MiniMaxH3Scheduler
 from diffusers.configuration_utils import register_to_config
 from diffusers.schedulers.scheduling_minimax_h3 import MiniMaxH3SchedulerOutput
-from diffusers.utils import deprecate
 from diffusers.utils.torch_utils import randn_tensor
+
+from ....logger import init_logger
+
+logger = init_logger(__name__)
 
 
 class PikaH3FlexScheduler(MiniMaxH3Scheduler):
@@ -48,7 +61,23 @@ class PikaH3FlexScheduler(MiniMaxH3Scheduler):
     stochastic_sampling: bool = False,
     shift_provided_sigmas: bool | None = None,
   ):
-    super().__init__(shift=shift)
+    # `register_to_config` registers *before* the decorated body runs, and `MiniMaxH3Scheduler.__init__`
+    # registers again inside it, merging its own defaults over what this subclass wrote. A diffusers
+    # whose parent already names these two keys therefore ends up with the parent's defaults —
+    # `stochastic_sampling=False` / `shift_provided_sigmas=None`, i.e. a deterministic Euler ladder,
+    # which is a different model — and with its `_use_default_values` list, which makes
+    # `from_config(self.config)` drop both keys again. Forwarding them to a parent that accepts them
+    # keeps one registration (the parent's) with the right values and the right default-tracking list;
+    # on an older parent the subclass' own registration already stands.
+    parent_parameters = inspect.signature(MiniMaxH3Scheduler.__init__).parameters
+    forwarded = {
+      name: value
+      for name, value in (
+        ("stochastic_sampling", stochastic_sampling),
+        ("shift_provided_sigmas", shift_provided_sigmas),
+      ) if name in parent_parameters
+    }
+    super().__init__(shift=shift, **forwarded)
     if shift <= 0:
       raise ValueError(f"`shift` must be positive, got {shift}.")
     self.num_inference_steps: int | None = None
@@ -78,15 +107,14 @@ class PikaH3FlexScheduler(MiniMaxH3Scheduler):
       return
 
     sigmas = torch.as_tensor(sigmas, dtype=torch.float64).flatten().cpu()
-    if self.config.shift_provided_sigmas is None:
-      deprecate(
-        "sigmas",
-        "0.44.0",
-        "`PikaH3FlexScheduler.set_timesteps` takes explicit `sigmas` verbatim unless "
-        "`shift_provided_sigmas=True` is set in the scheduler config.",
-        standard_warn=False,
-      )
-    if self.config.shift_provided_sigmas:
+    shift_provided_sigmas = self.config.shift_provided_sigmas
+    if shift_provided_sigmas is None:
+      # An unset switch takes the grid verbatim. It is logged rather than passed to `deprecate()`,
+      # whose removal version has already been reached on the diffusers builds this fallback runs on.
+      logger.warning("`PikaH3FlexScheduler.set_timesteps` takes explicit `sigmas` verbatim unless "
+                     "`shift_provided_sigmas=True` is set in the scheduler config.")
+      shift_provided_sigmas = False
+    if shift_provided_sigmas:
       # Shifted in float64 before the float32 cast, which is how the few-step reference builds it.
       sigmas = self._shift * sigmas / (1 + (self._shift - 1) * sigmas)
     sigmas = sigmas.to(torch.float32)

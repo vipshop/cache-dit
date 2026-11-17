@@ -8,9 +8,9 @@ quietly different model:
 
 1. the packed-sequence transformer still exposes the modules the TP / CP planners and the AdaLN host
    residency path name (`transformer_blocks`, `proj_out`, `audio_proj_out`, `norm_out`, `rope`);
-2. `MiniMaxH3Scheduler.set_timesteps(sigmas=...)` still adopts an explicit grid **verbatim** (that is
-   why the vendored subclass has to apply the shift itself) and still has no `generator` in `step`
-   (that is why the subclass exists at all);
+2. the re-noising contract — `stochastic_sampling`, `shift_provided_sigmas`, `step(generator=...)` —
+   either exists upstream (then the vendored scheduler only has to be a numerical stand-in) or does
+   not (then the vendored overrides are what make the model the released one);
 3. the LoRA mixin still routes both checkpoint partitions;
 4. TE-P still resolves `Qwen3VLForConditionalGeneration`, and VAE-P still does **not** resolve the
    MiniMax-H3 autoencoders (Pika's VAE therefore cannot be parallelized, and that is a documented
@@ -32,6 +32,17 @@ from cache_dit.distributed.autoencoders.register import AutoEncoderDataParalleli
 from cache_dit.distributed.text_encoders.planners import _activate_text_encoder_tp_planners
 from cache_dit.distributed.text_encoders.register import TextEncoderTensorParallelismPlannerRegister
 
+# The released six-step ladder, as a base grid the scheduler shifts (video shift 12 / audio shift 3).
+_BASE_SIGMAS = [step / 1000.0 for step in (1000, 750, 500, 250, 100, 40, 0)]
+
+# What the installed diffusers knows about the re-noising update. The vendored scheduler is the
+# fallback for a release that knows nothing about it, so which half of each guard applies depends on
+# this, not on a version string.
+_INIT_PARAMETERS = inspect.signature(MiniMaxH3Scheduler.__init__).parameters
+_HAS_PACKAGED_RE_NOISING = ("stochastic_sampling" in _INIT_PARAMETERS
+                            and "shift_provided_sigmas" in _INIT_PARAMETERS and "generator"
+                            in inspect.signature(MiniMaxH3Scheduler.step).parameters)
+
 
 def _tiny_transformer() -> MiniMaxH3Transformer3DModel:
   """A one-block transformer with the same module tree as the checkpoint, at 1/128 the width."""
@@ -52,6 +63,17 @@ def _tiny_transformer() -> MiniMaxH3Transformer3DModel:
   )
 
 
+def _upstream_scheduler(shift: float) -> MiniMaxH3Scheduler:
+  """The installed scheduler, configured the way the released adapters need it.
+
+  A release without the packaged switch cannot be configured at all, which is exactly what the
+  vendored subclass exists for.
+  """
+  if not _HAS_PACKAGED_RE_NOISING:
+    return MiniMaxH3Scheduler(shift=shift)
+  return MiniMaxH3Scheduler(shift=shift, stochastic_sampling=True, shift_provided_sigmas=True)
+
+
 def test_transformer_keeps_the_planner_module_tree():
   transformer = _tiny_transformer()
   # cache-dit's MiniMax-H3 adapter walks this list; the CP planner splits at its first block.
@@ -65,15 +87,77 @@ def test_transformer_keeps_the_planner_module_tree():
     assert hasattr(block, "adaln_proj")
 
 
-def test_scheduler_adopts_explicit_sigmas_verbatim():
-  scheduler = MiniMaxH3Scheduler(shift=12.0)
-  base = [1.0, 0.75, 0.5, 0.25, 0.1, 0.04, 0.0]
-  scheduler.set_timesteps(sigmas=base)
-  # No shift, no re-noising: the installed release is the deterministic half of the contract, which is
-  # why `vendored`/`scheduler.py` subclasses it instead of using it.
-  assert scheduler.sigmas.tolist() == pytest.approx(base, abs=1e-6)
-  assert "generator" not in inspect.signature(scheduler.step).parameters
-  assert "stochastic_sampling" not in inspect.signature(MiniMaxH3Scheduler.__init__).parameters
+def test_scheduler_re_noising_contract_against_the_installed_release():
+  if _HAS_PACKAGED_RE_NOISING:
+    # The installed release owns the contract, so the integration can use it directly and the vendored
+    # subclass only has to stay a numerical stand-in. Answering this differently is the drift: the
+    # resolver would pick a class the checkpoint was not trained for.
+    scheduler = _upstream_scheduler(12.0)
+    scheduler.set_timesteps(sigmas=_BASE_SIGMAS)
+    assert scheduler.num_inference_steps == 6
+    return
+  # No packaged contract: the vendored subclass is what makes the run the released model, so its four
+  # overrides have to be there.
+  assert "generator" not in inspect.signature(MiniMaxH3Scheduler.step).parameters
+  assert "stochastic_sampling" not in _INIT_PARAMETERS
+  assert "scale_noise" in PikaH3FlexScheduler.__dict__
+  assert "step" in PikaH3FlexScheduler.__dict__
+  assert "set_timesteps" in PikaH3FlexScheduler.__dict__
+
+
+def test_vendored_scheduler_reproduces_the_installed_re_noising_update():
+  """The fallback must sample what the installed release samples, whatever that release is."""
+  vendored = PikaH3FlexScheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
+  vendored.set_timesteps(sigmas=_BASE_SIGMAS)
+  upstream = _upstream_scheduler(12.0)
+  if _HAS_PACKAGED_RE_NOISING:
+    upstream.set_timesteps(sigmas=_BASE_SIGMAS)
+    assert vendored.sigmas.tolist() == pytest.approx(upstream.sigmas.tolist(), abs=1e-6)
+    assert vendored.timesteps.tolist() == pytest.approx(upstream.timesteps.tolist(), abs=1e-6)
+
+  shape = (2, 3)
+  vendored_sample = torch.randn(shape,
+                                generator=torch.Generator().manual_seed(11),
+                                dtype=torch.float32)
+  upstream_sample = vendored_sample.clone()
+  vendored_generator = torch.Generator().manual_seed(23)
+  upstream_generator = torch.Generator().manual_seed(23)
+  for index, (timestep, other) in enumerate(zip(vendored.timesteps, upstream.timesteps)):
+    velocity = torch.ones(shape, dtype=torch.float32) * (index + 1)
+    vendored_sample = vendored.step(velocity,
+                                    timestep,
+                                    vendored_sample,
+                                    generator=vendored_generator,
+                                    return_dict=False)[0]
+    if _HAS_PACKAGED_RE_NOISING:
+      upstream_sample = upstream.step(velocity,
+                                      other,
+                                      upstream_sample,
+                                      generator=upstream_generator,
+                                      return_dict=False)[0]
+    else:
+      # Without the packaged update the comparison is against the documented re-noising arithmetic:
+      # `x0 = x + sigma * v`, then `x_next = (1 - sigma') * x0 + sigma' * noise`.
+      sigma = vendored.sigmas[index].item()
+      sigma_next = vendored.sigmas[index + 1].item()
+      noise = torch.randn(shape, generator=upstream_generator, dtype=torch.float32)
+      upstream_sample = (1 - sigma_next) * (upstream_sample + sigma * velocity) + sigma_next * noise
+
+  # A different sampler (base class, bf16 cast, unshifted grid) would miss this by orders of magnitude.
+  assert torch.allclose(vendored_sample, upstream_sample.to(vendored_sample.dtype), atol=1e-6)
+
+
+def test_scheduler_keeps_the_re_noising_config_keys_across_a_from_config_round_trip():
+  # `ConfigMixin` registers before the subclass body runs and the parent registers again inside it, so
+  # the subclass' keys can be overwritten by the parent's defaults — and `from_config` then drops them
+  # through `_use_default_values`. Either failure samples a deterministic Euler ladder.
+  scheduler = PikaH3FlexScheduler(shift=12.0, stochastic_sampling=True, shift_provided_sigmas=True)
+  rebuilt = PikaH3FlexScheduler.from_config(scheduler.config)
+  assert rebuilt.config["stochastic_sampling"] is True
+  assert rebuilt.config["shift_provided_sigmas"] is True
+  rebuilt.set_timesteps(sigmas=_BASE_SIGMAS)
+  # Shift 12 sends 0.75 to 0.972973; an unshifted ladder would keep 0.75 and skip the re-noising grid.
+  assert rebuilt.sigmas[1].item() == pytest.approx(12.0 * 0.75 / (1 + 11.0 * 0.75), abs=1e-6)
 
 
 def test_scheduler_scale_noise_keeps_a_scalar_timestep_in_double_precision():
@@ -85,15 +169,15 @@ def test_scheduler_scale_noise_keeps_a_scalar_timestep_in_double_precision():
 
   # Pinned reference: `1 - 0.999` stays in double precision, so the noise term is 1e-3.
   assert abs(float(out[0]) - (1.0 - 0.999)) < 4e-6
-  # The installed release casts 0.999 to bfloat16 first, which makes the residual ~2% larger; the bf16
-  # forward then amplifies the difference on the only caller (`keyframe_noise_aug`).
+  # A bf16 cast makes the residual ~2% larger, and the bf16 forward amplifies it on the only caller
+  # (`keyframe_noise_aug = 0.999`). Whether the installed release still casts is asked, not assumed:
+  # a release that already keeps the float is a numerically identical stand-in.
   cast_residual = 1.0 - float(torch.tensor(0.999, dtype=torch.bfloat16))
-  assert abs(float(out[0]) - cast_residual) > 1e-5
-
-  # Before/after: the installed release really takes the cast branch, which is what the override is for.
   installed = MiniMaxH3Scheduler(shift=12.0).scale_noise(sample, 0.999, noise)
-  assert abs(float(installed[0]) - cast_residual) < 4e-6
-  assert not torch.equal(installed, out)
+  if abs(float(installed[0]) - cast_residual) < 4e-6:
+    assert not torch.equal(installed, out)
+  else:
+    assert abs(float(installed[0]) - float(out[0])) < 1e-6
 
 
 def test_lora_mixin_routes_both_partitions():
