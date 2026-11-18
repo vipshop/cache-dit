@@ -332,11 +332,9 @@ These entries are also unsupported, ordered by their proximity to a possible fut
 
 ### 7.2 Registered but Not Productized
 
-Adapters that already resolve but stay invisible in the support matrix, so users cannot find them and the README understates coverage:
+None at present. An adapter that resolves but shows up in neither `src/cache_dit/models/pipelines/` nor the `docs/README.md` model list is supported-but-unlisted — track it here.
 
-| Model | What exists | What is missing |
-|---|---|---|
-| Boogu-Image-0.1-Edit | adapter `BooguImage` (`adapters.py:1659`); CLI example registered as `boogu_image_edit` (`cli/examples.py:2308`, name listed at `:66`, env default `BOOGU_IMAGE_EDIT_DIR` at `:155`) | no entry under `src/cache_dit/models/pipelines/` (the example imports `boogu.*` from a third-party package) and **no README row** — supported but unlisted. Payoff caveat: its production checkpoints are 4-step DDMD students, and few-step students measured ~0 cache hits in the CausVid / FastH3 runs (R.5), so the value sits in CP/TP/quant/offload/compile rather than DBCache. |
+Boogu-Image-0.1-Edit was the last such case and is now closed: vendored under `src/cache_dit/models/pipelines/boogu_image/`, CLI example `boogu_image_edit` imports from it, and it has a row in `docs/README.md`. Payoff caveat that still applies: its production checkpoints are 4-step DDMD students, and few-step students measured ~0 cache hits in the CausVid / FastH3 runs (R.5), so the value sits in CP/TP/quant/offload/compile rather than DBCache.
 
 Do not use another stack's matrix as a proxy for this repo: a stack's per-model Cache-DiT column is backed by that stack's own enablers, so neither its ✅ nor its ❌ transfers. Anima is the clearest case — vllm-omni lists its own native `AnimaPipeline` under `_NO_CACHE_ACCELERATION`, while cache-dit's modular Anima path is supported and measured (R.5, 33.4 dB / 0.927). Families that already have a working adapter here include `GlmImage` (`adapters.py:1598`), `JoyImage` (`adapters.py:1703`) and `BooguImage` (`adapters.py:1659`).
 
