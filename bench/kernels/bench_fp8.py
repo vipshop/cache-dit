@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import inspect
 import json
 import os
 import statistics
@@ -108,6 +109,8 @@ def _metadata() -> dict:
     "torchao": torchao_version,
     "triton_default_fp_fusion": os.environ.get("TRITON_DEFAULT_FP_FUSION", "unset"),
     "python": subprocess.check_output(["python", "--version"], text=True).strip(),
+    # Recorded so a kernel-side signature change cannot silently invalidate an arm.
+    "fp8_gemm_kwargs": sorted(inspect.signature(fp8_gemm).parameters),
   }
 
 
@@ -343,11 +346,7 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
   reference = _reference_gemm(qa, sa, qw, sw, mode, bias)
   rows = []
 
-  def cache_chain(use_ws: bool) -> torch.Tensor:
-    qa2, sa2 = fp8_quantize(a, mode)
-    return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode, use_ws=use_ws, use_native=True)
-
-  def cache_chain_default() -> torch.Tensor:
+  def cache_chain() -> torch.Tensor:
     qa2, sa2 = fp8_quantize(a, mode)
     return fp8_gemm(qa2, qw, sa2, sw, bias=bias, mode=mode)
 
@@ -356,27 +355,18 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
     return _torchao_gemm(qa2, sa2, qw, sw, mode, bias, api)
 
   arms = {
-    "cache_dit_quantize":
-    lambda: fp8_quantize(a, mode),
-    "torchao_quantize":
-    lambda: _torchao_quantize(a, mode, False, api),
-    "cache_dit_gemm_default":
-    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode),
-    "cache_dit_gemm_ws":
-    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=True, use_native=True),
-    "cache_dit_gemm_nonws":
-    lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_ws=False, use_native=True),
-    "torchao_gemm":
-    lambda: _torchao_gemm(qa, sa, qw, sw, mode, bias, api),
-    "cache_dit_chain_default":
-    cache_chain_default,
-    "cache_dit_chain_ws":
-    lambda: cache_chain(True),
-    "cache_dit_chain_nonws":
-    lambda: cache_chain(False),
-    "torchao_chain":
-    torchao_chain,
+    "cache_dit_quantize": lambda: fp8_quantize(a, mode),
+    "torchao_quantize": lambda: _torchao_quantize(a, mode, False, api),
+    "cache_dit_gemm": lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode),
+    "torchao_gemm": lambda: _torchao_gemm(qa, sa, qw, sw, mode, bias, api),
+    "cache_dit_chain": cache_chain,
+    "torchao_chain": torchao_chain,
   }
+  if mode != "per_block":
+    # ``use_native=False`` is the ``torch._scaled_mm`` reference path; per-block has no
+    # such path, so this second GEMM arm only exists for the other two modes.
+    arms["cache_dit_gemm_scaled_mm"] = (
+      lambda: fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, use_native=False))
   if not args.skip_compiled:
     arms["cache_dit_torch_compile_quantize"] = torch.compile(lambda: fp8_quantize_torch(a, mode),
                                                              fullgraph=True)
