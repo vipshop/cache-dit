@@ -148,7 +148,7 @@ for gamma in ratios:
 | block 执行 | `pattern_base.py` **和** `pattern_3_4_5.py` | 两套模板都要写 |
 | stats | `pattern_utils.py`、`summary.py` | `apply_stats/remove_stats` + `CacheStats` + `strify` 三处分支 |
 | CLI | `cli/utils.py` | 现在硬编码 `DBCacheConfig(...)` 且**没有 `--cache-type`**（DBPrune 至今没 CLI 入口） |
-| docs | `docs/user_guide/CACHE_API.md`、`README.md` | 新算法要进文档 |
+| docs | `docs/user_guide/CACHE_API.md`、`docs/README.md` | 新算法要进文档（根 `README.md` 已最简化，不写算法说明） |
 
 ## 7. 与其它特性的交互
 

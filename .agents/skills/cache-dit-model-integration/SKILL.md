@@ -399,8 +399,9 @@ Phase 7 — Final Integration Tests
 - [ ] 7.4 Visual inspection: at least one output image per configuration
 - [ ] 7.5 Tier A acceptance matrix (1/2 GPUs): rows + gates per `./references/perf_matrix.md` §1 and
         `./references/testing.md` §7.6 (Tier B 4-GPU / Tier C 8-GPU rows only if the user asks)
-- [ ] 7.6 Docs updated in the same change: `README.md` model table + `docs/README.md` (keep the two in
-        sync) + `docs/supported_matrix/NVIDIA_GPU.md` (+ `ASCEND_NPU.md` only if NPU-validated)
+- [ ] 7.6 Docs updated in the same change: `docs/README.md` model table (the **only** model list; the
+        root `README.md` is deliberately minimal and carries no model table) + `docs/supported_matrix/NVIDIA_GPU.md`
+        (+ `ASCEND_NPU.md` only if NPU-validated)
         - see §8 Documentation & Examples (Model-support docs)
 - [ ] 7.7 [DONE] Integration complete ── all checks passed
 ```
@@ -614,8 +615,8 @@ All paths are relative to the cache-dit repository root.
 | Resource                | File                                          | Purpose                                                                          |
 | ----------------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
 | **Model-support docs — update in the SAME commit that lands the model** | | |
-| Root README model list  | `README.md` (`## 🚪Supported DiT Models`)  | One row per new model family: Modality / Pipeline Series / Model Sources / Variants / `C/P/Q/OF` |
-| Docs landing page       | `docs/README.md`                            | Docs-site copy of the root README; only the banner block and a couple of wording tweaks differ, so **the model table must stay identical to `README.md`** — edit both in the same commit |
+| Docs landing page — model list | `docs/README.md` (`## 🚪Supported DiT Models`) | **The only place the model list lives.** One row per new model family: Modality / Pipeline Series / Model Sources / Variants / `C/P/Q/OF`; diffusers models go in the first table, vendored / non-diffusers in the second (built-in) table |
+| Root README             | `README.md`                                 | Deliberately minimal (intro / community integration / acknowledgements / citations). It only links to cache-dit.io and `docs/README.md` — **do not add a model table here** |
 | GPU support matrix      | `docs/supported_matrix/NVIDIA_GPU.md`       | Per-transformer ✅/✖️ matrix (Hybrid Cache / Context Parallel / Tensor Parallel) plus the Text-Encoder & VAE and ControlNet sections — add the new transformer's row(s) |
 | NPU support matrix      | `docs/supported_matrix/ASCEND_NPU.md`       | Same matrix for Ascend NPU — update only after the model is actually validated on NPU |
 | Developer guide         | `docs/developer_guide/SUPPORT_NEW_MODEL.md` | Official step-by-step integration guide                                          |
