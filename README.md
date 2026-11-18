@@ -18,7 +18,7 @@
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
 </div>
 
-Cache-DiT is compatible with compilation, offload, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
+Cache-DiT is compatible with compilation, offload, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs.
 
 <div align="center">
   <p align="center">
@@ -27,6 +27,7 @@ Cache-DiT is compatible with compilation, offload, and quantization, fully integ
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
+Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 <div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
@@ -53,8 +54,6 @@ pip install git+https://github.com/vipshop/cache-dit.git # latest.
 ...   quantize_config=QuantizeConfig(quant_type=...))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
-
-Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffusers, covering the vast majority of DiT pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 ## 🌐Community Integration
 
