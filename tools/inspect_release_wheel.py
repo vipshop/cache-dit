@@ -14,7 +14,7 @@ which only show up on a user's machine:
 
 Usage::
 
-    tools/inspect_release_wheel.py <wheel> --so none|svdquant --version 1.5.3+cu13
+    tools/inspect_release_wheel.py <wheel> --so none|svdquant --version 1.5.5+cu13
 """
 
 from __future__ import annotations

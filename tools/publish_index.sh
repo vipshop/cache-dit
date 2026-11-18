@@ -22,8 +22,8 @@
 # Usage:
 #   # the canonical index: the project's Pages branch, whose URL already carries
 #   # the repository name, so the branch root holds whl/cu13/ directly
-#   bash tools/publish_index.sh --tag v1.5.3+cu13 \
-#     --wheels 'dist/cache_dit-1.5.3+cu13-*.whl' --site-repo <gh-pages worktree>
+#   bash tools/publish_index.sh --tag v1.5.5+cu13 \
+#     --wheels 'dist/cache_dit-1.5.5+cu13-*.whl' --site-repo <gh-pages worktree>
 #   # the mirror on a personal site, under a directory of its own
 #   CACHE_DIT_SITE_URL=https://deftruth.github.io CACHE_DIT_INDEX_PREFIX=cache-dit \
 #     bash tools/publish_index.sh --index-only --tag ... --release-url ... \
@@ -86,7 +86,7 @@ while [[ $# -gt 0 ]]; do
     --tag) TAG="$2"; shift 2 ;;
     --wheels)
       # Several paths, because the shell expands a glob before the script sees
-      # it: `--wheels dist/cache_dit-1.5.3+cu13-*.whl` arrives as many arguments.
+      # it: `--wheels dist/cache_dit-1.5.5+cu13-*.whl` arrives as many arguments.
       shift
       [[ $# -gt 0 ]] || fail "--wheels requires at least one path"
       while [[ $# -gt 0 && "$1" != --* ]]; do WHEELS+=("$1"); shift; done ;;
@@ -99,7 +99,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$TAG" ]] || fail "--tag is required, e.g. --tag v1.5.3+cu13"
+[[ -n "$TAG" ]] || fail "--tag is required, e.g. --tag v1.5.5+cu13"
 [[ ${#WHEELS[@]} -gt 0 ]] || fail "--wheels is required (paths or globs of the built wheels)"
 [[ -n "$SITE_REPO" ]] || fail "--site-repo is required: the working tree of $RELEASE_REPO"
 [[ -d "$SITE_REPO" ]] || fail "no such directory: $SITE_REPO"
@@ -154,7 +154,7 @@ build it with CACHE_DIT_RELEASE_CHANNEL=$CHANNEL"
   VERSION="$version"
 done
 # The tag names the release the assets live on, and it carries the channel the way
-# the wheel does: v1.5.3+cu13.
+# the wheel does: v1.5.5+cu13.
 [[ "$TAG" == "v${VERSION%%+*}+$CHANNEL" ]] \
   || fail "tag '$TAG' does not name version '$VERSION'; expected 'v${VERSION%%+*}+$CHANNEL'"
 
@@ -207,7 +207,7 @@ ensure_release() {
   # repository's own releases.
   local index_url="$SITE_URL/${PREFIX:+$PREFIX/}whl/$CHANNEL"
   # No --title: GitHub names a release after its tag, and the tag already says
-  # everything the release holds -- v1.5.3+cu13.
+  # everything the release holds -- v1.5.5+cu13.
   gh release create "$TAG" --repo "$RELEASE_REPO" \
     --latest=false \
     --target "$target" \

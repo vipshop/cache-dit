@@ -72,7 +72,7 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 
 三条硬规则：schema 形参顺序即调用顺序（写反不报错、静默算错）；fake 的 shape/dtype 必须与 impl 一致（否则 eager 绿、compile 炸）；`torch.library.define`/`impl` 不幂等，不要 reload 这些模块。
 
-FP8 WS 备注：`fp8_gemm(use_ws=...)` 的 `None` 默认按粒度选择——per-block 用 WS，per-row/per-tensor 用 non-WS。原因不是协议问题，而是 sm120a 上 384 线程把 ptxas 静态寄存器上限压到 168，而 per-row WS epilogue 需约 194（`cuobjdump -res-usage` 显示 `STACK:144`，non-WS 仅 24）；per-block 的 WS 双累加器版本 REG:168/STACK:0，实测快 8% 左右。WS 依赖 `setmaxnreg`，在 kernel 内用 `static_assert(CUDA_CTA_RECONFIG_ACTIVATED)` 挡住非 `-arch=sm_*a` 构建，否则重配置会静默变成空函数。
+FP8 备注（2026-11-16 之后）：`fp8_gemm` **没有** `use_ws`——per-row/per-tensor/per-block 三种粒度都走 CUTLASS SM120 collective，mainloop 与 warp specialization 由 CUTLASS 选；`use_native=False` 仍是 per-row/per-tensor 的 `torch._scaled_mm` 参考路径，per-block 只有 collective。历史上手写 WS/non-WS 双路径的取舍（sm120a 上 384 线程把 ptxas 静态寄存器上限压到 168，而 per-row WS epilogue 需约 194，`cuobjdump -res-usage` 显示 `STACK:144`；per-block 的 WS 双累加器版本快约 8%）只作为迁移前记录，**不要再按它调参**。写新 collective 时仍要注意：`setmaxnreg` 只能在 `-arch=sm_*a` 下用，kernel 内用 `static_assert(CUDA_CTA_RECONFIG_ACTIVATED)` 挡住非 a 构建，否则重配置会静默变成空函数。
 
 ## 3. SVDQ 专项：架构与命名
 

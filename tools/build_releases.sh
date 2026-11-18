@@ -18,13 +18,13 @@
 #   mini (default) -- one conda env, one CUDA arch, and a version that always
 #         carries .dev.  It exercises the whole build -> wheel -> retag -> index
 #         -> install path in minutes; tools/publish_index.sh refuses its wheels.
-#   full  -- py311..py314 and the setup.py default arch set (89,90a,100,120a):
-#         the published set.  Needs a release version, refuses .devN, and refuses
-#         sources that are not committed.
+#   full  -- py311..py314 and the setup.py default arch set (89,120a; one predicate,
+#         >=sm89 and excluding sm90): the published set.  Needs a release version,
+#         refuses .devN, and refuses sources that are not committed.
 #
 # Usage:
 #   bash tools/build_releases.sh
-#   CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=1.5.3 bash tools/build_releases.sh
+#   CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=1.5.5 bash tools/build_releases.sh
 #   CACHE_DIT_RELEASE_ENVS="py311 py312 py313 py314" bash tools/build_releases.sh
 #
 # Environment:
@@ -180,7 +180,7 @@ resolve_release_version() {
   if [[ "$PROFILE" == "mini" ]]; then
     # A mini wheel exists to exercise the pipeline, and tools/publish_index.sh
     # refuses a .dev version: deriving the version keeps that property.  Past the
-    # last tag setuptools-scm already yields 1.5.3.devN; on the tag itself it
+    # last tag setuptools-scm already yields 1.5.5.devN; on the tag itself it
     # yields the bare release, which .dev0 restores (and which still sorts below
     # that release, so it cannot be mistaken for it).
     [[ -z "$REQUESTED_VERSION" ]] || fail \

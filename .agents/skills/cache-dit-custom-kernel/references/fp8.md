@@ -4,6 +4,12 @@ Status: recorded 2026-11-12 after commits `0dfb17e6`, `b6a15127`, `ceb786a5`.
 Scope: native FP8 in `csrc/kernels/fp8/` and `src/cache_dit/quantization/fp8/`.
 Do not apply these optimizations without re-running the current benchmark and NCU; the numbers below are a 2026-11-12 snapshot on one GPU.
 
+> **Superseded in part (2026-11-16).** The hand-written GEMM kernels and the `use_ws`
+> knob described in the dated sections below were removed by the CUTLASS 4.8.1 collective
+> migration — see the last section. Current signature:
+> `fp8_gemm(a, b, a_scale, b_scale, bias=None, mode="per_row", use_native=True)`.
+> Read the earlier sections for the reasoning and the measurements, not for the API.
+
 ## Environment and artifacts
 
 - GPU: NVIDIA RTX PRO 5000 72GB Blackwell, sm120a.
@@ -122,7 +128,7 @@ Summary:
 - NCU per-row non-WS: SM 72.15%, memory 40.67%, occupancy 16.32%, 255 regs/thread, 100.35 KB smem, 1 CTA/SM, no local spill.
 - Top stalls: `math_pipe_throttle` 3.16, `wait` 2.38, `long_scoreboard` 0.229.
 - The kernel is compute-bound but register/smem-limited to one CTA.
-- WS per-row is not the fix: 384 threads lower the ptxas static register ceiling to 168, while the per-row epilogue needs ~194; `cuobjdump -res-usage` reports `STACK:144` for WS vs 24 for non-WS. Hence `fp8_gemm(..., use_ws=None)` intentionally uses non-WS for per-row/per-tensor.
+- WS per-row is not the fix: 384 threads lower the ptxas static register ceiling to 168, while the per-row epilogue needs ~194; `cuobjdump -res-usage` reports `STACK:144` for WS vs 24 for non-WS. Hence the hand-written WS path was dropped for per-row/per-tensor; today CUTLASS picks the schedule (see the 2026-11-16 section).
 - Per-block WS fits: 168 regs, 67.58 KB smem, no spill, SM 57.33%, occupancy 18.56%; top stalls `wait` 1.18 and `math_pipe_throttle` 1.12. WS is ~8% faster than non-WS there.
 
 ### 2. Compile graph boundary
@@ -210,7 +216,7 @@ CUDA_VISIBLE_DEVICES=4 nsys profile --trace=cuda --capture-range=cudaProfilerApi
   /workspace/dev/miniconda3/envs/cdit/bin/python .tmp/fp8_backend/profile_kernels.py
 ```
 
-When changing the WS default, rerun `tests/kernels/test_fp8_ops.py`, especially the `use_ws` parity, K-phase, CUDA Graph, and profiler kernel-name assertions.
+While the WS default existed, changing it required rerunning `tests/kernels/test_fp8_ops.py` (the `use_ws` parity, K-phase, CUDA Graph and profiler kernel-name assertions). That knob is gone; the same file is now the collective parity gate.
 
 ## Per-row follow-up on 2026-11-12: retained gains and open E2E gap
 
@@ -316,7 +322,9 @@ The main per-row quantizer and scale GEMM kernels now have detailed comments cov
 
 ## 2026-11-13 external GEMM default (`use_native=False`)
 
-`fp8_gemm` now defaults to `use_native=False`:
+`fp8_gemm` defaulted to `use_native=False` at that time (since `eced0158` the
+default is back to `use_native=True`, with `use_native=False` kept as the
+`_scaled_mm` reference):
 
 - `per_row` and `per_tensor` use `torch._scaled_mm` (cuBLAS/CUTLASS). This is the
   same operator TorchAO uses for these modes, and it accepts the exact cache-dit
@@ -326,9 +334,9 @@ The main per-row quantizer and scale GEMM kernels now have detailed comments cov
 - If `N % 16 != 0`, the default deterministically falls back to the native
   kernel because `_scaled_mm` requires both matmul dimensions to be multiples
   of 16.
-- `use_native=True` forces the native CuTe kernel for every mode; `use_ws` then
-  selects the native mainloop. `fp8_quantize_gemm` remains the fused native
-  per-row eager op and is no longer on the default high-level path.
+- `use_native=True` forces the native kernel for every mode (`use_ws` no longer
+  exists; the collective picks the schedule). `fp8_quantize_gemm` remains the
+  fused native per-row eager op and is no longer on the default high-level path.
 
 Six FLUX shapes, CUDA Event medians of 50 iterations x 3 rounds. Ratios are
 cache-dit default GEMM / TorchAO GEMM:
