@@ -66,6 +66,8 @@
 
 与 cache-dit 的差别：**数学上只差一行基函数**；工程上差"逐层 vs 块组"的粒度，与"固定 interval vs 自适应阈值"的调度。
 
+**cache-dit 落地（2026-11-18，#1359）**：`calibrators/hicache.py`（`HiCacheState(TaylorSeerState)` + `HiCacheCalibrator(TaylorSeerCalibrator)`）；`taylorseer.py` 抽出 `_basis_term(i, elapsed)` 钩子、Taylor 路径数值逐比特不变，HiCache 只覆写该钩子 → 差分阶梯单份实现。`hicache_order`（= 论文 N_order，≤4，默认 2）、`hicache_sigma`（∈(0,1]，默认 0.5）。实现用等价递推 `H~_{k+1}=2σ²x·H~_k − 2kσ²·H~_{k-1}`、`H~_1=2σ²x`；**一阶增益是 2σ²**，σ 扫描扫的就是它（`σ=1/√2` 使一阶与 Taylor 等价）。σ=1 是**无阻尼 physicist Hermite**，不是 Taylor 的退化点。
+
 ### 2.2 MagCache（arXiv 2506.09045）
 
 ```
@@ -181,6 +183,32 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 3. **损失来自冻结残差，不是 predictor。** 把 τ 从 0.9（k=5，残差占 ~10% 能量）抬到 0.999（k≈1100，残差≈0）就补回 +0.43dB（23.38→23.81）；剩下与 TaylorSeer 的 0.4dB 差距来自子空间截断本身。机理：**高频尾巴是逐步变化最快的分量**，把它冻结等于每步都注入一个过期误差——与论文「残差变化慢」的前提相反。
 
 → 生产建议：`--calibrator taylorseer`（或 `dmd`）。SVD-Cache 保留为复现/实验能力，`svd.py` 顶部注释与 `docs/user_guide/CACHE_API.md` 都写明了这张表与机理。
+
+### 4.5 HiCache 在 cache-dit 内的同 harness 实测（2026-11-18，FLUX.1-dev 1024²，28 步，seed 0，rdt 0.12，RTX PRO 5000，torch 2.15.0，单 prompt）
+
+12/28 步被缓存，且**7 行命中位置完全相同**（`[8,9,11,12,14,15,16,18,19,21,23,25]`），所以 PSNR 是同一调度下的可比对照：
+
+| 配置 | PSNR | SSIM | Latency |
+|---|---|---|---|
+| base（无 cache） | — | — | 16.91s |
+| DBCache reuse | 31.72 | 0.9706 | 9.88s |
+| + TaylorSeer o2 | 30.91 | 0.9733 | 9.88s |
+| + HiCache o2 σ=0.4 | 33.10 | 0.9765 | 9.89s |
+| **+ HiCache o2 σ=0.5** | **33.33** | **0.9781** | 9.88s |
+| + HiCache o1 σ=0.5 | 33.36 | 0.9779 | 9.91s |
+| + HiCache o2 σ=1/√2 | 32.44 | 0.9770 | 9.88s |
+| + HiCache o2 σ=1.0 | 24.99 | 0.9280 | 9.89s |
+| + HiCache o2 σ=0.5 + compile | 27.53 / 28.24 | 0.9639 / 0.9668 | 8.69 / 8.66s |
+| + TaylorSeer o2（mask 钉死） | 27.77 | 0.9623 | 11.67s |
+| + HiCache o2 σ=0.5（mask 钉死） | 29.36 | 0.9738 | 11.68s |
+
+三条可复用判读：
+
+1. **1.7× 档 HiCache 是三者最好的**（+1.61dB vs reuse、+2.42dB vs TS-o2），与「Bn_residual 替换层已饱和」的旧结论冲突——那条结论必须按档位限定（SVD-Cache 的饱和结论是在 1.9×/4.9× 上、且针对子空间拆分那一族）。
+2. **σ=1 崩到 24.99dB，精确复现论文 σ 消融的方向**（无阻尼 Hermite 比 Taylor 更差）。这是"基真的接上了"最便宜的证伪点：任何"σ 没接线 / 退化成 Taylor"的实现都不会出现这个断崖。
+3. **调度钉死后排序不变**（mask static，9 步：HiCache 29.36 > TS 27.77），说明收益来自基函数本身，不是命中序列差异。1.7× 档一阶已够（o1 33.36 ≈ o2 33.33），更高阶在这个 work point 无增量。
+
+**测试坑**：`tests/api/utils.py` 的 `RandPipeline` 每步喂**同一个** `hidden_states`，特征轨迹恒定 ⇒ 任何 predictor 的预测恒等于锚点，**"输出不同"不能用来证明接线**；应 monkeypatch 计数 `approximate()` 调用，并断言 state 具体类型与已接线的 σ。
 
 ## 5. 复核用的原始出处
 

@@ -107,6 +107,8 @@ class XxxCalibrator(CalibratorBase):
 
 注意：框架调用的是 `calibrator.reset_cache()`（无参、遍历所有流），`mark_step_begin()` 也是无参调用；单测模板见 `tests/api/test_foca.py`。
 
+**`to_kwargs()` 必须写成 `dict(self.calibrator_kwargs or {})`**，不能用 `self.calibrator_kwargs.copy()`：`cache_dit.refresh_context(transformer, **shorthand)` 是唯一 `reset=True` 入口，它经 `CalibratorConfig.empty()` 把 `calibrator_kwargs` 置 `None`，随后重建 context 时 `Calibrator(config)` → `to_kwargs()` 会崩（TaylorSeer / DMD / SVD 曾中招，#1359 修掉）。回归用例模板见 `tests/api/test_calibrator_reset.py`。
+
 **已知签名限制**：`approximate()` 只拿到 `name`，拿不到"当前步前缀块的输出"。若算法需要当前步信息（如 DiCache 的 DCTA 需要探针残差），必须改 `cache_manager.get_Bn_buffer()` 与 `pattern_base.py` 的 `apply_cache` 调用点，把张量传进来——这会穿过主路径，成本远高于普通 calibrator。
 
 ## 4. 方案 2：扩展现有 calibrator（推荐，维护面零增长）
