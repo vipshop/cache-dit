@@ -62,12 +62,11 @@ pip install git+https://github.com/vipshop/cache-dit.git # latest.
 </div>
 
 ```bash
-# Required: CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build), and the GLIBC floor of the
-# release (2.38; see the platform tags on the index page). SVDQuant built with cu13.
+# Required: CUDA >= 13.2, PyTorch 2.15 (a CUDA 13.2 build), with GLIBC >= 2.34.
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
-# Latest, from source: one flag builds every CUDA extension (SVDQuant, comm, attn).
-git submodule update --init --recursive --force # SVDQuant needs spdlog; SM120 CuTe needs CUTLASS 4.8.1
-CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"
+# Latest, from source: one flag builds every CUDA extension (svdq, attn, ulysses, etc).
+git submodule update --init --recursive --force # custom kernels need: cutlass, spdlog.
+CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]" # default archs: sm_89, sm_120a.
 ```
 
 ```python
