@@ -54,10 +54,11 @@ class CalibratorConfig:
   def to_kwargs(self) -> Dict:
     """Return implementation kwargs used by the calibrator factory.
 
-    :returns: A shallow copy of the calibrator-specific initialization kwargs.
+    :returns: A shallow copy of the calibrator-specific initialization kwargs; `None` is treated as
+        empty, which is what `empty()`/`reset()` leave behind for `refresh_context`.
     """
 
-    return self.calibrator_kwargs.copy()
+    return dict(self.calibrator_kwargs or {})
 
   def as_dict(self) -> dict:
     return dataclasses.asdict(self)
@@ -151,7 +152,7 @@ class TaylorSeerCalibratorConfig(CalibratorConfig):
     :returns: Keyword arguments expected by `TaylorSeerCalibrator`.
     """
 
-    kwargs = self.calibrator_kwargs.copy()
+    kwargs = dict(self.calibrator_kwargs or {})
     kwargs["n_derivatives"] = self.taylorseer_order
     return kwargs
 
@@ -220,7 +221,7 @@ class DMDCalibratorConfig(CalibratorConfig):
     :returns: Keyword arguments expected by `DMDCalibrator`.
     """
 
-    kwargs = self.calibrator_kwargs.copy()
+    kwargs = dict(self.calibrator_kwargs or {})
     kwargs["history"] = self.dmd_history
     kwargs["rank"] = self.dmd_rank
     kwargs["ridge"] = self.dmd_ridge
@@ -351,7 +352,7 @@ class SVDCalibratorConfig(CalibratorConfig):
     :returns: Keyword arguments expected by `SVDCalibrator`.
     """
 
-    kwargs = self.calibrator_kwargs.copy()
+    kwargs = dict(self.calibrator_kwargs or {})
     kwargs["tau"] = self.svd_tau
     kwargs["beta"] = self.svd_beta
     kwargs["max_rank"] = self.svd_max_rank
