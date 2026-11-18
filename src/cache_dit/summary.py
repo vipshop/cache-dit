@@ -510,6 +510,9 @@ def supported_matrix() -> str | None:
       "MiniMaxH3",
       "MiniMaxH3Image",
       "PH3Image",
+      # Pika H3 Flex is a MiniMax-H3 trunk behind a different pipeline name; CP2 is measured
+      # (`--parallel ulysses --ulysses-anything`) and the packed-sequence split is the H3 one.
+      "PikaH3Flex",
     ]
     _pipelines_supported_tensor_parallelism += [
       "Wan",
@@ -517,6 +520,10 @@ def supported_matrix() -> str | None:
       "MiniMaxH3",
       "MiniMaxH3Image",
       "PH3Image",
+      "PikaH3Flex",
+      # FastH3 has its own transformer planner (`FastH3Transformer3DModel`). Only the tensor axis is
+      # listed: its VSA compression gate is per block and no context-parallel path has been verified.
+      "FastH3",
     ]
 
     # Generate the supported matrix, markdown table format

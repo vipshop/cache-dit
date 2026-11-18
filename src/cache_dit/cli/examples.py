@@ -1,6 +1,7 @@
 import os
 import math
 import json
+import importlib
 import torch
 import argparse
 import PIL.Image
@@ -110,6 +111,9 @@ __all__ = [
   "pika_h3_flex_example",
   "pika_h3_flex_fl2va_example",
   "pika_h3_flex_ref2va_example",
+  "pika_h3_flex_vendored_example",
+  "pika_h3_flex_fl2va_vendored_example",
+  "pika_h3_flex_ref2va_vendored_example",
   "minimax_h3_image_example",
   "minimax_h3_image_edit_example",
   "flux3_fused_example",
@@ -209,6 +213,7 @@ _env_path_mapping = {
   "LONGCAT_VIDEO_DIR": "meituan-longcat/LongCat-Video",
   "MAGI2_DIR": "sand-ai/MAGI-2-preview",
   "MOVA_DIR": "OpenMOSS-Team/MOVA-360p",
+  "PIKA_H3_FLEX_DIR": "Pika-Labs/Pika-H3-Flex",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
@@ -5488,14 +5493,19 @@ _PIKA_H3_FLEX_CACHE_THRESHOLDS = {
 }
 
 
-def _pika_h3_flex_blocks():
-  """Build the vendored Pika H3 Flex block tree.
+def _pika_h3_flex_vendored_binding():
+  """Bind the vendored pipeline explicitly, for the diagnostic entry points.
 
-  :returns: A fresh `PikaH3FlexBlocks` instance.
+  :returns: A `PikaH3FlexBinding` that always points at the vendored copy.
   """
-  from ..models.pipelines.pika_h3_flex import PikaH3FlexBlocks
+  from ..models.pipelines import pika_h3_flex as pika
 
-  return PikaH3FlexBlocks()
+  return pika.PikaH3FlexBinding(
+    pipeline_class=pika.PikaH3FlexModularPipeline,
+    blocks_factory=pika.PikaH3FlexBlocks,
+    reference_package=_PIKA_H3_FLEX_REFERENCE_PACKAGE,
+    is_upstream=False,
+  )
 
 
 def _pika_h3_flex_drop_lm_head(pipe) -> None:
@@ -5613,14 +5623,20 @@ _PIKA_H3_FLEX_REFERENCE_CLASSES = {
 }
 
 
-def _pika_h3_flex_input_data(**kwargs) -> ExampleInputData:
+def _pika_h3_flex_input_data(reference_package: Optional[str] = None, **kwargs) -> ExampleInputData:
   """Build an input holder whose reference flags decode into this model's classes.
 
+  The vendored and the official reference types are unrelated classes, and the block tree rejects a
+  foreign one only after the ~62 GiB partition is resident, so the package has to follow the pipeline
+  the run actually loaded.
+
+  :param reference_package: Module holding the `PikaH3Flex*Reference` classes; defaults to the vendored
+    package, which is also what a fallback run needs.
   :param kwargs: Forwarded to `ExampleInputData`.
-  :returns: The input holder, pointed at the vendored reference classes.
+  :returns: The input holder, pointed at that package's reference classes.
   """
   input_data = ExampleInputData(**kwargs)
-  input_data.reference_package = _PIKA_H3_FLEX_REFERENCE_PACKAGE
+  input_data.reference_package = reference_package or _PIKA_H3_FLEX_REFERENCE_PACKAGE
   input_data.reference_class_names = dict(_PIKA_H3_FLEX_REFERENCE_CLASSES)
   return input_data
 
@@ -5689,31 +5705,38 @@ def _pika_h3_flex_example(
   args: argparse.Namespace,
   workflow: str,
   task_type: ExampleType,
-) -> Example:
+  vendored: bool = False,
+) -> tuple[Example, str]:
   """Assemble a Pika H3 Flex example: components, workflow and fused adapter.
 
-  The vendored pipeline resolves its own blocks, so `modular_blocks_factory` is set instead of
-  relying on `modular_model_index.json` to name a class the installed diffusers exports.
+  The pipeline comes from `resolve_pika_h3_flex()`: the official diffusers implementation when the
+  installed release ships it, the vendored copy otherwise. The two have to be taken together with their
+  block tree (only the official one is importable from `diffusers`, so it resolves its blocks from
+  `modular_model_index.json`) and with their reference package, which is why the package is returned.
 
   :param args: CLI arguments.
   :param workflow: One of `t2va`, `fl2va`, `ref2va`.
   :param task_type: The matching `ExampleType`.
-  :returns: The example, without its conditioning media.
+  :param vendored: Force the vendored copy even when the official pipeline is importable. Diagnostic
+    only: the vendored copy is the `diffusers < 0.43` fallback.
+  :returns: The example without its conditioning media, and the reference package it expects.
   """
-  from ..models.pipelines.pika_h3_flex import PikaH3FlexModularPipeline
+  from ..models.pipelines.pika_h3_flex import resolve_pika_h3_flex
 
   _minimax_h3_quantize_exclusions(args)
   model_path = _path(_PIKA_H3_FLEX_DEFAULT, args=args)
   weight_name = _pika_h3_flex_adapter_name(model_path, workflow)
+  binding = resolve_pika_h3_flex() if not vendored else _pika_h3_flex_vendored_binding()
 
   return Example(
     args=args,
     init_config=ExampleInitConfig(
       task_type=task_type,
       model_name_or_path=model_path,
-      pipeline_class=PikaH3FlexModularPipeline,
+      pipeline_class=binding.pipeline_class,
       bnb_4bit_components=[],  # ignored: modular pipelines take no quantization_config
-      modular_blocks_factory=_pika_h3_flex_blocks,
+      # None for the official pipeline: it resolves `PikaH3FlexBlocks` by name out of `diffusers`.
+      modular_blocks_factory=binding.blocks_factory,
       modular_workflow=workflow,
       # The two VAEs ship float32; only the conditioner and the transformer are bfloat16.
       modular_component_dtypes={
@@ -5734,7 +5757,102 @@ def _pika_h3_flex_example(
       ),
       extra_optimize_kwargs={"cache_config": _pika_h3_flex_cache_config(args, workflow)},
     ),
+  ), binding.reference_package
+
+
+_PIKA_H3_FLEX_T2VA_PROMPT = (
+  "A red fox trotting through a snowy pine forest at dawn, soft rim light, shallow depth of "
+  "field, the crunch of snow underfoot, cinematic.")
+
+_PIKA_H3_FLEX_FL2VA_PROMPT = (
+  "The astronaut crosses the lunar surface as the camera pushes in towards the crater rim, dust "
+  "drifting in the low gravity, earthrise on the horizon, cinematic.")
+
+_PIKA_H3_FLEX_REF2VA_PROMPT = (
+  "The astronaut from the reference image steps out of the lander and follows the hiker's trail "
+  "across the lunar surface, dust drifting in the low gravity, earthrise on the horizon, "
+  "cinematic.")
+
+
+def _pika_h3_flex_reference_class(package: str, name: str):
+  """Import one reference type from the package the loaded pipeline expects.
+
+  :param package: Module path, i.e. the binding's `reference_package`.
+  :param name: Class name, e.g. `PikaH3FlexImageReference`.
+  :returns: The class.
+  """
+  return getattr(importlib.import_module(package), name)
+
+
+def _pika_h3_flex_t2va_input_data(reference_package: Optional[str]) -> ExampleInputData:
+  """Conditioning of the `t2va` workflow: a prompt on a 448x768, 124-frame canvas.
+
+  :param reference_package: Module the pipeline's reference types come from.
+  :returns: The input holder.
+  """
+  return _pika_h3_flex_input_data(
+    reference_package=reference_package,
+    prompt=_PIKA_H3_FLEX_T2VA_PROMPT,
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
   )
+
+
+def _pika_h3_flex_fl2va_input_data(args: argparse.Namespace,
+                                   reference_package: Optional[str]) -> ExampleInputData:
+  """Conditioning of the `fl2va` workflow: a first and/or last keyframe plus a prompt.
+
+  :param args: CLI arguments, for the `--image-path` / `--last-image-path` overrides.
+  :param reference_package: Module the pipeline's reference types come from.
+  :returns: The input holder.
+  """
+
+  def _load(name: str, override):
+    return None if override is not None else load_image(_minimax_h3_demo_asset(name)).convert("RGB")
+
+  return _pika_h3_flex_input_data(
+    reference_package=reference_package,
+    prompt=_PIKA_H3_FLEX_FL2VA_PROMPT,
+    image=_load("first_frame.png", args.image_path),
+    last_image=_load("last_frame.png", getattr(args, "last_image_path", None)),
+    # The pipeline center-crops each keyframe onto the canvas itself.
+    skip_image_resize=True,
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+  )
+
+
+def _pika_h3_flex_ref2va_input_data(args: argparse.Namespace,
+                                    reference_package: Optional[str]) -> ExampleInputData:
+  """Conditioning of the `ref2va` workflow: ordered image / video / audio references.
+
+  :param args: CLI arguments, for the `--reference-*-path` overrides.
+  :param reference_package: Module the pipeline's reference types come from.
+  :returns: The input holder.
+  """
+  input_data = _pika_h3_flex_input_data(
+    reference_package=reference_package,
+    prompt=_PIKA_H3_FLEX_REF2VA_PROMPT,
+    height=448,
+    width=768,
+    num_frames=124,
+    num_inference_steps=_PIKA_H3_FLEX_STEPS,
+  )
+  if not any(
+      getattr(args, attr, None)
+      for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
+    # Image only: the bundled MiniMax-H3 demo clip is 1.5 s, below this model's 2 s floor, so using it
+    # by default would fail the reference validation only after the 62 GiB `transformer_ref` load.
+    reference_class = _pika_h3_flex_reference_class(
+      reference_package or _PIKA_H3_FLEX_REFERENCE_PACKAGE, "PikaH3FlexImageReference")
+    input_data.set_references([
+      reference_class.from_file(_minimax_h3_demo_asset("first_frame.png")),
+    ])
+  return input_data
 
 
 @ExampleRegister.register("pika_h3_flex", default=_PIKA_H3_FLEX_DEFAULT)
@@ -5742,18 +5860,38 @@ def pika_h3_flex_example(args: argparse.Namespace, **kwargs) -> Example:
   """T2VA (text to video + synchronized stereo audio) with Pika H3 Flex.
 
   :param args: CLI arguments.
-  :returns: The Pika H3 Flex t2va example.
+  :returns: The Pika H3 Flex t2va example, on the official pipeline when it is importable.
   """
-  example = _pika_h3_flex_example(args, workflow="t2va", task_type=ExampleType.T2VA)
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="t2va",
+                                                     task_type=ExampleType.T2VA)
   example.input_data = _pika_h3_flex_input_data(
-    prompt=(
-      "A red fox trotting through a snowy pine forest at dawn, soft rim light, shallow depth of "
-      "field, the crunch of snow underfoot, cinematic."),
+    reference_package=reference_package,
+    prompt=_PIKA_H3_FLEX_T2VA_PROMPT,
     height=448,
     width=768,
     num_frames=124,
     num_inference_steps=_PIKA_H3_FLEX_STEPS,
   )
+  return example
+
+
+@ExampleRegister.register("pika_h3_flex_vendored", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_vendored_example(args: argparse.Namespace, **kwargs) -> Example:
+  """T2VA through the vendored Pika H3 Flex pipeline.
+
+  The vendored copy is the `diffusers < 0.43` fallback; this entry point exists to run it on a
+  release that also ships the official pipeline, e.g. to compare the two or to reproduce a fallback
+  number.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex t2va example, on the vendored pipeline.
+  """
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="t2va",
+                                                     task_type=ExampleType.T2VA,
+                                                     vendored=True)
+  example.input_data = _pika_h3_flex_t2va_input_data(reference_package)
   return example
 
 
@@ -5766,26 +5904,12 @@ def pika_h3_flex_fl2va_example(args: argparse.Namespace, **kwargs) -> Example:
   `t2va` entry point apply unchanged.
 
   :param args: CLI arguments.
-  :returns: The Pika H3 Flex fl2va example.
+  :returns: The Pika H3 Flex fl2va example, on the official pipeline when it is importable.
   """
-  example = _pika_h3_flex_example(args, workflow="fl2va", task_type=ExampleType.FL2VA)
-
-  def _load(name: str, override):
-    return None if override is not None else load_image(_minimax_h3_demo_asset(name)).convert("RGB")
-
-  example.input_data = ExampleInputData(
-    prompt=(
-      "The astronaut crosses the lunar surface as the camera pushes in towards the crater rim, dust "
-      "drifting in the low gravity, earthrise on the horizon, cinematic."),
-    image=_load("first_frame.png", args.image_path),
-    last_image=_load("last_frame.png", getattr(args, "last_image_path", None)),
-    # The pipeline center-crops each keyframe onto the canvas itself.
-    skip_image_resize=True,
-    height=448,
-    width=768,
-    num_frames=124,
-    num_inference_steps=_PIKA_H3_FLEX_STEPS,
-  )
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="fl2va",
+                                                     task_type=ExampleType.FL2VA)
+  example.input_data = _pika_h3_flex_fl2va_input_data(args, reference_package)
   return example
 
 
@@ -5802,30 +5926,42 @@ def pika_h3_flex_ref2va_example(args: argparse.Namespace, **kwargs) -> Example:
   `--reference-video-path`. The bundled MiniMax-H3 demo clip is 1.5 s and would be rejected.
 
   :param args: CLI arguments.
-  :returns: The Pika H3 Flex ref2va example.
+  :returns: The Pika H3 Flex ref2va example, on the official pipeline when it is importable.
   """
-  from ..models.pipelines.pika_h3_flex import PikaH3FlexImageReference
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="ref2va",
+                                                     task_type=ExampleType.REF2VA)
+  example.input_data = _pika_h3_flex_ref2va_input_data(args, reference_package)
+  return example
 
-  example = _pika_h3_flex_example(args, workflow="ref2va", task_type=ExampleType.REF2VA)
-  input_data = _pika_h3_flex_input_data(
-    prompt=(
-      "The astronaut from the reference image steps out of the lander and follows the hiker's trail "
-      "across the lunar surface, dust drifting in the low gravity, earthrise on the horizon, "
-      "cinematic."),
-    height=448,
-    width=768,
-    num_frames=124,
-    num_inference_steps=_PIKA_H3_FLEX_STEPS,
-  )
-  if not any(
-      getattr(args, attr, None)
-      for attr in ("reference_image_path", "reference_video_path", "reference_audio_path")):
-    # Image only: the bundled MiniMax-H3 demo clip is 1.5 s, below this model's 2 s floor, so using it
-    # by default would fail the reference validation only after the 62 GiB `transformer_ref` load.
-    input_data.set_references([
-      PikaH3FlexImageReference.from_file(_minimax_h3_demo_asset("first_frame.png")),
-    ])
-  example.input_data = input_data
+
+@ExampleRegister.register("pika_h3_flex_fl2va_vendored", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_fl2va_vendored_example(args: argparse.Namespace, **kwargs) -> Example:
+  """FL2VA through the vendored Pika H3 Flex pipeline.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex fl2va example, on the vendored pipeline.
+  """
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="fl2va",
+                                                     task_type=ExampleType.FL2VA,
+                                                     vendored=True)
+  example.input_data = _pika_h3_flex_fl2va_input_data(args, reference_package)
+  return example
+
+
+@ExampleRegister.register("pika_h3_flex_ref2va_vendored", default=_PIKA_H3_FLEX_DEFAULT)
+def pika_h3_flex_ref2va_vendored_example(args: argparse.Namespace, **kwargs) -> Example:
+  """REF2VA through the vendored Pika H3 Flex pipeline.
+
+  :param args: CLI arguments.
+  :returns: The Pika H3 Flex ref2va example, on the vendored pipeline.
+  """
+  example, reference_package = _pika_h3_flex_example(args,
+                                                     workflow="ref2va",
+                                                     task_type=ExampleType.REF2VA,
+                                                     vendored=True)
+  example.input_data = _pika_h3_flex_ref2va_input_data(args, reference_package)
   return example
 
 
