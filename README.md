@@ -137,7 +137,7 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
 | Image | MiniMax-H3-Image (T2I) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | MiniMax-H3-Image (Edit) 🔥 | [`🤗diffusers@0.42.0`][diffusers-url], [`🤗HF`](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | P-H3-Image (T2I) 🔥 | [`🤗diffusers@0.43.0`][diffusers-url], [`🤗HF`](https://huggingface.co/PrunaAI/P-H3-Image) | 1 | ✔️/✔️/✖️/✔️ |
-| Image | P-H3-Image (Edit) 🔥 | [`🤗diffusers@m0.43.0`][diffusers-url], [`🤗HF`](https://huggingface.co/PrunaAI/P-H3-Image) | 1 | ✔️/✔️/✖️/✔️ |
+| Image | P-H3-Image (Edit) 🔥 | [`🤗diffusers@0.43.0`][diffusers-url], [`🤗HF`](https://huggingface.co/PrunaAI/P-H3-Image) | 1 | ✔️/✔️/✖️/✔️ |
 | Image | Joy-Image| [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/jdopensource/JoyAI-Image-Edit-Diffusers) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Krea-2 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/krea/Krea-2-Raw) | 1 | ✔️/✔️/✔️/✔️ |
 | Image | Ideogram 4 🔥 | [`🤗diffusers@0.39.0`][diffusers-url], [`🤗HF`](https://huggingface.co/ideogram-ai/ideogram-4-fp8) | 1 | ✔️/✔️/✔️/✔️ |
@@ -207,26 +207,26 @@ Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffus
   <p> <h2>🚀Built-in Pipelines Beyond 🤗Diffusers</h2>
 </div>
 
-[cache-dit-url]: https://github.com/vipshop/cache-dit/tree/main/src/cache_dit/models/pipelines
+[cache-dit-url]: https://github.com/vipshop/cache-dit/tree/v1.5.5/src/cache_dit/models/pipelines
 
 <div align="center" markdown="1">
 
 | Modality | Pipeline Series | Model Sources | Variants | C/P/Q/OF |
 |:----------|:----------------|:-------------|:----------|:-------|
-| Video | SANA-Video 2.0 (T2V/TI2V) | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | LingBot-Video Dense 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MAGI-2 Preview (T2VA/I2VA)  | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/sand-ai/MAGI-2-preview) | 2 | ✖️/✔️/✖️/✔️ |
-| Image | Boogu-Image (T2I/IE2I) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Boogu/Boogu-Image-0.1-Edit) | 1 | ✔️/✔️/✔️/✔️ |
-| Image | MOSS-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | Ming-Image 0.1 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
-| Image | HiDream-O1-Image 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Fast-H3 🔥 |  [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✔️/✔️/✔️ |
-| Video | CausVid-Wan 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
-| Video | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | LongCat-Video (A2V/AI2V) | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | MOVA 360p (T2VA/I2VA) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOVA-360p) | 1 | ✔️/✔️/✔️/✔️ |
-| Video | HY-Nomas (T2V) 🔥 | [`🎯cache-dit@main`][cache-dit-url], [`🤗HF`](https://huggingface.co/tencent/Hy-Nomas) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | SANA-Video 2.0 (T2V/TI2V) | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2.0_5B_720p) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | LingBot-Video Dense 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/robbyant/lingbot-video-dense-1.3b) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MAGI-2 Preview (T2VA/I2VA)  | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/sand-ai/MAGI-2-preview) | 2 | ✖️/✔️/✖️/✔️ |
+| Image | Boogu-Image (T2I/IE2I) 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/Boogu/Boogu-Image-0.1-Edit) | 1 | ✔️/✔️/✔️/✔️ |
+| Image | MOSS-Image 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | Ming-Image 0.1 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/inclusionAI/Ming-Image-0.1-Design) | 2 | ✔️/✔️/✔️/✔️ |
+| Image | HiDream-O1-Image 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/HiDream-ai/HiDream-O1-Image) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Fast-H3 🔥 |  [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree) | 2 | ✔️/✔️/✔️/✔️ |
+| Video | CausVid-Wan 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/tianweiy/CausVid) | 1 | ✖️/✔️/✔️/✔️ |
+| Video | LongLive 2.0 (5B) 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/Efficient-Large-Model/LongLive-2.0-5B) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | LongCat-Video (A2V/AI2V) | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | Wan2.2-S2V (S2V) 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | MOVA 360p (T2VA/I2VA) 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/OpenMOSS-Team/MOVA-360p) | 1 | ✔️/✔️/✔️/✔️ |
+| Video | HY-Nomas (T2V) 🔥 | [`🎯cache-dit@1.5.5`][cache-dit-url], [`🤗HF`](https://huggingface.co/tencent/Hy-Nomas) | 1 | ✔️/✔️/✔️/✔️ |
 
 <i>Cache-DiT also provides built-in pipelines for models that are not currently included in 🤗Diffusers.</i>
 

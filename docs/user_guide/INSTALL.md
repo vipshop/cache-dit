@@ -90,7 +90,7 @@ everything from scratch.
 > ```
 
 > [!NOTE]
-> Those wheels carry the local version `+cu13` (`cache-dit==1.5.3+cu13`), which is what
+> Those wheels carry the local version `+cu13` (`cache-dit==1.5.5+cu13`), which is what
 > makes them a different artefact from the PyPI release of the same version: **on the
 > same version** a local version sorts above the plain one, so it wins, and a
 > pure-Python wheel of that version which is already installed no longer satisfies the
@@ -124,27 +124,27 @@ tag of every CUDA wheel is derived from the GLIBC symbols the extension actually
 | Profile | Compiles | Version | Use |
 |---|---|---|---|
 | `mini` (default) | one conda env, one arch (`120a`) | derived from git, always carries `.dev` | exercises the whole build -> wheel -> index -> install path in minutes; its wheels are never publishable |
-| `full` | `py310`..`py314`, the setup.py default arch set | `CACHE_DIT_RELEASE_VERSION=<x.y.z>`, and the sources have to be committed | the published set |
+| `full` | `py311`..`py314`, the setup.py default arch set | `CACHE_DIT_RELEASE_VERSION=<x.y.z>`, and the sources have to be committed | the published set |
 
 ```bash
 # both wheels, in .tmp/release_build/{base,cu13}, landing in dist/.  Run this from a
 # committed tree: profile full refuses uncommitted sources, and the release tag is
 # created at the commit the publish runs in -- push it first.
-CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=1.5.3 bash tools/build_releases.sh
-# the CUDA channel: uploads the wheels as release assets of v1.5.3+cu13, regenerates
+CACHE_DIT_RELEASE_PROFILE=full CACHE_DIT_RELEASE_VERSION=1.5.5 bash tools/build_releases.sh
+# the CUDA channel: uploads the wheels as release assets of v1.5.5+cu13, regenerates
 # whl/cu13/ in the site work tree and pushes it.  The work tree is created once; every
 # later publish starts by fast-forwarding it.
 git fetch origin gh-pages && git worktree add .tmp/gh-pages gh-pages   # once
 git -C .tmp/gh-pages pull --rebase --ff-only                           # every publish
-bash tools/publish_index.sh --tag v1.5.3+cu13 \
-  --wheels "dist/cache_dit-1.5.3+cu13-"*.whl --site-repo .tmp/gh-pages
+bash tools/publish_index.sh --tag v1.5.5+cu13 \
+  --wheels "dist/cache_dit-1.5.5+cu13-"*.whl --site-repo .tmp/gh-pages
 # the PyPI release: the same version without the local segment
-python -m twine upload dist/cache_dit-1.5.3-py3-none-any.whl
+python -m twine upload dist/cache_dit-1.5.5-py3-none-any.whl
 ```
 
 The channel is what separates one CUDA toolkit's build from another, and it appears
 twice: in the index directory (`whl/cu13/`) and as the local version of the wheel
-(`1.5.3+cu13`, from `CACHE_DIT_RELEASE_CHANNEL`). `publish_index.sh` refuses a
+(`1.5.5+cu13`, from `CACHE_DIT_RELEASE_CHANNEL`). `publish_index.sh` refuses a
 pre-release version, a wheel without the channel's local version, a wheel without a
 compiled extension and a wheel whose platform tag is not manylinux; it writes each
 asset's sha256 into the index, which pip enforces, and it merges into what is already
@@ -161,8 +161,8 @@ Verify an install from the tree, and then from the published index:
 
 ```bash
 python3 -m http.server -d .tmp/gh-pages 8765 &
-pip download "cache-dit==1.5.3+cu13" --no-deps -d /tmp/dl --index-url http://127.0.0.1:8765/whl/cu13/
-pip download "cache-dit==1.5.3+cu13" --no-deps -d /tmp/dl \
+pip download "cache-dit==1.5.5+cu13" --no-deps -d /tmp/dl --index-url http://127.0.0.1:8765/whl/cu13/
+pip download "cache-dit==1.5.5+cu13" --no-deps -d /tmp/dl \
   --index-url https://vipshop.github.io/cache-dit/whl/cu13/
 ```
 
@@ -172,8 +172,8 @@ upload but still commits and pushes the site it writes into:
 
 ```bash
 CACHE_DIT_SITE_URL=https://deftruth.github.io CACHE_DIT_INDEX_PREFIX=cache-dit \
-  bash tools/publish_index.sh --index-only --tag v1.5.3+cu13 \
-  --wheels "dist/cache_dit-1.5.3+cu13-"*.whl \
-  --release-url https://github.com/vipshop/cache-dit/releases/download/v1.5.3+cu13 \
+  bash tools/publish_index.sh --index-only --tag v1.5.5+cu13 \
+  --wheels "dist/cache_dit-1.5.5+cu13-"*.whl \
+  --release-url https://github.com/vipshop/cache-dit/releases/download/v1.5.5+cu13 \
   --site-repo <that checkout>
 ```
