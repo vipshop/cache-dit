@@ -29,6 +29,7 @@ Cache-DiT is compatible with compilation, offload, and quantization, fully integ
 
 🎉Cache-DiT now supports **60+ DiT pipeline families (150+ Variants)**, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
+<!--
 <div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
 </div>
@@ -54,6 +55,7 @@ pip install git+https://github.com/vipshop/cache-dit.git # latest.
 ...   quantize_config=QuantizeConfig(quant_type=...))
 >>> output = pipe(...) # Then, just call the pipe as normal.
 ```
+-->
 
 ## 🌐Community Integration
 
