@@ -260,6 +260,15 @@ def minimax_h3_image_adapter(pipe, **kwargs) -> BlockAdapter:
   )
 
 
+@BlockAdapterRegister.register("PH3Image")
+def ph3_image_adapter(pipe, **kwargs) -> BlockAdapter:
+  # P-H3-Image is the post-trained image MiniMax-H3: same `MiniMaxH3Transformer3DModel`, same packed
+  # `[text | audio | image]` block contract, one guidance-free forward per step. Only the pipeline
+  # class differs (`PH3ImageModularPipeline`, which the `MiniMaxH3` prefix does not match), so the
+  # adapter reuses the MiniMax-H3 one instead of duplicating it.
+  return minimax_h3_adapter(pipe, **kwargs)
+
+
 @BlockAdapterRegister.register("MiniMaxH3")
 def minimax_h3_adapter(pipe, **kwargs) -> BlockAdapter:
   from diffusers import MiniMaxH3Transformer3DModel

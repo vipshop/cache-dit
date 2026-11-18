@@ -39,9 +39,9 @@ class BlockAdapterRegister:
   _warned_owned_mismatch: Set[str] = set()
   # Modular pipeline families whose adapter has been verified end to end (see the
   # cache-dit-model-integration skill, `references/modular_pipeline.md`).
-  _verified_modular_pipelines: Tuple[str,
-                                     ...] = ("Flux3", "QwenImage21", "MiniMaxH3", "MiniMaxH3Image",
-                                             "FastH3", "PikaH3Flex", "Anima", "Echo", "WanAnimate2")
+  _verified_modular_pipelines: Tuple[str, ...] = ("Flux3", "QwenImage21", "MiniMaxH3",
+                                                  "MiniMaxH3Image", "FastH3", "PikaH3Flex",
+                                                  "PH3Image", "Anima", "Echo", "WanAnimate2")
   # QwenImage / QwenImage21 are deliberately absent: their adapters decide per checkpoint
   # (Qwen-Image 2.1 samples without guidance by default, so a fixed True would halve the step count).
   # Wan is absent for the same reason: `WanAnimate2` shares the "Wan" prefix but its distilled

@@ -50,6 +50,9 @@ def _activate_auto_encoder_dp_planners():
   # Registered under its full class name; the auto-encoder planner registry matches exactly.
   AutoencoderKLMiniMaxH3ImageDataParallelismPlanner = _safe_import(  # noqa: F841
     ".autoencoder_kl_minimax_h3_image", "AutoencoderKLMiniMaxH3ImageDataParallelismPlanner")
+  # Registered under their full class names; the auto-encoder planner registry matches exactly.
+  AutoencoderKLPH3ImageDataParallelismPlanner = _safe_import(  # noqa: F841
+    ".autoencoder_kl_p_h3_image", "AutoencoderKLPH3ImageDataParallelismPlanner")
   AutoencoderKLMiniMaxH3DataParallelismPlanner = _safe_import(  # noqa: F841
     ".autoencoder_kl_minimax_h3", "AutoencoderKLMiniMaxH3DataParallelismPlanner")
 

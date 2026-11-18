@@ -14,6 +14,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Pika H3 Flex (REF2VA)|✖️|✅|✅|
 |MiniMax-H3-Image (T2I)|✅|✅|✅|
 |MiniMax-H3-Image (Edit)|✅|✅|✅|
+|P-H3-Image (T2I)|✖️|✅|✅|
+|P-H3-Image (Edit)|✖️|✅|✅|
 |LingBot-Video-Dense-1.3B|✅|✅|✅|
 |LongLive-2.0-5B|✅|✅|✅|
 |Magi-2-Preview (T2VA/I2VA)|✖️|✅|✅|
@@ -148,6 +150,8 @@ One Model Series may contain many pipelines. cache-dit applies optimizations at 
 |Pika H3 Flex (REF2VA)|✅|✅|
 |MiniMax-H3-Image (T2I)|✅|✅|
 |MiniMax-H3-Image (Edit)|✅|✅|
+|P-H3-Image (T2I)|✅|✅|
+|P-H3-Image (Edit)|✅|✅|
 |FLUX.2-Klein-9b-kv|✅|✅|
 |LongLive-2.0-5B|✅|✅|
 |CausVid-Wan|✅|✅|

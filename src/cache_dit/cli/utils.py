@@ -330,11 +330,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--prompt-enhancer",
     type=str,
     default=None,
-    help=("Local path of the MiniMax-H3-Image-PE **blocks** repository "
-          "(`diffusers/minimax-h3-image-pe-blocks`). When set, `minimax_h3_image` / "
-          "`minimax_h3_image_edit` expand the prompt with it and, unless `--height/--width` are "
-          "given, take the recommended aspect ratio. Off by default: the expanded caption is a "
-          "different input, and the ~19 GiB enhancer dominates the latency."),
+    help=("Local path of an optional prompt-enhancer repository. When set, the examples that own "
+          "such a step expand the prompt with it instead of rendering the prompt as given; the "
+          "per-example docstring says where the weights come from and what else changes. Off by "
+          "default: the expanded caption is a different input distribution, and the enhancer is "
+          "18-19 GiB that no `--parallel*` option covers."),
   )
   parser.add_argument(
     "--mask-image-path",
