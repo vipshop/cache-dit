@@ -58,7 +58,7 @@ pip install git+https://github.com/vipshop/cache-dit.git # latest.
 </div>
 
 ```bash
-# Required: CUDA >= 13.2, PyTorch 2.15 (a CUDA 13 build), GLIBC >= 2.34.
+# Required: CUDA >= 13.2, PyTorch 2.15 (a CUDA 13.2 build), with GLIBC >= 2.34.
 pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/ 
 # Latest, from source: one flag builds every CUDA extension (svdq, attn, ulysses, etc).
 git submodule update --init --recursive --force # custom kernels need: cutlass, spdlog.
