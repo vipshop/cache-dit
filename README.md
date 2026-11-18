@@ -27,35 +27,7 @@ Cache-DiT is compatible with compilation, offload, and quantization, fully integ
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
-🎉Cache-DiT now supports **60+ DiT pipeline families (150+ Variants)**, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
-
-<!--
-<div align="center">
-  <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
-</div>
-
-```bash
-pip install -U cache-dit # PyPI, stable release.
-pip install git+https://github.com/vipshop/cache-dit.git # latest.
-```
-
-```python
->>> import cache_dit
->>> from diffusers import DiffusionPipeline
->>> pipe = DiffusionPipeline.from_pretrained(...).to("cuda")
->>> cache_dit.enable_cache(pipe) # Cache Acceleration with One-line code.
->>> from cache_dit import DBCacheConfig, ParallelismConfig
->>> cache_dit.enable_cache( # Or, Hybrid Cache Acceleration + Parallelism.
-...   pipe, cache_config=DBCacheConfig(), # w/ default
-...   parallelism_config=ParallelismConfig(ulysses_size=2))
->>> from cache_dit import DBCacheConfig, ParallelismConfig, QuantizeConfig
->>> cache_dit.enable_cache( # Or, Hybrid Cache + Parallelism + Quantization.
-...   pipe, cache_config=DBCacheConfig(), # w/ default
-...   parallelism_config=ParallelismConfig(ulysses_size=2),
-...   quantize_config=QuantizeConfig(quant_type=...))
->>> output = pipe(...) # Then, just call the pipe as normal.
-```
--->
+Cache-DiT now supports **60+ DiT pipeline families (150+ Variants)**, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 ## 🌐Community Integration
 
