@@ -23,10 +23,9 @@
     <p>
       The command adds this index as <code>--extra-index-url</code> rather than
       <code>--index-url</code>: it holds <code>cache-dit</code> alone, with no
-      dependencies, so PyPI has to stay the index those come from.  That is also the
-      form <code>uv</code> resolves: it searches the extra indexes before the default
-      one, so naming PyPI as the extra index instead would leave it considering the
-      PyPI release only.
+      dependencies, so PyPI has to stay the index those come from.  pip merges the two
+      indexes and takes the highest version, so this one command installs the CUDA
+      build.
     </p>
     <p>
       <code>cache-dit</code> is the same distribution PyPI lists, built here with
@@ -46,7 +45,7 @@
       here, and the install would quietly fall back to a wheel without the extension.
     </p>
     <p>
-      Platform tags: <code>manylinux_2_38_x86_64</code> -- the tag reflects the
+      Platform tags: <code>manylinux_2_34_x86_64, manylinux_2_38_x86_64</code> -- the tag reflects the
       GLIBC symbols the extension actually needs, so pip refuses a wheel this
       machine cannot run.
     </p>
@@ -57,6 +56,10 @@
       <li><code>cache_dit-1.5.3+cu13-cp312-cp312-manylinux_2_38_x86_64.whl</code></li>
       <li><code>cache_dit-1.5.3+cu13-cp313-cp313-manylinux_2_38_x86_64.whl</code></li>
       <li><code>cache_dit-1.5.3+cu13-cp314-cp314-manylinux_2_38_x86_64.whl</code></li>
+      <li><code>cache_dit-1.5.5+cu13-cp311-cp311-manylinux_2_34_x86_64.whl</code></li>
+      <li><code>cache_dit-1.5.5+cu13-cp312-cp312-manylinux_2_34_x86_64.whl</code></li>
+      <li><code>cache_dit-1.5.5+cu13-cp313-cp313-manylinux_2_34_x86_64.whl</code></li>
+      <li><code>cache_dit-1.5.5+cu13-cp314-cp314-manylinux_2_34_x86_64.whl</code></li>
     </ul>
   </body>
 </html>
