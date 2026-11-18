@@ -88,6 +88,19 @@ class TaylorSeerState:
         break
     return dY_current
 
+  def _basis_term(self, i: int, elapsed: int) -> float:
+    """Return the i-th extrapolation weight evaluated at `elapsed`.
+
+    The derivative ladder is basis-agnostic; only this weight changes when a subclass swaps the
+    polynomial basis (see `hicache.py`, which builds the damped-Hermite basis on the same ladder).
+
+    :param i: Basis order, starting at 0 for the constant term.
+    :param elapsed: Steps between the current step and the last full-compute anchor.
+    :returns: The weight multiplying the i-th finite difference.
+    """
+
+    return elapsed ** i
+
   def approximate(self) -> torch.Tensor:  # NEED
     """Evaluate the Taylor expansion at the current elapsed step.
 
@@ -98,7 +111,7 @@ class TaylorSeerState:
     output = 0
     for i, derivative in enumerate(self.state["dY_current"]):
       if derivative is not None:
-        output += (1 / math.factorial(i)) * derivative * (elapsed ** i)
+        output += (1 / math.factorial(i)) * derivative * self._basis_term(i, elapsed)
       else:
         break
     return output

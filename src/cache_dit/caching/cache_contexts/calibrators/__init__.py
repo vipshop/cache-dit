@@ -3,6 +3,7 @@ from .taylorseer import TaylorSeerCalibrator
 from .foca import FoCaCalibrator
 from .dmd import DMDCalibrator
 from .svd import SVDCalibrator, validate_svd_params
+from .hicache import HiCacheCalibrator, validate_hicache_params
 
 import dataclasses
 from typing import Any, Dict
@@ -359,10 +360,79 @@ class SVDCalibratorConfig(CalibratorConfig):
     return kwargs
 
 
+@dataclasses.dataclass
+class HiCacheCalibratorConfig(CalibratorConfig):
+  """Config for the HiCache damped-Hermite forecasting calibrator.
+
+  HiCache (arXiv 2508.16984) keeps TaylorSeer's finite-difference ladder and replaces only the
+  extrapolation basis: ``elapsed**k -> sigma**k * H_k(sigma * elapsed)``, with ``H`` the
+  physicist Hermite polynomial. The paper's fixed refresh interval and per-layer caching are NOT
+  replicated: DBCache's adaptive threshold owns the schedule, so ``sigma`` is coupled to the cache
+  aggressiveness and must be re-swept per model instead of copied from the paper.
+  """
+
+  # enable_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for hidden_states (or hidden_states residual),
+  #     such as taylorseer, foca, dmd, svd, hicache, and so on.
+  enable_calibrator: bool = True
+  # enable_encoder_calibrator (`bool`, *required*,  defaults to True):
+  #     Whether to enable calibrator, if True. means that user want to use DBCache
+  #     with specific calibrator for encoder_hidden_states (or encoder_hidden_states
+  #     residual), such as taylorseer, foca, dmd, svd, hicache, and so on.
+  enable_encoder_calibrator: bool = True
+  # calibrator_type (`str`, *required*,  defaults to 'hicache'):
+  #    The specific type for calibrator, taylorseer, foca, dmd, svd or hicache, etc.
+  calibrator_type: str = "hicache"
+  # hicache_order (`int`, *optional*, defaults to 2):
+  #    Highest finite-difference order kept (the paper's N_order, capped at 4). 0 reproduces
+  #    plain anchor reuse, 1 keeps a first-order extrapolation, and 2 is what the paper's FLUX
+  #    numbers use.
+  hicache_order: int = 2
+  # hicache_sigma (`float`, *optional*, defaults to 0.5):
+  #    Damping factor of the Hermite basis, in (0, 1]. The paper uses 0.4-0.5. sigma=1 keeps the
+  #    undamped physicist-Hermite basis, whose ablation in the paper is worse than Taylor, so it
+  #    is a control point rather than a default.
+  hicache_sigma: float = 0.5
+
+  def __post_init__(self):
+    """Validate the HiCache hyper-parameters while the config is built.
+
+    :raises ValueError: When `hicache_order` or `hicache_sigma` is outside its domain, so a bad
+        YAML/CLI value fails at parse time instead of in the middle of the first diffusion run.
+    """
+
+    validate_hicache_params(self.hicache_sigma, self.hicache_order)
+
+  def strify(self, **kwargs) -> str:
+    """Return a compact tag that includes the order and the damping factor.
+
+    :param kwargs: Additional keyword arguments forwarded to the underlying implementation.
+    :returns: A compact HiCache tag for logs, summaries, or filenames.
+    """
+
+    if kwargs.get("details", False):
+      return f"HiCache_O({self.hicache_order}, sigma={self.hicache_sigma:g})"
+    return f"HC{self.hicache_order}S{self.hicache_sigma:g}"
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `HiCacheCalibrator` init kwargs.
+
+    :returns: Keyword arguments expected by `HiCacheCalibrator`.
+    """
+
+    kwargs = dict(self.calibrator_kwargs or {})
+    kwargs["n_derivatives"] = self.hicache_order
+    kwargs["sigma"] = self.hicache_sigma
+    return kwargs
+
+
 _CALIBRATOR_ALIASES = {
   "svd-calibrator": "svd",
   "svd-cache": "svd",
   "svdcache": "svd",
+  "hicache-calibrator": "hicache",
+  "hi-cache": "hicache",
   "taylorseer-calibrator": "taylorseer",
   "dmd-calibrator": "dmd",
   "foca-calibrator": "foca",
@@ -388,6 +458,7 @@ class Calibrator:
     "dmd",
     "foca",
     "svd",
+    "hicache",
   ]
 
   def __new__(
@@ -412,5 +483,7 @@ class Calibrator:
       return FoCaCalibrator(**calibrator_config.to_kwargs())
     elif calibrator_type == "svd":
       return SVDCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_type == "hicache":
+      return HiCacheCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
