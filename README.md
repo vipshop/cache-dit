@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (SVDQ/FP8/FP4), [cpu offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) and [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/USP/TE-P/VAE-P/2D-P/3D-P) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
+**Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (SVDQ/FP8/FP4/INI4), [cpu offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) and [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/USP/TE-P/VAE-P/2D-P/3D-P) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
 
 <div align="center">
   <i>Cache-DiT is fast, easy to use, and flexible for various DiTs</i>
