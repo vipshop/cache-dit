@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**🤗Cache-DiT** is a PyTorch-native inference engine for DiTs. It provides [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, etc), quantization, cpu offload and [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/TE-P/VAE-P/Hybrid). 
+**🤗Cache-DiT** is a PyTorch-native inference engine with [cache](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/), [offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) and [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/TE-P/VAE-P/Hybrid) for DiTs. 
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
