@@ -7,6 +7,7 @@ from .cache_contexts import (
   DMDCalibratorConfig,
   FoCaCalibratorConfig,
   SVDCalibratorConfig,
+  HiCacheCalibratorConfig,
   DBPruneConfig,
   CalibratorConfig,
 )
@@ -37,14 +38,19 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     kwargs: dict = copy.deepcopy(cache_kwargs)
     cache_context_kwargs = {}
 
-    # TaylorSeer, DMD, FoCa, and SVD-Cache are mutually exclusive.
+    # TaylorSeer, DMD, FoCa, SVD-Cache, and HiCache are mutually exclusive.
     enable_taylorseer = kwargs.get("enable_taylorseer", False)
     enable_dmd = kwargs.get("enable_dmd", False)
     enable_foca = kwargs.get("enable_foca", False)
     enable_svd = kwargs.get("enable_svd", False)
-    if sum([enable_taylorseer, enable_dmd, enable_foca, enable_svd]) > 1:
-      raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, and `enable_svd` are "
-                       "mutually exclusive. Please set only one of them to true.")
+    enable_hicache = kwargs.get("enable_hicache", False)
+    if sum([enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache]) > 1:
+      raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, `enable_svd`, and "
+                       "`enable_hicache` are mutually exclusive. Please set only one of them "
+                       "to true.")
+
+    # HiCache follows the main switch for encoder states, like DMD and SVD-Cache.
+    enable_encoder_hicache = kwargs.get("enable_encoder_hicache", enable_hicache)
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -105,6 +111,20 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         svd_max_rank=kwargs.get("svd_max_rank", 0),
         svd_predictor=kwargs.get("svd_predictor", "ema"),
         svd_order=kwargs.get("svd_order", 1),
+      ))
+    elif enable_hicache:
+      cache_context_kwargs["calibrator_config"] = (HiCacheCalibratorConfig(
+        enable_calibrator=kwargs.get("enable_hicache"),
+        enable_encoder_calibrator=enable_encoder_hicache,
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        hicache_order=kwargs.get("hicache_order", 2),
+        hicache_sigma=kwargs.get("hicache_sigma", 0.5),
+      ) if not reset else HiCacheCalibratorConfig().reset(
+        enable_calibrator=kwargs.get("enable_hicache"),
+        enable_encoder_calibrator=enable_encoder_hicache,
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        hicache_order=kwargs.get("hicache_order", 2),
+        hicache_sigma=kwargs.get("hicache_sigma", 0.5),
       ))
 
     if "cache_type" not in kwargs:

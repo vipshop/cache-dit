@@ -24,6 +24,7 @@ from ..caching import (
   DMDCalibratorConfig,
   FoCaCalibratorConfig,
   SVDCalibratorConfig,
+  HiCacheCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -144,6 +145,10 @@ _CALIBRATOR_PARAM_SPECS: Dict[str, Dict[str, Tuple[str, Any]]] = {
     "predictor": ("svd_predictor", str),
     "order": ("svd_order", int),
   },
+  "hicache": {
+    "order": ("hicache_order", int),
+    "sigma": ("hicache_sigma", float),
+  },
 }
 
 # Keys every calibrator accepts; they live on `CalibratorConfig` itself.
@@ -172,6 +177,7 @@ _CALIBRATOR_CONFIG_CLASSES = {
   "dmd": DMDCalibratorConfig,
   "foca": FoCaCalibratorConfig,
   "svd": SVDCalibratorConfig,
+  "hicache": HiCacheCalibratorConfig,
 }
 
 
@@ -613,9 +619,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--calibrator",
     type=_parse_calibrator_arg,
     default=None,
-    help="DBCache calibrator to enable: taylorseer, dmd, foca, or svd (SVD-Cache). "
-    "Long forms such as 'svd-calibrator' are accepted. Requires --cache. "
-    "The legacy --taylorseer/--dmd/--foca flags still work and map here.",
+    help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), or "
+    "hicache (damped-Hermite). Long forms such as 'svd-calibrator' are accepted. "
+    "Requires --cache. The legacy --taylorseer/--dmd/--foca flags still work and map here.",
   )
   parser.add_argument(
     "--calibrator-params",
@@ -623,6 +629,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=None,
     help="Calibrator options as a comma separated key=value list, e.g. "
     "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
+    "'order=2,sigma=0.5' for hicache, "
     "'history=6,svd_precision=low' for dmd, "
     "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
   )

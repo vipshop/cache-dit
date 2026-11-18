@@ -100,6 +100,7 @@ python3 -m cache_dit.generate generate longcat_image_edit
 python3 -m cache_dit.generate flux --cache
 python3 -m cache_dit.generate flux --cache --taylorseer
 python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
+python3 -m cache_dit.generate flux --cache --calibrator hicache --calibrator-params "order=2,sigma=0.5"
 python3 -m cache_dit.generate flux_nunchaku --cache
 python3 -m cache_dit.generate qwen_image --cache
 python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast
@@ -433,14 +434,15 @@ options:
                         calibrator for CacheDiT
   --calibrator CALIBRATOR
                         DBCache calibrator to enable: taylorseer, dmd, foca,
-                        or svd (SVD-Cache). Long forms such as 'svd-
-                        calibrator' are accepted. Requires --cache. The legacy
-                        --taylorseer/--dmd/--foca flags still work and map
-                        here.
+                        svd (SVD-Cache), or hicache (damped-Hermite). Long
+                        forms such as 'svd-calibrator' are accepted. Requires
+                        --cache. The legacy --taylorseer/--dmd/--foca flags
+                        still work and map here.
   --calibrator-params CALIBRATOR_PARAMS
                         Calibrator options as a comma separated key=value
                         list, e.g. 'tau=0.9,beta=0.9' or
                         'predictor=taylor,order=1' for svd,
+                        'order=2,sigma=0.5' for hicache,
                         'history=6,svd_precision=low' for dmd, or
                         'calibrator_cache_type=hidden_states,encoder=false'
                         for any calibrator.

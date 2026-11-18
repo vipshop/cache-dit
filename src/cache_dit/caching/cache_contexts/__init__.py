@@ -6,6 +6,7 @@ from .calibrators import (
   FoCaCalibratorConfig,
   DMDCalibratorConfig,
   SVDCalibratorConfig,
+  HiCacheCalibratorConfig,
 )
 from .cache_config import (
   BasicCacheConfig,

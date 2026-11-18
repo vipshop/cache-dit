@@ -469,6 +469,73 @@ Please note that if you have used TaylorSeer as the calibrator for approximate h
 |24.85s|12.85s|12.86s|10.27s|8.48s|
 |<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.12_S14_T12.85s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T1ET1_R0.12_S14_T12.86s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C0_DBCACHE_F1B0S1W0T0ET0_R0.15_S17_T10.27s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/U0_C1_DBCACHE_F1B0S1W0T1ET1_R0.15_S17_T8.48s.png width=130px>|
 
+## HiCache Calibrator: Damped Hermite Basis
+
+<div id="hicache"></div>
+
+**<span style="color:#c77dff;">HiCache</span>** ([HiCache: Accelerating Diffusion Models with Hermite Feature Caching](https://arxiv.org/abs/2508.16984)) keeps TaylorSeer's finite-difference ladder and replaces **only** the extrapolation basis:
+
+$$\hat{Y}(t) = Y(0) + \sum_{k=1}^{N} \frac{1}{k!} \Delta^k Y \cdot \tilde{H}_k(t), \qquad \tilde{H}_k(t) = \sigma^k H_k(\sigma t)$$
+
+where $H_k$ is the physicist Hermite polynomial ($H_0=1$, $H_1=2x$, $H_{k+1}=2xH_k-2kH_{k-1}$). Every higher order is damped by $\sigma^2$ — the first-order gain is $2\sigma^2$ instead of Taylor's $1$ — so the extrapolation stays bounded over the longer skip intervals where a raw polynomial diverges. The finite differences $\Delta^kY$ are computed by exactly the same code as TaylorSeer.
+
+```python
+from cache_dit import DBCacheConfig, HiCacheCalibratorConfig
+
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=8,
+    Bn_compute_blocks=0,  # Bn=0 since the calibrator replaces Bn
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=HiCacheCalibratorConfig(
+    hicache_order=2,    # N_order, capped at 4
+    hicache_sigma=0.5,  # 0.4-0.5 in the paper
+  ),
+)
+```
+
+The same selection from the CLI:
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator hicache \
+  --calibrator-params order=2,sigma=0.5
+```
+
+Two facts change how the paper's numbers transfer, and they are not implementation details:
+
+- **The schedule still comes from DBCache.** The paper refreshes on a fixed interval $N_{interval}$ and caches per-layer features. cache-dit keeps its adaptive `residual_diff_threshold` and its block granularity, so `elapsed` and the ladder spacing vary per hit. The sum is therefore a **basis substitution**, not a Hermite interpolation of uniformly spaced samples.
+- **`sigma` is coupled to the cache aggressiveness and must be re-swept per model.** The paper calibrates it at a fixed interval on FLUX (0.4-0.5). `sigma = 1` keeps the *undamped* Hermite basis and is measurably worse than TaylorSeer in the paper's own ablation, while `sigma = 1/\sqrt{2}` makes the first-order term identical to Taylor's — neither is a drop-in default.
+
+Measured (FLUX.1-dev, 1024², 28 steps, prompt "A cat holding a sign that says hello world", seed 0, `residual_diff_threshold=0.12`, 12 of 28 steps cached at **identical positions** in every row so the schedule is not a confounder; 1× RTX PRO 5000, torch 2.15.0, single prompt — a wiring probe, not a benchmark):
+
+| Config | PSNR (dB) | SSIM | Latency |
+|:--|:--:|:--:|:--:|
+| DBCache reuse (`rdt 0.12`) | 31.72 | 0.9706 | 9.88s |
+| + TaylorSeer (order 2) | 30.91 | 0.9733 | 9.88s |
+| + HiCache (order 2, σ=0.4) | 33.10 | 0.9765 | 9.89s |
+| + HiCache (order 2, σ=0.5) | **33.33** | **0.9781** | 9.88s |
+| + HiCache (order 1, σ=0.5) | 33.36 | 0.9779 | 9.91s |
+| + HiCache (order 2, σ=1/√2) | 32.44 | 0.9770 | 9.88s |
+| + HiCache (order 2, σ=1.0) | 24.99 | 0.9280 | 9.89s |
+
+Two readings: the **damping is what carries the gain** — the undamped basis (σ=1) collapses to 25 dB, the same direction as the paper's σ ablation, which is the cheapest proof that the basis is wired and not silently falling back to TaylorSeer; and within this probe **order 1 is already enough at ~1.7×**. A mask-pinned pair (`--steps-mask --mask-policy medium`, 9 cached steps, schedule independent of the forecast) keeps the ordering (TaylorSeer 27.77 dB vs HiCache 29.36 dB), so the gap comes from the basis rather than from a shifted hit sequence. The `+ compile` row lands at 27.5-28.2 dB and differs run to run, as with every calibrator under `torch.compile`.
+
+<details markdown="1">
+<summary>📖 HiCache Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `hicache_order` | `int` | 2 | Highest finite-difference/Hermite order kept (the paper's $N_{order}$, capped at 4). `0` reproduces plain anchor reuse. |
+| `hicache_sigma` | `float` | 0.5 | Damping factor of the Hermite basis, in (0, 1]. The paper uses 0.4-0.5. |
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Whether to enable the calibrator for encoder hidden states. |
+
+</details>
+
 ## DMD Calibrator: Dynamic Mode Decomposition
 
 <div id="dmd"></div>
@@ -727,19 +794,19 @@ The basis is fitted once per stream, so the cost is dominated by a single econom
 
 </details>
 
-## TaylorSeer vs DMD vs FoCa vs SVD-Cache: When to Use Which
+## TaylorSeer vs HiCache vs DMD vs FoCa vs SVD-Cache: When to Use Which
 
 <div align="center" markdown="1">
 
-| Aspect | TaylorSeer (Polynomial) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
-|:---|:---|:---|:---|:---|
-| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
-| **Anchor** | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
-| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
-| **Per-step cost** | O(1) | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
-| **Hyper-parameters** | `taylorseer_order` (default 1) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
-| **Best for** | DiT DDPM | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
-| **Memory** | 2× tensors (derivative ladder) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
+| Aspect | TaylorSeer (Polynomial) | HiCache (Damped Hermite) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
+|:---|:---|:---|:---|:---|:---|
+| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Damped Hermite: $\sum \frac{\Delta^nY}{n!}\sigma^n H_n(\sigma t)$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
+| **Anchor** | Most recent full-compute step | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded: order $n$ damped by $\sigma^{2n}$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
+| **Per-step cost** | O(1) | O(1) — same ladder as TaylorSeer | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
+| **Hyper-parameters** | `taylorseer_order` (default 1) | `hicache_order` (default 2, ≤4), `hicache_sigma` (default 0.5) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
+| **Best for** | DiT DDPM | Aggressive caching with long skip intervals; re-sweep `sigma` per model and threshold | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
+| **Memory** | 2× tensors (derivative ladder) | 2× tensors (shared with TaylorSeer) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
 
 </div>
 
