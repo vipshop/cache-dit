@@ -2,7 +2,7 @@
 """Emit the static PEP 503 index the CUDA wheels of cache-dit are installed through.
 
 The wheels live as GitHub Release assets of this repository rather than on PyPI:
-they carry a local version (``1.5.3+cu13``), which PyPI refuses, and the CUDA line
+they carry a local version (``1.5.5+cu13``), which PyPI refuses, and the CUDA line
 is meant to move on its own -- one index per toolkit, ``whl/cu13/`` today.
 
 Two builds of the same distribution exist, and the index is what tells them apart:
@@ -37,12 +37,12 @@ Usage::
     # wheels -- anything of the distribution without the channel's local version is
     # refused, the pure-Python release included.
     tools/make_index.py --out <gh-pages worktree> --prefix "" \\
-        --release-url https://github.com/vipshop/cache-dit/releases/download/v1.5.3+cu13 \\
+        --release-url https://github.com/vipshop/cache-dit/releases/download/v1.5.5+cu13 \\
         --site-url https://vipshop.github.io/cache-dit \\
-        "dist/cache_dit-1.5.3+cu13-"*.whl
+        "dist/cache_dit-1.5.5+cu13-"*.whl
     # a mirror on another site, under a directory of its own
     tools/make_index.py --out <other site> --prefix cache-dit \\
-        --site-url https://deftruth.github.io "dist/cache_dit-1.5.3+cu13-"*.whl
+        --site-url https://deftruth.github.io "dist/cache_dit-1.5.5+cu13-"*.whl
 """
 
 from __future__ import annotations
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
   parser.add_argument("--release-url",
                       required=True,
                       help="directory URL the wheels are served from, e.g. "
-                      "https://github.com/vipshop/cache-dit/releases/download/v1.5.3+cu13")
+                      "https://github.com/vipshop/cache-dit/releases/download/v1.5.5+cu13")
   parser.add_argument("--site-url",
                       required=True,
                       help="where this tree is served, for the landing page")

@@ -10,7 +10,7 @@
 | `tools/build_fast.sh` | 编译开关解析 + 加速 | ccache 影子 `CUDA_HOME`（只替换 `bin/nvcc` 为 `tools/nvcc` 包装器）；`MAX_JOBS` 默认 32；`CACHE_DIT_CLEAN=1` 清 `build/`；末尾 `python -m pip wheel . --no-build-isolation --no-deps -w dist` |
 | `tools/release_workspace.py` | 出树 workspace | 拷贝 `setup.py`+`src`（排除 `*.so`/`_version.py`/`__pycache__`/`*.egg-info`），软链 `csrc`、`.git` 与两个工具；setuptools-scm 在 workspace 内写 `_version.py`，不碰开发树 |
 | `tools/inspect_release_wheel.py` | 产物断言 | `--so none`（纯包不得含 `.so`）/ `--so svdquant`（CUDA 包必须含单一 `_C_ops` 扩展）；`_version.py` 与 METADATA 版本必须一致 |
-| `tools/repair_wheel_platform_tag.py` | 产物归一 | 扫 ELF 的 `GLIBC_x.y` 定 manylinux 下限（当前 2.38）→ 改文件名与 WHEEL 标签；`--set-rpath '$ORIGIN'`；重算 RECORD 重打包 |
+| `tools/repair_wheel_platform_tag.py` | 产物归一 | 扫 ELF 的 `GLIBC_x.y` 定 manylinux 下限（按符号推导，1.5.3 为 2.38、1.5.5 为 2.34）→ 改文件名与 WHEEL 标签；`--set-rpath '$ORIGIN'`；重算 RECORD 重打包 |
 | `tools/make_index.py` | 索引生成 | PEP 503 三层页面（通道根 → 项目页 → landing）+ `.nojekyll`；merge 语义（按文件名覆盖，历史保留）；锚点 = Release 资产 URL + `#sha256=` |
 | `tools/publish_index.sh` | 发布编排 | `gh release create`（`--latest=false`、`--target HEAD`、notes 写安装命令）→ 资产上传（幂等）→ `make_index.py` → commit/push 站点仓库 |
 
@@ -89,10 +89,10 @@ cu13 wheel 构建时脚本固定注入：`CACHE_DIT_RELEASE_FLAVOR=cu13`、`CACH
 | profile | envs | arch | 版本 | 产物 | 用途 |
 |---|---|---|---|---|---|
 | `mini` | `py312` | 单 arch（默认 `120a`） | scm 推导 `1.5.x.devN` | 纯 wheel + 1 个 cu13 wheel | 流水线验证；禁止发布 |
-| `full` | `py311`–`py314` | setup.py 默认 arch 集（当前 `89,120a`；arch 留空） | 必给 V | 1 纯 wheel + 4 cu13 wheel（各 ~32 MB） | 发布 |
+| `full` | `py311`–`py314` | setup.py 默认 arch 集（当前 `89,120a`；arch 留空） | 必给 V | 1 纯 wheel + 4 cu13 wheel（各 ~8 MB，1.5.5 实测） | 发布 |
 
 ## 6. 版本推导
 
 - 不传 `CACHE_DIT_RELEASE_VERSION` 时用 setuptools-scm：`version_scheme='python-simplified-semver'`、`local_scheme='no-local-version'`；mini 对裸版本补 `.dev0`（仍排在该正式版之下，不会被误认）。
 - 构建时以 `SETUPTOOLS_SCM_PRETEND_VERSION` 钉版本（cu13 为 `$V+cu13`），由 workspace 内的 `_version.py` 承载。
-- tag：CUDA 通道 `v<V>+cu13` 由 `publish_index.sh` 的 `gh release create` 自动创建；普通 release `v<V>` 在第 4 步单独创建（PyPI 上传之后）。
+- tag：普通 release `v<V>` 在**构建与产物断言通过之后**创建（第 2 步末；第 3 步的 `HEAD == v<V>^{commit}` 断言依赖它）；CUDA 通道 `v<V>+cu13` 由 `publish_index.sh` 的 `gh release create` 在运行时 HEAD 上创建。
