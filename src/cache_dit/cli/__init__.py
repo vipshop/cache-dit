@@ -78,6 +78,11 @@ minimax_h3_image_edit_example = _safe_import(".examples", "minimax_h3_image_edit
 pika_h3_flex_example = _safe_import(".examples", "pika_h3_flex_example")
 pika_h3_flex_fl2va_example = _safe_import(".examples", "pika_h3_flex_fl2va_example")
 pika_h3_flex_ref2va_example = _safe_import(".examples", "pika_h3_flex_ref2va_example")
+pika_h3_flex_vendored_example = _safe_import(".examples", "pika_h3_flex_vendored_example")
+pika_h3_flex_fl2va_vendored_example = _safe_import(".examples",
+                                                   "pika_h3_flex_fl2va_vendored_example")
+pika_h3_flex_ref2va_vendored_example = _safe_import(".examples",
+                                                    "pika_h3_flex_ref2va_vendored_example")
 fasth3_example = _safe_import(".examples", "fasth3_example")
 fasth3_v2_example = _safe_import(".examples", "fasth3_v2_example")
 joy_image_edit_example = _safe_import(".examples", "joy_image_edit_example")
