@@ -16,13 +16,13 @@
 </div>
 
 
-**🤗Why Cache-DiT❓❓**Cache-DiT is built on top of the 🤗[Diffusers](https://github.com/huggingface/diffusers) library and now supports nearly [ALL](https://cache-dit.readthedocs.io/en/latest/supported_matrix/NVIDIA_GPU/) DiTs from Diffusers. It provides [hybrid cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeer, SCM, etc.) and comprehensive [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) optimizations, including Context Parallelism, Tensor Parallelism, hybrid 2D or 3D parallelism, and dedicated extra parallelism support for Text Encoder, VAE, and ControlNet.  
+**🤗Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/), [cpu offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) and [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/TE-P/VAE-P/Hybrid) for DiTs. 
 
 <div align="center">
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
 </div>
 
-Cache-DiT is compatible with compilation, offload, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/pull/12548), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs (online docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/)).
+Cache-DiT is compatible with compilation, offload, and quantization, fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/models/visual-generation.html#cache-dit), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. Cache-DiT is **fast**, **easy to use**, and **flexible** for various DiTs.
 
 <div align="center">
   <p align="center">
@@ -30,7 +30,6 @@ Cache-DiT is compatible with compilation, offload, and quantization, fully integ
   </p>
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
-
 
 <div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
