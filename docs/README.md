@@ -113,7 +113,7 @@ CACHE_DIT_BUILD_CUDA=1 pip install -e ".[quantization]"
 
 ## 🚪Supported DiT Models
 
-Cache-DiT supports **60+ DiT pipeline families (150+ Variants)** from 🤗Diffusers, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our documentation at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+🎉Cache-DiT now supports **60+ DiT pipeline families (150+ Variants)**, covering the vast majority of DiT-based pipelines. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
 
 [diffusers-url]: https://github.com/huggingface/diffusers/tree/main/src/diffusers/models/transformers
 
