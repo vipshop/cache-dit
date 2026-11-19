@@ -346,52 +346,6 @@ cache_dit.enable_cache(
 
 These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
-## DBPrune: Dynamic Block Prune
-
-<div id="dbprune"></div>  
-
-![](https://github.com/vipshop/cache-dit/raw/main/docs/assets/dbprune.png)
-
-
-We have further implemented a new **<span style="color:#c77dff;">Dynamic Block Prune</span>** algorithm based on **Residual Caching** for Diffusion Transformers, which is referred to as **<span style="color:#c77dff;">DBPrune</span>**. DBPrune caches each block's hidden states and residuals, then dynamically prunes blocks during inference by computing the L1 distance between previous hidden states. When a block is pruned, its output is approximated using the cached residuals. DBPrune is currently in the experimental phase, and we kindly invite you to stay tuned for upcoming updates.
-
-```python
-from cache_dit import DBPruneConfig
-
-cache_dit.enable_cache(
-  pipe_or_adapter,
-  cache_config=DBPruneConfig(
-    max_warmup_steps=8,  # steps do not apply prune
-    residual_diff_threshold=0.12,
-    enable_dynamic_prune_threshold=True,
-  ),
-)
-```
-We have also brought the designs from DBCache to DBPrune to make it a more general and customizable block prune algorithm. You can specify the values of **Fn** and **Bn** for higher precision, or set up the non-prune blocks list **non_prune_block_ids** to avoid aggressive pruning. For example:
-
-```python
-cache_dit.enable_cache(
-  pipe_or_adapter,
-  cache_config=DBPruneConfig(
-    max_warmup_steps=8,  # steps do not apply prune
-    Fn_compute_blocks=8, # Fn, F8, etc.
-    Bn_compute_blocks=8, # Bn, B8, etc
-    residual_diff_threshold=0.12,
-    enable_dynamic_prune_threshold=True,
-    non_prune_block_ids=list(range(16,24)),
-  ),
-)
-```
-<div align="center">
-  <p align="center">
-  DBPrune, <b> L20x1 </b>, Steps: 28, "A cat holding a sign that says hello world with complex background"
-  </p>
-</div>
-
-|Baseline(L20x1)|Pruned(24%)|Pruned(35%)|Pruned(45%)|Pruned(60%)|
-|:---:|:---:|:---:|:---:|:---:|
-|24.85s|19.43s|16.82s|14.24s|10.66s|
-|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/NONE_R0.08_S0.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.03_P24.0_T19.43s.png width=130px> | <img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.04_P34.6_T16.82s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.06_P45.2_T14.24s.png width=130px>|<img src=https://github.com/vipshop/cache-dit/raw/main/assets/DBPRUNE_F1B0_R0.2_P59.5_T10.66s.png width=130px>|
 
 ## Hybrid Cache CFG
 

@@ -899,11 +899,6 @@ class CachedContextManager:
     else:
       continuous_cached_steps = self.get_cfg_continuous_cached_steps()
 
-    # DBPrune checks multiple blocks per timestep. The limit applies to previous
-    # timesteps, so exclude a hit already recorded for the current timestep.
-    if cached_steps and cached_steps[-1] == self.get_current_step():
-      continuous_cached_steps -= 1
-
     if max_continuous_cached_steps >= 0 and (continuous_cached_steps
                                              >= max_continuous_cached_steps):
       if logger.isEnabledFor(logging.DEBUG):

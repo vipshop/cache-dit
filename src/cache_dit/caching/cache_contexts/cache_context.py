@@ -60,7 +60,7 @@ class CachedContext:
   accumulated_executed_steps: int = 0
   accumulated_transformer_executed_steps: int = 0
 
-  # CFG & non-CFG cached/pruned steps
+  # CFG & non-CFG cached steps
   cached_steps: List[int] = dataclasses.field(default_factory=list)
   residual_diffs: DefaultDict[str, float | list] = dataclasses.field(
     default_factory=lambda: defaultdict(float), )

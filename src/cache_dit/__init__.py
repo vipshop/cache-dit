@@ -41,7 +41,6 @@ from .caching import ForwardPattern
 from .caching import PatchFunctor
 from .caching import BasicCacheConfig
 from .caching import DBCacheConfig
-from .caching import DBPruneConfig
 from .caching import CalibratorConfig
 from .caching import TaylorSeerCalibratorConfig
 from .caching import FoCaCalibratorConfig
@@ -79,7 +78,6 @@ from .loaders import Ideogram4Loader
 
 NONE = CacheType.NONE
 DBCache = CacheType.DBCache
-DBPrune = CacheType.DBPrune
 
 Pattern_0 = ForwardPattern.Pattern_0
 Pattern_1 = ForwardPattern.Pattern_1

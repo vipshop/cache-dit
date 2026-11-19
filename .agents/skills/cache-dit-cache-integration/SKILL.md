@@ -1,6 +1,6 @@
 ---
 name: cache-dit-cache-integration
-description: "Decide whether a new feature-caching / cache-then-forecast paper is worth integrating into cache-dit, and if so which extension seam it lands on (DBCache / DBPrune / CalibratorBase / steps_computation_mask). Use when evaluating a caching paper (TaylorSeer, FoCa, DMD, HiCache, MagCache, SVD-Cache, DiCache, TeaCache, EasyCache, Delta-DiT class), when asked 'is X worth integrating', when triaging a whole cache-paper list, when adding a new skip policy or feature predictor, or when reviewing such a PR for the right seam and the right acceptance gate. 触发词：cache 算法调研、缓存论文对比、要不要集成 cache 算法、新增 calibrator、新增 CacheType、跳过策略、cache 集成优先级、Awesome-DIT-Cache."
+description: "Decide whether a new feature-caching / cache-then-forecast paper is worth integrating into cache-dit, and if so which extension seam it lands on (DBCache / CalibratorBase / steps_computation_mask). Use when evaluating a caching paper (TaylorSeer, FoCa, DMD, HiCache, MagCache, SVD-Cache, DiCache, TeaCache, EasyCache, Delta-DiT class), when asked 'is X worth integrating', when triaging a whole cache-paper list, when adding a new skip policy or feature predictor, or when reviewing such a PR for the right seam and the right acceptance gate. 触发词：cache 算法调研、缓存论文对比、要不要集成 cache 算法、新增 calibrator、新增 CacheType、跳过策略、cache 集成优先级、Awesome-DIT-Cache."
 user-invocable: true
 ---
 
@@ -80,7 +80,7 @@ user-invocable: true
 | **MagCache**（幅度律 + 整步跳） | **不接**；只在"固定调度更好"被验证后考虑给 `steps_mask` 加一个 policy | 两个守卫 cache-dit 已有；同算力整步复用比块级复用差 ~10 dB；需 per-model γ 曲线，且运行期无法自测 |
 | **DiCache**（探针 + 整步跳 + DCTA） | **不接**（2026-11-17 裁定） | "when" 与 DBCache 逐项同源；档位在舒适区；整步复用丢当前步信息属降级；DCTA 需改 `approximate()` 签名穿主路径，收益不抵成本 |
 | **TaylorSeer / FoCa / DMD** | 已实现 | 三者互斥，`calibrator_type` 三选一 |
-| **DBCache / DBPrune** | 已实现 | 主干；DBPrune 不支持块级 CP |
+| **DBCache** | 已实现 | 主干 |
 
 ## 5. 落点速查（细节见 `references/extension-points.md`）
 
@@ -95,7 +95,7 @@ user-invocable: true
 
 - **PSNR 量纲**：`calculate_psnr` 的 peak 固定为 255（#1335 只修了 uint8 模减法回绕，**没有**改量纲假设），喂 float[0,1] 仍旧白送 +48.13 dB。要么自算（`data_range=1`），要么先把输入乘 255。
 - **固定 seed**（默认 0），同配置重复跑必须先得到逐比特一致，才谈跨配置比较。
-- **`cached_steps > 0` + executed steps（DBCache）/ `actual_blocks`（Prune）** 两列必给，否则"零缓存"也能全绿。
+- **`cached_steps > 0` + executed steps** 两列必给，否则"零缓存"也能全绿。
 - **`max_cached_steps=0` → 逐比特**回归用例，每个新预测器/策略都要有。
 - **与 `--compile` 组合 run-to-run 不收敛**，只能报区间，不能与其他行共用同一 `rdt` 工作点。
 - **不许跨模型搬参照物**：不同模型/分辨率/指标各是各的尺。

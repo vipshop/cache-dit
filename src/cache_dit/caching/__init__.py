@@ -14,9 +14,6 @@ from .cache_contexts import BasicCacheConfig
 from .cache_contexts import DBCacheConfig
 from .cache_contexts import CachedContext
 from .cache_contexts import CachedContextManager
-from .cache_contexts import DBPruneConfig
-from .cache_contexts import PrunedContext
-from .cache_contexts import PrunedContextManager
 from .cache_contexts import ContextManager
 from .cache_contexts import CalibratorConfig
 from .cache_contexts import TaylorSeerCalibratorConfig
@@ -26,7 +23,6 @@ from .cache_contexts import SVDCalibratorConfig
 from .cache_contexts import HiCacheCalibratorConfig
 
 from .cache_blocks import CachedBlocks
-from .cache_blocks import PrunedBlocks
 from .cache_blocks import UnifiedBlocks
 
 from .cache_adapters import CachedAdapter

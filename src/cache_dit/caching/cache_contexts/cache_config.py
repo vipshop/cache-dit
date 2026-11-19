@@ -13,12 +13,11 @@ class BasicCacheConfig:
 
   This dataclass groups the knobs that control when cache-dit computes fresh transformer blocks,
   when it reuses cached results, how warmup is handled, and how CFG-aware step accounting is
-  performed. `DBCacheConfig` reuses this schema directly, while `DBPruneConfig` extends it with
-  pruning-specific controls.
+  performed. `DBCacheConfig` reuses this schema directly.
   """
 
   # Default: Dual Block Cache with Flexible FnBn configuration.
-  cache_type: CacheType = CacheType.DBCache  # DBCache, DBPrune, NONE
+  cache_type: CacheType = CacheType.DBCache  # DBCache, NONE
 
   # Fn_compute_blocks: (`int`, *required*, defaults to 8):
   #     Specifies that `DBCache` uses the **first n** Transformer blocks to fit the information

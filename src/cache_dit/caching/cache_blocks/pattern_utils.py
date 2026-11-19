@@ -3,13 +3,12 @@ import torch
 from typing import Any
 from ..cache_contexts import CachedContext
 from ..cache_contexts import CachedContextManager
-from ..cache_contexts import PrunedContextManager
 
 
 def apply_stats(
   module: torch.nn.Module | Any,
   cache_context: CachedContext | str = None,
-  context_manager: CachedContextManager | PrunedContextManager = None,
+  context_manager: CachedContextManager = None,
 ):
   # Patch the cached stats to the module, the cached stats
   # will be reset for each calling of pipe.__call__(**kwargs).
@@ -29,24 +28,6 @@ def apply_stats(
   module._accumulated_executed_steps = context_manager.get_accumulated_executed_steps()
   module._accumulated_transformer_executed_steps = (
     context_manager.get_accumulated_transformer_executed_steps())
-  # Pruned stats for Dynamic Block Prune
-  if not isinstance(context_manager, PrunedContextManager):
-    return
-  module._pruned_steps = context_manager.get_pruned_steps()
-  module._cfg_pruned_steps = context_manager.get_cfg_pruned_steps()
-  module._pruned_blocks = context_manager.get_pruned_blocks()
-  module._cfg_pruned_blocks = context_manager.get_cfg_pruned_blocks()
-  module._actual_blocks = context_manager.get_actual_blocks()
-  module._cfg_actual_blocks = context_manager.get_cfg_actual_blocks()
-  # Caculate pruned ratio
-  if len(module._pruned_blocks) > 0 and sum(module._actual_blocks) > 0:
-    module._pruned_ratio = sum(module._pruned_blocks) / sum(module._actual_blocks)
-  else:
-    module._pruned_ratio = None
-  if len(module._cfg_pruned_blocks) > 0 and sum(module._cfg_actual_blocks) > 0:
-    module._cfg_pruned_ratio = sum(module._cfg_pruned_blocks) / sum(module._cfg_actual_blocks)
-  else:
-    module._cfg_pruned_ratio = None
 
 
 def remove_stats(module: torch.nn.Module | Any, ):
@@ -70,21 +51,3 @@ def remove_stats(module: torch.nn.Module | Any, ):
     del module._accumulated_executed_steps
   if hasattr(module, "_accumulated_transformer_executed_steps"):
     del module._accumulated_transformer_executed_steps
-
-  # Dynamic Block Prune
-  if hasattr(module, "_pruned_steps"):
-    del module._pruned_steps
-  if hasattr(module, "_cfg_pruned_steps"):
-    del module._cfg_pruned_steps
-  if hasattr(module, "_pruned_blocks"):
-    del module._pruned_blocks
-  if hasattr(module, "_cfg_pruned_blocks"):
-    del module._cfg_pruned_blocks
-  if hasattr(module, "_actual_blocks"):
-    del module._actual_blocks
-  if hasattr(module, "_cfg_actual_blocks"):
-    del module._cfg_actual_blocks
-  if hasattr(module, "_pruned_ratio"):
-    del module._pruned_ratio
-  if hasattr(module, "_cfg_pruned_ratio"):
-    del module._cfg_pruned_ratio

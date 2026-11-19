@@ -7,7 +7,6 @@ from .block_adapters import BlockAdapter
 from .block_adapters import BlockAdapterRegister
 from .cache_adapters import CachedAdapter
 from .cache_contexts import DBCacheConfig
-from .cache_contexts import DBPruneConfig
 from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
 from ..distributed import ParallelismConfig
@@ -27,7 +26,7 @@ logger = init_logger(__name__)
 
 def check_min_bn_blocks(
   transformers: List[torch.nn.Module],
-  cache_config: Optional[Union[DBCacheConfig, DBPruneConfig]],
+  cache_config: Optional[DBCacheConfig],
   parallelism_config: ParallelismConfig,
 ) -> None:
   """Validate the planner-declared minimum of tail blocks against the cache config.
@@ -56,8 +55,7 @@ def check_min_bn_blocks(
         f"{transformer.__class__.__name__} context parallelism needs "
         f"`Bn_compute_blocks >= {min_bn}` (got {bn_compute_blocks}): the plan gathers a module "
         "output on the last block, which the cached path only executes inside the Bn group. Set "
-        "`DBCacheConfig(Bn_compute_blocks=1)` or disable the cache. Note that block-level context "
-        "parallelism is not supported by `DBPruneConfig`, so use a `DBCacheConfig` here.")
+        "`DBCacheConfig(Bn_compute_blocks=1)` or disable the cache.")
 
 
 def enable_cache(
@@ -68,10 +66,7 @@ def enable_cache(
     ModelMixin,
     None,
   ] = None,
-  cache_config: Optional[Union[
-    DBCacheConfig,
-    DBPruneConfig,
-  ]] = None,
+  cache_config: Optional[DBCacheConfig] = None,
   calibrator_config: Optional[CalibratorConfig] = None,
   params_modifiers: Optional[Union[
     ParamsModifier,
@@ -101,8 +96,8 @@ def enable_cache(
   and quantization are applied inside the workers via :func:`_enable_cache_impl`.
 
   Use `cache_config` to control the caching strategy itself. Detailed cache-policy fields such as
-  warmup behavior, residual thresholds, or step masks are documented on `DBCacheConfig` and
-  `DBPruneConfig`. Calibrator-specific options belong on `calibrator_config`, and distributed
+  warmup behavior, residual thresholds, or step masks are documented on `DBCacheConfig`.
+  Calibrator-specific options belong on `calibrator_config`, and distributed
   execution options belong on `parallelism_config`.
 
   :param pipe_or_adapter: Pipeline, adapter, or transformer module to accelerate.
@@ -173,10 +168,7 @@ def _enable_cache_with_ray_impl(
     ModelMixin,
     None,
   ] = None,
-  cache_config: Optional[Union[
-    DBCacheConfig,
-    DBPruneConfig,
-  ]] = None,
+  cache_config: Optional[DBCacheConfig] = None,
   calibrator_config: Optional[CalibratorConfig] = None,
   params_modifiers: Optional[Union[
     ParamsModifier,
@@ -240,11 +232,8 @@ def _enable_cache_impl(
     torch.nn.Module,
     ModelMixin,
   ],
-  # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
-  cache_config: Optional[Union[
-    DBCacheConfig,
-    DBPruneConfig,
-  ]] = None,
+  # BasicCacheConfig, DBCacheConfig, etc.
+  cache_config: Optional[DBCacheConfig] = None,
   # Calibrator config: TaylorSeerCalibratorConfig, etc.
   calibrator_config: Optional[CalibratorConfig] = None,
   # Modify cache context params for specific blocks.
@@ -276,8 +265,8 @@ def _enable_cache_impl(
   hooks.
 
   Use `cache_config` to control the caching strategy itself. Detailed cache-policy fields such as
-  warmup behavior, residual thresholds, or step masks are documented on `DBCacheConfig` and
-  `DBPruneConfig`. Calibrator-specific options belong on `calibrator_config`, and distributed
+  warmup behavior, residual thresholds, or step masks are documented on `DBCacheConfig`.
+  Calibrator-specific options belong on `calibrator_config`, and distributed
   execution options belong on `parallelism_config`.
 
   :param pipe_or_adapter: Pipeline, adapter, or transformer module to accelerate.

@@ -7,7 +7,6 @@ logger = init_logger(__name__)
 class CacheType(Enum):
   NONE = "NONE"
   DBCache = "DBCache"  # "Dual_Block_Cache"
-  DBPrune = "DBPrune"  # "Dynamic_Block_Prune"
 
   @staticmethod
   def type(type_hint: "CacheType | str") -> "CacheType":
@@ -32,13 +31,6 @@ def cache_type(type_hint: "CacheType | str") -> "CacheType":
       "DB",
   ):
     return CacheType.DBCache
-  elif type_hint.upper() in (
-      "DYNAMIC_BLOCK_PRUNE",
-      "DB_PRUNE",
-      "DBPRUNE",
-      "DBP",
-  ):
-    return CacheType.DBPrune
   elif type_hint.upper() in (
       "NONE",
       "NO_CACHE",

@@ -203,6 +203,17 @@ class TestCalibratorCLI:
     assert isinstance(config, DMDCalibratorConfig)
     assert config.dmd_history == 5
     assert config.dmd_svd_precision == "low"
+    defaults = build_calibrator_config(_cli(["--cache", "--calibrator", "dmd"]))
+    assert (defaults.dmd_history, defaults.dmd_svd_precision) == (6, "medium")
+
+  def test_taylorseer_params(self):
+    """TaylorSeer order uses --calibrator-params and defaults to one."""
+    args = _cli(["--cache", "--calibrator", "taylorseer", "--calibrator-params", "order=2"])
+    config = build_calibrator_config(args)
+    assert isinstance(config, TaylorSeerCalibratorConfig)
+    assert config.taylorseer_order == 2
+    defaults = build_calibrator_config(_cli(["--cache", "--calibrator", "taylorseer"]))
+    assert defaults.taylorseer_order == 1
 
   def test_no_calibrator_builds_nothing(self):
     """Without --calibrator the cache runs without a forecast layer."""
@@ -220,26 +231,24 @@ class TestCalibratorCLI:
     with pytest.raises(SystemExit):
       PARSER.parse_args(["--cache", "--calibrator", "nope"])
 
-  def test_conflicting_calibrators_raise(self):
-    """A legacy flag pointing at another algorithm conflicts with --calibrator."""
-    with pytest.raises(ValueError, match="conflicts with --dmd"):
-      _cli(["--cache", "--dmd", "--calibrator", "svd"])
+  @pytest.mark.parametrize("legacy_flag", ["--taylorseer", "--dmd", "--foca", "--svd", "--hicache"])
+  def test_legacy_selector_flags_are_rejected(self, legacy_flag):
+    """Calibrator selection has a single entry point: --calibrator."""
+    with pytest.raises(SystemExit):
+      PARSER.parse_args(["--cache", legacy_flag])
 
-  def test_same_algorithm_is_accepted(self):
-    """The same algorithm may be named twice (legacy flag plus unified entry)."""
-    args = _cli(["--cache", "--dmd", "--calibrator", "dmd"])
-    assert isinstance(build_calibrator_config(args), DMDCalibratorConfig)
-
-  def test_legacy_flags_alone_still_work(self):
-    """Regression: --taylorseer/--dmd keep their historical behavior and values."""
-    config = build_calibrator_config(_cli(["--cache", "--taylorseer", "--taylorseer-order", "2"]))
-    assert isinstance(config, TaylorSeerCalibratorConfig)
-    assert config.taylorseer_order == 2
-    config = build_calibrator_config(_cli(["--cache", "--dmd", "--dmd-history", "4"]))
-    assert isinstance(config, DMDCalibratorConfig)
-    assert config.dmd_history == 4
-    config = build_calibrator_config(_cli(["--cache", "--foca"]))
-    assert isinstance(config, FoCaCalibratorConfig)
+  @pytest.mark.parametrize("legacy_argv", [
+    ["--taylorseer-order", "1"],
+    ["--order", "1"],
+    ["-order", "1"],
+    ["--dmd-history", "4"],
+    ["--dmd-svd-precision", "low"],
+    ["--dmd-svd", "low"],
+  ])
+  def test_legacy_value_flags_are_rejected(self, legacy_argv):
+    """Algorithm options are configured only through --calibrator-params."""
+    with pytest.raises(SystemExit):
+      PARSER.parse_args(["--cache", *legacy_argv])
 
   def test_calibrator_requires_cache(self):
     """--calibrator without --cache would be a silent no-op, so it fails."""
@@ -255,12 +264,6 @@ class TestCalibratorCLI:
     """A config file already owns the calibrator settings."""
     with pytest.raises(ValueError, match="cannot be combined with --config-path"):
       _cli(["--cache", "--config-path", "some.yaml", "--calibrator", "svd"])
-
-  def test_config_path_ignores_legacy_flag(self):
-    """Regression: a legacy flag next to --config-path stays a warning, not an error."""
-    args = _cli(["--cache", "--config-path", "some.yaml", "--taylorseer"])
-    assert args.calibrator is None
-    assert build_calibrator_config(args) is None
 
   def test_postprocess_is_idempotent(self):
     """Resolving the params must not consume them, so a second pass is a no-op."""

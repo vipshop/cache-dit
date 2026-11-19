@@ -479,7 +479,7 @@ class CachedAdapter:
               forward_pattern=block_adapter.forward_pattern[i][j],
               check_forward_pattern=block_adapter.check_forward_pattern,
               check_num_outputs=block_adapter.check_num_outputs,
-              # 1. Cache/Prune context configuration
+              # 1. Cache context configuration
               cache_prefix=block_adapter.blocks_name[i][j],
               cache_context=block_adapter.unique_blocks_name[i][j],
               context_manager=block_adapter.pipe._context_manager,

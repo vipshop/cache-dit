@@ -98,7 +98,7 @@ python3 -m cache_dit.generate generate longcat_image
 python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
-python3 -m cache_dit.generate flux --cache --taylorseer
+python3 -m cache_dit.generate flux --cache --calibrator taylorseer
 python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
 python3 -m cache_dit.generate flux --cache --calibrator hicache --calibrator-params "order=2,sigma=0.5"
 python3 -m cache_dit.generate flux_nunchaku --cache
@@ -251,17 +251,17 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 
 ```bash
 # DBCache + SCM + Taylorseer
-python3 -m cache_dit.generate flux --cache --scm fast --taylorsees --taylorseer-order 1
+python3 -m cache_dit.generate flux --cache --scm fast --calibrator taylorseer --calibrator-params order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn _sdpa_cudnn --parallel-text --cache --scm fast --taylorseer \
-         --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
+         --attn _sdpa_cudnn --parallel-text --cache --scm fast --calibrator taylorseer \
+         --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
-         --attn sage --parallel-text --cache --scm fast --taylorseer \
-         --taylorseer-order 1 --quantize-type float8 --warmup 2 --repeat 5 --compile 
+         --attn sage --parallel-text --cache --scm fast --calibrator taylorseer \
+         --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
          --parallel ulysses --ulysses-anything --parallel-text \
@@ -420,24 +420,11 @@ options:
                         Maximum cached steps for CacheDiT
   --max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS, --mcc MAX_CONTINUOUS_CACHED_STEPS
                         Maximum continuous cached steps for CacheDiT
-  --taylorseer          Enable TaylorSeer for CacheDiT
-  --taylorseer-order TAYLORSEER_ORDER, -order TAYLORSEER_ORDER
-                        TaylorSeer order
-  --dmd                 Enable DMD (Dynamic Mode Decomposition / Prony)
-                        exponential-basis calibrator for CacheDiT
-  --dmd-history DMD_HISTORY
-                        DMD snapshot-history window length
-  --dmd-svd-precision {low,medium,high}, --dmd-svd {low,medium,high}
-                        DMD SVD precision mode: medium (default, balanced),
-                        low (randomised), high (accurate)
-  --foca                Enable FoCa (Forecast then Calibrate) ODE-based
-                        calibrator for CacheDiT
   --calibrator CALIBRATOR
                         DBCache calibrator to enable: taylorseer, dmd, foca,
                         svd (SVD-Cache), or hicache (damped-Hermite). Long
                         forms such as 'svd-calibrator' are accepted. Requires
-                        --cache. The legacy --taylorseer/--dmd/--foca flags
-                        still work and map here.
+                        --cache.
   --calibrator-params CALIBRATOR_PARAMS
                         Calibrator options as a comma separated key=value
                         list, e.g. 'tau=0.9,beta=0.9' or

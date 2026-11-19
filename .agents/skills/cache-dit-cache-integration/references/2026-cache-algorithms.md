@@ -78,7 +78,6 @@
 
 - `cache_manager.py:863-940` 的 `can_cache()` 覆盖 warmup、SCM、缓存步数、连续缓存与累积 diff；`cache_manager.py:553-626` 的 `similarity()` 覆盖相对 L1 与 token 聚合。
 - `cache_manager.py:648-651` 与 `cache_manager.py:936-939` 包含 channel 下采样；`cache_manager.py:815-854` 的 `apply_cache()` 负责缓存内容近似，并在 pattern 的 `can_cache` 之后执行。
-- `src/cache_dit/caching/cache_contexts/prune_context.py:36-67` 还包含 DBPrune 的动态阈值反作用。
 
 所以探针候选即使不需要新 CacheType，也通常要改判定层、配置或上下文。其改动面不能按 calibrator 估算。
 
@@ -299,7 +298,7 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 1. 固定初始 latent/seed、prompt 集、分辨率、sampler、Fn/Bn、warmup、所有 cache guards；预测器 A/B 必须保持相同 Cache Steps。
 2. 基线至少包含：无 cache、DBCache+reuse、DBCache+TaylorSeer、DBCache+HiCache；新探针实验则固定同一个缓存内容预测器。
 3. 同时覆盖 cache-dit 已有的约 1.7x 档和 >5x 高加速档，并记录完整工作点参数；论文中的 2–4x 结果不能外推为高加速收益。
-4. 缓存命中只认 `Cache Steps`；DBPrune 另核对实际执行的 block 数。不能用 `Executed Steps` 或缓存残差中的 `-1.0` 代替命中证据。
+4. 缓存命中只认 `Cache Steps`。不能用 `Executed Steps` 或缓存残差中的 `-1.0` 代替命中证据。
 5. 使用同配置重跑估计 run-to-run noise floor；指标采用原始浮点图像或正确量纲的 uint8，禁止模减和错误 peak 造成的 PSNR 虚高。
 6. 分开记录 wall-clock、Cache Steps、预测器额外显存和主路径开销；不能只报 FLOPs。
 7. 每个新预测器/策略先过 `max_cached_steps=0` 与无 cache 的逐比特回归；用 `approximate()` 调用计数、state 类型和参数断言证明接线，不能用恒等测试轨迹上的输出差异代替。
@@ -333,7 +332,6 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 | 对照口径 | 在相同 Cache Steps 下比精度，再在相同精度 gate 下比 Cache Steps/延迟 |
 | 额外记录 | fp32 FFT/iFFT 时间、峰值显存、scheduler 系数、compile/offload 行为 |
 | 下采样交互 | 分别测试 `downsample_factor=1` 与 `>1`，明确 SEA 滤波位于 channel 下采样之前还是之后 |
-| DBPrune 交互 | 用相同滤波 diff 跑 DBPrune，检查动态阈值反作用的尺度是否仍有效，并核对实际执行 block 数 |
 | 失败即停 | 滤波收益被 FFT 开销抵消，或 Fn residual 上无法复现论文中间特征结论 |
 
 ### 7.5 RACER：把 shrink 与 when 分开验证
