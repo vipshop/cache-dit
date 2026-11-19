@@ -347,6 +347,55 @@ cache_dit.enable_cache(
 These case studies demonstrate that even with relatively high thresholds (such as 0.12, 0.15, 0.2, etc.) under the DBCache **F12B12** or **F8B16** configuration, the detailed texture of the kitten's fur, colored cloth, and the clarity of text can still be preserved. This suggests that users can leverage DBCache to effectively balance performance and precision in their workflows! 
 
 
+## SeaCache Probe: SEA-filtered Relative L1
+
+<div id="seacache"></div>
+
+**<span style="color:#c77dff;">SeaCache</span>** ([Spectral-Evolution-Aware Cache](https://arxiv.org/abs/2602.18993)) is an optional **probe metric inside DBCache**, not a separate `CacheType` or calibrator. It applies a time-varying, mean-normalized Wiener/SEA filter before the existing relative-L1 decision:
+
+$$G_t(f)=\frac{a_tS_x(f)}{a_t^2S_x(f)+b_t^2},\qquad \widetilde{\Delta}=\operatorname{RelL1}(\mathcal P(G_{prev},I_{prev}),\mathcal P(G_t,I_t))$$
+
+The default `enable_seacache=False` preserves the original DBCache path, patchable `similarity()` function, buffers, artifact names, and decisions. The dedicated `seacache_similarity()` entry is selected only when explicitly enabled. Fn/Bn, cached values, warmup, masks, calibrators, and all cache guards are unchanged.
+
+```python
+from cache_dit import DBCacheConfig
+
+cache_dit.enable_cache(
+  pipe,  # Any pipeline with a compatible scheduler and known feature geometry.
+  cache_config=DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    residual_diff_threshold=0.12,
+    enable_seacache=True,
+    seacache_mode="flow",  # "flow": a=1-sigma, b=sigma; "vp" uses alphas_cumprod.
+    seacache_feature_shape=(64, 64),  # Global packed-token H,W; video uses F,H,W.
+    seacache_power_exp=2.0,  # 2 for images; 3 is a common video prior.
+  ),
+)
+```
+
+For dense BCHW/BCTHW probes, existing spatial dimensions are used directly. Packed `[B,S,C]` probes must provide `seacache_feature_shape`; its product must equal the global token count. Transformer-only or custom schedulers can bypass scheduler discovery with `seacache_ab_schedule=((a0,b0), (a1,b1), ...)`. Missing coefficients or incompatible geometry raise an error instead of silently using raw L1.
+
+CP restores the complete token geometry with the existing CP mesh before FFT, including uneven Ulysses-Anything shards. TP filters channel shards independently, and CP+TP composes both; the existing distributed reduction keeps rank decisions consistent. These opt-in communications and the separate raw/filtered anchors add memory and runtime cost. The original DBCache distributed path performs no additional communication.
+
+The official FLUX implementation probes the first block's modulated input. Its reference code implements the paper's radial response as a separable per-axis product, which this module follows. The cache-dit integration filters the existing Fn residual/hidden-state probe and retains DBCache scheduling; it is an adaptation of the SEA metric, not a reproduction of the official whole-step execution path.
+
+```bash
+python3 -m cache_dit.generate flux --cache --seacache \
+  --seacache-mode flow --seacache-feature-shape 64 64 --seacache-power-exp 2.0
+```
+
+A FLUX.1-dev probe (1024², 28 steps, seed 0, compile+F1B0+warmup 8, RTX PRO 5000) produced:
+
+| Config | Latency | Cache Steps | PSNR vs compile | SSIM vs compile |
+|:--|--:|--:|--:|--:|
+| DBCache reuse, rdt=0.12 | 8.67s | 12 | 28.09 | 0.9643 |
+| SeaCache, rdt=0.12 | 11.77s | 6 | 29.52 | 0.9749 |
+| SeaCache, rdt=0.24 | 8.19s | 13 | 27.80 | 0.9576 |
+| SeaCache, rdt=0.24 repeat | 8.18s | 13 | 28.89 | 0.9575 |
+
+The rdt=0.24 same-config repeat was 33.46dB/0.9887 SSIM. Ulysses CP2 completed with 12 hits for reuse (5.77s) and 6 for SeaCache (7.81s), with identical SEA diff distributions to the single-card run. These single-prompt results are wiring probes: at the same threshold SeaCache cached fewer steps and paid FFT/communication cost, so they do not establish a universal speed or quality benefit.
+
 ## Hybrid Cache CFG
 
 <div id="cfg"></div>

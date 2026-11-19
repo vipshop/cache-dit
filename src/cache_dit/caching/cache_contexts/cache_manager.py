@@ -1,6 +1,7 @@
 import copy
 import logging
 import contextlib
+import weakref
 from typing import Dict, Optional, Tuple, Union, List
 
 import torch
@@ -8,6 +9,11 @@ import torch.distributed as dist
 
 from .calibrators import CalibratorBase
 from .cache_context import CachedContext
+from .seacache_uitls import (
+  build_seacache_indicator,
+  resolve_seacache_ab,
+  restore_seacache_geometry,
+)
 from ...logger import init_logger
 
 logger = init_logger(__name__)
@@ -30,6 +36,68 @@ class CachedContextManager:
     # cache-dit in a transformer-only way.
     self._persistent_context = persistent_context
     self._current_step_refreshed: bool = False
+    self._seacache_scheduler = None
+    self._seacache_parallelism_config = None
+    self._seacache_transformers = []
+
+  def configure_seacache(self, scheduler=None, parallelism_config=None, transformers=()):
+    """Bind generic runtime providers used only when SeaCache is explicitly enabled."""
+
+    self._seacache_scheduler = scheduler
+    self._seacache_parallelism_config = parallelism_config
+    self._seacache_transformers = [weakref.ref(transformer) for transformer in transformers]
+
+  def _get_seacache_parallelism_config(self):
+    """Resolve CP/TP metadata lazily because cache enablement precedes parallel dispatch."""
+
+    for transformer_ref in self._seacache_transformers:
+      transformer = transformer_ref()
+      if transformer is not None:
+        cp_config = getattr(transformer, "_cp_config", None)
+        parallel_config = getattr(transformer, "_parallelism_config", None)
+        config = cp_config if cp_config is not None else parallel_config
+        if config is not None:
+          return config
+    return self._seacache_parallelism_config
+
+  def is_seacache_enabled(self) -> bool:
+    """Return whether the current DBCache context selected the SEA probe metric."""
+
+    cached_context = self.get_context()
+    return bool(cached_context is not None and cached_context.cache_config.enable_seacache)
+
+  def _seacache_current_key(self, prefix: str) -> str:
+    branch = "cfg" if self.is_separate_cfg_step() else "default"
+    return f"__seacache_current_{prefix}_{branch}"
+
+  def _seacache_anchor_key(self, prefix: str) -> str:
+    branch = "cfg" if self.is_separate_cfg_step() else "default"
+    return f"__seacache_anchor_{prefix}_{branch}"
+
+  def get_seacache_Fn_buffer(self, prefix: str = "Fn") -> torch.Tensor:
+    """Read the filtered probe anchor separately from the raw Fn value buffer."""
+
+    return self.get_buffer(self._seacache_anchor_key(prefix))
+
+  def _build_seacache_indicator(self, tensor: torch.Tensor) -> torch.Tensor:
+    """Filter one tensor with its own AB coefficients and existing CP/TP layout."""
+
+    config = self.get_context().cache_config
+    index = self.get_accumulated_executed_steps() - 1
+    a, b = resolve_seacache_ab(
+      scheduler=self._seacache_scheduler,
+      index=index,
+      mode=config.seacache_mode,
+      ab_schedule=config.seacache_ab_schedule,
+    )
+    return build_seacache_indicator(
+      tensor,
+      a,
+      b,
+      feature_shape=config.seacache_feature_shape,
+      power_exp=config.seacache_power_exp,
+      parallelism_config=self._get_seacache_parallelism_config(),
+    )
 
   @property
   def persistent_context(self) -> bool:
@@ -252,6 +320,9 @@ class CachedContextManager:
 
     for context_name in list(self._cached_context_manager.keys()):
       self.remove_context(context_name)
+    self._seacache_scheduler = None
+    self._seacache_parallelism_config = None
+    self._seacache_transformers.clear()
 
   @contextlib.contextmanager
   def enter_context(self, cached_context: CachedContext | str):
@@ -625,6 +696,64 @@ class CachedContextManager:
 
     return diff < threshold
 
+  @torch.compiler.disable
+  def seacache_similarity(
+    self,
+    t1: torch.Tensor,
+    t2: torch.Tensor,
+    *,
+    threshold: float,
+    parallelized: bool = False,
+    prefix: str = "Fn",
+  ) -> bool:
+    """Compute a SEA-filtered probe distance without changing the patchable `similarity` API.
+
+    :param t1: Filtered indicator stored by the previous full-compute step.
+    :param t2: Current raw probe tensor, possibly holding a CP-local token shard.
+    :param threshold: Existing DBCache relative-L1 threshold.
+    :param parallelized: Whether to retain the existing distributed reduction.
+    :param prefix: Probe prefix used for buffers, diagnostics, and statistics.
+    :returns: Whether the filtered probes satisfy the existing threshold.
+    """
+
+    if threshold <= 0.0 or threshold >= 1.0:
+      return self.similarity(
+        t1,
+        t2,
+        threshold=threshold,
+        parallelized=parallelized,
+        prefix=prefix,
+      )
+    if all((
+        self.enable_separate_cfg(),
+        self.is_separate_cfg_step(),
+        not self.cfg_diff_compute_separate(),
+        self.get_current_step_residual_diff() is not None,
+    )):
+      if t1.shape != t2.shape:
+        config = self.get_context().cache_config
+        t2 = restore_seacache_geometry(
+          t2,
+          feature_shape=config.seacache_feature_shape,
+          parallelism_config=self._get_seacache_parallelism_config(),
+        )
+      return self.similarity(
+        t1,
+        t2,
+        threshold=threshold,
+        parallelized=parallelized,
+        prefix=prefix,
+      )
+    current = self._build_seacache_indicator(t2)
+    self.set_buffer(self._seacache_current_key(prefix), current)
+    return self.similarity(
+      t1,
+      current,
+      threshold=threshold,
+      parallelized=parallelized,
+      prefix=prefix,
+    )
+
   def _debugging_set_buffer(self, prefix):
     if logger.isEnabledFor(logging.DEBUG):
       logger.debug(f"set {prefix}, "
@@ -649,6 +778,14 @@ class CachedContextManager:
     if downsample_factor > 1:
       buffer = buffer[..., ::downsample_factor]
       buffer = buffer.contiguous()
+    if self.is_seacache_enabled():
+      current_key = self._seacache_current_key(prefix)
+      current_indicator = self.get_buffer(current_key)
+      if current_indicator is None:
+        current_indicator = self._build_seacache_indicator(buffer)
+      else:
+        self.remove_buffer(current_key)
+      self.set_buffer(self._seacache_anchor_key(prefix), current_indicator)
     if self.is_separate_cfg_step():
       self._debugging_set_buffer(f"{prefix}_buffer_cfg")
       self.set_buffer(f"{prefix}_buffer_cfg", buffer)
@@ -935,16 +1072,23 @@ class CachedContextManager:
 
     # Allow Bn and Fn prefix to be used for diff calculation.
     if "Bn" in prefix:
+      if self.is_seacache_enabled():
+        raise ValueError("SeaCache is a probe metric for Fn diff buffers, not Bn cache values.")
       prev_states_tensor = self.get_Bn_buffer(prefix)
+    elif self.is_seacache_enabled():
+      prev_states_tensor = self.get_seacache_Fn_buffer(prefix)
     else:
       prev_states_tensor = self.get_Fn_buffer(prefix)
 
     # Dynamic cache according to the residual diff
-    can_cache = prev_states_tensor is not None and self.similarity(
+    similarity = self.seacache_similarity if self.is_seacache_enabled() else self.similarity
+    can_cache = prev_states_tensor is not None and similarity(
       prev_states_tensor,
       states_tensor,
       threshold=threshold,
       parallelized=parallelized,
       prefix=prefix,
     )
+    if can_cache and self.is_seacache_enabled():
+      self.remove_buffer(self._seacache_current_key(prefix))
     return can_cache

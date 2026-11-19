@@ -1,0 +1,16 @@
+cache_config:
+  cache_type: DBCache
+  Fn_compute_blocks: 1
+  Bn_compute_blocks: 0
+  max_warmup_steps: 8
+  max_cached_steps: -1
+  max_continuous_cached_steps: 3
+  residual_diff_threshold: 0.12
+  # Optional probe metric; CacheType and cached values remain DBCache.
+  enable_seacache: true
+  seacache_mode: flow
+  # Global token geometry. This example describes a 64x64 image-token grid.
+  seacache_feature_shape: [64, 64]
+  seacache_power_exp: 2.0
+  # Instead of pipeline.scheduler, custom callers may provide explicit pairs:
+  # seacache_ab_schedule: [[0.9, 0.1], [0.8, 0.2]]
