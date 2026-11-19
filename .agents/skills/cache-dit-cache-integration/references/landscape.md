@@ -2,7 +2,7 @@
 
 本文件是"判有没有"的事实基础。数字全部标注来源，跨来源的数字**不可直接比较**（见 §4.3）。
 
-> 论文主张 → cache-dit 对应物的映射表在 `SKILL.md` §2（不在本文件）；本文件 §2 是四篇已评论文的算法骨架，§3 是逐维总表。
+> 论文主张 → cache-dit 对应物的映射表在 `SKILL.md` §2（不在本文件）；本文件 §2 是已评论文的算法骨架，§3 是逐维总表。2026 纯 calibrator/探针定向调研的完整版本见 `references/2026-cache-algorithms.md`。
 
 ## 1. cache-dit 现有的 cache 面（截至 2026-11-17）
 
@@ -53,7 +53,7 @@
 | 与调度 cadence | 强耦合（只取最长等间距后缀） | 无耦合 |
 | 架构槽位 | 与 Taylor/FoCa 互斥的 predictor | 可**包住**任意 predictor |
 
-## 2. 四篇已评论文的骨架
+## 2. 已评论文的算法骨架
 
 ### 2.1 HiCache（arXiv 2508.16984）
 
@@ -108,6 +108,52 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 
 与 DBCache 的对应：探针=`Fn`、`L1rel`=`similarity()`、`Σerror`=累积守卫、`resume from probed layer`=Fn 结构。**唯一新件是 DCTA**（双锚 + 实测距离比系数，零 SVD/零拟合/sample-adaptive）。
 
+### 2.5 BRACE（arXiv 2608.07572，2026-08-04）
+
+```
+窗口: C≤3 个真实历史锚点 (F_tau, tau)，FIFO 更新
+坐标: x(tau) = 2*(tau-tau_min)/(tau_max-tau_min)-1        # Eq.(6)
+预测: F_pred = Σ_j [w_j/(x(t)-x(tau_j))] F_tau_j          # Eq.(7)
+                 / Σ_j [w_j/(x(t)-x(tau_j))]
+权重: adapted Chebyshev，交替符号 + 端点敏感度 γ（默认 0.7）  # Eq.(8), Table 5
+```
+
+**裁定：接，首个实验性 calibrator PoC。** 只移植预测式到 `Bn_residual`，保留 DBCache 的 when；无训练、无当前真值、无在线矩阵分解。原文覆盖 FLUX 约 5.55x FLOPs 和 HunyuanVideo N=6，但固定等间隔锚点不等于 cache-dit 的动态非均匀锚点，也没有 DBCache 同 harness 对照。
+
+### 2.6 BeziCast（arXiv 2610.16448，2026-10-12）
+
+```
+窗口: 至多 K=6 个真实历史锚点，支持非均匀节点
+预测: 论文以 Bézier 控制点表述；用 Lagrange 基求等价权重并做 Tikhonov 正则
+守卫: 外推距离 + 系数 L1/权重范数 + 最远锚点支撑 → 凸包启发、向保守 simplex 投影收缩
+参数: K_max=6，d_max=6，lambda=1e-3，sigma_max=4               # Eq.(3)-(14)
+```
+
+**裁定：接，第二个实验性 calibrator PoC。** 比 BRACE 多一个小型稠密求解，但原生支持非均匀锚点与任意 horizon。最高报告 4.79x latency，缺 >5x 与 DBCache 对照；guardrail 必须单独做 on/off。
+
+### 2.7 SeaCache（arXiv 2602.18993，2026-02-22）
+
+```
+滤波: P(G_t, I_t) = iFFT(G_t(f) ⊙ FFT(I_t))             # Eq.(6)
+响应: G_t(f) = a_t S_x(f) / (a_t² S_x(f)+b_t²)         # Eq.(5)
+      再做均值增益归一化                                  # Eq.(7)
+探针: Δ~_t = RelL1(P(G_t,I_t), P(G_t+1,I_t+1))          # Eq.(8)
+调度: 保留原有累积 relative L1 与阈值，不改缓存内容
+```
+
+**裁定：接，优先做探针 PoC。** 信息增量在 diff 的度量空间，不在预测器。需要 scheduler `(a_t,b_t)`、fp32 FFT/iFFT 和 token 到 H×W 或 F×H×W 的几何恢复；官方代码可用，论文 Fig.9 有 DiCache 中间特征适配，但未证明 cache-dit Fn residual 或 >5x 档。未知几何必须显式不支持，禁止静默退化。
+
+### 2.8 RACER（arXiv 2608.01740，2026-08-03）
+
+```
+预测: direct 与 derivative-aware 两个历史预测器 + anchor forecast
+可靠度: r_dir/r_der/r_int → r_max
+what: 在 anchor 与 forecast 间收缩（shrink-only 可拆）
+when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接入
+```
+
+**裁定：探针可接做高加速 guard PoC；shrink-only 观察。** 不需当前 Fn 真值，但需短 trace 标定 O(1) 标量；仍须按闸 3 对 per-model 标定降权，不能默认豁免。`can_cache` 先于 `approximate`，所以必须新增显式只读 forecast/probe 路径。论文各表的高加速数字同时包含 shrink/refresh/repay，不可归因给单个组件。
+
 ## 3. 逐维总表
 
 | 维度 | DBCache | HiCache | MagCache | SVD-Cache | DiCache |
@@ -121,6 +167,28 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 | 额外算力 | 2 次 mean | 0 | 0 | 2 个瘦 GEMM | 2 次 mean（+m 层探针，已算） |
 | 时间感知 | 有（elapsed） | 有 | 有 | **无** | 有（累积） |
 | 论文覆盖的层 | ①②③ | ①②③（固定 interval + 逐层缓存 + 外推）；在 cache-dit 里落在 ③ | ①② | ③ | ①②（+③ DCTA） |
+
+### 3.1 2026 年新候选裁定（完整报告见 `references/2026-cache-algorithms.md`）
+
+| 候选 | 层与最小落点 | 状态/离线产物 | 裁定 |
+|---|---|---|---|
+| **BRACE** | ③；新 calibrator，预测 `Bn_residual` | C≤3 锚点；无训练 | **接：首个 PoC** |
+| **BeziCast** | ③；新 calibrator + 预测内部 guardrail | K≤6 锚点 + 小型求解；无训练 | **接：第二个 PoC** |
+| **SeaCache** | ①；替换 diff 度量，不改缓存对象 | fp32 FFT、scheduler 系数与几何元数据；无训练 | **接：探针 PoC** |
+| **RACER** | ③ shrink；① disagreement guard | 双预测状态 + 短 trace 标定 | **探针接；shrink 观察** |
+| GP-Refiner | ③ posterior correction；① posterior variance | h=10 历史对，高维 GP | **观察** |
+| Spectrum | ③ 在线 Chebyshev ridge | 全历史/滑窗 + 主路径求解 | **观察** |
+| HybridFF Adaptive | ③ 多基自适应融合 | 多预测器 + 协方差求解；Adaptive 无离线权重 | **观察** |
+| ChebBooster / BaryCache / TC-Padé | ③ 同族或低阶有理预测 | 不同数量的历史锚点/拟合 | **观察；不与 P0 并列铺开** |
+| L2P-Cache / LESA | ③ 学习预测器 | per-model 权重、轨迹或两阶段训练 | **观察离线 / 默认不接** |
+| FADE | ③ 分数阶基 + ①阈值 | per-timestep/layer/module LUT | **默认不接** |
+| PrediT / MeanCache | 需要当前 latent、额外求值或 JVP | 跨 pipeline/scheduler | **超范围** |
+| Z-Cache / PoSTCache | 未来锚点、轨迹修订/重放 | 非 forward-only | **不接** |
+| SpecKCast / BeCARE / AlignCache | 新输出状态、输入级控制或 CFG 双分支 | 跨层算法栈 | **观察，独立立项** |
+| FeatFix | 付费 exact block 的本地替换 | 固定 layer–timestep 审计点 | **超范围** |
+| SoftCache | ①信号的 headroom → scheduler 步长与尾部网格 | 无训练，但改采样网格 | **超范围；高潜力跨层路线** |
+
+统一口径：“接”只表示值得做同 harness 实验性 PoC，不是已验证可合入。2026-11-19 共深读 24 篇原文、摘要级初排 6 篇；报告含逐项 A/B/C/D、首发日期与原始链接。
 
 ## 4. 数字
 
@@ -210,6 +278,20 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 
 **测试坑**：`tests/api/utils.py` 的 `RandPipeline` 每步喂**同一个** `hidden_states`，特征轨迹恒定 ⇒ 任何 predictor 的预测恒等于锚点，**"输出不同"不能用来证明接线**；应 monkeypatch 计数 `approximate()` 调用，并断言 state 具体类型与已接线的 σ。
 
+### 4.6 2026 候选的论文自述（未在 cache-dit 实测）
+
+| 论文 | 来源内证据 | 不能据此推出的结论 |
+|---|---|---|
+| BRACE | FLUX 展示约 5.55x FLOPs；HunyuanVideo N=6 | 不能推出动态 DBCache 下同档增益 |
+| BeziCast | 多骨干最高 4.79x latency | 缺 >5x 与 DBCache 对照 |
+| SeaCache | FLUX/HunyuanVideo/Wan2.1；约 30%/50% 刷新预算；DiCache+SEA 消融；官方称滤波约 0.2% 总延迟 | 不能推出 Fn residual 或 >5x 已验证；0.2% 不是 cache-dit 实测 |
+| RACER | 各表含 5.09x、8.77x、9.49x 等不同口径的高档 paired 实验 | 整套收益不可归因给 shrink 或 disagreement 单件 |
+| GP-Refiner | FLUX NFE=12/16 为 6.24x/5.06x FLOPs，PSNR 30.230/30.457，相对 reuse +0.615/+0.489dB | 不能忽略高维 GP 的墙钟、显存与 compile 成本 |
+| BeCARE | FLUX 5.94x、Wan2.1 4.80x、HunyuanVideo 5.85x wall-clock | 改到 Fn 输出后不能继承输入级探针结果 |
+| L2P-Cache | FLUX 最高 6.03x latency/7.14x FLOPs；Qwen 最高 7.18x FLOPs | 需要 per-model/per-total-steps 权重，不是零配置路径 |
+
+后续 PoC 必须固定 seed、固定 Fn/Bn 与全部 guards；calibrator A/B 保持相同 `Cache Steps`，探针 A/B 固定缓存内容；同时报告 wall-clock、实际 Cache Steps、额外显存和正确量纲的 PSNR/SSIM/LPIPS。最小实验矩阵见 `2026-cache-algorithms.md` §7。
+
 ## 5. 复核用的原始出处
 
 - cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/utils.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
@@ -217,3 +299,4 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 - MagCache：Eq.(3)(4)(6)(7)(8)(9)(10)(11)、Sec 3.3、Table 1/2/3、A.3/A.4
 - SVD-Cache：Eq.(4)-(11)、Sec 3.3-3.5、Table 1/2/3、Fig 5(b)(c)(d)
 - DiCache：Eq.(3)(4)(5)(6)、Algorithm 1（p.6）、Eq.(7)-(11)、Fig 3(d)（m=1~3 相关 0.8）、Table 1/2
+- 2026 定向调研：`references/2026-cache-algorithms.md`（24 篇原文深读 + 6 篇摘要级初排；含 arXiv v1 日期、式/表号和原始链接）。BRACE Eq.(4)-(8)、BeziCast Eq.(3)-(14)、SeaCache Eq.(5)-(8)/Fig.9、RACER Eq.(9)-(13)/Algorithm 1、GP-Refiner Eq.(2)-(7)/Tables 1-4。

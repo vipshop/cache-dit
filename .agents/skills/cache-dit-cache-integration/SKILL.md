@@ -15,6 +15,7 @@ user-invocable: true
 | 判"要不要接" | 本文件 §0-§4（交付按 §6/§8） |
 | 已知要接，找代码落点 | `references/extension-points.md` |
 | 要现有算法 / 已评论文的完整对比与数字 | `references/landscape.md` |
+| 查 2026 纯 calibrator / 探针调研 | `references/2026-cache-algorithms.md`（BRACE、BeziCast、SeaCache、RACER 等 30 项） |
 | 手上有新 paper，要逐条过 | `references/paper-triage.md` |
 | 要找候选论文 | 本文件 §7 |
 
@@ -69,6 +70,11 @@ user-invocable: true
 
 | 论文 / 方案 | 裁定 | 一句话理由 |
 |---|---|---|
+| **BRACE**（barycentric rational forecast，2026） | **接：首个实验性 calibrator PoC，尚未实现/实测** | C≤3 历史锚点、无训练、闭式权重；只换 `Bn_residual` 预测式。固定周期与 5.55x FLOPs 论文证据不能外推到动态 DBCache。骨架见 `landscape.md` §2.5 |
+| **BeziCast**（Tikhonov Bézier / Lagrange 等价权重 + guardrail，2026） | **接：第二个实验性 calibrator PoC，尚未实现/实测** | 支持非均匀锚点与任意 horizon；K≤6 + 小型求解，无 per-model 权重。最高 4.79x latency，缺 >5x/DBCache 证据。见 `landscape.md` §2.6 |
+| **SeaCache**（SEA-filtered relative L1，2026） | **接：优先做探针 PoC，尚未实现/实测** | 只换 diff 度量，不改缓存对象；需 scheduler 系数、fp32 FFT 与 token 几何。DiCache 适配不代表 Fn residual 已验证。见 `landscape.md` §2.7 |
+| **RACER**（双预测分歧 + trust region，2026） | **探针接做高加速 guard PoC；shrink-only 观察** | 无当前真值，但需短 trace 标定 O(1) 标量与显式只读 probe；per-model 标定仍按闸 3 降权。整套收益不可归因给 shrink/refresh/repay 任一单件。见 `landscape.md` §2.8 |
+| **2026 其余候选** | **按完整报告裁定，不重复调研** | GP-Refiner/Spectrum/HybridFF 观察；L2P/LESA/FADE 默认不走通用零产物路线；SoftCache/FeatFix/SpecKCast 属跨层。24 篇深读 + 6 篇初排见 `references/2026-cache-algorithms.md` |
 | **HiCache**（Hermite 基） | **已实施（2026-11-18，`calibrators/hicache.py`，#1359）** | 与 `TaylorSeerCalibrator` 数学同构，只差基；落点定为 `taylorseer.py` 的 `_basis_term()` 钩子 + 独立文件（阶梯单份）。FLUX 1.7× 同 harness：HiCache 33.33dB > reuse 31.72 > TS-o2 30.91，σ=1 崩到 24.99（复现论文消融）。σ 仍 per-model 必调；1.7× 档一阶已够。数字见 `references/landscape.md` §4.5 |
 | **SVD-Cache**（子空间拆分） | **v1 已实施（2026-11-17，负结果，不建议生产用）** | `SVDCalibrator` 已接入（`calibrators/svd.py`，两种 predictor：`ema` / `taylor`，在线 basis）。FLUX.1-dev 1024² 28 步同 harness 实测：1.9x 档 reuse 23.11dB / `ema` 20.62dB / `taylor` 23.38dB / TaylorSeer 24.21dB；4.9x 档 15.95 / 15.56（o1） / 15.63dB。结论：`ema` 是两锚点凸组合、只能后向平滑；`taylor` 才是论文 Fig 5(b) 那支，能追回大部分但**仍不如全张量 TaylorSeer**，且多 ~0.6s/图；损失来自**冻结残差**（τ 0.9→0.999、k 5→1100 只补回 +0.43dB），不是 predictor 本身。详见 `references/landscape.md` §4.4 |
 | **MagCache**（幅度律 + 整步跳） | **不接**；只在"固定调度更好"被验证后考虑给 `steps_mask` 加一个 policy | 两个守卫 cache-dit 已有；同算力整步复用比块级复用差 ~10 dB；需 per-model γ 曲线，且运行期无法自测 |
@@ -96,7 +102,7 @@ user-invocable: true
 
 ## 7. 找候选论文（外部索引）
 
-[`leeguandong/Awesome-DIT-Cache`](https://github.com/leeguandong/Awesome-DIT-Cache)（默认分支 `master`；README 自述最近核验 2026-11-15）是中文索引，章节结构与本 skill 的三层模型可以对齐：
+[`leeguandong/Awesome-DIT-Cache`](https://github.com/leeguandong/Awesome-DIT-Cache)（2026-11-19 实测默认分支为 `main`；README 自述最近核验 2026-11-15）是中文索引，章节结构与本 skill 的三层模型可以对齐：
 
 | 仓库章节 | 对应本 skill 的层 | 用法 |
 |---|---|---|
@@ -118,6 +124,6 @@ user-invocable: true
 | 去向 | 路径 | 性质 |
 |---|---|---|
 | 草稿 | `cache-dit/.tmp/research/<topic>_analysis.md`（扁平 snake_case，不建日期子目录；`.tmp/` 被 gitignore） | 可丢弃 |
-| **版本化** | 本 skill 的 `references/landscape.md`：§2 补算法骨架、§3 逐维总表加一列、§4 已判例表加一行 | 随 PR 提交，是下次评估的第一手依据 |
+| **版本化** | 本 skill 的 `references/landscape.md`：§2 补算法骨架、§3 补候选裁定、§4 补来源内数字；完整长报告可另存 `references/<year-or-topic>.md` 并加入 ROUTE FIRST | 随 PR 提交，是下次评估的第一手依据 |
 
 只写 `.tmp` 而不回写 `landscape.md`，结论会跟临时目录一起消失——这是最容易漏的一步。
