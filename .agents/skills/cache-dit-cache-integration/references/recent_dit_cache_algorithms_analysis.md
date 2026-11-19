@@ -235,6 +235,8 @@ F_{\mathrm{pred}}(t)=\frac{\sum_j w_j F_{\tau_j}/(x(t)-x(\tau_j))}{\sum_j w_j/(x
 
 **推荐形态。** 新增“filtered relative L1”判定选项，不增加 CacheType，不改变 Bn residual。优先验证 FLUX 与 Wan 两类几何明确的骨干；对无法恢复空间/时间轴的模型显式标为不支持，不做静默退化。
 
+**实现更新（2026-11-19）。** 已新增模型无关的 `cache_contexts/seacache_uitls.py` 和 `DBCacheConfig.enable_seacache=False` 选项，支持 flow/VP/显式 AB、dense/packed 图像与视频几何。原 `similarity()` 不变，专用 `seacache_similarity()` 只改 diff；raw Fn value 与 filtered indicator 分离。CP 在现有 mesh 恢复完整空间，支持非等长 padding gather；TP 与 CP+TP 复用原有归约。351 项相关回归及 SGLang 23 项通过；FLUX 结果见 §7.4，完整临时记录为 `cache-dit/.tmp/research/seacache_analysis.md`。
+
 ### 5.3 P0：RACER forecast-disagreement
 
 **A. 算法骨架。** direct 与 derivative-aware 两个预测器对同一未来步产生不同结果，再与 anchor forecast 比较，得到 \(r_{\text{dir}},r_{\text{der}},r_{\text{int}}\) 和 \(r_{\max}\)。当分歧低时信任预测；升高时收缩；超过高风险阈值时刷新。
@@ -349,6 +351,8 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 | 下采样交互 | 分别测试 `downsample_factor=1` 与 `>1`，明确 SEA 滤波位于 channel 下采样之前还是之后 |
 | DBPrune 交互 | 用相同滤波 diff 跑 DBPrune，检查动态阈值反作用的尺度是否仍有效，并核对实际执行 block 数 |
 | 失败即停 | 滤波收益被 FFT 开销抵消，或 Fn residual 上无法复现论文中间特征结论 |
+
+**本轮完成 FLUX 单点与 CP2 功能子集（2026-11-19），未跑 Wan 或 >5x。** 单卡 compile+F1B0：reuse rdt0.12 为 8.67s/12 命中，SeaCache rdt0.12 为 11.77s/6 命中，SeaCache rdt0.24 为 8.19s/13 命中；相对 compile 的 PSNR/SSIM 分别 28.09/0.9643、29.52/0.9749、27.80/0.9576。rdt0.24 重跑 8.18s，vs compile 28.89/0.9575，同配置 noise floor 33.46dB/0.9887。CP2 reuse/SeaCache 为 5.77s/12 与 7.81s/6，二者 PSNR/SSIM 31.37/0.9728。默认路径与 SGLang patch 不变，351 项相关回归通过。该点只证明通用与分布式接线；同阈值下命中减少且 FFT/通信有实际成本，不能宣称 SeaCache 普遍优于 DBCache。
 
 ### 7.5 RACER：把 shrink 与 when 分开验证
 
