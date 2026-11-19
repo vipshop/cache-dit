@@ -38,12 +38,19 @@ class QuantizeBackend(Enum):
       except ImportError:
         return False
     elif backend == cls.CACHE_DIT:
-      # Native quantization support in Cache-DiT is needed for SVDQuant, so we
-      # consider it supported if the CUDA extension is available.
+      # Cache-DiT's native backend covers multiple workflows: SVDQuant needs
+      # its CUDA extension, while MXFP4 only needs the MX dtypes from PyTorch.
       try:
         from ..kernels import cuda_ext_is_available
 
-        return cuda_ext_is_available()
+        if cuda_ext_is_available():
+          return True
+      except ImportError:
+        pass
+      try:
+        from .mxfp4 import mxfp4_is_available
+
+        return mxfp4_is_available()
       except ImportError:
         return False
     elif backend == cls.NONE:

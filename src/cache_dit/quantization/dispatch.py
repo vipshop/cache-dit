@@ -58,6 +58,10 @@ def quantize(
       from .fp4 import quantize_fp4
 
       module = quantize_fp4(module, quantize_config)
+    elif quantize_config.is_mxfp4():
+      from .mxfp4 import quantize_mxfp4
+
+      module = quantize_mxfp4(module, quantize_config)
     else:
       from .fp8 import quantize_fp8
 

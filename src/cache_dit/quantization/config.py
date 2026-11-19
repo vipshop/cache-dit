@@ -390,7 +390,7 @@ _CACHE_DIT_FP8_TYPES = frozenset({
   "float8_per_tensor",
   "float8_per_block",
 })
-_CACHE_DIT_ONLINE_TYPES = _CACHE_DIT_FP8_TYPES.union({"nvfp4"})
+_CACHE_DIT_ONLINE_TYPES = _CACHE_DIT_FP8_TYPES.union({"nvfp4", "mxfp4", "mxfp4_weight_only"})
 
 
 @dataclasses.dataclass
@@ -511,6 +511,11 @@ class QuantizeConfig:
   fp8_fused_mlp: bool = False
   # Enable the same structural fusion after native NVFP4 module replacement.
   fp4_fused_mlp: bool = False
+  # MXFP4 (native CACHE_DIT backend) group size along K. The OCP Microscaling
+  # spec defines MX formats with a group size of 32 and an E8M0 shared scale;
+  # the field is exposed for future variants but 32 is the only spec-compliant
+  # value today (validated in `quantize_mxfp4`).
+  mxfp4_block_size: int = 32
   # Whether to print detailed quantization information, such as the quantization
   # type of each layer, the reason for skipping quantization, etc. This is useful
   # for debugging and analysis.
@@ -555,6 +560,8 @@ class QuantizeConfig:
     if self.backend == QuantizeBackend.AUTO:
       if self.quant_type.lower().startswith("svdq"):
         self.backend = QuantizeBackend.CACHE_DIT
+      elif self.quant_type.lower().startswith("mxfp4"):
+        self.backend = QuantizeBackend.CACHE_DIT
       else:
         self.backend = QuantizeBackend.TORCHAO
     if (self.fp8_fused_mlp and
@@ -579,6 +586,16 @@ class QuantizeConfig:
       if self.calibrate_fn is not None or self.serialize_to is not None:
         raise ValueError("cache-dit native FP8/NVFP4 is online-only; calibrate_fn and serialize_to "
                          "are not supported.")
+
+    # Validate MXFP4 (native CACHE_DIT backend) configuration
+    if self.is_mxfp4():
+      if int(self.mxfp4_block_size) != 32:
+        raise ValueError("MXFP4 currently only supports mxfp4_block_size=32 "
+                         "(OCP Microscaling spec).")
+      if self.precision_plan is not None:
+        raise ValueError("precision_plan is not supported for MXFP4 quantization yet.")
+      if self.per_tensor_fallback is not True:
+        raise ValueError("per_tensor_fallback is not applicable to MXFP4 quantization.")
 
     # Validate SVDQuant PTQ workflow configuration
     if self.is_svdq():
@@ -681,6 +698,14 @@ class QuantizeConfig:
     """
 
     return isinstance(self.quant_type, str) and self.quant_type.startswith("svdq")
+
+  def is_mxfp4(self) -> bool:
+    """Return whether this config targets cache-dit's native MXFP4 backend.
+
+    :returns: `True` when `quant_type` selects an `mxfp4*` workflow.
+    """
+
+    return isinstance(self.quant_type, str) and self.quant_type.startswith("mxfp4")
 
   def is_svdq_dq(self) -> bool:
     """Return whether this config targets SVDQ dynamic quantization.
