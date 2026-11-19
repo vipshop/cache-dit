@@ -9,6 +9,7 @@ from .cache_contexts import (
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
+  BeziCastCalibratorConfig,
   CalibratorConfig,
 )
 from ..distributed import (
@@ -45,17 +46,20 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     enable_svd = kwargs.get("enable_svd", False)
     enable_hicache = kwargs.get("enable_hicache", False)
     enable_brace = kwargs.get("enable_brace", False)
+    enable_bezicast = kwargs.get("enable_bezicast", False)
     switches = [
-      enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache, enable_brace
+      enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache, enable_brace,
+      enable_bezicast
     ]
     if sum(switches) > 1:
       raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, `enable_svd`, "
-                       "`enable_hicache`, and `enable_brace` are mutually exclusive. Please set "
-                       "only one of them to true.")
+                       "`enable_hicache`, `enable_brace`, and `enable_bezicast` are mutually "
+                       "exclusive. Please set only one of them to true.")
 
     # These calibrators follow the main switch for encoder states by default.
     enable_encoder_hicache = kwargs.get("enable_encoder_hicache", enable_hicache)
     enable_encoder_brace = kwargs.get("enable_encoder_brace", enable_brace)
+    enable_encoder_bezicast = kwargs.get("enable_encoder_bezicast", enable_bezicast)
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -145,6 +149,22 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         brace_capacity=kwargs.get("brace_capacity", 3),
         brace_gamma=kwargs.get("brace_gamma", 0.7),
       ))
+    elif enable_bezicast:
+      bezicast_kwargs = {
+        "enable_calibrator": enable_bezicast,
+        "enable_encoder_calibrator": enable_encoder_bezicast,
+        "calibrator_cache_type": kwargs.get("calibrator_cache_type", "residual"),
+        "bezicast_history": kwargs.get("bezicast_history", 6),
+        "bezicast_control_points": kwargs.get("bezicast_control_points", 4),
+        "bezicast_ridge": kwargs.get("bezicast_ridge", 0.5),
+        "bezicast_guardrail": kwargs.get("bezicast_guardrail", False),
+        "bezicast_u_max": kwargs.get("bezicast_u_max", 1.5),
+        "bezicast_beta_max": kwargs.get("bezicast_beta_max", 1.0),
+        "bezicast_rho": kwargs.get("bezicast_rho", None),
+        "bezicast_gamma": kwargs.get("bezicast_gamma", 1.0),
+      }
+      cache_context_kwargs["calibrator_config"] = (BeziCastCalibratorConfig(
+        **bezicast_kwargs) if not reset else BeziCastCalibratorConfig().reset(**bezicast_kwargs))
 
     if "cache_type" not in kwargs:
       # Assume DBCache if cache_type is not specified

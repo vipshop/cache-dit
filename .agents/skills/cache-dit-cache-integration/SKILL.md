@@ -72,7 +72,7 @@ user-invocable: true
 | 论文 / 方案 | 裁定 | 一句话理由 |
 |---|---|---|
 | **BRACE**（barycentric rational forecast，2026） | **已实现（2026-11-19，`calibrators/brace.py`）；完成 FLUX 单点功能验收，仍需高加速/多骨干验证** | C≤3 真实锚点 FIFO、闭式权重、只换 `Bn_residual`；单点 compile 对照中 C2/C3 PSNR 29.57/30.75dB，reuse 29.03、TaylorSeer 31.52，不能据此宣称普遍优于现有预测器。见 `landscape.md` §4.7 |
-| **BeziCast**（Tikhonov Bézier / Lagrange 等价权重 + guardrail，2026） | **接：第二个实验性 calibrator PoC，尚未实现/实测** | 支持非均匀锚点与任意 horizon；K≤6 + 小型求解，无 per-model 权重。最高 4.79x latency，缺 >5x/DBCache 证据。见 `landscape.md` §2.6 |
+| **BeziCast**（Tikhonov Bernstein/Bézier 等价权重 + guardrail，2026） | **已实现（2026-11-19，`calibrators/bezicast.py`）；纯预测器完成 FLUX 单点+重跑，guardrail 默认关闭** | 论文默认 K=6/n=4/λ=0.5；cache-dit 单点 guard off/on 相对 compile 为 30.56/30.46dB，重跑 noise floor 39.60/32.58dB，guardrail 尚无稳定收益。见 `landscape.md` §4.8 |
 | **SeaCache**（SEA-filtered relative L1，2026） | **接：优先做探针 PoC，尚未实现/实测** | 只换 diff 度量，不改缓存对象；需 scheduler 系数、fp32 FFT 与 token 几何。DiCache 适配不代表 Fn residual 已验证。见 `landscape.md` §2.7 |
 | **RACER**（双预测分歧 + trust region，2026） | **探针接做高加速 guard PoC；shrink-only 观察** | 无当前真值，但需短 trace 标定 O(1) 标量与显式只读 probe；per-model 标定仍按闸 3 降权。整套收益不可归因给 shrink/refresh/repay 任一单件。见 `landscape.md` §2.8 |
 | **2026 其余候选** | **按完整报告裁定，不重复调研** | GP-Refiner/Spectrum/HybridFF 观察；L2P/LESA/FADE 默认不走通用零产物路线；SoftCache/FeatFix/SpecKCast 属跨层。24 篇深读 + 6 篇初排见 `references/2026-cache-algorithms.md` |
