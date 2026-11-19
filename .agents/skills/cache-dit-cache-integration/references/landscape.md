@@ -140,7 +140,7 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 调度: 保留原有累积 relative L1 与阈值，不改缓存内容
 ```
 
-**裁定：接，优先做探针 PoC。** 信息增量在 diff 的度量空间，不在预测器。需要 scheduler `(a_t,b_t)`、fp32 FFT/iFFT 和 token 到 H×W 或 F×H×W 的几何恢复；官方代码可用，论文 Fig.9 有 DiCache 中间特征适配，但未证明 cache-dit Fn residual 或 >5x 档。未知几何必须显式不支持，禁止静默退化。
+**裁定：已实现（2026-11-19，`cache_contexts/seacache_uitls.py`），作为 DBCache 默认关闭的通用探针。** 不新增 CacheType、不改缓存对象，原 `similarity()` 保持不变；支持 flow/VP/显式 AB、dense/packed 几何和 CP/TP/CP+TP。未知 scheduler 或几何明确报错，不做静默退化。FLUX 单点与 CP2 只证明适配和接线，不证明 >5x 或普遍收益。数字见 §4.9。
 
 ### 2.8 RACER（arXiv 2608.01740，2026-08-03）
 
@@ -173,7 +173,7 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 |---|---|---|---|
 | **BRACE** | ③；新 calibrator，预测 `Bn_residual` | C≤3 锚点；无训练 | **已实现；FLUX 单点功能验收，继续验证高加速档** |
 | **BeziCast** | ③；新 calibrator + 预测内部 guardrail | K≤6 锚点 + 小型求解；无训练 | **已实现；纯预测器完成 FLUX 单点+重跑，guardrail 继续观察** |
-| **SeaCache** | ①；替换 diff 度量，不改缓存对象 | fp32 FFT、scheduler 系数与几何元数据；无训练 | **接：探针 PoC** |
+| **SeaCache** | ①；替换 diff 度量，不改缓存对象 | fp32 FFT、scheduler 系数与几何元数据；无训练 | **已实现；通用 DBCache 可选探针，FLUX 单卡+CP2 验收** |
 | **RACER** | ③ shrink；① disagreement guard | 双预测状态 + 短 trace 标定 | **探针接；shrink 观察** |
 | GP-Refiner | ③ posterior correction；① posterior variance | h=10 历史对，高维 GP | **观察** |
 | Spectrum | ③ 在线 Chebyshev ridge | 全历史/滑窗 + 主路径求解 | **观察** |
@@ -317,6 +317,21 @@ FLUX.1-dev 1024²、28 步、seed 0、物理卡 2、compile+F1B0+rdt0.12。所�
 | BeziCast guard on，rho=auto | 8.68 | 34.00 | 30.46 / 0.9650 | 29.27 / 0.9663 |
 
 同配置重跑：guard off 为 **39.60dB/0.9932**，guard on 为 **32.58dB/0.9873**；第二轮 vs compile 分别 30.90/28.84dB。纯预测器额外延迟约 0.02s、显存约 0.13GiB；guardrail 未显示一致收益且稳定性更差，因此默认关闭。未覆盖 K=3、>5x、多 prompt/骨干，不能宣称普遍优于 BRACE/Taylor。完整记录：`cache-dit/.tmp/research/bezicast_analysis.md`。
+
+### 4.9 SeaCache cache-dit 通用与分布式验收（2026-11-19）
+
+SeaCache 落在 DBCache 的可选 when 探针：`DBCacheConfig(enable_seacache=True)` 或 `--seacache`，不新增 CacheType。原 `similarity()` 函数体不变，SGLang 23 项集成测试通过；351 项相关回归、8 项行为探针及 pre-commit 通过。CP 等长/非等长、TP、CP+TP 和 CP+CFG 均以全量参照验证。
+
+FLUX.1-dev 1024²、28 步、seed 0、compile+F1B0+warmup8+MCC3：
+
+| 臂 | 秒 / GiB | Cache Steps | PSNR/SSIM vs compile | PSNR/SSIM vs base |
+|---|---:|---:|---:|---:|
+| reuse，rdt0.12 | 8.67 / 33.87 | 12 | 28.09 / 0.9643 | 27.95 / 0.9620 |
+| SeaCache，rdt0.12 | 11.77 / 33.89 | 6 | 29.52 / 0.9749 | 29.03 / 0.9700 |
+| SeaCache，rdt0.24 | 8.19 / 33.89 | 13 | 27.80 / 0.9576 | 27.52 / 0.9534 |
+| SeaCache，rdt0.24 重跑 | 8.18 / 33.89 | 13 | 28.89 / 0.9575 | 28.56 / 0.9537 |
+
+rdt0.24 同配置重跑为 **33.46dB/0.9887**。同 rdt0.12 时 SeaCache 命中减半且慢于 reuse；rdt0.24 达到相近命中数，但 compile 波动下单 prompt 不构成速度/质量排名。CP2：reuse 5.77s/12 命中，SeaCache 7.81s/6 命中，二者 PSNR/SSIM 31.37/0.9728，单卡与 CP2 的 SeaCache diff 分布一致。所有图片正常。未覆盖 Wan、>5x、多 prompt 或通用最优阈值。完整记录：`cache-dit/.tmp/research/seacache_analysis.md`。
 
 ## 5. 复核用的原始出处
 

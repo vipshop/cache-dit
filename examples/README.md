@@ -131,6 +131,7 @@ python3 -m cache_dit.generate generate longcat_image
 python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
+python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64
 python3 -m cache_dit.generate flux --cache --calibrator taylorseer
 python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
 python3 -m cache_dit.generate flux --cache --calibrator brace --calibrator-params "capacity=3,gamma=0.7"
@@ -429,6 +430,13 @@ options:
                         Maximum cached steps for CacheDiT
   --max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS, --mcc MAX_CONTINUOUS_CACHED_STEPS
                         Maximum continuous cached steps for CacheDiT
+  --seacache            Enable the optional SEA-filtered relative-L1 probe inside DBCache.
+  --seacache-mode {flow,vp}
+                        SeaCache scheduler coefficient convention.
+  --seacache-feature-shape DIM [DIM ...]
+                        Global packed-token geometry: H W for images or F H W for video.
+  --seacache-power-exp SEACACHE_POWER_EXP
+                        SeaCache clean-signal power-spectrum exponent (2 for images, commonly 3 for video).
   --calibrator CALIBRATOR
                         DBCache calibrator to enable: taylorseer, dmd, foca,
                         svd (SVD-Cache), hicache (damped-Hermite), brace

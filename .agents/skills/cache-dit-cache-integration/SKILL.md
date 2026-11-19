@@ -73,7 +73,7 @@ user-invocable: true
 |---|---|---|
 | **BRACE**（barycentric rational forecast，2026） | **已实现（2026-11-19，`calibrators/brace.py`）；完成 FLUX 单点功能验收，仍需高加速/多骨干验证** | C≤3 真实锚点 FIFO、闭式权重、只换 `Bn_residual`；单点 compile 对照中 C2/C3 PSNR 29.57/30.75dB，reuse 29.03、TaylorSeer 31.52，不能据此宣称普遍优于现有预测器。见 `landscape.md` §4.7 |
 | **BeziCast**（Tikhonov Bernstein/Bézier 等价权重 + guardrail，2026） | **已实现（2026-11-19，`calibrators/bezicast.py`）；纯预测器完成 FLUX 单点+重跑，guardrail 默认关闭** | 论文默认 K=6/n=4/λ=0.5；cache-dit 单点 guard off/on 相对 compile 为 30.56/30.46dB，重跑 noise floor 39.60/32.58dB，guardrail 尚无稳定收益。见 `landscape.md` §4.8 |
-| **SeaCache**（SEA-filtered relative L1，2026） | **接：优先做探针 PoC，尚未实现/实测** | 只换 diff 度量，不改缓存对象；需 scheduler 系数、fp32 FFT 与 token 几何。DiCache 适配不代表 Fn residual 已验证。见 `landscape.md` §2.7 |
+| **SeaCache**（SEA-filtered relative L1，2026） | **已实现（2026-11-19，`cache_contexts/seacache_uitls.py`）；通用 DBCache 可选探针，完成 FLUX 单卡+CP2 验收** | 不改 CacheType/缓存对象，原 similarity 不变；支持 flow/VP/AB、packed/dense、CP/TP/CP+TP。351 项回归与 SGLang 23 项通过；单点不构成普遍收益结论。见 `landscape.md` §4.9 |
 | **RACER**（双预测分歧 + trust region，2026） | **探针接做高加速 guard PoC；shrink-only 观察** | 无当前真值，但需短 trace 标定 O(1) 标量与显式只读 probe；per-model 标定仍按闸 3 降权。整套收益不可归因给 shrink/refresh/repay 任一单件。见 `landscape.md` §2.8 |
 | **2026 其余候选** | **按完整报告裁定，不重复调研** | GP-Refiner/Spectrum/HybridFF 观察；L2P/LESA/FADE 默认不走通用零产物路线；SoftCache/FeatFix/SpecKCast 属跨层。24 篇深读 + 6 篇初排见 `references/2026-cache-algorithms.md` |
 | **HiCache**（Hermite 基） | **已实施（2026-11-18，`calibrators/hicache.py`，#1359）** | 与 `TaylorSeerCalibrator` 数学同构，只差基；落点定为 `taylorseer.py` 的 `_basis_term()` 钩子 + 独立文件（阶梯单份）。FLUX 1.7× 同 harness：HiCache 33.33dB > reuse 31.72 > TS-o2 30.91，σ=1 崩到 24.99（复现论文消融）。σ 仍 per-model 必调；1.7× 档一阶已够。数字见 `references/landscape.md` §4.5 |

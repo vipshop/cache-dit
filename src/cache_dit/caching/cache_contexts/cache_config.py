@@ -106,6 +106,13 @@ class BasicCacheConfig:
   #       inference context.
   force_refresh_step_policy: str = "once"  # "once" or "repeat"
 
+  # SeaCache is an optional probe metric inside DBCache, not a separate cache type.
+  enable_seacache: bool = False
+  seacache_mode: str = "flow"  # "flow" or "vp"
+  seacache_feature_shape: Optional[tuple] = None  # Global (H,W) or (F,H,W) for packed tokens
+  seacache_power_exp: float = 2.0
+  seacache_ab_schedule: Optional[tuple] = None  # Explicit sequence of (a,b), bypasses scheduler
+
   def update(self, **kwargs) -> "BasicCacheConfig":
     """Update non-`None` fields in place.
 
@@ -179,6 +186,13 @@ class BasicCacheConfig:
 
     if self.enable_separate_cfg is not None:
       base_str += f"_CFG{int(self.enable_separate_cfg)}"
+
+    if self.enable_seacache:
+      base_str += f"_SEA{self.seacache_mode}_P{self.seacache_power_exp}"
+      if self.seacache_feature_shape is not None:
+        base_str += "_G" + "x".join(str(dim) for dim in self.seacache_feature_shape)
+      if self.seacache_ab_schedule is not None:
+        base_str += "_ABS"
 
     return base_str
 

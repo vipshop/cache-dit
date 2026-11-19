@@ -200,6 +200,31 @@ class CachedAdapter:
       # Force use persistent_context for FakeDiffusionPipeline
       persistent_context=isinstance(block_adapter.pipe, FakeDiffusionPipeline),
     )
+    if cache_config.enable_seacache:
+      scheduler = context_kwargs.pop("seacache_scheduler", None)
+      if scheduler is None:
+        scheduler = getattr(block_adapter.pipe, "scheduler", None)
+      if scheduler is None and cache_config.seacache_ab_schedule is None:
+        raise ValueError("SeaCache requires a pipeline scheduler or seacache_ab_schedule.")
+      if context_manager.persistent_context and cache_config.num_inference_steps is None:
+        if cache_config.seacache_ab_schedule is not None and len(
+            cache_config.seacache_ab_schedule) > 0:
+          cache_config.num_inference_steps = len(cache_config.seacache_ab_schedule)
+        else:
+          raise ValueError("Transformer-only SeaCache requires num_inference_steps or an explicit "
+                           "seacache_ab_schedule so later requests cannot run past the schedule.")
+      parallelism_config = None
+      for transformer in BlockAdapter.flatten(block_adapter.transformer):
+        cp_config = getattr(transformer, "_cp_config", None)
+        parallel_config = getattr(transformer, "_parallelism_config", None)
+        parallelism_config = cp_config if cp_config is not None else parallel_config
+        if parallelism_config is not None:
+          break
+      context_manager.configure_seacache(
+        scheduler,
+        parallelism_config,
+        transformers=BlockAdapter.flatten(block_adapter.transformer),
+      )
     flatten_contexts, contexts_kwargs = cls.modify_context_params(block_adapter, **context_kwargs)
 
     block_adapter.pipe._context_manager = context_manager  # instance level

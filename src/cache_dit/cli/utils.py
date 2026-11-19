@@ -590,6 +590,33 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Maximum continuous cached steps for CacheDiT",
   )
   parser.add_argument(
+    "--seacache",
+    action="store_true",
+    default=False,
+    help="Enable the optional SEA-filtered relative-L1 probe inside DBCache.",
+  )
+  parser.add_argument(
+    "--seacache-mode",
+    type=str,
+    default="flow",
+    choices=["flow", "vp"],
+    help="SeaCache scheduler coefficient convention.",
+  )
+  parser.add_argument(
+    "--seacache-feature-shape",
+    type=int,
+    nargs="+",
+    default=None,
+    metavar="DIM",
+    help="Global packed-token geometry: H W for images or F H W for video.",
+  )
+  parser.add_argument(
+    "--seacache-power-exp",
+    type=float,
+    default=2.0,
+    help="SeaCache clean-signal power-spectrum exponent (2 for images, commonly 3 for video).",
+  )
+  parser.add_argument(
     "--calibrator",
     type=_parse_calibrator_arg,
     default=None,
@@ -1704,6 +1731,18 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
 
   if getattr(args, "svdq_layerwise_offload", False):
     args.svdq_offload_quantized_layers_to_cpu = True
+
+  if args.seacache and not args.cache:
+    raise ValueError("--seacache requires --cache.")
+  if args.seacache and args.config_path is not None:
+    raise ValueError(
+      "--seacache flags cannot be combined with --config-path; set SeaCache in YAML.")
+  if args.seacache_feature_shape is not None:
+    if not args.seacache:
+      raise ValueError("--seacache-feature-shape requires --seacache.")
+    if len(args.seacache_feature_shape) not in (2, 3) or any(
+        dim <= 0 for dim in args.seacache_feature_shape):
+      raise ValueError("--seacache-feature-shape requires positive H W or F H W dimensions.")
 
   # Resolve --calibrator-params once the calibrator is known.
   if args.calibrator is not None and args.config_path is not None:
@@ -3254,6 +3293,14 @@ def maybe_apply_optimization(
 
       ulysses_size, ring_size, tp_size = _prepare_distributed_size()
 
+      if cache_config is not None and args.seacache:
+        cache_config.update(
+          enable_seacache=True,
+          seacache_mode=args.seacache_mode,
+          seacache_feature_shape=args.seacache_feature_shape,
+          seacache_power_exp=args.seacache_power_exp,
+        )
+
       enable_cache(
         pipe_or_adapter,
         cache_config=(DBCacheConfig(
@@ -3268,6 +3315,10 @@ def maybe_apply_optimization(
           steps_computation_mask=steps_computation_mask,
           force_refresh_step_hint=kwargs.get("force_refresh_step_hint", None),
           force_refresh_step_policy=kwargs.get("force_refresh_step_policy", "once"),
+          enable_seacache=args.seacache,
+          seacache_mode=args.seacache_mode,
+          seacache_feature_shape=args.seacache_feature_shape,
+          seacache_power_exp=args.seacache_power_exp,
         ) if cache_config is None and args.cache else cache_config),
         calibrator_config=build_calibrator_config(args),
         params_modifiers=kwargs.get("params_modifiers", None),
