@@ -11,17 +11,15 @@ src/cache_dit/caching/
   load_configs.py                    # 从 yaml/CLI 还原 config，含 calibrator 互斥校验
   cache_adapters/cache_adapter.py    # patch transformer forward；挂 _context_manager
   cache_blocks/
-    __init__.py                      # UnifiedBlocks / CachedBlocks / PrunedBlocks 的 __new__ 分派
+    __init__.py                      # UnifiedBlocks / CachedBlocks 的 __new__ 分派
     pattern_base.py                  # 0/1/2 类模型的模板：Fn → can_cache → apply/store → Mn → Bn
     pattern_3_4_5.py                 # 3/4/5 类模型：独立完整实现（不是包装！）
-    pattern_utils.py                 # 统计挂到 module：cached_steps / residual_diffs / pruned_blocks
+    pattern_utils.py                 # 统计挂到 module：cached_steps / residual_diffs
   cache_contexts/
-    context_manager.py               # ContextManager.__new__：DBCache / DBPrune 两分支 + raise
+    context_manager.py               # ContextManager.__new__：DBCache 分支 + raise
     cache_manager.py                 # 判定主逻辑：can_cache / similarity / 缓冲读写
     cache_context.py                 # CachedContext 状态（步数 / diff / 连续计数）
-    prune_context.py / prune_manager.py
     cache_config.py                  # BasicCacheConfig（= DBCacheConfig）+ ExtraCacheConfig
-    prune_config.py                  # DBPruneConfig
     calibrators/
       base.py                        # CalibratorBase：reset_cache / approximate / mark_step_begin / update
       taylorseer.py  dmd.py  foca.py
@@ -146,19 +144,19 @@ for gamma in ratios:
 | config 解析 | `load_configs.py` | `if cache_type == ...` 分支，else 会 raise |
 | context 分派 | `context_manager.py` | `__new__` + `_supported_managers` |
 | state | `cache_context.py` / 新 manager | 步数、diff、连续计数、CFG 分支同构 |
-| block 分派 | `cache_blocks/__init__.py` | `UnifiedBlocks.__new__` / `CachedBlocks.__new__` / `PrunedBlocks.__new__` 三层 `if/elif` |
+| block 分派 | `cache_blocks/__init__.py` | `UnifiedBlocks.__new__` / `CachedBlocks.__new__` 两层 `if/elif` |
 | block 执行 | `pattern_base.py` **和** `pattern_3_4_5.py` | 两套模板都要写 |
 | stats | `pattern_utils.py`、`summary.py` | `apply_stats/remove_stats` + `CacheStats` + `strify` 三处分支 |
-| CLI | `cli/utils.py` | 现在硬编码 `DBCacheConfig(...)` 且**没有 `--cache-type`**（DBPrune 至今没 CLI 入口） |
+| CLI | `cli/utils.py` | 现在硬编码 `DBCacheConfig(...)` 且**没有 `--cache-type`** |
 | docs | `docs/user_guide/CACHE_API.md`、`docs/README.md` | 新算法要进文档（根 `README.md` 已最简化，不写算法说明） |
 
 ## 7. 与其它特性的交互
 
 | 特性 | 约束 | 位置 |
 |---|---|---|
-| CP（ulysses/ring） | `Bn >= 1` 被 planner 要求（`_cp_requires_min_bn_blocks`）；Fn 残差要按同一 split hook 切分后再相减。**DBPrune 没有专门的前置拦截**，只能靠 `check_min_bn_blocks` 的 `ValueError` 兜底（文案里会提到 DBPrune）——要 CP 就用 `DBCacheConfig(Bn_compute_blocks>=1)` | `cache_interface.py::check_min_bn_blocks`、`pattern_base.py` 的 `_get_Fn_residual` |
+| CP（ulysses/ring） | `Bn >= 1` 被 planner 要求（`_cp_requires_min_bn_blocks`）；Fn 残差要按同一 split hook 切分后再相减。要 CP 就用 `DBCacheConfig(Bn_compute_blocks>=1)` | `cache_interface.py::check_min_bn_blocks`、`pattern_base.py` 的 `_get_Fn_residual` |
 | TP | `similarity()` 里 `mean_diff/mean_t1` 走 `all_reduce(AVG)`；batch 分片下是近似 | `cache_manager.py` |
-| 量化 | 无显式耦合；DBPrune 剪掉的 block 不会被 `QuantizeObserver` 观测到（推断，未验证） | — |
+| 量化 | 无显式耦合 | — |
 | offload | `cache_blocks/offload_utils.py` 是死代码；group offloading 有 TODO「仍不完全兼容」 | `cache_adapter.py` 的 `new_forward_with_hf_hook` |
 | compile | 判定路径全部 `@torch.compiler.disable`（图外 Python 控制流）；快照类状态要 `detach().clone()`，否则被 CUDA-graph buffer 复用踩踏 | `dmd.py` 的 snapshot 注释 |
 | CFG | `enable_separate_cfg` 影响计步与计 diff；两分支各有独立计数 | `cache_context.py` |
@@ -171,7 +169,7 @@ for gamma in ratios:
 
 1. **逐比特**：`max_cached_steps=0` + `residual_diff_threshold=0.0` → `assert_close(atol=0, rtol=0)`。多流模型每条流都断言。
 2. **强制命中**：`residual_diff_threshold=1e9`（或 `>=1.0` 短路）→ 断言第二条流不是 `None` 也没被冻结。
-3. **真命中**：`cached_steps > 0`，且 executed steps（DBCache 侧只有 `accumulated_executed_steps`，没有 block 计数）或 `actual_blocks`（Prune 侧）能证明真跳过了计算。**只看 PSNR=inf 会假绿**（零缓存时也是 inf）。
+3. **真命中**：`cached_steps > 0`，且 `accumulated_executed_steps` 能证明真跳过了计算。**只看 PSNR=inf 会假绿**（零缓存时也是 inf）。
 4. **口径**：`calculate_psnr` 的 peak 固定 255（#1335 修的是 uint8 回绕，不是量纲），float[0,1] 仍会 +48.13 dB 虚高——要么自算（`data_range=1`），要么先乘 255；固定 seed。
 5. **量化/并行组合**：只在确实要发版时才跑，且必须单独归因（compile 会顺带打开 TF32，VAE 也会变快）。
 6. **与 DBCache 同 harness 对照**：新算法必须给出"同 FLOPs / 同 seed / 同 prompt 下 vs DBCache(同档位)"，否则数字无意义。
@@ -182,4 +180,4 @@ for gamma in ratios:
 - `rdt >= 1.0` 是"永远命中"的短路分支，不是"放宽阈值"，不能拿来证明 cache 有效。
 - `--compile` 会改变命中序列（数值扰动变了决策），所以 compile 行与非 compile 行不能共用同一工作点。
 - **`residual_diffs` 里有 sentinel**：`-0.0`（阈值关闭）/`-1.0`（永远命中）/`-2.0`（shape 不匹配）都会写进同一个 dict。统计 diff 均值/画曲线前必须过滤负值，否则得到无意义的数。
-- 行号/默认值有 3 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `--rdt` 默认 0.12 而 dataclass 默认 0.08；`force_reduce_calibrator_vram` 注释与代码相反。
+- 行号/默认值有 2 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `--rdt` 默认 0.12 而 dataclass 默认 0.08。

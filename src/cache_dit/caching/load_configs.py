@@ -8,7 +8,6 @@ from .cache_contexts import (
   FoCaCalibratorConfig,
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
-  DBPruneConfig,
   CalibratorConfig,
 )
 from ..distributed import (
@@ -138,11 +137,6 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
 
         cache_context_kwargs["cache_config"] = (DBCacheConfig()
                                                 if not reset else DBCacheConfig().reset())
-        cache_context_kwargs["cache_config"].update(**kwargs)
-      elif cache_type == "DBPrune":
-
-        cache_context_kwargs["cache_config"] = (DBPruneConfig()
-                                                if not reset else DBPruneConfig().reset())
         cache_context_kwargs["cache_config"].update(**kwargs)
       else:
         raise ValueError(f"Unsupported cache_type: {cache_type}.")

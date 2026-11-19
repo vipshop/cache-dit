@@ -23,6 +23,11 @@ except ImportError:
   CALFLOPS_AVAILABLE = False
 
 import cache_dit
+from cache_dit.cli.utils import (
+  parse_calibrator_params,
+  build_calibrator_config,
+  resolve_calibrator_params,
+)
 
 logger = cache_dit.init_logger(__name__)
 BENCH_DIR = Path(__file__).resolve().parent
@@ -89,9 +94,7 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
   # Apply cache to the pipeline
   if args.cache:
     from cache_dit import (
-      DBCacheConfig,
-      TaylorSeerCalibratorConfig,
-    )
+      DBCacheConfig, )
 
     cache_dit.enable_cache(
       pipe,
@@ -106,8 +109,7 @@ def init_qwen_pipe(args: argparse.Namespace) -> QwenImagePipeline:
         residual_diff_threshold=args.rdt,
         enable_separate_cfg=False,  # true_cfg_scale=1.0
       ),
-      calibrator_config=(TaylorSeerCalibratorConfig(taylorseer_order=args.taylorseer_order, )
-                         if args.taylorseer else None),
+      calibrator_config=build_calibrator_config(args),
     )
 
   if torch.cuda.device_count() <= 1:
@@ -172,8 +174,8 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--verbose", action="store_true", default=False)
   # Cache params
   parser.add_argument("--cache", action="store_true", default=False)
-  parser.add_argument("--taylorseer", action="store_true", default=False)
-  parser.add_argument("--taylorseer-order", "--order", type=int, default=1)
+  parser.add_argument("--calibrator", type=str.lower, choices=["taylorseer"], default=None)
+  parser.add_argument("--calibrator-params", type=parse_calibrator_params, default=None)
   parser.add_argument("--rdt", type=float, default=0.8)
   parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=16)
   parser.add_argument("--Bn-compute-blocks", "--Bn", type=int, default=16)
@@ -196,7 +198,12 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--height", type=int, default=1024, help="Image height")
   parser.add_argument("--test-num", type=int, default=None)
   parser.add_argument("--cal-flops", "--flops", action="store_true", default=False)
-  return parser.parse_args()
+  args = parser.parse_args()
+  if args.calibrator is None and args.calibrator_params:
+    parser.error("--calibrator-params requires --calibrator.")
+  args.calibrator_fields = (resolve_calibrator_params(args.calibrator, args.calibrator_params)
+                            if args.calibrator is not None else None)
+  return args
 
 
 @torch.no_grad()

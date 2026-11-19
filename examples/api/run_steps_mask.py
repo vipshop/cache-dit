@@ -8,6 +8,7 @@ import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
 from utils import get_args, strify, MemoryTracker
 import cache_dit
+from cache_dit.cli.utils import build_calibrator_config, resolve_calibrator_params
 from cache_dit.platforms import current_platform
 
 parser = get_args(parse=False)
@@ -24,6 +25,10 @@ parser.add_argument(
   choices=["dynamic", "static"],
 )
 args = parser.parse_args()
+if args.calibrator is None and args.calibrator_params:
+  parser.error("--calibrator-params requires --calibrator.")
+args.calibrator_fields = (resolve_calibrator_params(args.calibrator, args.calibrator_params)
+                          if args.calibrator is not None else None)
 print(args)
 
 step_mask_aliases = {
@@ -54,9 +59,9 @@ pipe = FluxPipeline.from_pretrained(
 )
 
 if args.cache:
-  from cache_dit import DBCacheConfig, TaylorSeerCalibratorConfig
+  from cache_dit import DBCacheConfig
 
-  # Scheme: Hybrid DBCache + LeMiCa/EasyCache + TaylorSeer
+  # Scheme: Hybrid DBCache + LeMiCa/EasyCache + optional calibrator
   cache_dit.enable_cache(
     pipe,
     cache_config=DBCacheConfig(
@@ -78,8 +83,7 @@ if args.cache:
       # The policy for cache steps can be 'dynamic' or 'static'
       steps_computation_policy=args.step_policy,
     ),
-    calibrator_config=(TaylorSeerCalibratorConfig(taylorseer_order=args.taylorseer_order, )
-                       if args.taylorseer else None),
+    calibrator_config=build_calibrator_config(args),
   )
 
 assert isinstance(pipe.transformer, FluxTransformer2DModel)
@@ -156,8 +160,8 @@ image.save(save_path)
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --taylorseer --taylorseer-order 1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --calibrator taylorseer --calibrator-params order=1
 # python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --taylorseer --taylorseer-order 1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --taylorseer --taylorseer-order 1 --quantize --quantize-type float8 --attn sage
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --calibrator taylorseer --calibrator-params order=1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --calibrator taylorseer --calibrator-params order=1
+# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --calibrator taylorseer --calibrator-params order=1 --quantize --quantize-type float8 --attn sage

@@ -12,7 +12,6 @@
 |---|---|---|
 | `NONE` | 不缓存 | — |
 | `DBCache` | Dual Block Cache：Fn 块算完 → 判 diff → 跳过 `[Fn, N-Bn)` → Bn 块算 | 块区间 |
-| `DBPrune` | 同款判定，但**逐 block** 决策，可动态放宽阈值 | 单 block |
 
 `TaylorSeer / DMD / FoCa` **不是算法**，是 DBCache 的 forecast 插件（`calibrator_type` 三选一，互斥）。
 `SCM` **不是算法**，是外部注入的步调度（`steps_computation_mask`，1=必算 / 0=可缓存）。
@@ -25,7 +24,7 @@
 | `similarity()` | 同上 | `mean\|t1−t2\| / mean\|t1\|`（相对 L1）；`threshold<=0` 永不算，`>=1` 永远算 |
 | 累积守卫 | 同上 | `max_accumulated_residual_diff_threshold`（默认 `None`=关） |
 | 上下文刷新 | 同上 + `cache_context.py` | 每次 `__call__` 重建；`num_inference_steps` 达标；`force_refresh_step_hint`（`once`/`repeat`） |
-| 统计落盘 | `cache_blocks/pattern_utils.py` | `_cached_steps` / `_residual_diffs` / `_pruned_blocks` 挂到模块上 |
+| 统计落盘 | `cache_blocks/pattern_utils.py` | `_cached_steps` / `_residual_diffs` 挂到模块上 |
 
 ### 1.3 三个 calibrator 的机制
 

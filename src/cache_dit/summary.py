@@ -33,15 +33,6 @@ class CacheStats:
   cfg_accumulated_cached_steps: int = 0
   accumulated_executed_steps: int = 0
   accumulated_transformer_executed_steps: int = 0
-  # Dynamic Block Prune
-  pruned_steps: list[int] = dataclasses.field(default_factory=list)
-  pruned_blocks: list[int] = dataclasses.field(default_factory=list)
-  actual_blocks: list[int] = dataclasses.field(default_factory=list)
-  pruned_ratio: float = None
-  cfg_pruned_steps: list[int] = dataclasses.field(default_factory=list)
-  cfg_pruned_blocks: list[int] = dataclasses.field(default_factory=list)
-  cfg_actual_blocks: list[int] = dataclasses.field(default_factory=list)
-  cfg_pruned_ratio: float = None
   # Parallelism Stats
   parallelism_config: ParallelismConfig = None
   # Quantization Stats
@@ -211,11 +202,6 @@ def strify(
         return ""
       elif cache_config.cache_type == CacheType.DBCache:
         return cache_config.strify()
-      elif cache_config.cache_type == CacheType.DBPrune:
-        pruned_ratio = stats.pruned_ratio
-        if pruned_ratio is not None:
-          return f"{cache_config.strify()}_P{round(pruned_ratio * 100, 2)}"
-        return cache_config.strify()
     return ""
 
   def calibrator_str():
@@ -303,27 +289,11 @@ def _summary(
     accumulated_executed_steps = module._accumulated_executed_steps
     accumulated_transformer_executed_steps = module._accumulated_transformer_executed_steps
 
-    if hasattr(module, "_pruned_steps"):
-      pruned_steps: list[int] = module._pruned_steps
-      pruned_blocks: list[int] = module._pruned_blocks
-      actual_blocks: list[int] = module._actual_blocks
-      pruned_ratio: float = module._pruned_ratio
-    else:
-      pruned_steps = []
-      pruned_blocks = []
-      actual_blocks = []
-      pruned_ratio = None
-
     cache_stats.cached_steps = cached_steps
     cache_stats.residual_diffs = residual_diffs
     cache_stats.accumulated_cached_steps = accumulated_cached_steps
     cache_stats.accumulated_executed_steps = accumulated_executed_steps
     cache_stats.accumulated_transformer_executed_steps = accumulated_transformer_executed_steps
-
-    cache_stats.pruned_steps = pruned_steps
-    cache_stats.pruned_blocks = pruned_blocks
-    cache_stats.actual_blocks = actual_blocks
-    cache_stats.pruned_ratio = pruned_ratio
 
     if residual_diffs and logging:
       diffs_values = list(residual_diffs.values())
@@ -343,82 +313,38 @@ def _summary(
       # may cause the len of cached_steps list and residual_diffs list not less than
       # the accumulated_cached_steps.
 
-      if pruned_ratio is not None:
-        logger.info(f"\n⚡️Pruned Blocks and Residual Diffs Statistics: {cls_name}")
+      logger.info(
+        f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}, "
+        f"Executed Steps: {accumulated_executed_steps}, "
+        f"Transformer Executed Steps: {accumulated_transformer_executed_steps}\n", )
 
-        logger.info(
-          "| Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-        )
-        logger.info(
-          "|---------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-        )
-        logger.info(
-          f"| {sum(pruned_blocks):<13} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-          f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-          f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |", )
-      else:
-        logger.info(
-          f"\n⚡️Cache Steps and Residual Diffs Statistics: {cls_name}, "
-          f"Executed Steps: {accumulated_executed_steps}, "
-          f"Transformer Executed Steps: {accumulated_transformer_executed_steps}\n", )
-
-        logger.info(
-          "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
-        )
-        logger.info(
-          "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
-        )
-        logger.info(
-          f"| {accumulated_cached_steps:<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-          f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-          f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |", )
-        logger.info("")
-
-      if pruned_ratio is not None:
-        logger.info(
-          f"Dynamic Block Prune Ratio: {round(pruned_ratio * 100, 2)}% ({sum(pruned_blocks)}/{sum(actual_blocks)})\n"
-        )
+      logger.info(
+        "| Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |",
+      )
+      logger.info(
+        "|-------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|",
+      )
+      logger.info(
+        f"| {accumulated_cached_steps:<11} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+        f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+        f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |", )
+      logger.info("")
 
       if details:
-        if pruned_ratio is not None:
-          logger.info(f"📚Pruned Blocks and Residual Diffs Details: {cls_name}\n")
-          logger.info(f"Pruned Blocks: {len(pruned_blocks)}, {pruned_blocks}", )
-          sys.stdout.flush()
-          logger.info(f"Actual Blocks: {len(actual_blocks)}, {actual_blocks}", )
-          sys.stdout.flush()
-          logger.info(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}", )
-          sys.stdout.flush()
-        else:
-          logger.info(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
-          logger.info(f"Cache Steps: {accumulated_cached_steps}, {cached_steps}", )
-          sys.stdout.flush()
-          logger.info(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}", )
-          sys.stdout.flush()
+        logger.info(f"📚Cache Steps and Residual Diffs Details: {cls_name}\n")
+        logger.info(f"Cache Steps: {accumulated_cached_steps}, {cached_steps}", )
+        sys.stdout.flush()
+        logger.info(f"Residual Diffs: {len(residual_diffs)}, {residual_diffs}", )
+        sys.stdout.flush()
 
   if hasattr(module, "_cfg_cached_steps"):
     cfg_cached_steps: list[int] = module._cfg_cached_steps
     cfg_residual_diffs: dict[str, list | float] = dict(module._cfg_residual_diffs)
     cfg_accumulated_cached_steps = module._cfg_accumulated_cached_steps
 
-    if hasattr(module, "_cfg_pruned_steps"):
-      cfg_pruned_steps: list[int] = module._cfg_pruned_steps
-      cfg_pruned_blocks: list[int] = module._cfg_pruned_blocks
-      cfg_actual_blocks: list[int] = module._cfg_actual_blocks
-      cfg_pruned_ratio: float = module._cfg_pruned_ratio
-    else:
-      cfg_pruned_steps = []
-      cfg_pruned_blocks = []
-      cfg_actual_blocks = []
-      cfg_pruned_ratio = None
-
     cache_stats.cfg_cached_steps = cfg_cached_steps
     cache_stats.cfg_residual_diffs = cfg_residual_diffs
     cache_stats.cfg_accumulated_cached_steps = cfg_accumulated_cached_steps
-
-    cache_stats.cfg_pruned_steps = cfg_pruned_steps
-    cache_stats.cfg_pruned_blocks = cfg_pruned_blocks
-    cache_stats.cfg_actual_blocks = cfg_actual_blocks
-    cache_stats.cfg_pruned_ratio = cfg_pruned_ratio
 
     if cfg_residual_diffs and logging:
       cfg_diffs_values = list(cfg_residual_diffs.values())
@@ -432,52 +358,24 @@ def _summary(
       q4 = np.percentile(cfg_diffs_values, 95)
       qmax = np.max(cfg_diffs_values)
 
-      if cfg_pruned_ratio is not None:
-        logger.info(f"\n⚡️CFG Pruned Blocks and Residual Diffs Statistics: {cls_name}\n")
+      logger.info(f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n")
 
-        logger.info(
-          "| CFG Pruned Blocks | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
-        )
-        logger.info(
-          "|-------------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
-        )
-        logger.info(f"| {sum(cfg_pruned_blocks):<18} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |")
-        logger.info("")
-      else:
-        logger.info(f"\n⚡️CFG Cache Steps and Residual Diffs Statistics: {cls_name}\n")
-
-        logger.info(
-          "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
-        )
-        logger.info(
-          "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
-        )
-        logger.info(f"| {cfg_accumulated_cached_steps:<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
-                    f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
-                    f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |")
-
-      if cfg_pruned_ratio is not None:
-        logger.info(
-          f"CFG Dynamic Block Prune Ratio: {round(cfg_pruned_ratio * 100, 2)}% ({sum(cfg_pruned_blocks)}/{sum(cfg_actual_blocks)})\n"
-        )
+      logger.info(
+        "| CFG Cache Steps | Diffs P00 | Diffs P25 | Diffs P50 | Diffs P75 | Diffs P95 | Diffs Min | Diffs Max |"
+      )
+      logger.info(
+        "|-----------------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|"
+      )
+      logger.info(f"| {cfg_accumulated_cached_steps:<15} | {round(q0, 3):<9} | {round(q1, 3):<9} "
+                  f"| {round(q2, 3):<9} | {round(q3, 3):<9} | {round(q4, 3):<9} "
+                  f"| {round(qmin, 3):<9} | {round(qmax, 3):<9} |")
 
       if details:
-        if cfg_pruned_ratio is not None:
-          logger.info(f"📚CFG Pruned Blocks and Residual Diffs Details: {cls_name}\n")
-          logger.info(f"CFG Pruned Blocks: {len(cfg_pruned_blocks)}, {cfg_pruned_blocks}", )
-          sys.stdout.flush()
-          logger.info(f"CFG Actual Blocks: {len(cfg_actual_blocks)}, {cfg_actual_blocks}", )
-          sys.stdout.flush()
-          logger.info(f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}", )
-          sys.stdout.flush()
-        else:
-          logger.info(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
-          logger.info(f"CFG Cache Steps: {cfg_accumulated_cached_steps}, {cfg_cached_steps}", )
-          sys.stdout.flush()
-          logger.info(f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}", )
-          sys.stdout.flush()
+        logger.info(f"📚CFG Cache Steps and Residual Diffs Details: {cls_name}\n")
+        logger.info(f"CFG Cache Steps: {cfg_accumulated_cached_steps}, {cfg_cached_steps}", )
+        sys.stdout.flush()
+        logger.info(f"CFG Residual Diffs: {len(cfg_residual_diffs)}, {cfg_residual_diffs}", )
+        sys.stdout.flush()
 
   return cache_stats
 

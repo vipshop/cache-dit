@@ -7,6 +7,11 @@ from pathlib import Path
 from diffusers import FluxPipeline, FluxTransformer2DModel
 
 import cache_dit
+from cache_dit.cli.utils import (
+  parse_calibrator_params,
+  build_calibrator_config,
+  resolve_calibrator_params,
+)
 
 logger = cache_dit.init_logger(__name__)
 BENCH_DIR = Path(__file__).resolve().parent
@@ -20,8 +25,8 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--seed", type=int, default=0)
   parser.add_argument("--cache", action="store_true", default=False)
   parser.add_argument("--cache-config", type=str, default=None)
-  parser.add_argument("--taylorseer", action="store_true", default=False)
-  parser.add_argument("--taylorseer-order", "--order", type=int, default=2)
+  parser.add_argument("--calibrator", type=str.lower, choices=["taylorseer"], default=None)
+  parser.add_argument("--calibrator-params", type=parse_calibrator_params, default=None)
   parser.add_argument("--l1-diff", action="store_true", default=False)
   parser.add_argument("--rdt", type=float, default=0.08)
   parser.add_argument("--Fn-compute-blocks", "--Fn", type=int, default=1)
@@ -38,7 +43,16 @@ def get_args() -> argparse.ArgumentParser:
   parser.add_argument("--use-block-adapter", "--adapt", action="store_true", default=False)
   parser.add_argument("--use-auto-block-adapter", "--auto", action="store_true", default=False)
   parser.add_argument("--save-dir", type=str, default=str(BENCH_DIR / "tmp"))
-  return parser.parse_args()
+  args = parser.parse_args()
+  if args.cache_config is not None and (args.calibrator is not None or args.calibrator_params):
+    parser.error("--cache-config cannot be combined with --calibrator/--calibrator-params.")
+  if args.calibrator is None and args.calibrator_params:
+    parser.error("--calibrator-params requires --calibrator.")
+  if args.calibrator == "taylorseer" and args.calibrator_params is None:
+    args.calibrator_params = {"order": "2"}  # Preserve this benchmark's historical default.
+  args.calibrator_fields = (resolve_calibrator_params(args.calibrator, args.calibrator_params)
+                            if args.calibrator is not None else None)
+  return args
 
 
 def set_rand_seeds(seed):
@@ -73,9 +87,7 @@ def main():
     if not args.use_block_adapter:
       if args.cache_config is None:
         from cache_dit import (
-          DBCacheConfig,
-          TaylorSeerCalibratorConfig,
-        )
+          DBCacheConfig, )
 
         cache_dit.enable_cache(
           pipe,
@@ -89,8 +101,7 @@ def main():
             max_continuous_cached_steps=args.max_continuous_cached_steps,
             residual_diff_threshold=args.rdt,
           ),
-          calibrator_config=(TaylorSeerCalibratorConfig(taylorseer_order=args.taylorseer_order, )
-                             if args.taylorseer else None),
+          calibrator_config=build_calibrator_config(args),
         )
       else:
         cache_dit.enable_cache(pipe, **cache_dit.load_options(args.cache_config))
@@ -100,7 +111,6 @@ def main():
         ForwardPattern,
         BlockAdapter,
         DBCacheConfig,
-        TaylorSeerCalibratorConfig,
       )
       from cache_dit.caching.patch_functors import FluxPatchFunctor
 
@@ -134,8 +144,7 @@ def main():
             max_continuous_cached_steps=args.max_continuous_cached_steps,
             residual_diff_threshold=args.rdt,
           ),
-          calibrator_config=(TaylorSeerCalibratorConfig(taylorseer_order=args.taylorseer_order, )
-                             if args.taylorseer else None),
+          calibrator_config=build_calibrator_config(args),
         )
       else:
         cache_dit.enable_cache(

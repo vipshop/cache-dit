@@ -28,7 +28,7 @@ function run_flux_draw_bench_fast() {
 
 
 function run_flux_draw_bench_with_taylorseer_fast() {
-  local taylorseer_params="--taylorseer --order 1"
+  local taylorseer_params="--calibrator taylorseer --calibrator-params order=1"
   local test_num=200
   local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer_Fast"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"
@@ -45,7 +45,7 @@ function run_flux_draw_bench_with_taylorseer_fast() {
 }
 
 function run_flux_draw_bench_with_taylorseer_fast_O2() {
-  local taylorseer_params="--taylorseer --order 2"
+  local taylorseer_params="--calibrator taylorseer --calibrator-params order=2"
   local test_num=200
   local save_dir="./tmp/DrawBench200_DBCache_TaylorSeer_Fast_O2"
   local base_params="--test-num ${test_num} --save-dir ${save_dir} --flops"

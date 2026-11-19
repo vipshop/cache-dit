@@ -16,7 +16,7 @@ class ParamsModifier:
 
   def __init__(
     self,
-    # BasicCacheConfig, DBCacheConfig, DBPruneConfig, etc.
+    # BasicCacheConfig, DBCacheConfig, etc.
     cache_config: BasicCacheConfig = None,
     # Calibrator config: TaylorSeerCalibratorConfig, etc.
     calibrator_config: Optional[CalibratorConfig] = None,
