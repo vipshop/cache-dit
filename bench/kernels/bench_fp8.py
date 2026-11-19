@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
 from cache_dit.kernels.fp8 import fp8_quantize_torch
+from cache_dit.quantization.fp8.fused import fused_gelu_mlp, fused_swiglu_mlp
 from cache_dit.quantization.fp8.linear import QW8A8Linear
 
 MODES = ("per_row", "per_tensor", "per_block")
@@ -455,6 +456,66 @@ def _bench_one(shape: Shape, mode: str, args, api) -> list[dict]:
   return rows
 
 
+def _bench_fused_mlp(shape: Shape, mode: str, args, kind: str) -> list[dict]:
+  """Benchmark two-layer GELU or three-projection SwiGLU chains."""
+
+  torch.manual_seed(args.seed)
+  x = torch.randn(shape.m, shape.k, dtype=torch.bfloat16, device="cuda")
+
+  def linear(out_features, in_features):
+    layer = torch.nn.Linear(in_features, out_features, dtype=torch.bfloat16, device="cuda")
+    return QW8A8Linear.from_linear(layer, mode)
+
+  if kind == "gelu":
+    fc1 = linear(shape.n, shape.k)
+    fc2 = linear(shape.k, shape.n)
+    arms = {
+      "unfused": lambda: fc2(F.gelu(fc1(x), approximate="tanh")),
+      "fused": lambda: fused_gelu_mlp(x, fc1, fc2, approximate="tanh"),
+    }
+  else:
+    up = linear(shape.n, shape.k)
+    gate = linear(shape.n, shape.k)
+    down = linear(shape.k, shape.n)
+    arms = {
+      "unfused": lambda: down(up(x) * F.silu(gate(x))),
+      "fused": lambda: fused_swiglu_mlp(x, up, down, gate=gate),
+    }
+
+  rows = []
+  with torch.inference_mode():
+    reference = arms["unfused"]()
+    for name, fn in arms.items():
+      try:
+        actual = fn()
+        timing = _time_cuda(fn, args.warmup, args.iters)
+        rows.append({
+          "shape": shape.label,
+          "m": shape.m,
+          "n": shape.n,
+          "k": shape.k,
+          "mode": mode,
+          "impl": "cache_dit",
+          "stage": f"{kind}_{name}",
+          "median_ms": timing["median_ms"],
+          "min_ms": timing["min_ms"],
+          "max_ms": timing["max_ms"],
+          "rel_l2_vs_unfused": _relative_l2(actual, reference),
+        })
+      except Exception as exc:
+        rows.append({
+          "shape": shape.label,
+          "m": shape.m,
+          "n": shape.n,
+          "k": shape.k,
+          "mode": mode,
+          "impl": "cache_dit",
+          "stage": f"{kind}_{name}",
+          "error": f"{type(exc).__name__}: {exc}",
+        })
+  return rows
+
+
 def _print_table(rows: list[dict]) -> None:
   """Print a compact terminal table.
 
@@ -469,7 +530,7 @@ def _print_table(rows: list[dict]) -> None:
       print(f"{row['shape']:34s} {row['mode']:10s} {row['impl']:10s} "
             f"{row['stage']:18s} ERROR {error}")
       continue
-    rel_l2 = row.get("rel_l2_vs_dequant")
+    rel_l2 = row.get("rel_l2_vs_unfused", row.get("rel_l2_vs_dequant"))
     rel_text = "" if rel_l2 is None else f"{rel_l2:.3e}"
     print(f"{row['shape']:34s} {row['mode']:10s} {row['impl']:10s} "
           f"{row['stage']:18s} {row['median_ms']:10.4f} {row['min_ms']:10.4f} "
@@ -497,20 +558,32 @@ def main() -> None:
   parser.add_argument("--iters", type=int, default=50)
   parser.add_argument("--seed", type=int, default=0)
   parser.add_argument("--skip-compiled", action="store_true")
+  parser.add_argument("--fused-mlp", action="store_true", help="Benchmark the GELU MLP chain.")
+  parser.add_argument("--fused-swiglu",
+                      action="store_true",
+                      help="Benchmark the separate-gate SwiGLU MLP chain.")
   parser.add_argument("--output", type=Path, default=Path(".tmp/fp8_backend/bench_fp8.json"))
   args = parser.parse_args()
 
+  if args.fused_mlp and args.fused_swiglu:
+    parser.error("--fused-mlp and --fused-swiglu are mutually exclusive.")
   if not torch.cuda.is_available():
     raise RuntimeError("bench_fp8.py requires CUDA.")
   torch.backends.cuda.matmul.allow_tf32 = False
-  api = _torchao_api()
   shapes = (_parse_shapes(args.shapes) if args.shapes else [
     Shape(*shape) for shape in (SWEEP_SHAPES if args.suite == "sweep" else DEFAULT_SHAPES)
   ])
   rows = []
-  for shape in shapes:
-    for mode in args.modes:
-      rows.extend(_bench_one(shape, mode, args, api))
+  if args.fused_mlp or args.fused_swiglu:
+    kind = "gelu" if args.fused_mlp else "swiglu"
+    for shape in shapes:
+      for mode in args.modes:
+        rows.extend(_bench_fused_mlp(shape, mode, args, kind))
+  else:
+    api = _torchao_api()
+    for shape in shapes:
+      for mode in args.modes:
+        rows.extend(_bench_one(shape, mode, args, api))
 
   _print_table(rows)
   args.output.parent.mkdir(parents=True, exist_ok=True)

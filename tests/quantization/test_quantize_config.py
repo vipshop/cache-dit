@@ -331,3 +331,31 @@ def test_quantize_config_svdq_dq_few_shot_accepts_relax_strategies(strategy: str
   )
 
   assert config.get_svdq_kwargs()["few_shot_relax_strategy"] == strategy
+
+
+def test_quantize_config_fp8_fused_mlp_strify_and_component_expansion() -> None:
+  config = QuantizeConfig(
+    backend="cache_dit",
+    quant_type="float8_per_row",
+    fp8_fused_mlp=True,
+    components_to_quantize={
+      "transformer": {
+        "fp8_fused_mlp": True,
+      },
+    },
+  )
+  assert config.strify() == "<transformer:float8_per_row_cache_dit_fused_mlp>"
+  expanded = QuantizeConfig.expand_configs(config)
+  assert len(expanded) == 1
+  assert expanded[0].fp8_fused_mlp is True
+
+
+@pytest.mark.parametrize("backend,quant_type", [
+  ("torchao", "float8_per_row"),
+  ("cache_dit", "nvfp4"),
+  ("cache_dit", "svdq_nvfp4_r32_dq"),
+])
+def test_quantize_config_rejects_fp8_fused_mlp_on_other_paths(backend: str,
+                                                              quant_type: str) -> None:
+  with pytest.raises(ValueError, match="fp8_fused_mlp=True requires"):
+    QuantizeConfig(backend=backend, quant_type=quant_type, fp8_fused_mlp=True)

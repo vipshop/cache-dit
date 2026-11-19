@@ -116,6 +116,38 @@ void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scal
   }
 }
 
+void fp8_gemm_activation(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scale,
+                         const at::Tensor& b_scale, const std::optional<at::Tensor>& bias,
+                         at::Tensor& out, int64_t mode, int64_t activation) {
+  TORCH_CHECK(activation == kActivationGelu || activation == kActivationGeluTanh,
+              "fp8_gemm_activation expects GELU or GELU tanh.");
+  const c10::cuda::CUDAGuard device_guard(a.device());
+  check_gemm_inputs(a, b, a_scale, b_scale, bias, out, mode);
+  const int M = static_cast<int>(a.size(0));
+  const int N = static_cast<int>(b.size(0));
+  const int K = static_cast<int>(a.size(1));
+  const int num_k_blocks = (K + 127) / 128;
+  const void* a_ptr = a.data_ptr<at::Float8_e4m3fn>();
+  const void* b_ptr = b.data_ptr<at::Float8_e4m3fn>();
+  void* out_ptr = out.data_ptr<at::BFloat16>();
+  const void* bias_ptr = bias.has_value() ? bias->data_ptr<at::BFloat16>() : nullptr;
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (mode == kPerBlock) {
+    launch_fp8_gemm_per_block_activation(a_ptr, b_ptr, a_scale.data_ptr<float>(),
+                                         b_scale.data_ptr<float>(), bias_ptr, out_ptr, M, N, K,
+                                         num_k_blocks, activation, stream);
+  } else if (mode == kPerTensor) {
+    launch_fp8_gemm_per_tensor_activation(a_ptr, b_ptr, a_scale.data_ptr<float>(),
+                                          b_scale.data_ptr<float>(), bias_ptr, out_ptr, M, N, K,
+                                          activation, stream);
+  } else {
+    launch_fp8_gemm_per_row_activation(a_ptr, b_ptr, a_scale.data_ptr<float>(),
+                                       b_scale.data_ptr<float>(), bias_ptr, out_ptr, M, N, K,
+                                       activation, stream);
+  }
+}
+
 void fp8_quantize_gemm(const at::Tensor& input, const at::Tensor& b, const at::Tensor& b_scale,
                        const std::optional<at::Tensor>& bias, at::Tensor& out) {
   // This convenience op is intentionally per-row only. General granularity selection belongs to
@@ -128,7 +160,9 @@ void fp8_quantize_gemm(const at::Tensor& input, const at::Tensor& b, const at::T
 
 void register_fp8_ops(pybind11::module_& ops) {
   ops.def("fp8_quantize", &fp8_quantize);
+  ops.def("fp8_quantize_swiglu", &fp8_quantize_swiglu);
   ops.def("fp8_gemm", &fp8_gemm);
+  ops.def("fp8_gemm_activation", &fp8_gemm_activation);
   ops.def("fp8_quantize_gemm", &fp8_quantize_gemm);
 }
 

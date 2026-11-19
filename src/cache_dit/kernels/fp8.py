@@ -65,6 +65,25 @@ _MODE_TO_ID = {
   "per_block": 2,
 }
 _ID_TO_MODE = {value: key for key, value in _MODE_TO_ID.items()}
+_ACTIVATION_TO_ID = {
+  "none": 0,
+  "gelu": 1,
+  "gelu_tanh": 2,
+}
+
+
+def _resolve_activation(activation: str | None) -> int:
+  """Normalize the optional GEMM epilogue activation.
+
+  :param activation: ``None``/``none``, ``gelu`` or ``gelu_tanh``.
+  :returns: Integer id understood by the compiled extension.
+  """
+
+  normalized = "none" if activation is None else activation.lower()
+  if normalized not in _ACTIVATION_TO_ID:
+    raise ValueError(f"Unsupported FP8 GEMM activation: {activation!r}; expected none, gelu or "
+                     "gelu_tanh.")
+  return _ACTIVATION_TO_ID[normalized]
 
 
 def _resolve_mode(mode: str | int) -> int:
@@ -92,9 +111,9 @@ def _fp8_ops_module():
   """
 
   ops = _get_required_ops_module()
-  missing = [
-    name for name in ("fp8_quantize", "fp8_gemm", "fp8_quantize_gemm") if not hasattr(ops, name)
-  ]
+  required = ("fp8_quantize", "fp8_quantize_swiglu", "fp8_gemm", "fp8_gemm_activation",
+              "fp8_quantize_gemm")
+  missing = [name for name in required if not hasattr(ops, name)]
   if missing:
     raise RuntimeError(
       f"The loaded cache_dit._C_ops extension is missing {missing}. Rebuild it with "
@@ -187,6 +206,58 @@ def _fake_fp8_quantize(x: torch.Tensor, mode: int, is_weight: bool):
   )
 
 
+def _validate_swiglu_metadata(value: torch.Tensor, gate: torch.Tensor | None,
+                              mode: int) -> tuple[int, int]:
+  """Validate gated producer metadata and return its output shape."""
+
+  if value.dtype != torch.bfloat16 or value.dim() != 2:
+    raise ValueError("fp8_quantize_swiglu expects a 2D bfloat16 value tensor.")
+  rows, input_cols = value.shape
+  if rows == 0 or input_cols == 0:
+    raise ValueError("fp8_quantize_swiglu does not accept empty tensors.")
+  if gate is None:
+    if input_cols % 2 != 0:
+      raise ValueError("Half-split SwiGLU expects value [M, 2H].")
+    cols = input_cols // 2
+  else:
+    cols = input_cols
+    if gate.dtype != torch.bfloat16 or gate.shape != value.shape:
+      raise ValueError("A separate SwiGLU gate must be bfloat16 with the same [M, H] shape.")
+  if cols % 16 != 0:
+    raise ValueError("fp8_quantize_swiglu requires H to be a multiple of 16.")
+  if mode == _MODE_TO_ID["per_block"] and cols % 128 != 0:
+    raise ValueError("fp8_quantize_swiglu per-block requires H to be a multiple of 128.")
+  return rows, cols
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_quantize_swiglu",
+  "(Tensor value, Tensor? gate, int mode) -> (Tensor, Tensor)",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_quantize_swiglu", "CUDA")
+def _fp8_quantize_swiglu(value: torch.Tensor, gate: torch.Tensor | None, mode: int):
+  rows, cols = _validate_swiglu_metadata(value, gate, mode)
+  value = value.contiguous()
+  gate = gate.contiguous() if gate is not None else None
+  output = torch.empty((rows, cols), dtype=torch.float8_e4m3fn, device=value.device)
+  scale = torch.empty(_scale_shape(rows, cols, mode, False),
+                      dtype=torch.float32,
+                      device=value.device)
+  _fp8_ops_module().fp8_quantize_swiglu(value, gate, output, scale, mode)
+  return output, scale
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_quantize_swiglu")
+def _fake_fp8_quantize_swiglu(value: torch.Tensor, gate: torch.Tensor | None, mode: int):
+  rows, cols = _validate_swiglu_metadata(value, gate, mode)
+  return (
+    value.new_empty((rows, cols), dtype=torch.float8_e4m3fn),
+    value.new_empty(_scale_shape(rows, cols, mode, False), dtype=torch.float32),
+  )
+
+
 def _validate_gemm_metadata(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
                             b_scale: torch.Tensor, bias: torch.Tensor | None, mode: int) -> None:
   """Validate metadata shared by the eager and fake GEMM implementations.
@@ -268,6 +339,46 @@ def _fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: 
 def _fake_fp8_gemm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor, b_scale: torch.Tensor,
                    bias: torch.Tensor | None, mode: int) -> torch.Tensor:
   _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
+  return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
+
+
+def _call_fp8_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
+                              b_scale: torch.Tensor, bias: torch.Tensor | None, out: torch.Tensor,
+                              mode: int, activation: int) -> None:
+  """Bridge the functional activation GEMM to the out-param extension entry."""
+
+  _fp8_ops_module().fp8_gemm_activation(a, b, a_scale, b_scale, bias, out, mode, activation)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp8_gemm_activation",
+  "(Tensor a, Tensor b, Tensor a_scale, Tensor b_scale, Tensor? bias, int mode, int activation) "
+  "-> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp8_gemm_activation", "CUDA")
+def _fp8_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
+                         b_scale: torch.Tensor, bias: torch.Tensor | None, mode: int,
+                         activation: int) -> torch.Tensor:
+  _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
+  if activation not in (1, 2):
+    raise ValueError("fp8_gemm_activation expects activation=1 (gelu) or 2 (gelu_tanh).")
+  a = a.contiguous()
+  b = b.contiguous()
+  out = torch.empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16, device=a.device)
+  _call_fp8_gemm_activation(a, b, a_scale.contiguous(), b_scale.contiguous(), bias, out, mode,
+                            activation)
+  return out
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp8_gemm_activation")
+def _fake_fp8_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
+                              b_scale: torch.Tensor, bias: torch.Tensor | None, mode: int,
+                              activation: int) -> torch.Tensor:
+  _validate_gemm_metadata(a, b, a_scale, b_scale, bias, mode)
+  if activation not in (1, 2):
+    raise ValueError("fp8_gemm_activation expects activation=1 (gelu) or 2 (gelu_tanh).")
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
 
@@ -409,6 +520,25 @@ def fp8_quantize(x: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.fp8_quantize(x, _resolve_mode(mode), is_weight)
 
 
+def fp8_quantize_swiglu(value: torch.Tensor,
+                        gate: torch.Tensor | None = None,
+                        mode: str = "per_row") -> tuple[torch.Tensor, torch.Tensor]:
+  """Quantize ``value * silu(gate)`` without materializing the BF16 product.
+
+  With a separate ``gate``, both inputs have shape ``[M,H]``. With ``gate=None``,
+  ``value`` has shape ``[M,2H]`` and its second half supplies the gate. SiLU and
+  the product are rounded to BF16 in the same order as the unfused Torch chain,
+  then quantized with the requested native FP8 granularity.
+
+  :param value: BF16 value tensor ``[M,H]`` or half-split tensor ``[M,2H]``.
+  :param gate: Optional separate BF16 gate tensor ``[M,H]``.
+  :param mode: ``per_row``, ``per_tensor`` or ``per_block``.
+  :returns: ``(qdata, scale)`` for the gated BF16 activation.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp8_quantize_swiglu(value, gate, _resolve_mode(mode))
+
+
 def _fp8_gemm_scaled_mm(a: torch.Tensor, b: torch.Tensor, a_scale: torch.Tensor,
                         b_scale: torch.Tensor, bias: torch.Tensor | None,
                         mode_id: int) -> torch.Tensor:
@@ -485,7 +615,8 @@ def fp8_gemm(a: torch.Tensor,
              b_scale: torch.Tensor,
              bias: torch.Tensor | None = None,
              mode: str = "per_row",
-             use_native: bool = True) -> torch.Tensor:
+             use_native: bool = True,
+             activation: str | None = None) -> torch.Tensor:
   """Compute ``a @ b.T + bias`` from E4M3 inputs and FP32 scales.
 
   This function consumes the outputs of :func:`fp8_quantize`; it does not compute
@@ -517,12 +648,20 @@ def fp8_gemm(a: torch.Tensor,
     ``False`` selects the ``torch._scaled_mm`` reference for per-row/per-tensor;
     per-block still uses the native blockwise collective because scaled_mm does
     not support this scale layout.
+  :param activation: Optional ``gelu`` (exact) or ``gelu_tanh`` epilogue. The
+    scale+bias result is rounded to BF16 before activation, matching the unfused
+    chain. ``torch._scaled_mm`` exposes no activation epilogue and rejects this
+    option instead of applying an out-of-kernel substitute.
   :returns: BF16 tensor ``[M,N]`` with the original, unpadded N.
   """
 
   mode_id = _resolve_mode(mode)
+  activation_id = _resolve_activation(activation)
   out_channels = b.shape[0]
   logical_k = a.shape[1]
+  if activation_id and not use_native:
+    raise ValueError("torch._scaled_mm does not expose GELU epilogues; use_native=True is "
+                     "required for FP8 activation fusion.")
   use_scaled_mm = not use_native and mode_id != _MODE_TO_ID["per_block"]
   k_multiple, n_multiple = (128, 128) if mode_id == _MODE_TO_ID["per_block"] else (
     16, 16 if use_scaled_mm else 8)
@@ -532,6 +671,9 @@ def fp8_gemm(a: torch.Tensor,
                                                         padded_k, padded_n)
   if use_scaled_mm:
     out = _fp8_gemm_scaled_mm(a, b, a_scale, b_scale, bias, mode_id)
+  elif activation_id:
+    out = torch.ops.cache_dit_cuda_ops.fp8_gemm_activation(a, b, a_scale, b_scale, bias, mode_id,
+                                                           activation_id)
   else:
     out = torch.ops.cache_dit_cuda_ops.fp8_gemm(a, b, a_scale, b_scale, bias, mode_id)
   return out[:, :out_channels]
@@ -553,4 +695,6 @@ def fp8_quantize_gemm(x: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.fp8_quantize_gemm(x, b, b_scale, bias)
 
 
-__all__ = ["fp8_gemm", "fp8_quantize", "fp8_quantize_gemm", "fp8_quantize_torch"]
+__all__ = [
+  "fp8_gemm", "fp8_quantize", "fp8_quantize_gemm", "fp8_quantize_swiglu", "fp8_quantize_torch"
+]

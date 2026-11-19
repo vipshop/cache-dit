@@ -17,9 +17,14 @@ constexpr int64_t kPerBlock = 2;
 
 void fp8_quantize(const at::Tensor& input, at::Tensor& output, at::Tensor& scale, int64_t mode,
                   bool is_weight);
+void fp8_quantize_swiglu(const at::Tensor& value, const std::optional<at::Tensor>& gate,
+                         at::Tensor& output, at::Tensor& scale, int64_t mode);
 void fp8_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scale,
               const at::Tensor& b_scale, const std::optional<at::Tensor>& bias, at::Tensor& out,
               int64_t mode);
+void fp8_gemm_activation(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scale,
+                         const at::Tensor& b_scale, const std::optional<at::Tensor>& bias,
+                         at::Tensor& out, int64_t mode, int64_t activation);
 void fp8_quantize_gemm(const at::Tensor& input, const at::Tensor& b, const at::Tensor& b_scale,
                        const std::optional<at::Tensor>& bias, at::Tensor& out);
 

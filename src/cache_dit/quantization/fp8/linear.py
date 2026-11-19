@@ -195,7 +195,33 @@ class QW8A8Linear(nn.Module):
     module._is_inner_quantized = True
     return module
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
+  def forward_quant(
+    self,
+    qx: torch.Tensor,
+    sx: torch.Tensor,
+    leading_shape: tuple[int, ...],
+    activation: str | None = None,
+  ) -> torch.Tensor:
+    """Evaluate a padded W8A8 GEMM from an already quantized activation.
+
+    :param qx: E4M3 activation ``[M, quantized_in_features]``.
+    :param sx: FP32 scales matching this layer's granularity.
+    :param leading_shape: Original activation dimensions before flattening.
+    :param activation: Optional exact/tanh GELU epilogue.
+    :returns: BF16 output with its original leading dimensions and logical width.
+    """
+
+    out = fp8_gemm(qx,
+                   self.qweight,
+                   sx,
+                   self.wscales,
+                   bias=self.bias,
+                   mode=self.mode,
+                   activation=activation)
+    out = out[:, :self.out_features]
+    return out.reshape(*leading_shape, self.out_features)
+
+  def forward(self, x: torch.Tensor, activation: str | None = None) -> torch.Tensor:
     """Dynamically quantize activation and evaluate padded W8A8 GEMM.
 
     The steps are ``[... ,K] -> flatten [M,K] -> zero-pad K -> FP8 quantize ->
@@ -206,6 +232,7 @@ class QW8A8Linear(nn.Module):
 
     :param x: BF16 activation ``[..., in_features]`` on CUDA. Arbitrary leading
       dimensions and unaligned K are accepted.
+    :param activation: Optional ``gelu`` or ``gelu_tanh`` GEMM epilogue.
     :returns: BF16 output ``[..., out_features]``. Padding columns never leak
       into the public shape.
     """
@@ -227,9 +254,7 @@ class QW8A8Linear(nn.Module):
       qx, sx = fp8_quantize_torch(flat, mode=self.mode)
     else:
       qx, sx = fp8_quantize(flat, mode=self.mode)
-    out = fp8_gemm(qx, self.qweight, sx, self.wscales, bias=self.bias, mode=self.mode)
-    out = out[:, :self.out_features]
-    return out.reshape(*leading_shape, self.out_features)
+    return self.forward_quant(qx, sx, leading_shape, activation=activation)
 
   def dequantize_weight(self) -> torch.Tensor:
     """Reconstruct the dense FP32-equivalent weight for diagnostics.

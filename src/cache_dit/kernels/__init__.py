@@ -14,6 +14,7 @@ from .fp4 import fp4_quantize
 from .fp8 import fp8_gemm
 from .fp8 import fp8_quantize
 from .fp8 import fp8_quantize_gemm
+from .fp8 import fp8_quantize_swiglu
 from .models import boogu_fused_qk_norm_rope
 from .models import boogu_gated_rms_norm
 from .models import boogu_scaled_rms_norm
@@ -47,6 +48,7 @@ __all__ = [
   "fp4_gemm",
   "fp8_quantize",
   "fp8_quantize_gemm",
+  "fp8_quantize_swiglu",
   "fp8_gemm",
   "cuda_ext_is_available",
   "cuda_ext_get_load_error",

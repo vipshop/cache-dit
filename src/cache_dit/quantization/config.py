@@ -506,6 +506,9 @@ class QuantizeConfig:
   #    `few_shot_auto_compile` currently requires ``quantize_device: "cuda"``
   #    inside ``svdq_kwargs``.  See the comment on that key for details.
   svdq_kwargs: Optional[Dict[str, Any]] = None
+  # Enable structural GELU/SwiGLU fusion after native FP8 module replacement.
+  # This switch is intentionally invalid for TorchAO, SVDQ and native NVFP4.
+  fp8_fused_mlp: bool = False
   # Whether to print detailed quantization information, such as the quantization
   # type of each layer, the reason for skipping quantization, etc. This is useful
   # for debugging and analysis.
@@ -552,6 +555,11 @@ class QuantizeConfig:
         self.backend = QuantizeBackend.CACHE_DIT
       else:
         self.backend = QuantizeBackend.TORCHAO
+    if (self.fp8_fused_mlp and
+        (self.backend != QuantizeBackend.CACHE_DIT or self.quant_type not in _CACHE_DIT_FP8_TYPES)):
+      raise ValueError("fp8_fused_mlp=True requires backend='cache_dit' and one of "
+                       f"{sorted(_CACHE_DIT_FP8_TYPES)}; got backend={self.backend}, "
+                       f"quant_type={self.quant_type!r}.")
     assert QuantizeBackend.is_supported(
       self.backend), f"Quantization backend {self.backend} is not supported in this environment."
     if self.backend == QuantizeBackend.TORCHAO and self.is_svdq():
@@ -741,9 +749,12 @@ class QuantizeConfig:
     :returns: A compact summary string suitable for logs and artifact names.
     """
 
-    def _stringify_quant_type(quant_type: str, backend=None) -> str:
+    def _stringify_quant_type(quant_type: str,
+                              backend=None,
+                              fp8_fused_mlp: bool | None = None) -> str:
       quant_type = quant_type.lower()
       resolved_backend = self.backend if backend is None else backend
+      fused_mlp = self.fp8_fused_mlp if fp8_fused_mlp is None else fp8_fused_mlp
       if not isinstance(resolved_backend, QuantizeBackend):
         resolved_backend = QuantizeBackend.from_str(resolved_backend)
       if quant_type.startswith("svdq"):
@@ -760,6 +771,8 @@ class QuantizeConfig:
       elif (quant_type in _CACHE_DIT_ONLINE_TYPES
             and resolved_backend == QuantizeBackend.CACHE_DIT):
         quant_type = f"{quant_type}_cache_dit"
+        if fused_mlp and quant_type.startswith("float8_"):
+          quant_type = f"{quant_type}_fused_mlp"
       return quant_type
 
     if self.components_to_quantize is None or isinstance(self.components_to_quantize, list):
@@ -770,7 +783,7 @@ class QuantizeConfig:
         for component, d in self.components_to_quantize.items():
           quant_str += (
             f"<{component}:"
-            f"{_stringify_quant_type(d.get('quant_type', self.quant_type), d.get('backend', self.backend))}>"
+            f"{_stringify_quant_type(d.get('quant_type', self.quant_type), d.get('backend', self.backend), d.get('fp8_fused_mlp', self.fp8_fused_mlp))}>"
           )
       return quant_str
 
@@ -827,6 +840,7 @@ class QuantizeConfig:
           calibrate_fn=cfg.get("calibrate_fn", config.calibrate_fn),
           serialize_to=cfg.get("serialize_to", config.serialize_to),
           svdq_kwargs=cfg.get("svdq_kwargs", config.svdq_kwargs),
+          fp8_fused_mlp=cfg.get("fp8_fused_mlp", config.fp8_fused_mlp),
           verbose=cfg.get("verbose", config.verbose),
           observer=cfg.get("observer", config.observer),
         ) for component, cfg in config.components_to_quantize.items()

@@ -205,6 +205,15 @@ def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Modul
   module._exclude_layers = excluded
   module._fp8_quantized_layers = tuple(quantized_layers)
   module._fp8_skipped_layers = dict(skipped_layers)
+  if quantize_config.fp8_fused_mlp:
+    from .passes import apply_fused_mlp_passes
+
+    targets = apply_fused_mlp_passes(module)
+    total = sum(targets.values())
+    if total == 0:
+      raise ValueError("fp8_fused_mlp=True found no supported GELU or SwiGLU MLP structures.")
+    module._fp8_fused_mlp_targets = targets
+    logger.info("[FP8] Applied fused MLP passes to %d target(s): %s.", total, targets)
   if observer_refs:
     observer.attach(module, observer_refs)
   return module

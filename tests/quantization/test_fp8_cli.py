@@ -117,3 +117,31 @@ def test_torchao_backend_is_passed_explicitly(monkeypatch) -> None:
   ]))
   cli_utils.maybe_quantize_transformer(args, SimpleNamespace(transformer=_Toy()))
   assert captured[0].backend == QuantizeBackend.TORCHAO
+
+
+@requires_native_fp8
+def test_fp8_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
+  captured = []
+  monkeypatch.setattr(cli_utils, "quantize",
+                      lambda module, quantize_config: captured.append(quantize_config) or module)
+
+  class _Toy(nn.Module):
+
+    def __init__(self) -> None:
+      super().__init__()
+      self._repeated_blocks = ["_Block"]
+      self.proj = nn.Linear(2, 2)
+
+  args = cli_utils.maybe_postprocess_args(_parser().parse_args([
+    "--float8",
+    "--quantize-backend",
+    "cache_dit",
+    "--fp8-fused-mlp",
+    "--steps",
+    "1",
+  ]))
+  cli_utils.maybe_quantize_transformer(args, SimpleNamespace(transformer=_Toy()))
+  assert len(captured) == 1
+  assert captured[0].backend == QuantizeBackend.CACHE_DIT
+  assert captured[0].quant_type == "float8_per_row"
+  assert captured[0].fp8_fused_mlp is True

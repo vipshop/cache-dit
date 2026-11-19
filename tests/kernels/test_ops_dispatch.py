@@ -21,6 +21,7 @@ import cache_dit.kernels.svdquant as svdq_ops
     ("fp4_gemm", fp4_ops),
     ("fp8_quantize", fp8_ops),
     ("fp8_quantize_gemm", fp8_ops),
+    ("fp8_quantize_swiglu", fp8_ops),
     ("fp8_gemm", fp8_ops),
     ("ulysses_fp8_o_permute_quant", ulysses_ops),
     ("ulysses_fp8_o_permute_dequant", ulysses_ops),
