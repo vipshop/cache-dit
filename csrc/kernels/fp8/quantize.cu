@@ -377,4 +377,273 @@ void fp8_quantize(const at::Tensor& input, at::Tensor& output, at::Tensor& scale
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+namespace {
+
+struct SwigluInput {
+  const __nv_bfloat16* value;
+  const __nv_bfloat16* gate;
+  int64_t input_cols;
+  int64_t cols;
+
+  __device__ __forceinline__ Vec8BF16 load8(int64_t row, int64_t col) const {
+    const Vec8BF16 values = *reinterpret_cast<const Vec8BF16*>(value + row * input_cols + col);
+    const __nv_bfloat16* gate_row =
+      gate == nullptr ? value + row * input_cols + cols : gate + row * cols;
+    const Vec8BF16 gates = *reinterpret_cast<const Vec8BF16*>(gate_row + col);
+    Vec8BF16 result;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const float g = __bfloat162float(gates.elem[i]);
+      const float silu = g / (1.0f + __expf(-g));
+      const __nv_bfloat16 silu_bf16 = __float2bfloat16_rn(silu);
+      const float product = __bfloat162float(values.elem[i]) * __bfloat162float(silu_bf16);
+      result.elem[i] = __float2bfloat16_rn(product);
+    }
+    return result;
+  }
+};
+
+template <bool kCacheInput>
+__global__ void quantize_swiglu_per_row_kernel(SwigluInput input,
+                                               __nv_fp8_e4m3* __restrict__ output,
+                                               float* __restrict__ scale, int64_t rows,
+                                               int64_t cols) {
+  constexpr int kWarpsPerRow = 8;
+  constexpr int kRowsPerBlock = kWarpsPerBlock / kWarpsPerRow;
+  constexpr int kGroupSize = kWarpsPerRow * kWarpSize;
+  extern __shared__ __align__(16) __nv_bfloat16 input_cache[];
+  const int warp = threadIdx.x / kWarpSize;
+  const int lane = threadIdx.x % kWarpSize;
+  const int row_in_block = warp / kWarpsPerRow;
+  const int group_lane = (warp % kWarpsPerRow) * kWarpSize + lane;
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * kRowsPerBlock + row_in_block;
+  const bool valid = row < rows;
+  __nv_bfloat16* cached = input_cache + row_in_block * cols;
+
+  float amax = 0.0f;
+  for (int64_t col = static_cast<int64_t>(group_lane) * 8; valid && col < cols;
+       col += kGroupSize * 8) {
+    const Vec8BF16 vec = input.load8(row, col);
+    if constexpr (kCacheInput) {
+      *reinterpret_cast<Vec8BF16*>(cached + col) = vec;
+    }
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      amax = fmaxf(amax, fabsf(__bfloat162float(vec.elem[i])));
+    }
+  }
+  amax = warp_max(amax);
+
+  __shared__ float warp_amax[kWarpsPerBlock];
+  if (lane == 0) {
+    warp_amax[warp] = amax;
+  }
+  __syncthreads();
+  amax = 0.0f;
+#pragma unroll
+  for (int i = 0; i < kWarpsPerRow; ++i) {
+    amax = fmaxf(amax, warp_amax[row_in_block * kWarpsPerRow + i]);
+  }
+
+  const float safe_scale = amax == 0.0f ? 1.0f : amax / kE4M3Max;
+  if (valid && group_lane == 0) {
+    scale[row] = amax == 0.0f ? 0.0f : safe_scale;
+  }
+  __nv_fp8_e4m3* dst = output + row * cols;
+  for (int64_t col = static_cast<int64_t>(group_lane) * 8; valid && col < cols;
+       col += kGroupSize * 8) {
+    const Vec8BF16 vec =
+      kCacheInput ? *reinterpret_cast<const Vec8BF16*>(cached + col) : input.load8(row, col);
+    float values[8];
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      values[i] = __bfloat162float(vec.elem[i]);
+    }
+    store_e4m3x8(dst + col, values, safe_scale);
+  }
+}
+
+__global__ void swiglu_tensor_amax_kernel(SwigluInput input, int64_t rows, int64_t cols,
+                                          float* __restrict__ scale) {
+  const int64_t numel = rows * cols;
+  float amax = 0.0f;
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t base = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; base * 8 < numel;
+       base += stride) {
+    const int64_t offset = base * 8;
+    const Vec8BF16 vec = input.load8(offset / cols, offset % cols);
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      amax = fmaxf(amax, fabsf(__bfloat162float(vec.elem[i])));
+    }
+  }
+  amax = warp_max(amax);
+
+  __shared__ float warp_amax[kWarpsPerBlock];
+  const int warp = threadIdx.x / kWarpSize;
+  const int lane = threadIdx.x % kWarpSize;
+  if (lane == 0) {
+    warp_amax[warp] = amax;
+  }
+  __syncthreads();
+  if (warp == 0) {
+    amax = lane < kWarpsPerBlock ? warp_amax[lane] : 0.0f;
+    amax = warp_max(amax);
+    if (lane == 0 && amax > 0.0f) {
+      atomicMax(reinterpret_cast<unsigned int*>(scale), __float_as_uint(amax));
+    }
+  }
+}
+
+__global__ void quantize_swiglu_per_tensor_kernel(SwigluInput input,
+                                                  __nv_fp8_e4m3* __restrict__ output,
+                                                  const float* __restrict__ scale, int64_t rows,
+                                                  int64_t cols) {
+  const int64_t numel = rows * cols;
+  const float dequant_scale = scale[0];
+  const float safe_scale = dequant_scale == 0.0f ? 1.0f : dequant_scale;
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t base = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; base * 8 < numel;
+       base += stride) {
+    const int64_t offset = base * 8;
+    const Vec8BF16 vec = input.load8(offset / cols, offset % cols);
+    float values[8];
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      values[i] = __bfloat162float(vec.elem[i]);
+    }
+    store_e4m3x8(output + offset, values, safe_scale);
+  }
+}
+
+__global__ void quantize_swiglu_per_block_kernel(SwigluInput input,
+                                                 __nv_fp8_e4m3* __restrict__ output,
+                                                 float* __restrict__ scale, int64_t rows,
+                                                 int64_t cols) {
+  const int warp = threadIdx.x / kWarpSize;
+  const int lane = threadIdx.x % kWarpSize;
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp;
+  if (row >= rows) {
+    return;
+  }
+
+  const int64_t num_k_blocks = cols / kScaleBlock;
+  __nv_fp8_e4m3* dst = output + row * cols;
+  for (int64_t block = 0; block < num_k_blocks; ++block) {
+    const int64_t begin = block * kScaleBlock;
+    float amax = 0.0f;
+    for (int col = lane * 8; col < kScaleBlock; col += kWarpSize * 8) {
+      const Vec8BF16 vec = input.load8(row, begin + col);
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        amax = fmaxf(amax, fabsf(__bfloat162float(vec.elem[i])));
+      }
+    }
+    amax = warp_max(amax);
+    const float safe_scale = amax == 0.0f ? 1.0f : amax / kE4M3Max;
+    if (lane == 0) {
+      scale[row * num_k_blocks + block] = amax == 0.0f ? 0.0f : safe_scale;
+    }
+    for (int col = lane * 8; col < kScaleBlock; col += kWarpSize * 8) {
+      const Vec8BF16 vec = input.load8(row, begin + col);
+      float values[8];
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        values[i] = __bfloat162float(vec.elem[i]);
+      }
+      store_e4m3x8(dst + begin + col, values, safe_scale);
+    }
+  }
+}
+
+}  // namespace
+
+void fp8_quantize_swiglu(const at::Tensor& value, const std::optional<at::Tensor>& gate,
+                         at::Tensor& output, at::Tensor& scale, int64_t mode) {
+  TORCH_CHECK(value.is_cuda() && value.scalar_type() == at::kBFloat16 && value.dim() == 2 &&
+                value.is_contiguous(),
+              "fp8_quantize_swiglu expects a contiguous 2D bfloat16 CUDA value tensor.");
+  TORCH_CHECK(
+    output.is_cuda() && output.device() == value.device() &&
+      output.scalar_type() == at::kFloat8_e4m3fn && output.dim() == 2 && output.is_contiguous(),
+    "fp8_quantize_swiglu output must be a contiguous 2D E4M3 tensor on the input device.");
+  TORCH_CHECK(scale.is_cuda() && scale.device() == value.device() &&
+                scale.scalar_type() == at::kFloat && scale.is_contiguous(),
+              "fp8_quantize_swiglu scale must be contiguous float32 on the input device.");
+  const int64_t rows = value.size(0);
+  const int64_t input_cols = value.size(1);
+  const int64_t cols = output.size(1);
+  TORCH_CHECK(output.size(0) == rows && rows > 0 && cols > 0,
+              "fp8_quantize_swiglu output must be [M, H] with nonempty dimensions.");
+  TORCH_CHECK(cols % 16 == 0, "fp8_quantize_swiglu requires H to be a multiple of 16.");
+  TORCH_CHECK(mode == kPerRow || mode == kPerTensor || mode == kPerBlock,
+              "fp8_quantize_swiglu mode must be 0 (per_row), 1 (per_tensor), or 2 (per_block).");
+
+  const __nv_bfloat16* gate_ptr = nullptr;
+  if (gate.has_value()) {
+    const at::Tensor& gate_tensor = gate.value();
+    TORCH_CHECK(gate_tensor.is_cuda() && gate_tensor.device() == value.device() &&
+                  gate_tensor.scalar_type() == at::kBFloat16 && gate_tensor.is_contiguous() &&
+                  gate_tensor.sizes() == output.sizes(),
+                "fp8_quantize_swiglu gate must be a contiguous BF16 [M, H] tensor on the input "
+                "device.");
+    TORCH_CHECK(input_cols == cols,
+                "A separate gate expects value [M, H], not a half-split [M, 2H] tensor.");
+    gate_ptr = reinterpret_cast<const __nv_bfloat16*>(gate_tensor.data_ptr<at::BFloat16>());
+  } else {
+    TORCH_CHECK(input_cols == 2 * cols, "fp8_quantize_swiglu without gate expects value [M, 2H].");
+  }
+  const cudaDeviceProp* properties = at::cuda::getDeviceProperties(value.get_device());
+  TORCH_CHECK(properties->major >= 10, "cache-dit FP8 kernels require sm100 or newer.");
+
+  const c10::cuda::CUDAGuard device_guard(value.device());
+  const int64_t num_k_blocks = cols / kScaleBlock;
+  if (mode == kPerRow) {
+    TORCH_CHECK(scale.numel() == rows, "per-row SwiGLU scale must have M elements.");
+  } else if (mode == kPerTensor) {
+    TORCH_CHECK(scale.numel() == 1, "per-tensor SwiGLU scale must be a scalar.");
+  } else {
+    TORCH_CHECK(cols % kScaleBlock == 0,
+                "per-block SwiGLU quantization requires H to be a multiple of 128.");
+    TORCH_CHECK(scale.numel() == rows * num_k_blocks,
+                "per-block SwiGLU scale must have M * H / 128 elements.");
+  }
+
+  SwigluInput input{
+    reinterpret_cast<const __nv_bfloat16*>(value.data_ptr<at::BFloat16>()),
+    gate_ptr,
+    input_cols,
+    cols,
+  };
+  auto* dst = reinterpret_cast<__nv_fp8_e4m3*>(output.data_ptr<at::Float8_e4m3fn>());
+  float* scales = scale.data_ptr<float>();
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (mode == kPerRow) {
+    const int blocks = static_cast<int>(rows);
+    if (cols <= 4096) {
+      const int cache_bytes = static_cast<int>(cols * sizeof(__nv_bfloat16));
+      quantize_swiglu_per_row_kernel<true>
+        <<<blocks, kThreads, cache_bytes, stream>>>(input, dst, scales, rows, cols);
+    } else {
+      quantize_swiglu_per_row_kernel<false>
+        <<<blocks, kThreads, 0, stream>>>(input, dst, scales, rows, cols);
+    }
+  } else if (mode == kPerTensor) {
+    const int64_t numel = rows * cols;
+    const int blocks =
+      static_cast<int>(std::min<int64_t>((numel / 8 + kThreads - 1) / kThreads, 4096));
+    C10_CUDA_CHECK(cudaMemsetAsync(scales, 0, sizeof(float), stream));
+    swiglu_tensor_amax_kernel<<<blocks, kThreads, 0, stream>>>(input, rows, cols, scales);
+    finalize_per_tensor_scale_kernel<<<1, 1, 0, stream>>>(scales);
+    quantize_swiglu_per_tensor_kernel<<<blocks, kThreads, 0, stream>>>(input, dst, scales, rows,
+                                                                       cols);
+  } else {
+    const int blocks = static_cast<int>((rows + kWarpsPerBlock - 1) / kWarpsPerBlock);
+    quantize_swiglu_per_block_kernel<<<blocks, kThreads, 0, stream>>>(input, dst, scales, rows,
+                                                                      cols);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
 }  // namespace cache_dit::fp8

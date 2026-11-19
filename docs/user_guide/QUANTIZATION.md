@@ -52,6 +52,30 @@ python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
 
 The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts `use_native`; leave it enabled for the default CUTLASS path, or disable it to compare per-row/per-tensor against `torch._scaled_mm`.
 
+### Native FP8 Fused MLP
+
+The cache-dit FP8 backend can fuse supported FeedForward structures after online module replacement. Set `QuantizeConfig(fp8_fused_mlp=True)` or pass `--fp8-fused-mlp` together with `--quantize-backend cache_dit`. The option is disabled by default and is rejected for TorchAO, SVDQ, and native NVFP4 configurations.
+
+```python
+config = QuantizeConfig(
+  quant_type="float8_per_row",
+  backend="cache_dit",
+  fp8_fused_mlp=True,
+)
+cache_dit.quantize(pipe.transformer, config)
+```
+
+```bash
+python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
+  --float8 --quantize-backend cache_dit --fp8-fused-mlp
+```
+
+Three structural passes are supported: standard diffusers `FeedForward` blocks with exact or tanh GELU, single-stream `proj_mlp -> GELU -> concat` blocks such as FLUX, and SwiGLU blocks with either separate value/gate projections or one half-split projection. The logs report the number of targets for each pass; enabling the option on a module with no supported target raises an error.
+
+For GELU, the first FP8 GEMM applies bias and activation in its CUTLASS EVT. The second layer still performs the original dynamic activation quantization: per-row scales require a full-row amax and per-tensor scales require a global amax, so this path deliberately does not claim SVDQ-style local qout or dense-store elimination. For SwiGLU, the next layer's CUDA producer computes `value * silu(gate)`, amax, and E4M3 quantization without materializing a separate gated BF16 tensor. SiLU and multiplication retain their BF16 rounding order under both eager execution and `torch.compile`.
+
+The fused path supports all three native FP8 granularities, fake tensors, full-graph compile, and CUDA Graph capture. `torch._scaled_mm` and `_scaled_mm_v2` do not expose an activation epilogue; requesting activation with `use_native=False` therefore raises instead of silently applying a separate kernel. Existing TP/DTensor and online-only restrictions of the native FP8 backend are unchanged.
+
 ## FP8 Quantization
 
 Cache-DiT supports <span style="color:#c77dff;">online</span> quantization with different quantization types. The default TorchAO backend requires <span style="color:green;">torchao>=0.17.0</span>; the optional cache-dit backend uses the bundled `cache_dit._C_ops` extension. Users can implement model quantization by calling <span style="color:#c77dff;">quantize</span> or pass a <span style="color:#c77dff;">QuantizeConfig</span> to <span style="color:#c77dff;">enable_cache</span> API. Install torchao before using the default backend.

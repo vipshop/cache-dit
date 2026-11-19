@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
 from cache_dit.kernels import fp8_quantize_gemm
+from cache_dit.kernels import fp8_quantize_swiglu
 from cache_dit.kernels.fp8 import fp8_quantize_torch
 
 pytestmark = pytest.mark.skipif(
@@ -113,6 +114,95 @@ def test_torch_quantize_matches_custom(mode: str) -> None:
   assert torch.equal(s_custom, s_torch)
 
 
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+@pytest.mark.parametrize("form", ["separate_gate", "half_split"])
+def test_swiglu_producer_matches_explicit_gating(mode: str, form: str) -> None:
+  torch.manual_seed(41)
+  rows, cols = 33, 384
+  value = torch.randn(rows, cols, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn(rows, cols, dtype=torch.bfloat16, device="cuda")
+  if form == "half_split":
+    value = torch.cat((value, gate), dim=1)
+    gate = None
+  reference = value[:, :cols] if gate is None else value
+  gate_reference = value[:, cols:] if gate is None else gate
+  gated = reference * F.silu(gate_reference)
+  expected_q, expected_scale = fp8_quantize(gated, mode)
+  actual_q, actual_scale = fp8_quantize_swiglu(value, gate, mode)
+  assert torch.equal(actual_scale, expected_scale)
+  assert torch.equal(actual_q, expected_q)
+
+
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+def test_swiglu_producer_zero_input(mode: str) -> None:
+  value = torch.zeros(8, 256, dtype=torch.bfloat16, device="cuda")
+  gate = torch.zeros_like(value)
+  q, scale = fp8_quantize_swiglu(value, gate, mode)
+  assert torch.count_nonzero(q.float()) == 0
+  assert torch.count_nonzero(scale) == 0
+
+
+def test_swiglu_producer_rejects_invalid_shapes() -> None:
+  value = torch.randn(8, 256, dtype=torch.bfloat16, device="cuda")
+  with pytest.raises(ValueError, match="same \\[M, H\\] shape"):
+    fp8_quantize_swiglu(value, torch.empty(8, 128, dtype=torch.bfloat16, device="cuda"))
+  with pytest.raises(ValueError, match="per-block requires H"):
+    fp8_quantize_swiglu(torch.randn(8, 32, dtype=torch.bfloat16, device="cuda"), None, "per_block")
+  with pytest.raises(ValueError, match="Half-split SwiGLU"):
+    fp8_quantize_swiglu(torch.randn(8, 255, dtype=torch.bfloat16, device="cuda"))
+
+
+def test_swiglu_producer_fake_compile_and_cuda_graph() -> None:
+  from torch._subclasses.fake_tensor import FakeTensorMode
+
+  with FakeTensorMode():
+    value = torch.empty(11, 128, dtype=torch.bfloat16, device="cuda")
+    gate = torch.empty_like(value)
+    q, scale = fp8_quantize_swiglu(value, gate)
+    assert q.shape == (11, 128) and q.dtype == torch.float8_e4m3fn
+    assert scale.shape == (11, ) and scale.dtype == torch.float32
+
+  value = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn_like(value)
+
+  def run(v, g):
+    return fp8_quantize_swiglu(v, g, "per_row")
+
+  expected_q, expected_scale = run(value, gate)
+  compiled_q, compiled_scale = torch.compile(run, fullgraph=True)(value, gate)
+  assert torch.equal(compiled_q, expected_q)
+  assert torch.equal(compiled_scale, expected_scale)
+
+  graph = torch.cuda.CUDAGraph()
+  with torch.cuda.graph(graph):
+    captured_q, captured_scale = run(value, gate)
+  graph.replay()
+  assert torch.equal(captured_q, expected_q)
+  assert torch.equal(captured_scale, expected_scale)
+
+  value.copy_(torch.randn_like(value))
+  gate.copy_(torch.randn_like(gate))
+  expected_q, expected_scale = run(value, gate)
+  graph.replay()
+  assert torch.equal(captured_q, expected_q)
+  assert torch.equal(captured_scale, expected_scale)
+
+
+def test_swiglu_producer_profile_has_no_standalone_gating() -> None:
+  from torch.profiler import ProfilerActivity, profile
+
+  value = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn_like(value)
+  fp8_quantize_swiglu(value, gate)
+  torch.cuda.synchronize()
+  with profile(activities=[ProfilerActivity.CUDA]) as prof:
+    fp8_quantize_swiglu(value, gate)
+    torch.cuda.synchronize()
+  names = [event.key for event in prof.key_averages()]
+  assert any("quantize_swiglu_per_row_kernel" in name for name in names), names
+  assert not any("silu_kernel" in name for name in names), names
+
+
 @pytest.mark.parametrize("mode,is_weight", [("per_row", False), ("per_tensor", False),
                                             ("per_block", False), ("per_block", True)])
 def test_torch_quantize_safe_scale_option(mode: str, is_weight: bool) -> None:
@@ -197,6 +287,100 @@ def test_scaled_mm_pads_unsupported_n(mode: str) -> None:
     _dequantize(qw, sw, mode, True).float())
   assert actual.shape == (m, n)
   assert _relative_l2(actual, expected) < 3e-3
+
+
+@pytest.mark.parametrize("mode", ["per_row", "per_tensor", "per_block"])
+@pytest.mark.parametrize("activation,approximate", [("gelu", "none"), ("gelu_tanh", "tanh")])
+def test_gemm_activation_matches_unfused(mode: str, activation: str, approximate: str) -> None:
+  torch.manual_seed(31)
+  m, n, k = 129, 264, 640
+  a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(n, dtype=torch.bfloat16, device="cuda")
+  qa, sa = fp8_quantize(a, mode)
+  qw, sw = fp8_quantize(w, mode, is_weight=True)
+  expected = F.gelu(fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode), approximate=approximate)
+  actual = fp8_gemm(qa, qw, sa, sw, bias=bias, mode=mode, activation=activation)
+  assert _relative_l2(actual, expected) < 5e-6
+
+
+def test_gemm_activation_rejects_scaled_mm_and_unknown_activation() -> None:
+  a = torch.empty(8, 128, dtype=torch.float8_e4m3fn, device="cuda")
+  w = torch.empty(128, 128, dtype=torch.float8_e4m3fn, device="cuda")
+  scale_a = torch.ones(8, dtype=torch.float32, device="cuda")
+  scale_w = torch.ones(128, dtype=torch.float32, device="cuda")
+  with pytest.raises(ValueError, match="does not expose GELU epilogues"):
+    fp8_gemm(a, w, scale_a, scale_w, use_native=False, activation="gelu_tanh")
+  with pytest.raises(ValueError, match="Unsupported FP8 GEMM activation"):
+    fp8_gemm(a, w, scale_a, scale_w, activation="silu")
+
+
+def test_gemm_activation_fake_and_fullgraph_compile() -> None:
+  from torch._subclasses.fake_tensor import FakeTensorMode
+
+  m, n, k = 11, 40, 128
+  a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
+  with FakeTensorMode():
+    fake_a = torch.empty(m, k, dtype=torch.bfloat16, device="cuda")
+    fake_w = torch.empty(n, k, dtype=torch.float8_e4m3fn, device="cuda")
+    qa, sa = fp8_quantize(fake_a, "per_row")
+    out = fp8_gemm(qa,
+                   fake_w,
+                   sa,
+                   torch.empty(n, dtype=torch.float32, device="cuda"),
+                   activation="gelu_tanh")
+    assert out.shape == (m, n) and out.dtype == torch.bfloat16
+
+  def run(a, w):
+    qa, sa = fp8_quantize(a, "per_row")
+    qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+    return fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+
+  expected = run(a, w)
+  actual = torch.compile(run, fullgraph=True)(a, w)
+  assert _relative_l2(actual, expected) < 1e-6
+
+
+def test_gemm_activation_cuda_graph() -> None:
+  torch.manual_seed(32)
+  m, n, k = 64, 256, 256
+  a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
+  qa, sa = fp8_quantize(a, "per_row")
+  qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+  graph = torch.cuda.CUDAGraph()
+  with torch.cuda.graph(graph):
+    captured = fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+  expected = fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+  graph.replay()
+  assert torch.equal(captured, expected)
+
+  new_a = torch.randn_like(a)
+  new_qa, new_sa = fp8_quantize(new_a, "per_row")
+  qa.copy_(new_qa)
+  sa.copy_(new_sa)
+  expected = fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+  graph.replay()
+  assert torch.equal(captured, expected)
+
+
+def test_gemm_activation_profile_has_no_standalone_gelu() -> None:
+  from torch.profiler import ProfilerActivity, profile
+
+  m, n, k = 64, 256, 256
+  a = torch.randn(m, k, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(n, k, dtype=torch.bfloat16, device="cuda")
+  qa, sa = fp8_quantize(a, "per_row")
+  qw, sw = fp8_quantize(w, "per_row", is_weight=True)
+  fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+  torch.cuda.synchronize()
+  with profile(activities=[ProfilerActivity.CUDA]) as prof:
+    fp8_gemm(qa, qw, sa, sw, mode="per_row", activation="gelu_tanh")
+    torch.cuda.synchronize()
+  names = [event.key for event in prof.key_averages()]
+  assert any("Fp8GeluTanh" in name for name in names), names
+  assert not any("GeluCUDAKernelImpl" in name for name in names), names
 
 
 @pytest.mark.parametrize("m,n,k", [(7, 136, 256), (129, 384, 512)])

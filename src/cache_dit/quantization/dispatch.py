@@ -139,6 +139,8 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
       del module._fp8_quantized_layers
     if hasattr(module, "_fp8_skipped_layers"):
       del module._fp8_skipped_layers
+    if hasattr(module, "_fp8_fused_mlp_targets"):
+      del module._fp8_fused_mlp_targets
     if hasattr(module, "_fp4_quantized_layers"):
       del module._fp4_quantized_layers
     if hasattr(module, "_fp4_skipped_layers"):
