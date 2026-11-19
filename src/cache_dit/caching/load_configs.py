@@ -8,6 +8,7 @@ from .cache_contexts import (
   FoCaCalibratorConfig,
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
+  BRACECalibratorConfig,
   CalibratorConfig,
 )
 from ..distributed import (
@@ -37,19 +38,24 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     kwargs: dict = copy.deepcopy(cache_kwargs)
     cache_context_kwargs = {}
 
-    # TaylorSeer, DMD, FoCa, SVD-Cache, and HiCache are mutually exclusive.
+    # All forecasting calibrators are mutually exclusive.
     enable_taylorseer = kwargs.get("enable_taylorseer", False)
     enable_dmd = kwargs.get("enable_dmd", False)
     enable_foca = kwargs.get("enable_foca", False)
     enable_svd = kwargs.get("enable_svd", False)
     enable_hicache = kwargs.get("enable_hicache", False)
-    if sum([enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache]) > 1:
-      raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, `enable_svd`, and "
-                       "`enable_hicache` are mutually exclusive. Please set only one of them "
-                       "to true.")
+    enable_brace = kwargs.get("enable_brace", False)
+    switches = [
+      enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache, enable_brace
+    ]
+    if sum(switches) > 1:
+      raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, `enable_svd`, "
+                       "`enable_hicache`, and `enable_brace` are mutually exclusive. Please set "
+                       "only one of them to true.")
 
-    # HiCache follows the main switch for encoder states, like DMD and SVD-Cache.
+    # These calibrators follow the main switch for encoder states by default.
     enable_encoder_hicache = kwargs.get("enable_encoder_hicache", enable_hicache)
+    enable_encoder_brace = kwargs.get("enable_encoder_brace", enable_brace)
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -124,6 +130,20 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
         calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
         hicache_order=kwargs.get("hicache_order", 2),
         hicache_sigma=kwargs.get("hicache_sigma", 0.5),
+      ))
+    elif enable_brace:
+      cache_context_kwargs["calibrator_config"] = (BRACECalibratorConfig(
+        enable_calibrator=enable_brace,
+        enable_encoder_calibrator=enable_encoder_brace,
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        brace_capacity=kwargs.get("brace_capacity", 3),
+        brace_gamma=kwargs.get("brace_gamma", 0.7),
+      ) if not reset else BRACECalibratorConfig().reset(
+        enable_calibrator=enable_brace,
+        enable_encoder_calibrator=enable_encoder_brace,
+        calibrator_cache_type=kwargs.get("calibrator_cache_type", "residual"),
+        brace_capacity=kwargs.get("brace_capacity", 3),
+        brace_gamma=kwargs.get("brace_gamma", 0.7),
       ))
 
     if "cache_type" not in kwargs:

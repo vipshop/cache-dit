@@ -1,0 +1,13 @@
+cache_config:
+  max_warmup_steps: 8
+  warmup_interval: 2
+  max_cached_steps: -1
+  max_continuous_cached_steps: 2
+  Fn_compute_blocks: 1
+  Bn_compute_blocks: 0
+  residual_diff_threshold: 0.12
+  enable_brace: true
+  # Number of real full-compute anchors in the FIFO, in [1, 3].
+  brace_capacity: 3
+  # Finite terminal weight >= 0.5; smaller values admit extrapolation poles. Paper default: 0.7.
+  brace_gamma: 0.7

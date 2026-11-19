@@ -4,6 +4,7 @@ from .foca import FoCaCalibrator
 from .dmd import DMDCalibrator
 from .svd import SVDCalibrator, validate_svd_params
 from .hicache import HiCacheCalibrator, validate_hicache_params
+from .brace import BRACECalibrator, validate_brace_params
 
 import dataclasses
 from typing import Any, Dict
@@ -428,12 +429,59 @@ class HiCacheCalibratorConfig(CalibratorConfig):
     return kwargs
 
 
+@dataclasses.dataclass
+class BRACECalibratorConfig(CalibratorConfig):
+  """Config for BRACE barycentric rational forecasting with adapted Chebyshev weights.
+
+  BRACE (arXiv 2608.07572) aggregates a FIFO of real full-compute anchors using its second
+  barycentric form. Only the predictor is enabled here; DBCache retains adaptive scheduling and
+  block granularity, and logical step indices provide the canonical coordinates.
+  """
+
+  enable_calibrator: bool = True
+  enable_encoder_calibrator: bool = True
+  calibrator_type: str = "brace"
+  brace_capacity: int = 3
+  brace_gamma: float = 0.7
+
+  def __post_init__(self):
+    """Validate BRACE parameters while the config is built.
+
+    :raises ValueError: When capacity or gamma is outside its supported domain.
+    """
+
+    validate_brace_params(self.brace_capacity, self.brace_gamma)
+
+  def strify(self, **kwargs) -> str:
+    """Return a filename-safe tag containing the window capacity and gamma.
+
+    :param kwargs: Set `details=True` for a human-readable summary tag.
+    :returns: A compact or detailed BRACE configuration tag.
+    """
+
+    if kwargs.get("details", False):
+      return f"BRACE_C({self.brace_capacity}, gamma={self.brace_gamma:g})"
+    return f"BRACEC{self.brace_capacity}G{_tag_number(self.brace_gamma)}"
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `BRACECalibrator` constructor kwargs.
+
+    :returns: Keyword arguments expected by `BRACECalibrator`.
+    """
+
+    kwargs = dict(self.calibrator_kwargs or {})
+    kwargs["capacity"] = self.brace_capacity
+    kwargs["gamma"] = self.brace_gamma
+    return kwargs
+
+
 _CALIBRATOR_ALIASES = {
   "svd-calibrator": "svd",
   "svd-cache": "svd",
   "svdcache": "svd",
   "hicache-calibrator": "hicache",
   "hi-cache": "hicache",
+  "brace-calibrator": "brace",
   "taylorseer-calibrator": "taylorseer",
   "dmd-calibrator": "dmd",
   "foca-calibrator": "foca",
@@ -460,6 +508,7 @@ class Calibrator:
     "foca",
     "svd",
     "hicache",
+    "brace",
   ]
 
   def __new__(
@@ -486,5 +535,7 @@ class Calibrator:
       return SVDCalibrator(**calibrator_config.to_kwargs())
     elif calibrator_type == "hicache":
       return HiCacheCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_type == "brace":
+      return BRACECalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
