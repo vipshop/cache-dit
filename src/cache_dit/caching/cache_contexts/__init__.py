@@ -8,6 +8,7 @@ from .calibrators import (
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
+  BeziCastCalibratorConfig,
 )
 from .cache_config import (
   BasicCacheConfig,

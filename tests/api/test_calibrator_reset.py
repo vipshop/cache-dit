@@ -23,6 +23,7 @@ _CALIBRATORS = {
   "enable_svd": "SVDCalibrator",
   "enable_hicache": "HiCacheCalibrator",
   "enable_brace": "BRACECalibrator",
+  "enable_bezicast": "BeziCastCalibrator",
 }
 
 
@@ -52,6 +53,7 @@ def test_base_config_survives_reset_too():
     ("enable_svd", "svd_tau", 0.8, "tau"),
     ("enable_hicache", "hicache_sigma", 0.4, "sigma"),
     ("enable_brace", "brace_gamma", 0.6, "gamma"),
+    ("enable_bezicast", "bezicast_control_points", 3, "control_points"),
   ],
 )
 def test_reset_path_preserves_explicit_params(switch, field, value, attr):

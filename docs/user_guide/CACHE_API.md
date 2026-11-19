@@ -553,6 +553,76 @@ This is a single-prompt compile probe, not a predictor ranking: high-acceleratio
 
 </details>
 
+## BeziCast Calibrator: Bernstein/Bezier Forecasting
+
+<div id="bezicast"></div>
+
+**<span style="color:#c77dff;">BeziCast</span>** ([Beyond Linear Extrapolation: Training-Free Bezier Trajectories for Feature Caching in Diffusion Transformers](https://arxiv.org/abs/2610.16448)) is an experimental calibrator for non-uniform historical anchors. It fits a ridge-stabilized Bernstein design and applies the resulting equivalent weights directly to real full-compute tensors:
+
+$$w(u)=b(u)^T(A^TA+\lambda I)^{-1}A^T,\qquad Z_{pred}=\sum_m w_m Z_m$$
+
+The pure-predictor defaults follow the paper: `history=6`, `control_points=4`, and `ridge=0.5`. Logical step indices provide the coordinates; only real `update()` values enter the FIFO. A zero ridge uses the minimum-norm pseudoinverse, while a positive ridge solves the stabilized normal system.
+
+```python
+from cache_dit import DBCacheConfig, BeziCastCalibratorConfig
+
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=4,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=BeziCastCalibratorConfig(),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator bezicast \
+  --calibrator-params history=6,control_points=4,ridge=0.5,guardrail=false
+```
+
+The optional equivalent-weight guardrail implements the paper's risk score, Euclidean probability-simplex projection, and soft blending:
+
+$$r=|\sum_m w_m-1|+\left(\sum_m|w_m|-|\sum_m w_m|\right)$$
+$$Z_{pred}=(1-\beta)Z_{raw}+\beta Z_{simplex}$$
+
+The paper recommends its simplex guardrail but does not report a universal threshold setting. cache-dit keeps it **opt-in** because the local FLUX probe did not show a consistent gain. Use `guardrail=true,rho=auto` to measure the current design's risk at the window edge `u=1`; alternatively set a numeric `rho`. `u_max=1.5` is a conservative cache-dit query cap, not a paper-reported universal default.
+
+When fewer than `control_points` real anchors exist, the paper forces an extra full compute. `CalibratorBase` cannot change DBCache's scheduling decision, so this adaptation explicitly reuses the latest real anchor and increments `num_warmup_reuses`. Other diagnostics include `num_forecasts`, `num_numerical_fallbacks`, `num_guardrail_calls`, `num_query_clips`, `mean_guardrail_beta`, and `max_last_risk`. Normal numerical operation should have zero numerical fallbacks.
+
+A FLUX.1-dev probe (1024², 28 steps, seed 0, compile+F1B0+`rdt=0.12`, RTX PRO 5000, torch 2.15.0) produced 12 Cache Steps in every row and no BeziCast numerical fallback:
+
+| Config | Latency | PSNR vs compile | SSIM vs compile |
+|:--|--:|--:|--:|
+| DBCache reuse | 8.65s | 29.61 | 0.9634 |
+| + TaylorSeer order 1 | 8.67s | 30.60 | 0.9698 |
+| + BRACE C=3 | 8.65s | 29.42 | 0.9699 |
+| + BeziCast guardrail off | 8.67s | 30.56 | 0.9670 |
+| + BeziCast guardrail on, rho=auto | 8.68s | 30.46 | 0.9650 |
+
+Same-config repeat PSNR/SSIM was 39.60/0.9932 with guardrail off and 32.58/0.9873 with guardrail on. This single-prompt compile probe is not a universal predictor ranking; guardrail-on did not demonstrate a stable benefit.
+
+<details markdown="1">
+<summary>📖 BeziCast Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `bezicast_history` | `int` | 6 | Real-anchor FIFO capacity, in [2, 6]. |
+| `bezicast_control_points` | `int` | 4 | Bernstein control points, in [2, history]. |
+| `bezicast_ridge` | `float` | 0.5 | Non-negative Tikhonov coefficient; 0 selects `pinv` interpolation. |
+| `bezicast_guardrail` | `bool` | False | Enable risk-based blending toward simplex-projected weights. |
+| `bezicast_u_max` | `float` | 1.5 | Normalized query cap, at least 1. |
+| `bezicast_beta_max` | `float` | 1.0 | Maximum guardrail blend, in [0, 1]. |
+| `bezicast_rho` | `float \| None` | None | Risk threshold; None measures risk at `u=1`. CLI: `rho=auto`. |
+| `bezicast_gamma` | `float` | 1.0 | Positive guardrail transition width. |
+| `enable_calibrator` | `bool` | True | Enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Enable the calibrator for encoder hidden states. |
+
+</details>
+
 ## DMD Calibrator: Dynamic Mode Decomposition
 
 <div id="dmd"></div>
@@ -811,19 +881,19 @@ The basis is fitted once per stream, so the cost is dominated by a single econom
 
 </details>
 
-## TaylorSeer vs HiCache vs BRACE vs DMD vs FoCa vs SVD-Cache: When to Use Which
+## TaylorSeer vs HiCache vs BRACE vs BeziCast vs DMD vs FoCa vs SVD-Cache: When to Use Which
 
 <div align="center" markdown="1">
 
-| Aspect | TaylorSeer (Polynomial) | HiCache (Damped Hermite) | BRACE (Barycentric rational) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
-|:---|:---|:---|:---|:---|:---|:---|
-| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Damped Hermite: $\sum \frac{\Delta^nY}{n!}\sigma^n H_n(\sigma t)$ | Adapted Chebyshev-weighted rational aggregation | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
-| **Anchor** | Most recent full-compute step | Most recent full-compute step | FIFO of ≤3 real full-compute steps | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
-| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded: order $n$ damped by $\sigma^{2n}$ | Rational; supports non-uniform logical-step anchors | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
-| **Per-step cost** | O(1) | O(1) — same ladder as TaylorSeer | O(C) tensor multiply-adds | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
-| **Hyper-parameters** | `taylorseer_order` (default 1) | `hicache_order` (default 2, ≤4), `hicache_sigma` (default 0.5) | `brace_capacity` (default 3), `brace_gamma` (default 0.7) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
-| **Best for** | DiT DDPM | Aggressive caching with long skip intervals; re-sweep `sigma` per model and threshold | Experimental derivative-free forecasting; validate per model | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
-| **Memory** | 2× tensors (derivative ladder) | 2× tensors (shared with TaylorSeer) | C× tensors (real-anchor FIFO) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
+| Aspect | TaylorSeer (Polynomial) | HiCache (Damped Hermite) | BRACE (Barycentric rational) | BeziCast (Bernstein/Bezier) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
+|:---|:---|:---|:---|:---|:---|:---|:---|
+| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Damped Hermite: $\sum \frac{\Delta^nY}{n!}\sigma^n H_n(\sigma t)$ | Adapted Chebyshev-weighted rational aggregation | Tikhonov-stabilized Bernstein equivalent weights | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
+| **Anchor** | Most recent full-compute step | Most recent full-compute step | FIFO of ≤3 real full-compute steps | FIFO of ≤6 real full-compute steps | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded: order $n$ damped by $\sigma^{2n}$ | Rational; supports non-uniform logical-step anchors | Clipped query with optional simplex guardrail | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
+| **Per-step cost** | O(1) | O(1) — same ladder as TaylorSeer | O(C) tensor multiply-adds | Small CPU fit + O(K) tensor multiply-adds | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
+| **Hyper-parameters** | `taylorseer_order` (default 1) | `hicache_order` (default 2, ≤4), `hicache_sigma` (default 0.5) | `brace_capacity` (default 3), `brace_gamma` (default 0.7) | `bezicast_history`, `bezicast_control_points`, `bezicast_ridge`, optional guardrail | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
+| **Best for** | DiT DDPM | Aggressive caching with long skip intervals; re-sweep `sigma` per model and threshold | Experimental derivative-free forecasting; validate per model | Experimental non-uniform fitting and over-weight control | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
+| **Memory** | 2× tensors (derivative ladder) | 2× tensors (shared with TaylorSeer) | C× tensors (real-anchor FIFO) | K× tensors (real-anchor FIFO) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
 
 </div>
 

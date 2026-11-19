@@ -5,9 +5,10 @@ from .dmd import DMDCalibrator
 from .svd import SVDCalibrator, validate_svd_params
 from .hicache import HiCacheCalibrator, validate_hicache_params
 from .brace import BRACECalibrator, validate_brace_params
+from .bezicast import BeziCastCalibrator, validate_bezicast_params
 
 import dataclasses
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from cache_dit.logger import init_logger
 
@@ -475,6 +476,86 @@ class BRACECalibratorConfig(CalibratorConfig):
     return kwargs
 
 
+@dataclasses.dataclass
+class BeziCastCalibratorConfig(CalibratorConfig):
+  """Config for BeziCast Bernstein/Bezier forecasting and its optional guardrail.
+
+  BeziCast (arXiv 2610.16448) fits historical anchors with Tikhonov-stabilized Bernstein equivalent
+  weights. DBCache retains scheduling and block granularity. The default pure predictor uses the
+  paper's history=6, control_points=4, and ridge=0.5; guardrail thresholds are opt-in because the
+  paper does not provide a universal default setting.
+  """
+
+  enable_calibrator: bool = True
+  enable_encoder_calibrator: bool = True
+  calibrator_type: str = "bezicast"
+  bezicast_history: int = 6
+  bezicast_control_points: int = 4
+  bezicast_ridge: float = 0.5
+  bezicast_guardrail: bool = False
+  bezicast_u_max: float = 1.5
+  bezicast_beta_max: float = 1.0
+  bezicast_rho: Optional[float] = None
+  bezicast_gamma: float = 1.0
+
+  def __post_init__(self):
+    """Validate BeziCast fitting and guardrail parameters while building the config.
+
+    :raises ValueError: When any parameter is outside its supported domain.
+    """
+
+    validate_bezicast_params(
+      self.bezicast_history,
+      self.bezicast_control_points,
+      self.bezicast_ridge,
+      self.bezicast_guardrail,
+      self.bezicast_u_max,
+      self.bezicast_beta_max,
+      self.bezicast_rho,
+      self.bezicast_gamma,
+    )
+
+  def strify(self, **kwargs) -> str:
+    """Return a filename-safe tag with fitting and guardrail settings.
+
+    :param kwargs: Set `details=True` for a human-readable summary tag.
+    :returns: A compact or detailed BeziCast configuration tag.
+    """
+
+    if kwargs.get("details", False):
+      rho = "auto" if self.bezicast_rho is None else f"{self.bezicast_rho:g}"
+      return (f"BeziCast_K({self.bezicast_history}, n={self.bezicast_control_points}, "
+              f"ridge={self.bezicast_ridge:g}, guardrail={self.bezicast_guardrail}, "
+              f"u_max={self.bezicast_u_max:g}, beta_max={self.bezicast_beta_max:g}, "
+              f"rho={rho}, gamma={self.bezicast_gamma:g})")
+    tag = (f"BZCK{self.bezicast_history}N{self.bezicast_control_points}"
+           f"R{_tag_number(self.bezicast_ridge)}U{_tag_number(self.bezicast_u_max)}"
+           f"G{int(self.bezicast_guardrail)}")
+    if self.bezicast_guardrail:
+      rho = "auto" if self.bezicast_rho is None else f"{self.bezicast_rho:g}"
+      tag += f"RHO{rho}B{self.bezicast_beta_max:g}GM{self.bezicast_gamma:g}"
+    return tag
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `BeziCastCalibrator` constructor kwargs.
+
+    :returns: Keyword arguments expected by `BeziCastCalibrator`.
+    """
+
+    kwargs = dict(self.calibrator_kwargs or {})
+    kwargs.update(
+      history=self.bezicast_history,
+      control_points=self.bezicast_control_points,
+      ridge=self.bezicast_ridge,
+      guardrail=self.bezicast_guardrail,
+      u_max=self.bezicast_u_max,
+      beta_max=self.bezicast_beta_max,
+      rho=self.bezicast_rho,
+      gamma=self.bezicast_gamma,
+    )
+    return kwargs
+
+
 _CALIBRATOR_ALIASES = {
   "svd-calibrator": "svd",
   "svd-cache": "svd",
@@ -482,6 +563,8 @@ _CALIBRATOR_ALIASES = {
   "hicache-calibrator": "hicache",
   "hi-cache": "hicache",
   "brace-calibrator": "brace",
+  "bezicast-calibrator": "bezicast",
+  "bezier-cast": "bezicast",
   "taylorseer-calibrator": "taylorseer",
   "dmd-calibrator": "dmd",
   "foca-calibrator": "foca",
@@ -509,6 +592,7 @@ class Calibrator:
     "svd",
     "hicache",
     "brace",
+    "bezicast",
   ]
 
   def __new__(
@@ -537,5 +621,7 @@ class Calibrator:
       return HiCacheCalibrator(**calibrator_config.to_kwargs())
     elif calibrator_type == "brace":
       return BRACECalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_type == "bezicast":
+      return BeziCastCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")
