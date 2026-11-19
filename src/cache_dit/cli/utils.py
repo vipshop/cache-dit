@@ -25,6 +25,7 @@ from ..caching import (
   FoCaCalibratorConfig,
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
+  BRACECalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -149,6 +150,10 @@ _CALIBRATOR_PARAM_SPECS: Dict[str, Dict[str, Tuple[str, Any]]] = {
     "order": ("hicache_order", int),
     "sigma": ("hicache_sigma", float),
   },
+  "brace": {
+    "capacity": ("brace_capacity", int),
+    "gamma": ("brace_gamma", float),
+  },
 }
 
 # Keys every calibrator accepts; they live on `CalibratorConfig` itself.
@@ -163,6 +168,7 @@ _CALIBRATOR_PARAM_CHOICES = {
   "calibrator_cache_type": ("residual", "hidden_states"),
   "dmd_svd_precision": ("low", "medium", "high"),
   "svd_predictor": ("ema", "taylor"),
+  "brace_capacity": (1, 2, 3),
 }
 
 _CALIBRATOR_CONFIG_CLASSES = {
@@ -171,6 +177,7 @@ _CALIBRATOR_CONFIG_CLASSES = {
   "foca": FoCaCalibratorConfig,
   "svd": SVDCalibratorConfig,
   "hicache": HiCacheCalibratorConfig,
+  "brace": BRACECalibratorConfig,
 }
 
 
@@ -565,9 +572,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--calibrator",
     type=_parse_calibrator_arg,
     default=None,
-    help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), or "
-    "hicache (damped-Hermite). Long forms such as 'svd-calibrator' are accepted. "
-    "Requires --cache.",
+    help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), "
+    "hicache (damped-Hermite), or brace (barycentric rational). Long forms such as "
+    "'svd-calibrator' are accepted. Requires --cache.",
   )
   parser.add_argument(
     "--calibrator-params",
@@ -575,7 +582,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=None,
     help="Calibrator options as a comma separated key=value list, e.g. "
     "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
-    "'order=2,sigma=0.5' for hicache, "
+    "'order=2,sigma=0.5' for hicache, 'capacity=3,gamma=0.7' for brace, "
     "'history=6,svd_precision=low' for dmd, "
     "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
   )

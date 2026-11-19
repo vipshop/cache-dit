@@ -490,6 +490,69 @@ Two readings: the **damping is what carries the gain** — the undamped basis (�
 
 </details>
 
+## BRACE Calibrator: Barycentric Rational Forecasting
+
+<div id="brace"></div>
+
+**<span style="color:#c77dff;">BRACE</span>** ([BRACE: Taming Sharp Irregularities via Barycentric Rational Forecasting for Fast Diffusion Transformers Inference](https://arxiv.org/abs/2608.07572)) is an experimental, derivative-free calibrator. It keeps a FIFO of at most three real full-compute anchors and evaluates the second barycentric form:
+
+$$x(\tau)=2\frac{\tau-\tau_{min}}{\tau_{max}-\tau_{min}}-1,\qquad F_{pred}=\frac{\sum_j w_jF_j/(x_{pred}-x_j)}{\sum_j w_j/(x_{pred}-x_j)}$$
+
+The adapted Chebyshev weights are $w_j=(-1)^{j+1}\delta_j$, with $\delta_1=1/2$, $\delta_C=\gamma$, and all intermediate $\delta_j=1$. The defaults are $C=3$ and $\gamma=0.7$. While the window is filling, $C$ means its effective current length; $C=1$ is exact anchor reuse.
+
+```python
+from cache_dit import DBCacheConfig, BRACECalibratorConfig
+
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=8,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=BRACECalibratorConfig(
+    brace_capacity=3,
+    brace_gamma=0.7,
+  ),
+)
+```
+
+The same selection from the CLI:
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator brace \
+  --calibrator-params capacity=3,gamma=0.7
+```
+
+cache-dit ports only the predictor. DBCache still owns the adaptive cache decision and block granularity; the paper's fixed refresh interval and per-layer cache are not reproduced. Logical step indices replace scheduler timesteps because the calibrator interface has no scheduler input. This supports non-uniform anchor spacing, but it is not the same coordinate system as a non-uniform scheduler's raw timesteps. Predictions never enter the FIFO, so repeated queries within one step are idempotent.
+
+The scalar denominator is checked for cancellation. A non-finite or relatively near-zero denominator falls back to the latest real anchor, increments `num_fallbacks`, and emits a warning on the first occurrence. Normal runs should have zero fallbacks. $\gamma$ is restricted to $[0.5,\infty)$ because smaller values introduce extrapolation poles; $\gamma=0.5$ is the canonical Chebyshev weighting. The paper selects $\gamma=0.7$ using perceptual quality even though PSNR/SSIM can improve as $\gamma$ approaches 1; do not tune gamma from PSNR/SSIM alone.
+
+A FLUX.1-dev wiring probe (1024², 28 steps, seed 0, one prompt, compile+F1B0+`rdt=0.12`, RTX PRO 5000, torch 2.15.0) produced 12 Cache Steps in every row and no BRACE fallback:
+
+| Config | Latency | PSNR vs compile | SSIM vs compile |
+|:--|--:|--:|--:|
+| DBCache reuse | 8.65s | 29.03 | 0.9614 |
+| + TaylorSeer order 1 | 8.66s | 31.52 | 0.9740 |
+| + BRACE C=2, gamma=0.7 | 8.65s | 29.57 | 0.9720 |
+| + BRACE C=3, gamma=0.7 | 8.66s | 30.75 | 0.9743 |
+
+This is a single-prompt compile probe, not a predictor ranking: high-acceleration, multi-prompt, and multi-backbone validation remain necessary.
+
+<details markdown="1">
+<summary>📖 BRACE Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `brace_capacity` | `int` | 3 | Real-anchor FIFO capacity, in {1, 2, 3}. `1` reproduces plain reuse. |
+| `brace_gamma` | `float` | 0.7 | Finite terminal weight in $[0.5,\infty)$; smaller values are rejected because they admit extrapolation poles. |
+| `enable_calibrator` | `bool` | True | Whether to enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Whether to enable the calibrator for encoder hidden states. |
+
+</details>
+
 ## DMD Calibrator: Dynamic Mode Decomposition
 
 <div id="dmd"></div>
@@ -748,19 +811,19 @@ The basis is fitted once per stream, so the cost is dominated by a single econom
 
 </details>
 
-## TaylorSeer vs HiCache vs DMD vs FoCa vs SVD-Cache: When to Use Which
+## TaylorSeer vs HiCache vs BRACE vs DMD vs FoCa vs SVD-Cache: When to Use Which
 
 <div align="center" markdown="1">
 
-| Aspect | TaylorSeer (Polynomial) | HiCache (Damped Hermite) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
-|:---|:---|:---|:---|:---|:---|
-| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Damped Hermite: $\sum \frac{\Delta^nY}{n!}\sigma^n H_n(\sigma t)$ | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
-| **Anchor** | Most recent full-compute step | Most recent full-compute step | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
-| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded: order $n$ damped by $\sigma^{2n}$ | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
-| **Per-step cost** | O(1) | O(1) — same ladder as TaylorSeer | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
-| **Hyper-parameters** | `taylorseer_order` (default 1) | `hicache_order` (default 2, ≤4), `hicache_sigma` (default 0.5) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
-| **Best for** | DiT DDPM | Aggressive caching with long skip intervals; re-sweep `sigma` per model and threshold | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
-| **Memory** | 2× tensors (derivative ladder) | 2× tensors (shared with TaylorSeer) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
+| Aspect | TaylorSeer (Polynomial) | HiCache (Damped Hermite) | BRACE (Barycentric rational) | DMD (Exponential) | FoCa (ODE Heun) | SVD-Cache (Low-rank split) |
+|:---|:---|:---|:---|:---|:---|:---|
+| **Basis** | Polynomial: $\sum \frac{d^nY}{dt^n} \frac{t^n}{n!}$ | Damped Hermite: $\sum \frac{\Delta^nY}{n!}\sigma^n H_n(\sigma t)$ | Adapted Chebyshev-weighted rational aggregation | Exponential: $\Phi \cdot (\lambda^k \odot b)$ | ODE Heun trapezoidal rule | Principal subspace $V_C,\sigma_C$ over the token × channel plane |
+| **Anchor** | Most recent full-compute step | Most recent full-compute step | FIFO of ≤3 real full-compute steps | Sliding snapshot window (≥4) | Most recent full-compute step | Most recent full-compute step |
+| **Extrapolation** | Diverges as $t^n \to \infty$ | Bounded: order $n$ damped by $\sigma^{2n}$ | Rational; supports non-uniform logical-step anchors | Bounded when $\lvert\lambda\rvert \leq 1$ | Moderate: Heun averaging suppresses overshoot | Bounded: converges back to plain reuse |
+| **Per-step cost** | O(1) | O(1) — same ladder as TaylorSeer | O(C) tensor multiply-adds | O(1) per skip (cached SVD+eig per window) | O(1) — 4 tensor ops | 2 thin GEMMs per compute step, one add per skip |
+| **Hyper-parameters** | `taylorseer_order` (default 1) | `hicache_order` (default 2, ≤4), `hicache_sigma` (default 0.5) | `brace_capacity` (default 3), `brace_gamma` (default 0.7) | `dmd_history`, `dmd_rank`, `dmd_ridge`, `dmd_svd_precision` | **None** — auto-adaptive | `svd_tau`, `svd_beta`, `svd_max_rank` |
+| **Best for** | DiT DDPM | Aggressive caching with long skip intervals; re-sweep `sigma` per model and threshold | Experimental derivative-free forecasting; validate per model | Flow-matching | General-purpose; simpler than DMD | Reproduction only — `ema` sits below plain reuse, `taylor` recovers it but trails TaylorSeer (see the measured note above) |
+| **Memory** | 2× tensors (derivative ladder) | 2× tensors (shared with TaylorSeer) | C× tensors (real-anchor FIFO) | `history` × tensors (snapshot window) | 4× tensors (F_k, F_km1, F_full, F_full_prev) | 3× tensors + `D×k` basis |
 
 </div>
 

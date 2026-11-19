@@ -22,6 +22,7 @@ _CALIBRATORS = {
   "enable_foca": "FoCaCalibrator",
   "enable_svd": "SVDCalibrator",
   "enable_hicache": "HiCacheCalibrator",
+  "enable_brace": "BRACECalibrator",
 }
 
 
@@ -50,6 +51,7 @@ def test_base_config_survives_reset_too():
     ("enable_dmd", "dmd_history", 4, "history"),
     ("enable_svd", "svd_tau", 0.8, "tau"),
     ("enable_hicache", "hicache_sigma", 0.4, "sigma"),
+    ("enable_brace", "brace_gamma", 0.6, "gamma"),
   ],
 )
 def test_reset_path_preserves_explicit_params(switch, field, value, attr):

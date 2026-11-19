@@ -7,6 +7,7 @@ from .calibrators import (
   DMDCalibratorConfig,
   SVDCalibratorConfig,
   HiCacheCalibratorConfig,
+  BRACECalibratorConfig,
 )
 from .cache_config import (
   BasicCacheConfig,
