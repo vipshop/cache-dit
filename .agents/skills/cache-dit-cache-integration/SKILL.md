@@ -16,6 +16,7 @@ user-invocable: true
 | 已知要接，找代码落点 | `references/extension-points.md` |
 | 要现有算法 / 已评论文的完整对比与数字 | `references/landscape.md` |
 | 查 2026 纯 calibrator / 探针调研 | `references/2026-cache-algorithms.md`（BRACE、BeziCast、SeaCache、RACER 等 30 项） |
+| 查 2026 调研原始长报告归档 | `references/recent_dit_cache_algorithms_analysis.md` |
 | 手上有新 paper，要逐条过 | `references/paper-triage.md` |
 | 要找候选论文 | 本文件 §7 |
 
@@ -70,7 +71,7 @@ user-invocable: true
 
 | 论文 / 方案 | 裁定 | 一句话理由 |
 |---|---|---|
-| **BRACE**（barycentric rational forecast，2026） | **接：首个实验性 calibrator PoC，尚未实现/实测** | C≤3 历史锚点、无训练、闭式权重；只换 `Bn_residual` 预测式。固定周期与 5.55x FLOPs 论文证据不能外推到动态 DBCache。骨架见 `landscape.md` §2.5 |
+| **BRACE**（barycentric rational forecast，2026） | **已实现（2026-11-19，`calibrators/brace.py`）；完成 FLUX 单点功能验收，仍需高加速/多骨干验证** | C≤3 真实锚点 FIFO、闭式权重、只换 `Bn_residual`；单点 compile 对照中 C2/C3 PSNR 29.57/30.75dB，reuse 29.03、TaylorSeer 31.52，不能据此宣称普遍优于现有预测器。见 `landscape.md` §4.7 |
 | **BeziCast**（Tikhonov Bézier / Lagrange 等价权重 + guardrail，2026） | **接：第二个实验性 calibrator PoC，尚未实现/实测** | 支持非均匀锚点与任意 horizon；K≤6 + 小型求解，无 per-model 权重。最高 4.79x latency，缺 >5x/DBCache 证据。见 `landscape.md` §2.6 |
 | **SeaCache**（SEA-filtered relative L1，2026） | **接：优先做探针 PoC，尚未实现/实测** | 只换 diff 度量，不改缓存对象；需 scheduler 系数、fp32 FFT 与 token 几何。DiCache 适配不代表 Fn residual 已验证。见 `landscape.md` §2.7 |
 | **RACER**（双预测分歧 + trust region，2026） | **探针接做高加速 guard PoC；shrink-only 观察** | 无当前真值，但需短 trace 标定 O(1) 标量与显式只读 probe；per-model 标定仍按闸 3 降权。整套收益不可归因给 shrink/refresh/repay 任一单件。见 `landscape.md` §2.8 |

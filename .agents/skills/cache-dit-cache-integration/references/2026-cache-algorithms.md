@@ -130,6 +130,8 @@ F_{\mathrm{pred}}(t)=\frac{\sum_j w_j F_{\tau_j}/(x(t)-x(\tau_j))}{\sum_j w_j/(x
 
 **集成判断。** 它是当前最便宜的“非 Taylor 新预测族”验证入口。建议只实现 BRACE predictor，不同时引入新的调度器。
 
+**实现更新（2026-11-19）。** 已新增 `calibrators/brace.py` 及 Python/YAML/CLI 接线。使用逻辑步号、真实锚点 FIFO 和有效窗口长度；公开 `gamma≥0.5`（更小值在外推域有解析极点）；预测不入窗，bf16/fp16 分子用 fp32 累加，标量分母相消时回退最近真实锚点并计数。244 项相关回归通过；FLUX 单点结果见 §7.2，完整临时记录为 `cache-dit/.tmp/research/brace_analysis.md`。
+
 ### 4.3 P0/P1：BeziCast predictor + guardrail
 
 **A. 算法骨架。** 论文以低阶 Bézier 轨迹和控制点表述；实现上在至多 K 个局部历史锚点构造 Lagrange 基函数，以 Tikhonov 正则求等价预测权重，再加权历史特征。guardrail 使用外推距离、系数 \(l_1\) 范数、权重范数和“最远锚点是否支撑新预测”等信号，以凸包启发向保守 simplex-projected estimate 收缩；这些量全部来自历史节点，不读取当前真值。
@@ -313,6 +315,8 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 | 关键压力点 | 动态非均匀锚点、长 horizon、分母近零、不同 anchor 间隔 |
 | 通过条件 | 相同 Cache Steps 下稳定优于 reuse，并在高档相对最佳现有预测器有超过 noise floor 的精度增益；额外延迟和显存可忽略 |
 | 失败即停 | C=3 在多个骨干上均不超过 Taylor/HiCache，或非均匀锚点下出现不稳定 |
+
+**本轮仅完成 FLUX 单点功能子集（2026-11-19），尚不满足上述完整通过条件。** reuse、TaylorSeer、BRACE C2/C3 在 compile+F1B0+rdt0.12 下均为 12/28 Cache Steps，延迟分别 8.65/8.66/8.65/8.66s；相对 compile 的 PSNR 分别 29.03/31.52/29.57/30.75dB，SSIM 0.9614/0.9740/0.9720/0.9743。BRACE 无回退告警，244 项相关回归通过。未跑 HiCache、>5x、多 prompt/骨干、noise floor、量化或 CP/TP，因此该结果只证明实现与通用 E2E 可用，不改变后续证伪要求，也不宣称 BRACE 优于最佳现有预测器。
 
 ### 7.3 BeziCast：验证非均匀节点与 guardrail 是否真有增量
 

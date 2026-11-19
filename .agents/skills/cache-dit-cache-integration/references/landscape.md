@@ -117,7 +117,7 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 权重: adapted Chebyshev，交替符号 + 端点敏感度 γ（默认 0.7）  # Eq.(8), Table 5
 ```
 
-**裁定：接，首个实验性 calibrator PoC。** 只移植预测式到 `Bn_residual`，保留 DBCache 的 when；无训练、无当前真值、无在线矩阵分解。原文覆盖 FLUX 约 5.55x FLOPs 和 HunyuanVideo N=6，但固定等间隔锚点不等于 cache-dit 的动态非均匀锚点，也没有 DBCache 同 harness 对照。
+**裁定：接，首个实验性 calibrator PoC；已实现（2026-11-19，`calibrators/brace.py`）。** 只移植预测式到 `Bn_residual`，保留 DBCache 的 when；无训练、无当前真值、无在线矩阵分解。实现按有效窗口长度取权重，预测不进入 FIFO，标量分母守卫带回退计数。FLUX 单点、12/28 缓存步的功能验收已通过，但尚未覆盖 >5x 与多骨干，不能由该点推断普遍收益。数字见 §4.7。
 
 ### 2.6 BeziCast（arXiv 2610.16448，2026-10-12）
 
@@ -171,7 +171,7 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 
 | 候选 | 层与最小落点 | 状态/离线产物 | 裁定 |
 |---|---|---|---|
-| **BRACE** | ③；新 calibrator，预测 `Bn_residual` | C≤3 锚点；无训练 | **接：首个 PoC** |
+| **BRACE** | ③；新 calibrator，预测 `Bn_residual` | C≤3 锚点；无训练 | **已实现；FLUX 单点功能验收，继续验证高加速档** |
 | **BeziCast** | ③；新 calibrator + 预测内部 guardrail | K≤6 锚点 + 小型求解；无训练 | **接：第二个 PoC** |
 | **SeaCache** | ①；替换 diff 度量，不改缓存对象 | fp32 FFT、scheduler 系数与几何元数据；无训练 | **接：探针 PoC** |
 | **RACER** | ③ shrink；① disagreement guard | 双预测状态 + 短 trace 标定 | **探针接；shrink 观察** |
@@ -277,7 +277,7 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 
 **测试坑**：`tests/api/utils.py` 的 `RandPipeline` 每步喂**同一个** `hidden_states`，特征轨迹恒定 ⇒ 任何 predictor 的预测恒等于锚点，**"输出不同"不能用来证明接线**；应 monkeypatch 计数 `approximate()` 调用，并断言 state 具体类型与已接线的 σ。
 
-### 4.6 2026 候选的论文自述（未在 cache-dit 实测）
+### 4.6 2026 候选的论文自述（BRACE 的 cache-dit 单点实测另见 §4.7）
 
 | 论文 | 来源内证据 | 不能据此推出的结论 |
 |---|---|---|
@@ -290,6 +290,19 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 | L2P-Cache | FLUX 最高 6.03x latency/7.14x FLOPs；Qwen 最高 7.18x FLOPs | 需要 per-model/per-total-steps 权重，不是零配置路径 |
 
 后续 PoC 必须固定 seed、固定 Fn/Bn 与全部 guards；calibrator A/B 保持相同 `Cache Steps`，探针 A/B 固定缓存内容；同时报告 wall-clock、实际 Cache Steps、额外显存和正确量纲的 PSNR/SSIM/LPIPS。最小实验矩阵见 `2026-cache-algorithms.md` §7。
+
+### 4.7 BRACE cache-dit 单点功能验收（2026-11-19）
+
+FLUX.1-dev 1024²、28 步、seed 0、单 prompt、RTX PRO 5000（物理卡 2）、torch 2.15.0、compile+F1B0+rdt 0.12。四臂均为 **12/28 Cache Steps**，BRACE 无分母回退告警；244 项相关回归通过。
+
+| 臂 | 秒 | GiB | PSNR/SSIM vs compile | PSNR/SSIM vs eager base |
+|---|---:|---:|---:|---:|
+| reuse | 8.65 | 33.87 | 29.03 / 0.9614 | 29.81 / 0.9669 |
+| TaylorSeer o1 | 8.66 | 33.95 | 31.52 / 0.9740 | 27.95 / 0.9675 |
+| BRACE C2 γ0.7 | 8.65 | 33.90 | 29.57 / 0.9720 | **31.21 / 0.9744** |
+| BRACE C3 γ0.7 | 8.66 | 33.92 | **30.75 / 0.9743** | 29.01 / 0.9695 |
+
+结论仅限功能与接线：BRACE 没有可测的额外延迟，两个窗口都正常出图；参考系改变会改变 PSNR 排名，且单 prompt+compile 不构成普遍优劣证据。>5x、多 prompt、多骨干和 noise floor 仍未覆盖。完整记录：`cache-dit/.tmp/research/brace_analysis.md`。
 
 ## 5. 复核用的原始出处
 
