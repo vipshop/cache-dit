@@ -115,4 +115,4 @@ D 证据：基线含块级方法=是/否，档位=?，可疑数字=?，与量化
 若"接"：第一步要做的证伪实验是什么（同 harness、哪个档位、什么判据）
 ```
 
-落盘两处都要写（草稿进 `.tmp/research/`，版本化回写 `landscape.md` 的 §2 骨架表 + §3 逐维总表 + §4 已判例表），见 `SKILL.md` §8。只写草稿等于没写。
+落盘两处都要写：草稿进 `.tmp/research/`；版本化回写 `landscape.md` 的 §2 算法骨架、§3 候选裁定与 §4 来源内数字。完整长报告可另存 `references/<year-or-topic>.md` 并加入 `SKILL.md` 的 ROUTE FIRST，见 `SKILL.md` §8。只写草稿等于没写。
