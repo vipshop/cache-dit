@@ -418,4 +418,4 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 4. **RACER shrink / disagreement 拆分 PoC**：只有前两项显示预测层仍有增益时才做组合；先 shrink，后 guard。
 5. GP-Refiner、HybridFF、BeCARE 作为第二梯队；SoftCache、FeatFix、SpecKCast 如需推进，应各自单独立项。
 
-版本化归档：本报告由 `cache-dit/.tmp/research/recent_dit_cache_algorithms_analysis.md` 纳入本 skill；核心裁定同步写入 `references/landscape.md`，导航入口见 `SKILL.md`。
+版本化归档：原始长报告保存在 `references/recent_dit_cache_algorithms_analysis.md`，不再依赖 `.tmp`；核心裁定同步写入 `references/landscape.md`，导航入口见 `SKILL.md`。
