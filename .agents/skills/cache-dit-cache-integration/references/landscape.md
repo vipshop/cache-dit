@@ -123,12 +123,12 @@ DCTA（how）: γ̂ = L1rel(r^m_t, r^m_tβ) / L1rel(r^m_tα, r^m_tβ)
 
 ```
 窗口: 至多 K=6 个真实历史锚点，支持非均匀节点
-预测: 论文以 Bézier 控制点表述；用 Lagrange 基求等价权重并做 Tikhonov 正则
-守卫: 外推距离 + 系数 L1/权重范数 + 最远锚点支撑 → 凸包启发、向保守 simplex 投影收缩
-参数: K_max=6，d_max=6，lambda=1e-3，sigma_max=4               # Eq.(3)-(14)
+预测: Bernstein 基矩阵 A；w=b(u)^T(A^T A+lambda I)^-1 A^T，再加权真实锚点
+守卫: |sum(w)-1| + (L1(w)-|sum(w)|) → simplex 投影 + 软收缩
+参数: K_max=6，n=4，lambda=0.5                              # Eq.(6)-(21)，§3.1 / A.3.2
 ```
 
-**裁定：接，第二个实验性 calibrator PoC。** 比 BRACE 多一个小型稠密求解，但原生支持非均匀锚点与任意 horizon。最高报告 4.79x latency，缺 >5x 与 DBCache 对照；guardrail 必须单独做 on/off。
+**裁定：已实现（2026-11-19，`calibrators/bezicast.py`），纯预测器为默认。** cache-dit 默认 `guardrail=false,u_max=1.5`；`K<n` 时显式复用最近真实锚点并计数。guardrail 可选 `rho=auto`，但 FLUX 两轮实验未证明收益且 noise floor 更差。论文最高 4.79x latency；本实现尚缺 >5x 与多骨干证据。数字见 §4.8。
 
 ### 2.7 SeaCache（arXiv 2602.18993，2026-02-22）
 
@@ -172,7 +172,7 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 | 候选 | 层与最小落点 | 状态/离线产物 | 裁定 |
 |---|---|---|---|
 | **BRACE** | ③；新 calibrator，预测 `Bn_residual` | C≤3 锚点；无训练 | **已实现；FLUX 单点功能验收，继续验证高加速档** |
-| **BeziCast** | ③；新 calibrator + 预测内部 guardrail | K≤6 锚点 + 小型求解；无训练 | **接：第二个 PoC** |
+| **BeziCast** | ③；新 calibrator + 预测内部 guardrail | K≤6 锚点 + 小型求解；无训练 | **已实现；纯预测器完成 FLUX 单点+重跑，guardrail 继续观察** |
 | **SeaCache** | ①；替换 diff 度量，不改缓存对象 | fp32 FFT、scheduler 系数与几何元数据；无训练 | **接：探针 PoC** |
 | **RACER** | ③ shrink；① disagreement guard | 双预测状态 + 短 trace 标定 | **探针接；shrink 观察** |
 | GP-Refiner | ③ posterior correction；① posterior variance | h=10 历史对，高维 GP | **观察** |
@@ -303,6 +303,20 @@ FLUX.1-dev 1024²、28 步、seed 0、单 prompt、RTX PRO 5000（物理卡 2）
 | BRACE C3 γ0.7 | 8.66 | 33.92 | **30.75 / 0.9743** | 29.01 / 0.9695 |
 
 结论仅限功能与接线：BRACE 没有可测的额外延迟，两个窗口都正常出图；参考系改变会改变 PSNR 排名，且单 prompt+compile 不构成普遍优劣证据。>5x、多 prompt、多骨干和 noise floor 仍未覆盖。完整记录：`cache-dit/.tmp/research/brace_analysis.md`。
+
+### 4.8 BeziCast cache-dit 单点功能验收（2026-11-19）
+
+FLUX.1-dev 1024²、28 步、seed 0、物理卡 2、compile+F1B0+rdt0.12。所有缓存臂均为 **12/28 Cache Steps**，无数值回退告警；321 项相关回归通过。注意：本节是新一轮独立运行，不能与 §4.7 的跨轮数字直接比较绝对 PSNR。
+
+| 臂 | 秒 | GiB | PSNR/SSIM vs compile | PSNR/SSIM vs eager base |
+|---|---:|---:|---:|---:|
+| reuse | 8.65 | 33.87 | 29.61 / 0.9634 | 28.11 / 0.9617 |
+| TaylorSeer o1 | 8.67 | 33.95 | 30.60 / 0.9698 | 27.60 / 0.9643 |
+| BRACE C3 | 8.65 | 33.92 | 29.42 / 0.9699 | 27.97 / 0.9698 |
+| BeziCast guard off | 8.67 | 34.00 | 30.56 / 0.9670 | 29.31 / 0.9707 |
+| BeziCast guard on，rho=auto | 8.68 | 34.00 | 30.46 / 0.9650 | 29.27 / 0.9663 |
+
+同配置重跑：guard off 为 **39.60dB/0.9932**，guard on 为 **32.58dB/0.9873**；第二轮 vs compile 分别 30.90/28.84dB。纯预测器额外延迟约 0.02s、显存约 0.13GiB；guardrail 未显示一致收益且稳定性更差，因此默认关闭。未覆盖 K=3、>5x、多 prompt/骨干，不能宣称普遍优于 BRACE/Taylor。完整记录：`cache-dit/.tmp/research/bezicast_analysis.md`。
 
 ## 5. 复核用的原始出处
 

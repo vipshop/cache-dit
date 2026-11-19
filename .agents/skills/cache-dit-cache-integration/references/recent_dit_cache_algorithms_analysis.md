@@ -133,15 +133,17 @@ F_{\mathrm{pred}}(t)=\frac{\sum_j w_j F_{\tau_j}/(x(t)-x(\tau_j))}{\sum_j w_j/(x
 
 ### 4.3 P0/P1：BeziCast predictor + guardrail
 
-**A. 算法骨架。** 论文以低阶 Bézier 轨迹和控制点表述；实现上在至多 K 个局部历史锚点构造 Lagrange 基函数，以 Tikhonov 正则求等价预测权重，再加权历史特征。guardrail 使用外推距离、系数 \(l_1\) 范数、权重范数和“最远锚点是否支撑新预测”等信号，以凸包启发向保守 simplex-projected estimate 收缩；这些量全部来自历史节点，不读取当前真值。
+**A. 算法骨架。** 论文以低阶 Bézier 轨迹和控制点表述；实现上在至多 K 个局部历史锚点构造 Bernstein 基矩阵 \(A\)，以 Tikhonov 正则求等价预测权重 \(w=b(u)^T(A^TA+\lambda I)^{-1}A^T\)，再加权历史特征（Eq.6–13）。guardrail 由等价权重的和与 \(l_1\) 范数得到 risk，再做概率 simplex 投影和软收缩（Eq.15–21）；不依赖当前真值，也不包含“最远锚点支撑”判定。
 
-**B. 信号与离线依赖。** 在线缓存锚点，默认 \(K_{\max}=6\)、\(d_{\max}=6\)、\(\lambda=10^{-3}\)、\(\sigma_{\max}=4\)；无 per-model 训练或曲线。相比 BRACE 多一个小型稠密线性系统。
+**B. 信号与离线依赖。** 在线缓存真实锚点，论文默认 \(K_{\max}=6\)、\(n=4\)、\(\lambda=0.5\)（§3.1 与附录 A.3.2）；无 per-model 训练或曲线。论文没有给 guardrail 的统一 \(u_{\max}\)、\(\rho\)、\(\beta_{\max}\)、\(\gamma\) 默认组合。相比 BRACE 多一个小型稠密线性系统。
 
 **C. horizon 与成本。** 原生支持非均匀历史节点和任意预测距离，较适合 DBCache 的实际锚点分布。最多保存 6 个完整张量；guardrail 只做预测收缩，不强制当前步重算，因此可以留在 calibrator 内。
 
 **D. 证据与缺口。** 覆盖 FLUX、SD3.5、SANA、HunyuanVideo、Wan2.1 等，最高报告 4.79x latency；对比包含 TaylorSeer/HiCache，但缺 DBCache 和同档 >5x 证据。原论文还测试输出近端目标，移植到 Bn residual 后必须重新验收。
 
 **集成判断。** 若目标是“动态 DBCache 下的非均匀锚点预测”，它比固定周期 barycentric 论文更贴近实际。建议作为第二个 PoC，并单独做 guardrail on/off。
+
+**实现更新（2026-11-19）。** 已新增 `calibrators/bezicast.py` 及 Python/YAML/CLI 接线。默认纯预测器 `K=6,n=4,lambda=0.5,guardrail=false`，cache-dit 查询上限 `u_max=1.5`；guardrail 可选，`rho=auto` 以当前设计的 `risk(u=1)` 为阈值。`K<n` 时显式复用最近真实锚点并计数，不伪造论文的额外 full compute。321 项相关回归通过；FLUX 单点及同配置重跑结果见 §7.3，完整临时记录为 `cache-dit/.tmp/research/bezicast_analysis.md`。
 
 ### 4.4 第二梯队与同族方法
 
@@ -323,6 +325,18 @@ SenCache 的 Jacobian 敏感度可以提供不同信息，但需要离线 JVP �
 | 额外记录 | 外推距离、权重范数、收缩触发率、预测残差误差 |
 | 通过条件 | 在非均匀 DBCache 锚点上优于 BRACE/Taylor，且 guardrail 不是靠额外刷新获得收益 |
 | 失败即停 | 小矩阵求解或 6 个锚点带来明显开销，而精度增益低于 noise floor |
+
+**本轮仅完成 FLUX 单点功能子集（2026-11-19），未覆盖 K=3、>5x 或多骨干。** 所有缓存臂均为 12/28 Cache Steps：
+
+| 臂 | 秒 / GiB | PSNR/SSIM vs compile | PSNR/SSIM vs base |
+|---|---|---|---|
+| reuse | 8.65 / 33.87 | 29.61 / 0.9634 | 28.11 / 0.9617 |
+| TaylorSeer o1 | 8.67 / 33.95 | 30.60 / 0.9698 | 27.60 / 0.9643 |
+| BRACE C3 | 8.65 / 33.92 | 29.42 / 0.9699 | 27.97 / 0.9698 |
+| BeziCast guard off | 8.67 / 34.00 | 30.56 / 0.9670 | 29.31 / 0.9707 |
+| BeziCast guard on，rho=auto | 8.68 / 34.00 | 30.46 / 0.9650 | 29.27 / 0.9663 |
+
+同配置重跑 noise floor：guard off 为 **39.60dB/0.9932**，guard on 为 **32.58dB/0.9873**；第二轮 vs compile 分别 30.90/28.84dB。guardrail 首轮仅约 0.10dB 的 on/off 差异不能视为收益，且自身稳定性更差，所以默认保持关闭并继续验证阈值。321 项相关回归通过。单 prompt+compile 只证明功能与接线，不构成普遍预测器排名。
 
 ### 7.4 SeaCache：只换探针，不换缓存内容
 
