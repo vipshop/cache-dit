@@ -55,7 +55,9 @@
 - 现有 pass docstring 里列出的部分类名已过期（diffusers 中没有对应类），新增 pass 时一并修正，不要按 docstring 猜结构。
 - 当前 `FusedGeluProjPass` 用"out>in 且 in2==in1+out1"的宽度启发式；对同一 block 含多个投影时可能误配，必须加唯一 activation 和精确数据流校验。
 
-## 4. P0：正确性修复（先做，阻断后续扩展）
+## 4. P0：正确性修复（2026-11-20 已实现）
+
+状态：P0-1～P0-5 的代码与测试已落地。`apply_passes()` 现在返回 per-pass 命中数，并在 root module 写入稳定的公开类别计数 `_svdq_fused_mlp_targets`（`gelu_mlp/gelu_proj/swiglu`）、per-pass 明细 `_svdq_fused_mlp_passes` 和 `_svdq_fused_mlp_skipped`。测试入口为 `tests/quantization/test_svdquant_fused_passes.py` 与 `tests/quantization/test_svdquant_ptq.py::test_svdq_ptq_fused_mlp_roundtrip_preserves_targets_and_outputs`。仍待验收：Kandinsky6/Wan/SkyReels/GLM 等真实 exact-GELU 模型的命中数为 0 且输出与 unfused 一致；完成前不能宣称 exact-GELU 模型已回归。
 
 ### P0-1. GELU `approximate` 语义必须显式处理
 
@@ -82,9 +84,13 @@
 
 ### P0-2. fused 几何预检
 
-在 pass `apply()` 前检查 fused 实例的 N/K/M 对齐和 `padded_out_features % 256`，不满足则 skip + 明确 reason。重点保护 CuTe `runtime_kernel="cute"`，但 common preflight 不应只放在 runtime helper 中。
+在 pass `apply()` 前检查可静态确定的几何，不满足则 skip + 明确 reason：
 
-验收：`hidden=1920/2688` 等非 256 对齐宽度在装配期跳过，不出现首次推理 throw；统计中记录 skip 原因。
+- GELU GEMM：native N%128、CuTe N%256，K%128，且 fc1 padded N 必须等于 fc2 padded K。
+- SwiGLU producer：按**逻辑 hidden** 校验，CuTe 为 K%64，native 为 BLOCK_N 对齐（128）；不能复用 GELU GEMM 的 N%256 规则。还需校验 up/gate 输入宽度一致。
+- M 是运行时维度，pass 装配期无法预检；fused helper 继续按 256 做 padding，M tail 由数值测试覆盖。
+
+验收：CuTe 下非 256 对齐但满足 producer K%64 的 SwiGLU 可以融合；不满足 runtime 自身对齐的宽度在装配期跳过，不出现首次推理 throw；统计中记录 skip 原因；非 tile 对齐的 M 经 padding 后结果正确。skip 日志只在 `apply_passes()` 末尾按 reason 聚合一次，避免真实模型逐层 warning 风暴。
 
 ### P0-3. 对齐 FP4 的 pass 护栏
 
