@@ -288,6 +288,232 @@ __global__ void quantize_fp4_kernel(const __nv_bfloat16* __restrict__ input,
 #endif
 }
 
+struct SwigluInput {
+  const __nv_bfloat16* value;
+  const __nv_bfloat16* gate;
+  int input_cols;
+  int cols;
+
+  // Preserve the model's BF16 operation order: SiLU is rounded before the
+  // multiplication, and the product is rounded again before FP4 amax/packing.
+  __device__ __forceinline__ Vec8BF16 load8(int row, int col) const {
+    const Vec8BF16 values =
+      *reinterpret_cast<const Vec8BF16*>(value + static_cast<size_t>(row) * input_cols + col);
+    const __nv_bfloat16* gate_row = gate == nullptr
+                                      ? value + static_cast<size_t>(row) * input_cols + cols
+                                      : gate + static_cast<size_t>(row) * cols;
+    const Vec8BF16 gates = *reinterpret_cast<const Vec8BF16*>(gate_row + col);
+    Vec8BF16 result;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      const float g = __bfloat162float(gates.elem[i]);
+      const float silu = __fdiv_rn(g, 1.0f + expf(-g));
+      const __nv_bfloat16 silu_bf16 = __float2bfloat16_rn(silu);
+      const float product =
+        __fmul_rn(__bfloat162float(values.elem[i]), __bfloat162float(silu_bf16));
+      result.elem[i] = __float2bfloat16_rn(product);
+    }
+    return result;
+  }
+};
+
+// K=15360 counterpart of the specialized one-CTA-per-row producer. The gated
+// BF16 values are cached once, then reduced and packed with the same rounding
+// sequence as the plain specialized kernel.
+template <int kK, int kThreads>
+__global__ void __launch_bounds__(kThreads, 1)
+  quantize_swiglu_fp4_fused_kernel(SwigluInput input, cutlass::float_e2m1_t* __restrict__ qdata,
+                                   cutlass::float_ue4m3_t* __restrict__ block_scales,
+                                   float* __restrict__ global_scales, int rows) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
+  constexpr int kChunks = kK / 64;
+  constexpr int kGroups = kK / kSFVec;
+  constexpr int kWarps = kThreads / 32;
+  const int row = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int lane = tid & 31;
+  const int warp = tid >> 5;
+
+  extern __shared__ uint8_t fused_smem[];
+  auto* x_cache = reinterpret_cast<Vec8BF16*>(fused_smem);
+  auto* group_amax = reinterpret_cast<float*>(fused_smem + kK * sizeof(__nv_bfloat16));
+  auto* warp_amax = group_amax + kGroups;
+  auto* row_params = warp_amax + kWarps;
+  auto* qdata_row = reinterpret_cast<uint8_t*>(qdata) + static_cast<size_t>(row) * (kK / 2);
+  auto* scales_bytes = reinterpret_cast<uint8_t*>(block_scales);
+
+  float thread_amax = 0.0f;
+  for (int chunk = tid; chunk < kChunks; chunk += kThreads) {
+    float local_amax[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+#pragma unroll
+    for (int vec = 0; vec < 8; ++vec) {
+      const int index = chunk * 8 + vec;
+      const Vec8BF16 values = input.load8(row, index * 8);
+      x_cache[index] = values;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        local_amax[vec / 2] = fmaxf(local_amax[vec / 2], fabsf(__bfloat162float(values.elem[j])));
+      }
+    }
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      group_amax[chunk * 4 + group] = local_amax[group];
+      thread_amax = fmaxf(thread_amax, local_amax[group]);
+    }
+  }
+
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    thread_amax = fmaxf(thread_amax, __shfl_xor_sync(0xffffffff, thread_amax, offset));
+  }
+  if (lane == 0) {
+    warp_amax[warp] = thread_amax;
+  }
+  __syncthreads();
+  if (tid == 0) {
+    float amax = warp_amax[0];
+#pragma unroll
+    for (int w = 1; w < kWarps; ++w) {
+      amax = fmaxf(amax, warp_amax[w]);
+    }
+    const float global_scale = __fdiv_rn(amax, kFp4ScaleMax);
+    const float inv_global = global_scale > 0.0f ? __fdiv_rn(1.0f, global_scale) : 0.0f;
+    global_scales[row] = global_scale;
+    row_params[0] = inv_global;
+  }
+  __syncthreads();
+  const float inv_global = row_params[0];
+
+  for (int chunk = tid; chunk < kChunks; chunk += kThreads) {
+    uint4 packed0 = {};
+    uint4 packed1 = {};
+    auto* packed_words0 = reinterpret_cast<uint32_t*>(&packed0);
+    auto* packed_words1 = reinterpret_cast<uint32_t*>(&packed1);
+    uint32_t scale_word = 0;
+#pragma unroll
+    for (int group = 0; group < 4; ++group) {
+      float values[kSFVec];
+      float normalized_amax = 0.0f;
+#pragma unroll
+      for (int vec = 0; vec < 2; ++vec) {
+        const Vec8BF16 input_values = x_cache[chunk * 8 + group * 2 + vec];
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int index = vec * 8 + j;
+          values[index] = __fmul_rn(__bfloat162float(input_values.elem[j]), inv_global);
+          normalized_amax = fmaxf(normalized_amax, fabsf(values[index]));
+        }
+      }
+      const unsigned char scale_byte = cvt_f2_to_ue4m3(__fdiv_rn(normalized_amax, kE2M1Max));
+      const float block_fp32 = cvt_ue4m3_to_f32(scale_byte);
+      const float inv_block = block_fp32 > 0.0f ? __fdiv_rn(1.0f, block_fp32) : 0.0f;
+      uint32_t words[2] = {0u, 0u};
+#pragma unroll
+      for (int index = 0; index < kSFVec; ++index) {
+        float v = __fmul_rn(values[index], inv_block);
+        v = fminf(fmaxf(v, -kE2M1Max), kE2M1Max);
+        words[index / 8] |= static_cast<uint32_t>(cvt_f2_to_e2m1x2(v, v) & 0xF)
+                            << ((index % 8) * 4);
+      }
+      auto* destination = group < 2 ? packed_words0 + group * 2 : packed_words1 + (group - 2) * 2;
+      destination[0] = words[0];
+      destination[1] = words[1];
+      scale_word |= static_cast<uint32_t>(scale_byte) << (group * 8);
+    }
+    reinterpret_cast<uint4*>(qdata_row)[chunk * 2] = packed0;
+    reinterpret_cast<uint4*>(qdata_row)[chunk * 2 + 1] = packed1;
+    *reinterpret_cast<uint32_t*>(scales_bytes + sf_byte_offset(row, chunk * 4, kChunks)) =
+      scale_word;
+  }
+#endif
+}
+
+__global__ void row_amax_swiglu_fp4_kernel(SwigluInput input, float* __restrict__ global_scales,
+                                           int rows) {
+  const int row = blockIdx.x * 8 + threadIdx.x / 32;
+  if (row >= rows) {
+    return;
+  }
+  const int lane = threadIdx.x % 32;
+  float amax = 0.0f;
+  for (int col = lane * 8; col < input.cols; col += 32 * 8) {
+    const Vec8BF16 value = input.load8(row, col);
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      amax = fmaxf(amax, fabsf(__bfloat162float(value.elem[i])));
+    }
+  }
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, offset));
+  }
+  if (lane == 0) {
+    global_scales[row] = __fdiv_rn(amax, kFp4ScaleMax);
+  }
+}
+
+template <bool kLevel1>
+__global__ void quantize_swiglu_fp4_kernel(SwigluInput input,
+                                           cutlass::float_e2m1_t* __restrict__ qdata,
+                                           cutlass::float_ue4m3_t* __restrict__ block_scales,
+                                           const float* __restrict__ global_scales, int rows) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
+  const int cols = input.cols;
+  const int groups_per_row = cols / kSFVec;
+  const int group = blockIdx.x * blockDim.x + threadIdx.x;
+  const int padded_rows = (rows + kRowBlock - 1) / kRowBlock * kRowBlock;
+  if (group >= padded_rows * groups_per_row) {
+    return;
+  }
+  const int row = group / groups_per_row;
+  const int group_in_row = group % groups_per_row;
+  const int col = group_in_row * kSFVec;
+  const int nb_k = cols / 64;
+
+  if (row >= rows) {
+    block_scales[sf_byte_offset(row, group_in_row, nb_k)] = cutlass::float_ue4m3_t::bitcast(0);
+    return;
+  }
+
+  float inv_global = 1.0f;
+  if constexpr (kLevel1) {
+    const float scale = global_scales[row];
+    inv_global = scale > 0.0f ? __fdiv_rn(1.0f, scale) : 0.0f;
+  }
+
+  const Vec8BF16 v0 = input.load8(row, col);
+  const Vec8BF16 v1 = input.load8(row, col + 8);
+  float values[kSFVec];
+  float amax = 0.0f;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    const float a = __fmul_rn(__bfloat162float(v0.elem[i]), inv_global);
+    const float b = __fmul_rn(__bfloat162float(v1.elem[i]), inv_global);
+    values[i] = a;
+    values[i + 8] = b;
+    amax = fmaxf(amax, fmaxf(fabsf(a), fabsf(b)));
+  }
+
+  const unsigned char scale_byte = cvt_f2_to_ue4m3(__fdiv_rn(amax, kE2M1Max));
+  const float scale_value = cvt_ue4m3_to_f32(scale_byte);
+  const float inv_block = scale_value > 0.0f ? __fdiv_rn(1.0f, scale_value) : 0.0f;
+  block_scales[sf_byte_offset(row, group_in_row, nb_k)] =
+    cutlass::float_ue4m3_t::bitcast(scale_byte);
+
+  uint2 packed;
+  auto* bytes = reinterpret_cast<unsigned char*>(&packed);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    bytes[i] = cvt_f2_to_e2m1x2(__fmul_rn(values[2 * i + 1], inv_block),
+                                __fmul_rn(values[2 * i], inv_block));
+  }
+  *reinterpret_cast<uint2*>(reinterpret_cast<unsigned char*>(qdata) +
+                            static_cast<size_t>(row) * (cols / 2) + group_in_row * 8) = packed;
+#else
+  asm volatile("trap;");
+#endif
+}
+
 void check_runtime_device(const at::Tensor& tensor) {
   TORCH_CHECK(tensor.is_cuda(), "FP4 operators require CUDA tensors.");
   TORCH_CHECK(tensor.get_device() >= 0, "FP4 operators require a concrete CUDA device.");
@@ -370,6 +596,93 @@ void fp4_quantize(const at::Tensor& input, at::Tensor& qdata, at::Tensor& block_
   } else {
     quantize_fp4_kernel<false>
       <<<(total_groups + 255) / 256, 256, 0, stream>>>(src, packed, scales, global, rows, cols);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+void fp4_quantize_swiglu(const at::Tensor& value, const std::optional<at::Tensor>& gate,
+                         at::Tensor& qdata, at::Tensor& block_scales, at::Tensor& global_scales,
+                         bool level1) {
+  check_runtime_device(value);
+  TORCH_CHECK(value.scalar_type() == at::kBFloat16 && value.dim() == 2 && value.is_contiguous(),
+              "fp4_quantize_swiglu expects a contiguous 2D bfloat16 value tensor.");
+  TORCH_CHECK(qdata.is_cuda() && block_scales.is_cuda() && global_scales.is_cuda(),
+              "fp4_quantize_swiglu outputs must be CUDA tensors.");
+  TORCH_CHECK(qdata.device() == value.device() && block_scales.device() == value.device() &&
+                global_scales.device() == value.device(),
+              "fp4_quantize_swiglu expects every tensor on one device.");
+  TORCH_CHECK(
+    qdata.scalar_type() == at::kFloat4_e2m1fn_x2 && qdata.dim() == 2 && qdata.is_contiguous(),
+    "fp4_quantize_swiglu qdata must be contiguous float4_e2m1fn_x2 [R,H/2].");
+  TORCH_CHECK(block_scales.scalar_type() == at::kFloat8_e4m3fn && block_scales.is_contiguous(),
+              "fp4_quantize_swiglu block scales must be contiguous float8_e4m3fn.");
+  TORCH_CHECK(global_scales.scalar_type() == at::kFloat && global_scales.is_contiguous() &&
+                global_scales.dim() == 1,
+              "fp4_quantize_swiglu global scales must be contiguous float32.");
+
+  const int64_t rows = value.size(0);
+  const int64_t input_cols = value.size(1);
+  const int64_t cols = qdata.size(1) * 2;
+  TORCH_CHECK(rows > 0 && cols > 0 && qdata.size(0) == rows,
+              "fp4_quantize_swiglu does not accept empty or mismatched outputs.");
+  TORCH_CHECK(cols % 64 == 0, "fp4_quantize_swiglu requires H % 64 == 0.");
+  TORCH_CHECK(rows <= INT32_MAX && cols <= INT32_MAX,
+              "fp4_quantize_swiglu dimensions must fit in int32.");
+  TORCH_CHECK(block_scales.numel() == static_cast<int64_t>(sf_buffer_bytes(rows, cols)),
+              "fp4_quantize_swiglu block scale buffer has an invalid size.");
+  TORCH_CHECK(global_scales.numel() == (level1 ? rows : 0),
+              "fp4_quantize_swiglu global scales must be [R] with level1, or empty without it.");
+  TORCH_CHECK(reinterpret_cast<uintptr_t>(value.data_ptr()) % 16 == 0 &&
+                reinterpret_cast<uintptr_t>(qdata.data_ptr()) % 16 == 0,
+              "fp4_quantize_swiglu requires 16-byte aligned value and qdata.");
+
+  const __nv_bfloat16* gate_ptr = nullptr;
+  if (gate.has_value()) {
+    const at::Tensor& gate_tensor = gate.value();
+    TORCH_CHECK(gate_tensor.is_cuda() && gate_tensor.device() == value.device() &&
+                  gate_tensor.scalar_type() == at::kBFloat16 && gate_tensor.dim() == 2 &&
+                  gate_tensor.is_contiguous() && gate_tensor.size(0) == rows &&
+                  gate_tensor.size(1) == cols,
+                "fp4_quantize_swiglu gate must be contiguous BF16 [R,H] on the value device.");
+    TORCH_CHECK(input_cols == cols, "A separate FP4 SwiGLU gate expects value [R,H].");
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(gate_tensor.data_ptr()) % 16 == 0,
+                "fp4_quantize_swiglu gate must be 16-byte aligned.");
+    gate_ptr = reinterpret_cast<const __nv_bfloat16*>(gate_tensor.data_ptr<at::BFloat16>());
+  } else {
+    TORCH_CHECK(input_cols == 2 * cols, "fp4_quantize_swiglu without gate expects value [R,2H].");
+  }
+
+  const c10::cuda::CUDAGuard device_guard(value.device());
+  const int padded_rows = (rows + kRowBlock - 1) / kRowBlock * kRowBlock;
+  const int64_t total_groups = static_cast<int64_t>(padded_rows) * (cols / kSFVec);
+  TORCH_CHECK(total_groups <= INT32_MAX, "fp4_quantize_swiglu padded group count exceeds int32.");
+  SwigluInput input{
+    reinterpret_cast<const __nv_bfloat16*>(value.data_ptr<at::BFloat16>()),
+    gate_ptr,
+    static_cast<int>(input_cols),
+    static_cast<int>(cols),
+  };
+  auto* packed = reinterpret_cast<cutlass::float_e2m1_t*>(qdata.data_ptr());
+  auto* scales =
+    reinterpret_cast<cutlass::float_ue4m3_t*>(block_scales.data_ptr<at::Float8_e4m3fn>());
+  float* global = level1 ? global_scales.data_ptr<float>() : nullptr;
+  cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (level1 && cols == 15360) {
+    cudaMemsetAsync(scales, 0, block_scales.numel(), stream);
+    constexpr int kCols = 15360;
+    constexpr int kThreads = 128;
+    const int smem_bytes = kCols * 2 + (kCols / kSFVec) * 4 + 64;
+    auto kernel = quantize_swiglu_fp4_fused_kernel<kCols, kThreads>;
+    cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_bytes);
+    kernel<<<rows, kThreads, smem_bytes, stream>>>(input, packed, scales, global, rows);
+  } else if (level1) {
+    row_amax_swiglu_fp4_kernel<<<(rows + 7) / 8, 256, 0, stream>>>(input, global, rows);
+    quantize_swiglu_fp4_kernel<true>
+      <<<(total_groups + 255) / 256, 256, 0, stream>>>(input, packed, scales, global, rows);
+  } else {
+    quantize_swiglu_fp4_kernel<false>
+      <<<(total_groups + 255) / 256, 256, 0, stream>>>(input, packed, scales, global, rows);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }

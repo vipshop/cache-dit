@@ -18,6 +18,7 @@ import cache_dit.kernels.svdquant as svdq_ops
   [
     ("fused_merge_attn_states", attn_ops),
     ("fp4_quantize", fp4_ops),
+    ("fp4_quantize_swiglu", fp4_ops),
     ("fp4_gemm", fp4_ops),
     ("fp8_quantize", fp8_ops),
     ("fp8_quantize_gemm", fp8_ops),

@@ -55,6 +55,8 @@ import torch.nn.functional as F
 
 from .cuda_ext import _get_required_ops_module
 
+_ACTIVATIONS = {"gelu": 1, "gelu_tanh": 2}
+
 
 def _fp4_ops_module():
   """Return the compiled ops module after checking the FP4 entry points.
@@ -63,7 +65,10 @@ def _fp4_ops_module():
   """
 
   ops = _get_required_ops_module()
-  missing = [name for name in ("fp4_quantize", "fp4_gemm") if not hasattr(ops, name)]
+  missing = [
+    name for name in ("fp4_quantize", "fp4_quantize_swiglu", "fp4_gemm", "fp4_gemm_activation")
+    if not hasattr(ops, name)
+  ]
   if missing:
     raise RuntimeError(
       f"The loaded cache_dit._C_ops extension is missing {missing}. Rebuild it with "
@@ -140,6 +145,69 @@ def _fake_fp4_quantize(x: torch.Tensor, level1: bool):
     x.new_empty((rows, cols // 2), dtype=torch.float4_e2m1fn_x2),
     x.new_empty(_scale_shape(rows, cols), dtype=torch.float8_e4m3fn),
     x.new_empty((rows if level1 else 0, ), dtype=torch.float32),
+  )
+
+
+def _validate_swiglu_metadata(value: torch.Tensor, gate: torch.Tensor | None) -> tuple[int, int]:
+  """Validate gated producer metadata and return its logical output shape."""
+
+  if value.dtype != torch.bfloat16 or value.dim() != 2:
+    raise ValueError("FP4 SwiGLU quantization expects a 2D bfloat16 value tensor.")
+  rows = value.shape[0]
+  if rows == 0:
+    raise ValueError("FP4 SwiGLU quantization does not accept empty tensors.")
+  if gate is None:
+    if value.shape[1] % 2 != 0:
+      raise ValueError("Half-split FP4 SwiGLU expects value with an even 2H width.")
+    cols = value.shape[1] // 2
+  else:
+    if gate.dtype != torch.bfloat16 or gate.dim() != 2:
+      raise ValueError("FP4 SwiGLU gate must be a 2D bfloat16 tensor.")
+    if gate.shape[0] != rows:
+      raise ValueError("FP4 SwiGLU value and gate row counts must match.")
+    cols = gate.shape[1]
+    if value.shape[1] != cols:
+      raise ValueError("A separate FP4 SwiGLU gate expects value and gate shapes [R,H].")
+  if cols == 0 or cols % 64 != 0:
+    raise ValueError(f"FP4 SwiGLU quantization requires a nonempty H divisible by 64, got {cols}.")
+  return rows, cols
+
+
+def _call_fp4_quantize_swiglu(value: torch.Tensor, gate: torch.Tensor | None, qdata: torch.Tensor,
+                              block_scales: torch.Tensor, global_scales: torch.Tensor,
+                              level1: bool) -> None:
+  """Bridge functional SwiGLU quantization to the out-param extension."""
+
+  _fp4_ops_module().fp4_quantize_swiglu(value, gate, qdata, block_scales, global_scales, level1)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp4_quantize_swiglu",
+  "(Tensor value, Tensor? gate, bool level1) -> (Tensor, Tensor, Tensor)",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp4_quantize_swiglu", "CUDA")
+def _fp4_quantize_swiglu(value: torch.Tensor, gate: torch.Tensor | None, level1: bool):
+  rows, cols = _validate_swiglu_metadata(value, gate)
+  value = value.contiguous()
+  gate = gate.contiguous() if gate is not None else None
+  qdata = torch.empty((rows, cols // 2), dtype=torch.float4_e2m1fn_x2, device=value.device)
+  block_scales = torch.empty(_scale_shape(rows, cols),
+                             dtype=torch.float8_e4m3fn,
+                             device=value.device)
+  global_scales = torch.empty((rows if level1 else 0, ), dtype=torch.float32, device=value.device)
+  _call_fp4_quantize_swiglu(value, gate, qdata, block_scales, global_scales, level1)
+  return qdata, block_scales, global_scales
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp4_quantize_swiglu")
+def _fake_fp4_quantize_swiglu(value: torch.Tensor, gate: torch.Tensor | None, level1: bool):
+  rows, cols = _validate_swiglu_metadata(value, gate)
+  return (
+    value.new_empty((rows, cols // 2), dtype=torch.float4_e2m1fn_x2),
+    value.new_empty(_scale_shape(rows, cols), dtype=torch.float8_e4m3fn),
+    value.new_empty((rows if level1 else 0, ), dtype=torch.float32),
   )
 
 
@@ -225,6 +293,49 @@ def _fake_fp4_gemm(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Tensor, b_s
   return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
 
 
+def _call_fp4_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Tensor,
+                              b_scales: torch.Tensor, a_global_scales: torch.Tensor,
+                              b_global_scales: torch.Tensor, bias: torch.Tensor | None,
+                              out: torch.Tensor, activation: int) -> None:
+  """Bridge functional activation GEMM to the out-param extension."""
+
+  _fp4_ops_module().fp4_gemm_activation(a, b, a_scales, b_scales, a_global_scales, b_global_scales,
+                                        bias, out, activation)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::fp4_gemm_activation",
+  "(Tensor a, Tensor b, Tensor a_scales, Tensor b_scales, Tensor a_global_scales, "
+  "Tensor b_global_scales, Tensor? bias, int activation) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::fp4_gemm_activation", "CUDA")
+def _fp4_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Tensor,
+                         b_scales: torch.Tensor, a_global_scales: torch.Tensor,
+                         b_global_scales: torch.Tensor, bias: torch.Tensor | None,
+                         activation: int) -> torch.Tensor:
+  _validate_gemm_metadata(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias)
+  if activation not in _ACTIVATIONS.values():
+    raise ValueError(f"Unsupported FP4 activation id: {activation}.")
+  out = torch.empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16, device=a.device)
+  _call_fp4_gemm_activation(a.contiguous(), b.contiguous(), a_scales.contiguous(),
+                            b_scales.contiguous(), a_global_scales.contiguous(),
+                            b_global_scales.contiguous(), bias, out, activation)
+  return out
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::fp4_gemm_activation")
+def _fake_fp4_gemm_activation(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Tensor,
+                              b_scales: torch.Tensor, a_global_scales: torch.Tensor,
+                              b_global_scales: torch.Tensor, bias: torch.Tensor | None,
+                              activation: int) -> torch.Tensor:
+  _validate_gemm_metadata(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias)
+  if activation not in _ACTIVATIONS.values():
+    raise ValueError(f"Unsupported FP4 activation id: {activation}.")
+  return a.new_empty((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
+
+
 def fp4_quantize(x: torch.Tensor,
                  level1: bool = True) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """Quantize a row-major BF16 tensor to packed NVFP4.
@@ -246,6 +357,24 @@ def fp4_quantize(x: torch.Tensor,
   """
 
   return torch.ops.cache_dit_cuda_ops.fp4_quantize(x, level1)
+
+
+def fp4_quantize_swiglu(
+  value: torch.Tensor,
+  gate: torch.Tensor | None = None,
+  level1: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Quantize ``value * silu(gate)`` without materializing the BF16 product.
+
+  :param value: BF16 ``[R,H]`` with a separate gate, or half-split ``[R,2H]``.
+  :param gate: Optional BF16 ``[R,H]`` gate. If omitted, the second half of
+    ``value`` is used and the first half supplies the value operand.
+  :param level1: Produce per-row FP32 global scales in addition to block scales.
+  :returns: The same ``(qdata, block_scales, global_scales)`` contract as
+    :func:`fp4_quantize` applied to the explicitly gated BF16 product.
+  """
+
+  return torch.ops.cache_dit_cuda_ops.fp4_quantize_swiglu(value, gate, level1)
 
 
 def _fp4_gemm_scaled_mm(a: torch.Tensor, b: torch.Tensor, a_scales: torch.Tensor,
@@ -343,7 +472,8 @@ def fp4_gemm(a: torch.Tensor,
              a_global_scales: torch.Tensor,
              b_global_scales: torch.Tensor,
              bias: torch.Tensor | None = None,
-             use_native: bool = True) -> torch.Tensor:
+             use_native: bool = True,
+             activation: str | None = None) -> torch.Tensor:
   """Compute packed NVFP4 ``a @ b.T`` with a BF16 output.
 
   The native SM120 CUTLASS collective consumes packed E2M1 data and canonical
@@ -370,8 +500,20 @@ def fp4_gemm(a: torch.Tensor,
     ``K%256==0`` and ``N%128==0`` when needed. ``False`` selects
     ``torch._scaled_mm`` and pads N to 16. Both paths zero-pad operands and
     depad the output, so unsupported native tile shapes do not change results.
+  :param activation: Optional native ``gelu`` or ``gelu_tanh`` epilogue. The
+    ``torch._scaled_mm`` reference does not expose an activation epilogue.
   :returns: BF16 output ``[M,N]``.
   """
+
+  activation_id = None
+  if activation is not None:
+    activation_id = _ACTIVATIONS.get(activation)
+    if activation_id is None:
+      raise ValueError(
+        f"Unsupported FP4 activation {activation!r}; expected 'gelu' or 'gelu_tanh'.")
+    if not use_native:
+      raise ValueError("FP4 activation requires use_native=True; torch._scaled_mm exposes no "
+                       "activation epilogue.")
 
   logical_k = a.shape[1] * 2
   out_channels = b.shape[0]
@@ -381,11 +523,16 @@ def fp4_gemm(a: torch.Tensor,
   a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias = _pad_gemm_operands(
     a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias, padded_k, padded_n)
   if use_native:
-    out = torch.ops.cache_dit_cuda_ops.fp4_gemm(a, b, a_scales, b_scales, a_global_scales,
-                                                b_global_scales, bias)
+    if activation_id is None:
+      out = torch.ops.cache_dit_cuda_ops.fp4_gemm(a, b, a_scales, b_scales, a_global_scales,
+                                                  b_global_scales, bias)
+    else:
+      out = torch.ops.cache_dit_cuda_ops.fp4_gemm_activation(a, b, a_scales, b_scales,
+                                                             a_global_scales, b_global_scales, bias,
+                                                             activation_id)
   else:
     out = _fp4_gemm_scaled_mm(a, b, a_scales, b_scales, a_global_scales, b_global_scales, bias)
   return out[:, :out_channels]
 
 
-__all__ = ["fp4_gemm", "fp4_quantize"]
+__all__ = ["fp4_gemm", "fp4_quantize", "fp4_quantize_swiglu"]

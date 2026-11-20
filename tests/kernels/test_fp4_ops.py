@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from cache_dit.kernels import fp4_gemm
 from cache_dit.kernels import fp4_quantize
+from cache_dit.kernels import fp4_quantize_swiglu
 
 pytestmark = pytest.mark.skipif(
   not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] != 12,
@@ -288,6 +289,156 @@ def test_cuda_graph_replay_matches_eager() -> None:
   expected = fp4_gemm(qa, qw, sa, sw, ga, gw)
   graph.replay()
   assert torch.equal(captured, expected)
+
+
+@pytest.mark.parametrize("level1", [True, False])
+@pytest.mark.parametrize("activation,approximate", [("gelu", "none"), ("gelu_tanh", "tanh")])
+def test_gemm_activation_matches_unfused_and_compiles(level1: bool, activation: str,
+                                                      approximate: str) -> None:
+  torch.manual_seed(30)
+  a = torch.randn(17, 256, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(256, 256, dtype=torch.bfloat16, device="cuda")
+  bias = torch.randn(256, dtype=torch.bfloat16, device="cuda")
+  qa, sa, ga = fp4_quantize(a, level1=level1)
+  qw, sw, gw = fp4_quantize(w, level1=level1)
+  expected = F.gelu(fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias), approximate=approximate)
+  actual = fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias, activation=activation)
+  assert _relative_l2(actual, expected) < 5e-5
+  compiled = torch.compile(
+    lambda: fp4_gemm(qa, qw, sa, sw, ga, gw, bias=bias, activation=activation),
+    fullgraph=True,
+  )()
+  assert torch.equal(compiled, actual)
+
+
+def test_gemm_activation_fake_metadata() -> None:
+  from torch._subclasses.fake_tensor import FakeTensorMode
+
+  with FakeTensorMode():
+    a = torch.empty(11, 256, dtype=torch.bfloat16, device="cuda")
+    w = torch.empty(128, 256, dtype=torch.bfloat16, device="cuda")
+    qa, sa, ga = fp4_quantize(a)
+    qw, sw, gw = fp4_quantize(w)
+    out = fp4_gemm(qa, qw, sa, sw, ga, gw, activation="gelu_tanh")
+    assert out.shape == (11, 128) and out.dtype == torch.bfloat16
+
+
+def test_gemm_activation_cuda_graph_replay_matches_eager() -> None:
+  torch.manual_seed(31)
+  a = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(128, 256, dtype=torch.bfloat16, device="cuda")
+  qa, sa, ga = fp4_quantize(a)
+  qw, sw, gw = fp4_quantize(w)
+  side_stream = torch.cuda.Stream()
+  side_stream.wait_stream(torch.cuda.current_stream())
+  with torch.cuda.stream(side_stream):
+    for _ in range(2):
+      fp4_gemm(qa, qw, sa, sw, ga, gw, activation="gelu_tanh")
+  torch.cuda.current_stream().wait_stream(side_stream)
+  graph = torch.cuda.CUDAGraph()
+  with torch.cuda.graph(graph):
+    captured = fp4_gemm(qa, qw, sa, sw, ga, gw, activation="gelu_tanh")
+  expected = fp4_gemm(qa, qw, sa, sw, ga, gw, activation="gelu_tanh")
+  graph.replay()
+  assert torch.equal(captured, expected)
+
+
+def test_invalid_gemm_activation_is_rejected() -> None:
+  a = torch.randn(2, 256, dtype=torch.bfloat16, device="cuda")
+  w = torch.randn(128, 256, dtype=torch.bfloat16, device="cuda")
+  qa, sa, ga = fp4_quantize(a)
+  qw, sw, gw = fp4_quantize(w)
+  with pytest.raises(ValueError, match="Unsupported FP4 activation"):
+    fp4_gemm(qa, qw, sa, sw, ga, gw, activation="silu")
+  with pytest.raises(ValueError, match="torch._scaled_mm exposes no activation"):
+    fp4_gemm(qa, qw, sa, sw, ga, gw, activation="gelu", use_native=False)
+
+
+@pytest.mark.parametrize("rows,cols", [(17, 256), (129, 15360)])
+@pytest.mark.parametrize("level1", [True, False])
+@pytest.mark.parametrize("separate_gate", [True, False])
+def test_swiglu_quantize_matches_explicit_gating(rows: int, cols: int, level1: bool,
+                                                 separate_gate: bool) -> None:
+  torch.manual_seed(40)
+  value = torch.randn(rows, cols, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn(rows, cols, dtype=torch.bfloat16, device="cuda")
+  value[0].zero_()
+  value[1, :16] = 2.0 ** -12
+  expected = fp4_quantize(value * F.silu(gate), level1=level1)
+  actual = fp4_quantize_swiglu(
+    value if separate_gate else torch.cat((value, gate), dim=1),
+    gate if separate_gate else None,
+    level1=level1,
+  )
+  for actual_tensor, expected_tensor in zip(actual, expected):
+    assert torch.equal(actual_tensor, expected_tensor)
+  assert torch.count_nonzero(_dequantize(*actual)[0]) == 0
+  unswizzled = _unswizzle_scales(actual[1], rows + (128 - rows % 128) % 128, cols)
+  assert torch.count_nonzero(unswizzled[rows:]) == 0
+
+  if cols == 256:
+    compiled = torch.compile(
+      lambda: fp4_quantize_swiglu(
+        value if separate_gate else torch.cat((value, gate), dim=1),
+        gate if separate_gate else None,
+        level1=level1,
+      ),
+      fullgraph=True,
+    )()
+    for actual_tensor, expected_tensor in zip(compiled, expected):
+      assert torch.equal(actual_tensor, expected_tensor)
+
+
+def test_swiglu_quantize_fake_metadata() -> None:
+  from torch._subclasses.fake_tensor import FakeTensorMode
+
+  with FakeTensorMode():
+    value = torch.empty(11, 256, dtype=torch.bfloat16, device="cuda")
+    gate = torch.empty(11, 256, dtype=torch.bfloat16, device="cuda")
+    for actual in (fp4_quantize_swiglu(value,
+                                       gate), fp4_quantize_swiglu(torch.cat((value, gate), dim=1))):
+      assert actual[0].shape == (11, 128)
+      assert actual[0].dtype == torch.float4_e2m1fn_x2
+      assert actual[1].dtype == torch.float8_e4m3fn
+      assert actual[2].shape == (11, ) and actual[2].dtype == torch.float32
+
+
+def test_swiglu_quantize_cuda_graph_replay_matches_eager() -> None:
+  torch.manual_seed(41)
+  value = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn(64, 256, dtype=torch.bfloat16, device="cuda")
+  side_stream = torch.cuda.Stream()
+  side_stream.wait_stream(torch.cuda.current_stream())
+  with torch.cuda.stream(side_stream):
+    for _ in range(2):
+      fp4_quantize_swiglu(value, gate)
+  torch.cuda.current_stream().wait_stream(side_stream)
+  graph = torch.cuda.CUDAGraph()
+  with torch.cuda.graph(graph):
+    captured = fp4_quantize_swiglu(value, gate)
+  expected = fp4_quantize_swiglu(value, gate)
+  graph.replay()
+  for actual_tensor, expected_tensor in zip(captured, expected):
+    assert torch.equal(actual_tensor, expected_tensor)
+
+  value.copy_(torch.randn_like(value))
+  gate.copy_(torch.randn_like(gate))
+  expected = fp4_quantize_swiglu(value, gate)
+  graph.replay()
+  for actual_tensor, expected_tensor in zip(captured, expected):
+    assert torch.equal(actual_tensor, expected_tensor)
+
+
+def test_invalid_swiglu_quantize_geometry_is_rejected() -> None:
+  value = torch.randn(2, 256, dtype=torch.bfloat16, device="cuda")
+  with pytest.raises(ValueError, match="H divisible by 64"):
+    fp4_quantize_swiglu(value[:, :96])
+  with pytest.raises(ValueError, match="value and gate shapes"):
+    fp4_quantize_swiglu(value, torch.randn(2, 128, dtype=torch.bfloat16, device="cuda"))
+  with pytest.raises(ValueError, match="row counts must match"):
+    fp4_quantize_swiglu(value, torch.randn(3, 256, dtype=torch.bfloat16, device="cuda"))
+  with pytest.raises(ValueError, match="even 2H width"):
+    fp4_quantize_swiglu(torch.randn(2, 255, dtype=torch.bfloat16, device="cuda"))
 
 
 def test_invalid_quantize_geometry_is_rejected() -> None:

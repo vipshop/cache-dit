@@ -1060,6 +1060,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Fuse supported GELU and SwiGLU MLP structures after native cache-dit FP8 quantization.",
   )
+  parser.add_argument(
+    "--fp4-fused-mlp",
+    action="store_true",
+    default=False,
+    help="Fuse supported GELU and SwiGLU MLP structures after native cache-dit NVFP4 quantization.",
+  )
   # Parallelism settings
   parser.add_argument(
     "--parallel-type",
@@ -2423,6 +2429,7 @@ def maybe_quantize_transformer(
           exclude_layers=_resolve_cli_quantize_exclude_layers(args),
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
+          fp4_fused_mlp=bool(args.fp4_fused_mlp),
           verbose=args.quantize_verbose,
         ),
       )
@@ -2442,6 +2449,7 @@ def maybe_quantize_transformer(
           exclude_layers=_resolve_cli_quantize_exclude_layers(args),
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
+          fp4_fused_mlp=bool(args.fp4_fused_mlp),
           verbose=args.quantize_verbose,
         ),
       )

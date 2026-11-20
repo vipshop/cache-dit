@@ -10,12 +10,22 @@ class module_;
 
 namespace cache_dit::fp4 {
 
+constexpr int64_t kActivationGelu = 1;
+constexpr int64_t kActivationGeluTanh = 2;
+
 void fp4_quantize(const at::Tensor& input, at::Tensor& qdata, at::Tensor& block_scales,
                   at::Tensor& global_scales, bool level1);
+void fp4_quantize_swiglu(const at::Tensor& value, const std::optional<at::Tensor>& gate,
+                         at::Tensor& qdata, at::Tensor& block_scales, at::Tensor& global_scales,
+                         bool level1);
 void fp4_gemm(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scales,
               const at::Tensor& b_scales, const at::Tensor& a_global_scales,
               const at::Tensor& b_global_scales, const std::optional<at::Tensor>& bias,
               at::Tensor& out);
+void fp4_gemm_activation(const at::Tensor& a, const at::Tensor& b, const at::Tensor& a_scales,
+                         const at::Tensor& b_scales, const at::Tensor& a_global_scales,
+                         const at::Tensor& b_global_scales, const std::optional<at::Tensor>& bias,
+                         at::Tensor& out, int64_t activation);
 void register_fp4_ops(pybind11::module_& ops);
 
 }  // namespace cache_dit::fp4
