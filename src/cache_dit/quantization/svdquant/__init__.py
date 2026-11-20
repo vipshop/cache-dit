@@ -54,6 +54,9 @@ from .passes import get_pass
 from .passes import register_pass
 from .quantizer import CalibrationInputs
 from .quantizer import compute_smooth_scale
+from .fp8 import SVDQW8A8Linear
+from .fp8 import quantize_linear_svdq_fp8
+from .fp8 import quantize_svdq_fp8
 from .quantizer import quantize_linear_svdq_w4a4
 from .quantizer import standardize_calibration_activations
 from .quantizer import validate_linear_geometry
@@ -76,6 +79,9 @@ __all__ = [
   "SVDQW4A4Linear",
   "compute_smooth_scale",
   "quantize_linear_svdq_w4a4",
+  "quantize_linear_svdq_fp8",
+  "quantize_svdq_fp8",
+  "SVDQW8A8Linear",
   "standardize_calibration_activations",
   "validate_linear_geometry",
 ]

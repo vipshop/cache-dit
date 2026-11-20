@@ -11,6 +11,7 @@ import cache_dit.kernels.fp4 as fp4_ops
 import cache_dit.kernels.fp8 as fp8_ops
 import cache_dit.kernels.models as models_ops
 import cache_dit.kernels.svdquant as svdq_ops
+import cache_dit.kernels.svdquant_fp8 as svdq_fp8_ops
 
 
 @pytest.mark.parametrize(
@@ -42,6 +43,8 @@ import cache_dit.kernels.svdquant as svdq_ops
     ("flux3_klein_gated_residual_split", models_ops),
     ("svdq_quantize_w4a4", svdq_ops),
     ("svdq_gemm_w4a4", svdq_ops),
+    ("svdq_quantize_w8a8", svdq_fp8_ops),
+    ("svdq_gemm_w8a8", svdq_fp8_ops),
   ],
 )
 def test_public_api_is_reexported_from_domain_module(op_name: str, source_module) -> None:

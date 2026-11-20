@@ -9,7 +9,7 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4))_r(\d+)(_dq)?$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4|fp8))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer", "flashinfer+cute-dsl",
                          "flashinfer+cutlass-sm120")
@@ -169,7 +169,8 @@ def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
   match = _SVDQ_QUANT_TYPE_PATTERN.fullmatch(quant_type)
   if match is None:
     raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
-                     "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, or `svdq_nvfp4_r{rank}_dq`, "
+                     "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, `svdq_nvfp4_r{rank}_dq`, "
+                     "`svdq_fp8_r{rank}`, or `svdq_fp8_r{rank}_dq`, "
                      f"got {quant_type!r}.")
   return match.group(1), int(match.group(2)), match.group(3) == "_dq"
 
@@ -618,6 +619,24 @@ class QuantizeConfig:
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
+      if _get_svdq_precision(self.quant_type) == "fp8":
+        unsupported = {
+          "runtime_kernel": None,
+          "lora_layout": None,
+          "fused_mlp": False,
+          "layerwise_offload": False,
+          "offload_quantized_layers_to_cpu": False,
+          "defer_move_to_execution_device": False,
+          "few_shot_auto_compile": False,
+          "svd_refine_iters": 0,
+          "streaming": True,
+          "activation_buffer_flush_sample_count": 1,
+          "activation_buffer_flush_cpu_bytes": None,
+        }
+        for key, default in unsupported.items():
+          if self.svdq_kwargs[key] != default:
+            raise ValueError(f"svdq_kwargs[{key!r}]={self.svdq_kwargs[key]!r} is not supported "
+                             "for SVDQ-FP8; leave it at its default value.")
       runtime_kernel = self.svdq_kwargs["runtime_kernel"] or ""
       is_flashinfer = runtime_kernel.startswith("flashinfer")
       if runtime_kernel == "cute" and _get_svdq_precision(self.quant_type) == "int4":
@@ -674,8 +693,12 @@ class QuantizeConfig:
             "SVDQuant PTQ currently only supports svdq_kwargs['smooth_strategy'] = 'activation'.")
         if self.calibrate_fn is None:
           raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
-        if self.serialize_to is None:
+        if self.serialize_to is None and _get_svdq_precision(self.quant_type) != "fp8":
           raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
+        if self.serialize_to is not None and _get_svdq_precision(self.quant_type) == "fp8":
+          raise NotImplementedError(
+            "SVDQ-FP8 currently supports in-memory PTQ only; its checkpoint "
+            "serialization format is not implemented yet.")
       if self.serialize_to is not None:
         normalized_filename = f"{self.quant_type}.safetensors"
         if self.serialize_to.endswith(".safetensors"):

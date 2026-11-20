@@ -50,6 +50,11 @@ def quantize(
       from .svdquant.ptq import quantize_svdq_dq
       from .svdquant.ptq import quantize_svdq_ptq
 
+      if quantize_config.get_svdq_precision() == "fp8":
+        from .svdquant.fp8 import quantize_svdq_fp8
+
+        return quantize_svdq_fp8(module, quantize_config)
+
       if quantize_config.is_svdq_dq():
         module = quantize_svdq_dq(module, quantize_config)
       else:

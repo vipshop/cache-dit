@@ -23,6 +23,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports in-memory DQ and PTQ; checkpoint serialization is not implemented yet.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -795,6 +796,24 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 </details>
 
 
+## SVDQuant-FP8 (W8A8)
+
+<span style="color:#c77dff;">svdq_fp8_r32_dq</span>, <span style="color:#c77dff;">svdq_fp8_r64_dq</span>, and <span style="color:#c77dff;">svdq_fp8_r128_dq</span> keep the SVDQuant low-rank correction but quantize the residual weight and activation to E4M3 instead of 4-bit formats. This provides rank-dependent accuracy choices for compute-bound, precision-sensitive layers. Larger ranks generally reduce weight error at a small additional kernel and memory cost; rank 128 is the safest default when accuracy matters more than the extra overhead.
+
+The producer fuses per-token activation quantization with the BF16 low-rank down projection. The GEMM accumulates the E4M3 residual product and BF16 low-rank up projection into the same FP32 accumulator; there is no standalone BF16 GEMM or second pass over the dense output. Only sm120 or newer is supported, and ranks 32, 64, and 128 are available.
+
+```python
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(
+    quant_type="svdq_fp8_r32_dq",
+    svdq_kwargs={"smooth_strategy": "weight"},
+  ),
+)
+```
+
+The generate CLI accepts <span style="color:#c77dff;">--quantize-type svdq_fp8_r{32|64|128}_dq</span> and the corresponding <span style="color:#c77dff;">--svdq-fp8-r{32|64|128}-dq</span> shortcuts. In-memory PTQ is also available with <span style="color:#c77dff;">svdq_fp8_r{rank}</span> plus <span style="color:#c77dff;">calibrate_fn</span>. Unlike the W4A4 workflows, SVDQ-FP8 currently rejects <span style="color:#c77dff;">serialize_to</span> because its checkpoint save/load format is not implemented yet.
+
 ## SVDQuant (W4A4) DQ
 
 Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span>, <span style="color:#c77dff;">svdq_int4_r128_dq</span>, <span style="color:#c77dff;">svdq_nvfp4_r32_dq</span>, and <span style="color:#c77dff;">svdq_nvfp4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
@@ -852,7 +871,7 @@ cache_dit.enable_cache(
 )
 ```
 
-These experimental modes still avoid activation calibration, but derive non-trivial per-channel smooth factors from weight statistics alone. They are currently available as opt-in Python API settings rather than dedicated CLI shortcuts. For the shared generate helpers, Cache-DiT also exposes <span style="color:#c77dff;">--svdq-{int4|nvfp4}-r{32|64|128|256}-dq</span>, as quick INT or NVFP4 DQ entry points. The mathematical difference between the DQ smooth strategies is listed below.
+These experimental modes still avoid activation calibration, but derive non-trivial per-channel smooth factors from weight statistics alone. They are currently available as opt-in Python API settings rather than dedicated CLI shortcuts. For the shared generate helpers, Cache-DiT also exposes <span style="color:#c77dff;">--svdq-{int4|nvfp4|fp8}-r{32|64|128}-dq</span> as quick DQ entry points (INT4 and NVFP4 additionally accept rank 256). The mathematical difference between the DQ smooth strategies is listed below.
 
 <span style="color:green;">identity</span>: use the unit smooth vector directly.
 

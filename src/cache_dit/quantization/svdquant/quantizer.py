@@ -42,8 +42,8 @@ def _normalize_svdq_precision(precision: str) -> str:
   if not isinstance(precision, str):
     raise TypeError(f"precision must be a str, got {type(precision)}.")
   normalized = precision.lower()
-  if normalized not in {"int4", "nvfp4"}:
-    raise ValueError(f"precision must be 'int4' or 'nvfp4', got {precision!r}.")
+  if normalized not in {"int4", "nvfp4", "fp8"}:
+    raise ValueError(f"precision must be 'int4', 'nvfp4' or 'fp8', got {precision!r}.")
   return normalized
 
 
@@ -51,6 +51,9 @@ def _resolve_svdq_group_size(precision: str) -> int:
   normalized = _normalize_svdq_precision(precision)
   if normalized == "nvfp4":
     return 16
+  if normalized == "fp8":
+    # E4M3 keeps a single per-output-channel scale, so there is no group granularity.
+    return 1
   return 64
 
 
@@ -103,6 +106,10 @@ def validate_linear_geometry(
   """
 
   precision = _normalize_svdq_precision(precision)
+  if precision == "fp8":
+    if rank not in (0, 32, 64, 128):
+      raise ValueError(f"The SVDQ-FP8 runtime requires rank 0, 32, 64 or 128, got {rank}.")
+    return
   group_size = _resolve_svdq_group_size(precision)
   if in_features % group_size != 0:
     raise ValueError(
