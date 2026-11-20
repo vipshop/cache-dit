@@ -105,6 +105,9 @@ def load(
 def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
   """Remove cache-dit quantization bookkeeping attributes from a module.
 
+  Installed fused forward patches are intentionally not reverted; re-quantize a float module to
+  rebuild its pass state. This helper only removes metadata.
+
   :param module: Module that may carry cache-dit quantization metadata.
   :returns: The same module with the quantization-related bookkeeping fields removed from the root
     module and any configured extra quantized modules.
@@ -135,6 +138,12 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
       del module._svdq_runtime_quantize_time_s
     if hasattr(module, "_svdq_runtime_quantized_after_forwards"):
       del module._svdq_runtime_quantized_after_forwards
+    if hasattr(module, "_svdq_fused_mlp_targets"):
+      del module._svdq_fused_mlp_targets
+    if hasattr(module, "_svdq_fused_mlp_passes"):
+      del module._svdq_fused_mlp_passes
+    if hasattr(module, "_svdq_fused_mlp_skipped"):
+      del module._svdq_fused_mlp_skipped
     if hasattr(module, "_fp8_quantized_layers"):
       del module._fp8_quantized_layers
     if hasattr(module, "_fp8_skipped_layers"):

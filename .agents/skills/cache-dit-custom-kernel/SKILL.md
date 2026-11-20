@@ -310,7 +310,7 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 
 按三类优先级推进：
 
-1. **P0 正确性**
+1. **P0 正确性（2026-11-20 代码与单测已落地；真实 exact-GELU 模型回归待验收）**
    - qout epilogue 固定 tanh GELU，而 pass 不读 `nn.GELU.approximate`；exact GELU 会被静默改数值。先读取 `approximate`，exact 显式跳过，tanh 才融合。
    - fused 实例要求 BN=256/BK=128 的 N/K 对齐；CuTe 的 `padded_out_features` 只按 128 取整，1920/2688 等宽度可能推理期 throw。pass 装配前必须预检并 skip。
    - 对齐 FP4 pass 护栏：training/Dropout、唯一 GELU、幂等、`*args/**kwargs`。

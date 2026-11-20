@@ -32,6 +32,7 @@ import types
 from typing import Any
 
 from torch import nn
+from torch.nn import functional as F
 
 from ...logger import init_logger
 from .dtensor import SVDQW4A4ShardLinear
@@ -44,6 +45,86 @@ _REGISTRY: dict[str, type[BasePass]] = {}
 # need a custom subset can override via ``apply_passes(..., pass_names=...)``.
 DEFAULT_FUSED_MLP_PASSES: list[str] = ["fused_gelu_mlp", "fused_gelu_proj", "fused_swiglu_mlp"]
 
+_FUSED_N_ALIGNMENT_NATIVE = 128
+_FUSED_N_ALIGNMENT_CUTE = 256
+_FUSED_K_ALIGNMENT = 128
+_PASS_MARKER = "_svdq_fused_mlp_pass"
+_TARGET_GROUPS = {
+  "fused_gelu_mlp": "gelu_mlp",
+  "fused_gelu_proj": "gelu_proj",
+  "fused_swiglu_mlp": "swiglu",
+}
+
+
+def _is_gelu_module(module: nn.Module) -> bool:
+  """Return whether *module* is a plain, non-gated GELU wrapper."""
+
+  return isinstance(module, nn.GELU) or module.__class__.__name__ == "GELU"
+
+
+def _gelu_approximate(module: nn.Module) -> str:
+  return str(getattr(module, "approximate", "none"))
+
+
+def _fused_n_alignment(layer: nn.Module) -> int:
+  """Return the fused epilogue N alignment for a layer's runtime."""
+
+  runtime = str(getattr(layer, "runtime_kernel", "native")).lower()
+  return _FUSED_N_ALIGNMENT_CUTE if runtime == "cute" else _FUSED_N_ALIGNMENT_NATIVE
+
+
+def _inference_guard(parent: nn.Module) -> str | None:
+  """Reject training state and any active Dropout in a candidate block."""
+
+  if parent.training:
+    return "training"
+  if any(isinstance(child, nn.Dropout) and child.p != 0 for child in parent.modules()):
+    return "active_dropout"
+  return None
+
+
+def _fused_gelu_geometry(fc1: nn.Module, fc2: nn.Module | None = None) -> str | None:
+  """Validate static fused-GELU widths before patching a block."""
+
+  out_padded = int(getattr(fc1, "_padded_out_features", fc1.out_features))
+  in_padded = int(getattr(fc1, "_padded_in_features", fc1.in_features))
+  # SVDQW4A4Linear constructs padded K via ceil(128); keep the defensive check
+  # explicit because fused kernels assume that invariant.
+  if in_padded % _FUSED_K_ALIGNMENT != 0:
+    return f"fused K={in_padded} is not divisible by {_FUSED_K_ALIGNMENT}"
+  n_alignment = _fused_n_alignment(fc1)
+  if out_padded % n_alignment != 0:
+    return f"fused N={out_padded} is not divisible by {n_alignment}"
+  if fc2 is not None:
+    next_in = int(getattr(fc2, "_padded_in_features", fc2.in_features))
+    if next_in != out_padded:
+      return f"fc1 padded N={out_padded} does not match fc2 padded K={next_in}"
+  return None
+
+
+def _fused_swiglu_geometry(up: nn.Module, gate: nn.Module | None, down: nn.Module) -> str | None:
+  """Validate the logical producer width required by a fused gated chain."""
+
+  hidden = int(down.in_features)
+  # The CuTe producer packs logical K and requires K%64; the native pack
+  # requires a BLOCK_N-aligned logical width.
+  runtime = str(getattr(down, "runtime_kernel", "native")).lower()
+  alignment = 64 if runtime == "cute" else _FUSED_N_ALIGNMENT_NATIVE
+  if hidden % alignment != 0:
+    return f"fused gated hidden={hidden} is not divisible by {alignment}"
+
+  up_in = int(up.in_features)
+  up_out = int(up.out_features)
+  expected = hidden if gate is not None else 2 * hidden
+  if up_out != expected:
+    return f"up N={up_out} does not match gated hidden requirement {expected}"
+  if gate is not None:
+    if int(gate.in_features) != up_in:
+      return f"gate K={gate.in_features} does not match up K={up_in}"
+    if int(gate.out_features) != hidden:
+      return f"gate N={gate.out_features} does not match down K={hidden}"
+  return None
+
 
 class BasePass:
   """Abstract base for a model pass.
@@ -52,6 +133,12 @@ class BasePass:
   """
 
   name: str = ""
+
+  def __init__(self) -> None:
+    self.skipped_reasons: dict[str, int] = {}
+
+  def _skip(self, reason: str) -> None:
+    self.skipped_reasons[reason] = self.skipped_reasons.get(reason, 0) + 1
 
   def detect(self, module: nn.Module) -> list[dict[str, Any]]:
     """Return target descriptors for applicable submodules.
@@ -103,21 +190,29 @@ def get_pass(name: str) -> type[BasePass]:
   return _REGISTRY[name]
 
 
-def apply_passes(module: nn.Module, pass_names: list[str] | None = None) -> None:
+def apply_passes(module: nn.Module, pass_names: list[str] | None = None) -> dict[str, int]:
   """Run every named pass on *module* in order.
 
   :param module: Root module to transform.
   :param pass_names: List of registered pass names.  When ``None``
       (the default), ``DEFAULT_FUSED_MLP_PASSES`` is used.
+  :returns: Per-pass target counts for this invocation.  Counts are zero on
+    an idempotent re-application.
   """
+
   if pass_names is None:
     pass_names = DEFAULT_FUSED_MLP_PASSES
   if not pass_names:
-    return
+    return {}
+
+  counts: dict[str, int] = {}
+  skipped: dict[str, dict[str, int]] = {}
   for name in pass_names:
     pass_cls = get_pass(name)
     instance = pass_cls()
     targets = instance.detect(module)
+    counts[name] = len(targets)
+    skipped[name] = dict(instance.skipped_reasons)
     if targets:
       logger.info(
         "✅ Applying %s pass to %d target(s).",
@@ -127,6 +222,65 @@ def apply_passes(module: nn.Module, pass_names: list[str] | None = None) -> None
       instance.apply(module, targets)
     else:
       logger.debug("Pass %s found no targets.", name)
+
+  total = sum(counts.values())
+  existing = getattr(module, "_svdq_fused_mlp_targets", None)
+  reason_counts: dict[str, int] = {}
+  for reasons in skipped.values():
+    for reason, count in reasons.items():
+      reason_counts[reason] = reason_counts.get(reason, 0) + count
+  details = ", ".join(f"{reason}: {count}"
+                      for reason, count in sorted(reason_counts.items())) or "no candidate blocks"
+
+  if total > 0:
+    merged_targets = {group: 0 for group in _TARGET_GROUPS.values()}
+    merged_targets.update(getattr(module, "_svdq_fused_mlp_targets", {}))
+    for name, count in counts.items():
+      group = _TARGET_GROUPS.get(name, name)
+      merged_targets[group] = merged_targets.get(group, 0) + count
+
+    merged_passes = dict(getattr(module, "_svdq_fused_mlp_passes", {}))
+    for name, count in counts.items():
+      merged_passes[name] = merged_passes.get(name, 0) + count
+
+    merged_skipped = {
+      name: dict(reasons)
+      for name, reasons in getattr(module, "_svdq_fused_mlp_skipped", {}).items()
+    }
+    for name, reasons in skipped.items():
+      bucket = merged_skipped.setdefault(name, {})
+      for reason, count in reasons.items():
+        bucket[reason] = bucket.get(reason, 0) + count
+
+    module._svdq_fused_mlp_targets = merged_targets
+    module._svdq_fused_mlp_passes = merged_passes
+    module._svdq_fused_mlp_skipped = merged_skipped
+    if reason_counts:
+      logger.warning(
+        "SVDQ fused_mlp skipped %d candidate(s) after checking supported structures: %s.",
+        sum(reason_counts.values()),
+        details,
+      )
+  elif not existing or not any(existing.values()):
+    module._svdq_fused_mlp_targets = {group: 0 for group in _TARGET_GROUPS.values()}
+    for name in counts:
+      module._svdq_fused_mlp_targets.setdefault(_TARGET_GROUPS.get(name, name), 0)
+    module._svdq_fused_mlp_passes = counts
+    merged_skipped = {
+      name: dict(reasons)
+      for name, reasons in getattr(module, "_svdq_fused_mlp_skipped", {}).items()
+    }
+    for name, reasons in skipped.items():
+      bucket = merged_skipped.setdefault(name, {})
+      for reason, count in reasons.items():
+        bucket[reason] = bucket.get(reason, 0) + count
+    module._svdq_fused_mlp_skipped = merged_skipped
+    logger.warning(
+      "SVDQ fused_mlp is enabled but no supported MLP targets were found. "
+      "Skips: %s.",
+      details,
+    )
+  return counts
 
 
 @register_pass
@@ -160,10 +314,12 @@ class FusedGeluMlpPass(BasePass):
 
   .. rubric:: Supported models
 
-  This pass targets diffusers transformers that use ``activation_fn``
-  set to ``"gelu"`` or ``"gelu-approximate"`` (both resolve to the
-  ``GELU`` activation class, not ``GEGLU``).  Models known to match
-  this pattern include:
+  This pass only fuses ``GELU(approximate="tanh")``, i.e. diffusers
+  ``activation_fn="gelu-approximate"``.  The exact ``activation_fn="gelu"``
+  path is deliberately skipped because the current SVDQ qout epilogue
+  hardcodes the tanh approximation; silently substituting it would change
+  model numerics.  Models below that use exact GELU are therefore candidates
+  for the structural pass but not for the current fused kernel.
 
   - **FLUX**: ``FluxTransformer2DModel`` (``gelu-approximate``)
   - **SD3**: ``SD3TransformerBlock`` (``gelu-approximate``)
@@ -230,9 +386,6 @@ class FusedGeluMlpPass(BasePass):
 
   name = "fused_gelu_mlp"
 
-  # Activation class names that use plain (non-gated) GELU.
-  _PLAIN_GELU_NAMES = frozenset({"GELU"})
-
   def detect(self, module: nn.Module) -> list[dict[str, Any]]:
     from .linear import SVDQW4A4Linear
 
@@ -240,46 +393,51 @@ class FusedGeluMlpPass(BasePass):
     for parent_name, parent in module.named_modules():
       if parent.__class__.__name__ != "FeedForward":
         continue
+      if hasattr(parent, _PASS_MARKER):
+        continue
       net = getattr(parent, "net", None)
-      if not isinstance(net, nn.ModuleList) or len(net) < 3:
+      if (not isinstance(net, nn.ModuleList) or len(net) != 3
+          or not isinstance(net[1], (nn.Dropout, nn.Identity))):
         continue
 
-      # net[0] must be an activation module wrapping a Linear.
       act_mod = net[0]
-      act_cls_name = act_mod.__class__.__name__
       fc1 = getattr(act_mod, "proj", None)
-      if not isinstance(fc1, (nn.Linear, SVDQW4A4Linear)):
-        continue
-
-      # net[2] must be a Linear / SVDQW4A4Linear.
       fc2 = net[2]
-      if not isinstance(fc2, (nn.Linear, SVDQW4A4Linear)):
-        continue
-
-      # Both must be SVDQW4A4Linear (pass is applied post-quantize).
       if not isinstance(fc1, SVDQW4A4Linear) or not isinstance(fc2, SVDQW4A4Linear):
         continue
 
-      # Fused MLP bypasses the TP collectives inside
-      # SVDQW4A4ShardLinear.forward, producing wrong results when
-      # tensor parallelism is active.  Skip TP-sharded modules.
       if isinstance(fc1, SVDQW4A4ShardLinear) or isinstance(fc2, SVDQW4A4ShardLinear):
-        logger.warning_once(
-          "FeedForward %s uses TP-sharded SVDQ layers — skipping fused MLP.",
+        self._skip("fused_gelu_mlp:tp_sharded")
+        logger.debug("FeedForward %s uses TP-sharded SVDQ layers — skipping fused MLP.",
+                     parent_name)
+        continue
+
+      guard = _inference_guard(parent)
+      if guard is not None:
+        self._skip(f"fused_gelu_mlp:{guard}")
+        continue
+
+      gelu_modules = [child for child in parent.modules() if _is_gelu_module(child)]
+      if len(gelu_modules) != 1 or gelu_modules[0] is not act_mod:
+        self._skip("fused_gelu_mlp:ambiguous_gelu")
+        logger.debug("FeedForward %s has %d GELU modules; skipping fused MLP.", parent_name,
+                     len(gelu_modules))
+        continue
+
+      approximate = _gelu_approximate(act_mod)
+      if approximate != "tanh":
+        self._skip(f"fused_gelu_mlp:exact_gelu:{approximate}")
+        logger.debug(
+          "FeedForward %s uses GELU(approximate=%r); only the tanh qout epilogue is fused.",
           parent_name,
+          approximate,
         )
         continue
 
-      # Only plain GELU can be fused with the current CUDA kernel.
-      # GEGLU (gate * GELU(up)), SwiGLU, etc. need kernel-level
-      # support and are left as-is.
-      if act_cls_name not in self._PLAIN_GELU_NAMES:
-        logger.warning_once(
-          "FeedForward %s uses %s activation — skipping fusion "
-          "(only plain GELU is supported).",
-          parent_name,
-          act_cls_name,
-        )
+      geometry = _fused_gelu_geometry(fc1, fc2)
+      if geometry is not None:
+        self._skip(f"fused_gelu_mlp:{geometry}")
+        logger.debug("FeedForward %s is not fused: %s.", parent_name, geometry)
         continue
 
       targets.append({
@@ -298,15 +456,15 @@ class FusedGeluMlpPass(BasePass):
       parent = target["parent"]
       fc1 = target["fc1"]
       fc2 = target["fc2"]
+      if hasattr(parent, _PASS_MARKER):
+        continue
 
-      # qout kernel now uses signed INT4 (FUSE_GELU=true, USE_UNSIGNED=false),
-      # matching the non-fused fc2.quantize output exactly.
-      # No act_unsigned change needed.
+      parent._svdq_fused_mlp_original_forward = parent.forward
+      parent._svdq_fused_mlp_pass = self.name
 
-      # Save original forward for potential introspection.
-      parent._ff_original_forward = parent.forward
-
-      def _patched_forward(self, hidden_states, _fc1=fc1, _fc2=fc2):
+      def _patched_forward(self, hidden_states, *args, _fc1=fc1, _fc2=fc2, **kwargs):
+        if args or kwargs:
+          return self._svdq_fused_mlp_original_forward(hidden_states, *args, **kwargs)
         return fused_gelu_mlp(hidden_states, _fc1, _fc2)
 
       parent.forward = types.MethodType(_patched_forward, parent)
@@ -392,18 +550,22 @@ class FusedGeluProjPass(BasePass):
 
   A parent module is targeted when:
 
-  1. It is **not** a ``FeedForward`` (already handled upstream).
-  2. It contains at least one ``nn.GELU`` submodule.
-  3. It contains at least two ``SVDQW4A4Linear`` submodules.
-  4. One ``SVDQW4A4Linear`` has ``out_features > in_features``
-     (expansion — fc1) and another has ``in_features >=
-     fc1.out_features`` with ``in_features > out_features``
-     (projection accepting concat — fc2).
+  1. It is **not** a ``FeedForward`` (already handled upstream) and has
+     not already installed a fused-MLP pass.
+  2. It directly owns exactly one bare ``nn.GELU`` with
+     ``approximate="tanh"``. Exact GELU and diffusers GELU wrappers that
+     own a projection are rejected.
+  3. It is in eval mode with no active Dropout and contains no TP-sharded
+     SVDQ layer.
+  4. It contains at least two ``SVDQW4A4Linear`` submodules and exactly
+     one valid expansion/projection pair:
+     ``fc2.in_features == fc1.in_features + fc1.out_features``.
+  5. The static fused N/K geometry is valid for ``fc1``'s runtime.
 
   The fusion is applied by monkey-patching ``fc1.forward`` to include
   GELU and replacing ``gelu_mod.forward`` with an identity pass-through.
-  This works for **any** parent class without inspecting its forward
-  code.
+  Extra ``fc1`` arguments fall back to the original GEMM and explicitly
+  re-apply GELU, so the fallback never drops the activation.
 
   .. rubric:: Supported models
 
@@ -434,28 +596,39 @@ class FusedGeluProjPass(BasePass):
 
     targets: list[dict[str, Any]] = []
     for parent_name, parent in module.named_modules():
-      if parent.__class__.__name__ == "FeedForward":
+      if parent.__class__.__name__ == "FeedForward" or hasattr(parent, _PASS_MARKER):
         continue
 
-      gelu_mod: nn.Module | None = None
+      gelu_modules: list[nn.Module] = []
       svdq_layers: list[tuple[str, SVDQW4A4Linear]] = []
       for child_name, child in parent.named_children():
         if isinstance(child, nn.GELU):
-          gelu_mod = child
+          gelu_modules.append(child)
         if isinstance(child, SVDQW4A4Linear):
           svdq_layers.append((child_name, child))
 
-      if gelu_mod is None or len(svdq_layers) < 2:
+      if len(gelu_modules) != 1 or len(svdq_layers) < 2:
+        if len(gelu_modules) > 1 and len(svdq_layers) >= 2:
+          self._skip("fused_gelu_proj:ambiguous_gelu")
+        continue
+      gelu_mod = gelu_modules[0]
+
+      guard = _inference_guard(parent)
+      if guard is not None:
+        self._skip(f"fused_gelu_proj:{guard}")
         continue
 
-      # Heuristic: the single-block concat pattern implies
+      if any(isinstance(layer, SVDQW4A4ShardLinear) for _, layer in svdq_layers):
+        self._skip("fused_gelu_proj:tp_sharded")
+        logger.debug("Single-block %s uses TP-sharded SVDQ layers — skipping fused GELU proj.",
+                     parent_name)
+        continue
+
+      # The single-block concat pattern implies
       #   fc2.in_features == fc1.in_features + fc1.out_features
       # where fc1.in_features is the attention stream dimension and
-      # fc1.out_features is the MLP hidden dimension.  fc1 must
-      # expand (out_features > in_features) and fc2 must project
-      # (in_features > out_features).
-      best_fc1: SVDQW4A4Linear | None = None
-      best_fc2: SVDQW4A4Linear | None = None
+      # fc1.out_features is the MLP hidden dimension.
+      pairs = []
       for _name_a, layer_a in svdq_layers:
         for _name_b, layer_b in svdq_layers:
           if layer_a is layer_b:
@@ -463,20 +636,32 @@ class FusedGeluProjPass(BasePass):
           if (layer_a.out_features > layer_a.in_features
               and layer_b.in_features > layer_b.out_features
               and layer_b.in_features == layer_a.in_features + layer_a.out_features):
-            if best_fc1 is None or layer_a.out_features > best_fc1.out_features:
-              best_fc1 = layer_a
-              best_fc2 = layer_b
+            pairs.append((layer_a, layer_b))
 
-      if best_fc1 is None or best_fc2 is None:
+      if not pairs:
+        self._skip("fused_gelu_proj:projection_pair_not_found")
+        continue
+      if len(pairs) > 1:
+        self._skip("fused_gelu_proj:ambiguous_projection_pair")
+        logger.debug("Single-block %s has %d candidate projection pairs; skipping fused GELU proj.",
+                     parent_name, len(pairs))
+        continue
+      best_fc1, best_fc2 = pairs[0]
+
+      approximate = _gelu_approximate(gelu_mod)
+      if approximate != "tanh":
+        self._skip(f"fused_gelu_proj:exact_gelu:{approximate}")
+        logger.debug(
+          "Single-block %s uses GELU(approximate=%r); only the tanh qout epilogue is fused.",
+          parent_name,
+          approximate,
+        )
         continue
 
-      # Fused GELU proj bypasses the TP collectives inside
-      # SVDQW4A4ShardLinear.forward — skip TP-sharded modules.
-      if isinstance(best_fc1, SVDQW4A4ShardLinear) or isinstance(best_fc2, SVDQW4A4ShardLinear):
-        logger.warning_once(
-          "Single-block %s uses TP-sharded SVDQ layers — skipping fused GELU proj.",
-          parent_name,
-        )
+      geometry = _fused_gelu_geometry(best_fc1)
+      if geometry is not None:
+        self._skip(f"fused_gelu_proj:{geometry}")
+        logger.debug("Single-block %s is not fused: %s.", parent_name, geometry)
         continue
 
       targets.append({
@@ -484,6 +669,7 @@ class FusedGeluProjPass(BasePass):
         "fc1": best_fc1,
         "fc2": best_fc2,
         "gelu": gelu_mod,
+        "approximate": approximate,
         "parent_name": parent_name,
       })
 
@@ -493,18 +679,30 @@ class FusedGeluProjPass(BasePass):
     from .fused import fused_gelu_proj
 
     for target in targets:
+      parent = target["parent"]
       fc1 = target["fc1"]
       gelu_mod = target["gelu"]
+      approximate = target["approximate"]
+      if hasattr(parent, _PASS_MARKER) or hasattr(fc1, _PASS_MARKER):
+        continue
 
-      fc1._saved_forward = fc1.forward
+      parent._svdq_fused_mlp_pass = self.name
+      fc1._svdq_fused_mlp_pass = self.name
+      fc1._svdq_fused_mlp_original_forward = fc1.forward
+      gelu_mod._svdq_fused_mlp_pass = self.name
+      gelu_mod._svdq_fused_mlp_original_forward = gelu_mod.forward
 
-      def _patched_fc1_forward(self, x, output=None):
+      def _patched_fc1_forward(self, x, *args, _approximate=approximate, **kwargs):
+        if args or kwargs:
+          linear_out = self._svdq_fused_mlp_original_forward(x, *args, **kwargs)
+          return F.gelu(linear_out, approximate=_approximate)
         return fused_gelu_proj(x, self)
 
-      fc1.forward = types.MethodType(_patched_fc1_forward, fc1)
+      def _identity_forward(self, x, *args, **kwargs):
+        return x
 
-      gelu_mod._saved_forward = gelu_mod.forward
-      gelu_mod.forward = lambda x: x
+      fc1.forward = types.MethodType(_patched_fc1_forward, fc1)
+      gelu_mod.forward = types.MethodType(_identity_forward, gelu_mod)
 
       logger.debug(
         "Fused GELU proj patched: %s (fc1=%s, gelu=%s)",
@@ -542,19 +740,33 @@ class FusedSwiGluMlpPass(BasePass):
   def detect(self, module: nn.Module) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = []
     for parent_name, parent in module.named_modules():
+      if hasattr(parent, _PASS_MARKER):
+        continue
       target = self._detect_separate_gate(parent)
       if target is None:
         target = self._detect_gated_projection(parent)
       if target is None:
         continue
       up, gate, down = target
+
+      guard = _inference_guard(parent)
+      if guard is not None:
+        self._skip(f"fused_swiglu_mlp:{guard}")
+        continue
+
       # The fused chain bypasses the TP collectives inside SVDQW4A4ShardLinear.forward.
       if any(isinstance(layer, SVDQW4A4ShardLinear) for layer in (up, gate, down) if layer):
-        logger.warning_once(
-          "Gated MLP %s uses TP-sharded SVDQ layers — skipping fused SwiGLU.",
-          parent_name,
-        )
+        self._skip("fused_swiglu_mlp:tp_sharded")
+        logger.debug("Gated MLP %s uses TP-sharded SVDQ layers — skipping fused SwiGLU.",
+                     parent_name)
         continue
+
+      geometry = _fused_swiglu_geometry(up, gate, down)
+      if geometry is not None:
+        self._skip(f"fused_swiglu_mlp:{geometry}")
+        logger.debug("Gated MLP %s is not fused: %s.", parent_name, geometry)
+        continue
+
       targets.append({
         "parent": parent,
         "up": up,
@@ -576,12 +788,6 @@ class FusedSwiGluMlpPass(BasePass):
     activation = getattr(parent, "activation_fn", None)
     if not isinstance(activation, nn.SiLU):
       return None
-    # The fused epilogue works on padded widths: `up` writes the next layer's K, which is `down`'s
-    # padded input width. Comparing logical widths would match layers whose padding differs and then
-    # fail inside the kernel instead of being skipped here.
-    if (up._padded_out_features != down._padded_in_features
-        or gate._padded_out_features != down._padded_in_features):
-      return None
     return up, gate, down
 
   @staticmethod
@@ -592,22 +798,18 @@ class FusedSwiGluMlpPass(BasePass):
     if parent.__class__.__name__ != "FeedForward":
       return None
     net = getattr(parent, "net", None)
-    if not isinstance(net, nn.ModuleList) or len(net) < 3:
+    if (not isinstance(net, nn.ModuleList) or len(net) != 3
+        or not isinstance(net[1], (nn.Dropout, nn.Identity))):
       return None
     activation = net[0]
     if activation.__class__.__name__ == "GEGLU":
-      logger.warning_once(
-        "FeedForward %s uses GEGLU — skipping fusion (only SwiGLU is supported).",
-        getattr(parent, "_svdq_name", parent.__class__.__name__),
-      )
+      logger.debug("FeedForward uses GEGLU — skipping fusion (only SwiGLU is supported).")
       return None
     if activation.__class__.__name__ != "SwiGLU":
       return None
     up = getattr(activation, "proj", None)
     down = net[2]
     if not isinstance(up, SVDQW4A4Linear) or not isinstance(down, SVDQW4A4Linear):
-      return None
-    if up._padded_out_features != 2 * down._padded_in_features:
       return None
     return up, None, down
 
@@ -619,10 +821,15 @@ class FusedSwiGluMlpPass(BasePass):
       up = target["up"]
       gate = target["gate"]
       down = target["down"]
+      if hasattr(parent, _PASS_MARKER):
+        continue
 
-      parent._ff_original_forward = parent.forward
+      parent._svdq_fused_mlp_original_forward = parent.forward
+      parent._svdq_fused_mlp_pass = self.name
 
-      def _patched_forward(self, hidden_states, _up=up, _gate=gate, _down=down):
+      def _patched_forward(self, hidden_states, *args, _up=up, _gate=gate, _down=down, **kwargs):
+        if args or kwargs:
+          return self._svdq_fused_mlp_original_forward(hidden_states, *args, **kwargs)
         return fused_swiglu_mlp(hidden_states, _up, _down, gate=_gate)
 
       parent.forward = types.MethodType(_patched_forward, parent)

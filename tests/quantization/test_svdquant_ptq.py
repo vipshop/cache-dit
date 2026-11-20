@@ -1528,6 +1528,60 @@ def test_svdq_ptq_load_roundtrip_restores_quantized_module(
   assert isinstance(loaded_model.block.to_out, SVDQW4A4Linear)
 
 
+def test_svdq_ptq_fused_mlp_roundtrip_preserves_targets_and_outputs(tmp_path: Path) -> None:
+  from diffusers.models.attention import FeedForward
+
+  class _FusedFFModel(torch.nn.Module):
+
+    def __init__(self) -> None:
+      super().__init__()
+      self.ff = FeedForward(dim=256, activation_fn="gelu-approximate")
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+      return self.ff(hidden_states)
+
+  dtype = runtime_dtype()
+  torch.manual_seed(221)
+  model = _FusedFFModel().cuda().to(dtype).eval()
+  x = torch.randn(1, 4, 256, dtype=dtype, device="cuda")
+  calibration_samples = [
+    torch.randn(1, 4, 256, dtype=dtype, device="cuda"),
+    torch.randn(1, 4, 256, dtype=dtype, device="cuda"),
+  ]
+  config = QuantizeConfig(
+    quant_type="svdq_int4_r32",
+    calibrate_fn=_make_calibrate_fn(calibration_samples),
+    serialize_to=str(tmp_path / "fused_mlp_roundtrip"),
+    regional_quantize=False,
+    svdq_kwargs={
+      **_DEFAULT_SVDQ_KWARGS,
+      "runtime_kernel": "native",
+      "fused_mlp": True,
+    },
+  )
+
+  quantized = cache_dit.quantize(model, config)
+  assert quantized._svdq_fused_mlp_targets["gelu_mlp"] == 1
+  assert quantized.ff._svdq_fused_mlp_pass == "fused_gelu_mlp"
+  with torch.inference_mode():
+    unfused_output = quantized.ff._svdq_fused_mlp_original_forward(x)
+    fused_output = quantized(x)
+  assert ((fused_output.float() - unfused_output.float()).norm() /
+          unfused_output.float().norm()).item() < 5e-3
+
+  fresh = _FusedFFModel().cuda().to(dtype).eval()
+  loaded = cache_dit.load(fresh, str(_resolve_quant_checkpoint_dir(config.serialize_to)))
+  assert loaded._svdq_fused_mlp_targets["gelu_mlp"] == 1
+  assert loaded.ff._svdq_fused_mlp_pass == "fused_gelu_mlp"
+  with torch.inference_mode():
+    loaded_output = loaded(x)
+    loaded_unfused = loaded.ff._svdq_fused_mlp_original_forward(x)
+  atol, rtol = _ptq_tolerance()
+  torch.testing.assert_close(loaded_output, fused_output, rtol=rtol, atol=atol)
+  assert ((loaded_output.float() - loaded_unfused.float()).norm() /
+          loaded_unfused.float().norm()).item() < 5e-3
+
+
 def test_svdq_ptq_nvfp4_roundtrip_preserves_precision_metadata(tmp_path: Path) -> None:
   dtype = runtime_dtype()
   model = make_toy_model(
