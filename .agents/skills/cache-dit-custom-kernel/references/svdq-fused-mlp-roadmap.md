@@ -129,24 +129,33 @@ SVDQ 当前缺少：
 
 ## 5. P1：passes 覆盖扩展（主要 ROI）
 
+状态（2026-11-20）：P1-1 泛化独立 gate 与 P1-2 Sequential/属性式 GELU 的代码与单测已落地；支持 standalone 检测、functional `F.silu`、`w3/w1/w2` 方向、non-SiLU/非独立 block 拒绝。P1-4 的 `w1/w3/w2`、`gate_proj/up_proj`、`up/gate`、Sequential、属性式 GELU 已有 synthetic GPU 数值验收，但真实模型 qact/chain/e2e acceptance 尚未执行。P1-3 `fused_silu_proj` 尚未实现。
+
 原则：优先用 Python 检测器表达"等价数据流"，不为每种命名写一个模型专用分支；只有语义不明确或需要新 producer 数学时才进 kernel。
 
 ### P1-1. 泛化独立 gate 检测
 
-从固定 `proj/gate_layer/out + nn.SiLU` 扩为：
+已支持以下 standalone 别名组（value, gate, down）：
 
-- `w1/w3/w2`；
-- `gate_proj/up_proj/down_proj`；
-- `gate/up/down`；
-- `proj_in/proj_out`；
-- 函数式 `F.silu`，不要求 `nn.SiLU` 模块。
+- `proj/gate_layer/out`；
+- `up_proj/gate_proj/down_proj`；
+- `up/gate/down`；
+- `w3/w1/w2`，对应真实模型 `down(silu(w1) * w3)` 的列语义。
+
+同时支持函数式 `F.silu`，不要求 `nn.SiLU` 模块。没有 activation 属性时，上述已知命名组按 SiLU 语义处理；任意未知三投影命名不猜 value/gate 方向，直接记录 `unsupported_gated_names`。
 
 约束：
 
-- 两个同宽 value/gate 候选 + 一个 down 投影；
-- down.in_features 与 hidden 宽度一致，必要时使用显式 gate，不猜 half-split 列序；
-- 不匹配时跳过，不能凭模块名硬改；
-- 覆盖 Z-Image、HiDream dense、Lumina2、Krea2、LongCat-Video-Avatar、StableAudio3。
+- 三个投影必须组成 standalone MLP；parent 只能拥有投影、activation 和 Dropout/Identity，含 attention/norm 的 block 不整 forward patch；
+- non-SiLU activation 属性（如 `mlp_act=GELU`）直接拒绝；
+- down.in_features 与 hidden 宽度一致；
+- 已由 synthetic 测试覆盖 Z-Image/HiDream（w1/w2/w3）、ACE-Step/Cosmos（gate_proj/up_proj）、Krea2（gate/up/down）。
+
+未覆盖并明确排除：
+
+- `proj_in/proj_out` 的 StableAudio3 是 **value-first half-split**，列序与现有 producer 契约相反，不能按 alias 直接接；
+- Lumina2 使用 `linear_1/linear_2/linear_3 + FP32SiLU`，目前既不属于 alias 组，也不被 `_is_silu_activation` 识别；
+- LongCat-Video-Avatar 的实际属性组合仍待确认。
 
 FLUX.2/3 的 `linear_in/linear_out` 或 packed projection 需要单独确认列布局；先不要把它们合并进默认 half-split 规则。
 
@@ -164,7 +173,7 @@ FLUX.2/3 的 `linear_in/linear_out` 或 packed projection 需要单独确认列�
 - 推理态且 Dropout p==0；
 - 复用 `fused_gelu_mlp`，不改 kernel。
 
-覆盖 Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5。
+synthetic 结构已覆盖 Sequential 与 `fc1/act/fc2` 两种形态；Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5 的真实模型 acceptance 仍待执行。
 
 ### P1-3. 增加 `fused_silu_proj`（可选低优先）
 

@@ -95,6 +95,115 @@ class DoubleGeluBlock(SingleGeluBlock):
     self.act_extra = nn.GELU(approximate="tanh")
 
 
+class LlamaStyleSwiGLU(nn.Module):
+  """``w1/w3/w2`` gated MLP with functional SiLU but no activation attribute."""
+
+  def __init__(self, hidden: int = 512, runtime: str = "cute", *, quantized: bool = True) -> None:
+    super().__init__()
+    if quantized:
+      self.w1 = _svdq(256, hidden, runtime=runtime)
+      self.w2 = _svdq(hidden, 256, runtime=runtime)
+      self.w3 = _svdq(256, hidden, runtime=runtime)
+    else:
+      self.w1 = nn.Linear(256, hidden, bias=False)
+      self.w2 = nn.Linear(hidden, 256, bias=False)
+      self.w3 = nn.Linear(256, hidden, bias=False)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.w2(torch.nn.functional.silu(self.w1(x)) * self.w3(x))
+
+
+class GateUpDownSwiGLU(nn.Module):
+  """``gate_proj/up_proj/down_proj`` with functional SiLU attribute."""
+
+  def __init__(self, hidden: int = 512, runtime: str = "cute", *, quantized: bool = True) -> None:
+    super().__init__()
+    self.activation_fn = torch.nn.functional.silu
+    if quantized:
+      self.gate_proj = _svdq(256, hidden, runtime=runtime)
+      self.up_proj = _svdq(256, hidden, runtime=runtime)
+      self.down_proj = _svdq(hidden, 256, runtime=runtime)
+    else:
+      self.gate_proj = nn.Linear(256, hidden, bias=False)
+      self.up_proj = nn.Linear(256, hidden, bias=False)
+      self.down_proj = nn.Linear(hidden, 256, bias=False)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.down_proj(self.activation_fn(self.gate_proj(x)) * self.up_proj(x))
+
+
+class Krea2StyleSwiGLU(nn.Module):
+  """``gate/up/down`` projections with module SiLU."""
+
+  def __init__(self, hidden: int = 512, runtime: str = "cute", *, quantized: bool = True) -> None:
+    super().__init__()
+    self.activation_fn = nn.SiLU()
+    if quantized:
+      self.gate = _svdq(256, hidden, runtime=runtime)
+      self.up = _svdq(256, hidden, runtime=runtime)
+      self.down = _svdq(hidden, 256, runtime=runtime)
+    else:
+      self.gate = nn.Linear(256, hidden, bias=False)
+      self.up = nn.Linear(256, hidden, bias=False)
+      self.down = nn.Linear(hidden, 256, bias=False)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.down(self.activation_fn(self.gate(x)) * self.up(x))
+
+
+class NonStandaloneGatedBlock(GateUpDownSwiGLU):
+  """Gated projections inside a block that also owns attention."""
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.attn = nn.Linear(256, 256, bias=False)
+
+
+class GegluMlp(GateUpDownSwiGLU):
+  """Same projection names but GELU gating, not SwiGLU."""
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.activation_fn = None
+    self.mlp_act = nn.GELU(approximate="tanh")
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.down_proj(self.up_proj(x) * self.mlp_act(self.gate_proj(x)))
+
+
+class SequentialGeluMlp(nn.Module):
+
+  def __init__(self, approximate: str = "tanh", *, quantized: bool = True) -> None:
+    super().__init__()
+    fc1 = _svdq(256, 512) if quantized else nn.Linear(256, 512, bias=False)
+    fc2 = _svdq(512, 256) if quantized else nn.Linear(512, 256, bias=False)
+    self.mlp = nn.Sequential(fc1, nn.GELU(approximate=approximate), nn.Dropout(0.0), fc2)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.mlp(x)
+
+
+class AttributeGeluMlp(nn.Module):
+
+  def __init__(self, approximate: str = "tanh", *, quantized: bool = True) -> None:
+    super().__init__()
+    self.fc1 = _svdq(256, 512) if quantized else nn.Linear(256, 512, bias=False)
+    self.act = nn.GELU(approximate=approximate)
+    self.drop1 = nn.Dropout(0.0)
+    self.fc2 = _svdq(512, 256) if quantized else nn.Linear(512, 256, bias=False)
+    self.drop2 = nn.Dropout(0.0)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.drop2(self.fc2(self.drop1(self.act(self.fc1(x)))))
+
+
+class NonStandaloneGelu(AttributeGeluMlp):
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.attn = nn.Linear(256, 256, bias=False)
+
+
 class SwiGLUBlock(nn.Module):
 
   def __init__(self, hidden: int = 512, runtime: str = "cute", *, quantized: bool = True) -> None:
@@ -156,6 +265,73 @@ def test_partial_pass_application_accumulates_target_counts() -> None:
   assert apply_passes(block, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
   assert block._svdq_fused_mlp_targets == {"gelu_mlp": 1, "gelu_proj": 0, "swiglu": 1}
   assert block._svdq_fused_mlp_passes == {"fused_gelu_mlp": 1, "fused_swiglu_mlp": 1}
+
+
+def test_swiglu_alias_detection_and_standalone_guard() -> None:
+  import cache_dit.quantization.svdquant.passes as passes
+
+  cases = (
+    (LlamaStyleSwiGLU, "w3", "w1"),
+    (GateUpDownSwiGLU, "up_proj", "gate_proj"),
+    (Krea2StyleSwiGLU, "up", "gate"),
+  )
+  for cls, up_name, gate_name in cases:
+    block = cls().eval()
+    targets = passes.get_pass("fused_swiglu_mlp")().detect(block)
+    assert len(targets) == 1
+    assert targets[0]["up"] is getattr(block, up_name)
+    assert targets[0]["gate"] is getattr(block, gate_name)
+    assert apply_passes(block, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
+    assert block._svdq_fused_mlp_pass == "fused_swiglu_mlp"
+
+  non_standalone = NonStandaloneGatedBlock().eval()
+  assert apply_passes(non_standalone, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 0}
+  assert any("non_standalone_mlp" in reason
+             for reason in non_standalone._svdq_fused_mlp_skipped["fused_swiglu_mlp"])
+
+  geglu = GegluMlp().eval()
+  assert apply_passes(geglu, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 0}
+  assert any("non_silu_activation:mlp_act" in reason
+             for reason in geglu._svdq_fused_mlp_skipped["fused_swiglu_mlp"])
+
+  class _UnknownNames(nn.Module):
+
+    def __init__(self) -> None:
+      super().__init__()
+      self.activation_fn = nn.SiLU()
+      self.a = _svdq(256, 512)
+      self.b = _svdq(256, 512)
+      self.c = _svdq(512, 256)
+
+  unknown = _UnknownNames().eval()
+  assert apply_passes(unknown, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 0}
+  assert any("unsupported_gated_names" in reason
+             for reason in unknown._svdq_fused_mlp_skipped["fused_swiglu_mlp"])
+
+
+def test_nested_gelu_detection_respects_tanh_and_standalone() -> None:
+  sequential = SequentialGeluMlp().eval()
+  assert apply_passes(sequential, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 1}
+  assert sequential.mlp._svdq_fused_mlp_pass == "fused_gelu_mlp"
+
+  exact_sequential = SequentialGeluMlp(approximate="none").eval()
+  assert apply_passes(exact_sequential, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 0}
+  assert any("exact_gelu" in reason
+             for reason in exact_sequential._svdq_fused_mlp_skipped["fused_gelu_mlp"])
+
+  attribute = AttributeGeluMlp().eval()
+  assert apply_passes(attribute, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 1}
+  assert attribute._svdq_fused_mlp_pass == "fused_gelu_mlp"
+
+  exact_attribute = AttributeGeluMlp(approximate="none").eval()
+  assert apply_passes(exact_attribute, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 0}
+  assert any("exact_gelu" in reason
+             for reason in exact_attribute._svdq_fused_mlp_skipped["fused_gelu_mlp"])
+
+  non_standalone = NonStandaloneGelu().eval()
+  assert apply_passes(non_standalone, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 0}
+  assert any("non_standalone_mlp" in reason
+             for reason in non_standalone._svdq_fused_mlp_skipped["fused_gelu_mlp"])
 
 
 def test_gelu_mlp_pass_skips_exact_gelu_without_changing_forward(monkeypatch) -> None:
@@ -413,6 +589,10 @@ def test_fused_gelu_mlp_pass_executes_roundtrips_and_captures_graph(monkeypatch)
   with torch.inference_mode():
     fused = block(x)
   assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
   assert fused_calls
 
   torch.compiler.reset()
@@ -490,4 +670,107 @@ def test_fused_swiglu_pass_accepts_producer_aligned_hidden(runtime: str, monkeyp
   with torch.inference_mode():
     fused = block(x)
   assert _relative_l2(fused, reference) < 5e-3
+  assert fused_calls
+
+
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+@pytest.mark.parametrize(
+  "block_cls,up_name,gate_name,down_name",
+  [
+    (LlamaStyleSwiGLU, "w3", "w1", "w2"),
+    (GateUpDownSwiGLU, "up_proj", "gate_proj", "down_proj"),
+    (Krea2StyleSwiGLU, "up", "gate", "down"),
+  ],
+  ids=["w1-w3", "gate-up-proj", "gate-up"],
+)
+def test_gated_alias_pass_matches_unfused(block_cls, up_name: str, gate_name: str, down_name: str,
+                                          runtime: str, monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.fused as fused_runtime
+
+  _require_sm120()
+  torch.manual_seed(20261202)
+  block = block_cls(hidden=640, runtime=runtime, quantized=False).cuda().to(torch.bfloat16).eval()
+  x = torch.randn(1, 260, 256, dtype=torch.bfloat16, device="cuda:0")
+  setattr(block, up_name, _quantize_projection(getattr(block, up_name), x, runtime))
+  setattr(block, gate_name, _quantize_projection(getattr(block, gate_name), x, runtime))
+  setattr(
+    block,
+    down_name,
+    _quantize_projection(
+      getattr(block, down_name),
+      torch.randn(1, 260, 640, dtype=torch.bfloat16, device="cuda:0"),
+      runtime,
+    ),
+  )
+
+  with torch.inference_mode():
+    reference = block(x)
+
+  original_fused = fused_runtime.fused_swiglu_mlp
+  fused_calls = []
+
+  def _counted_fused(*args, **kwargs):
+    fused_calls.append(1)
+    return original_fused(*args, **kwargs)
+
+  monkeypatch.setattr(fused_runtime, "fused_swiglu_mlp", _counted_fused)
+  assert apply_passes(block, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
+  with torch.inference_mode():
+    fused = block(x)
+  assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
+  assert fused_calls
+
+
+@pytest.mark.parametrize("kind", ["sequential", "attributes"])
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+def test_nested_gelu_pass_matches_unfused(kind: str, runtime: str, monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.fused as fused_runtime
+
+  _require_sm120()
+  torch.manual_seed(20261203)
+  if kind == "sequential":
+    block = SequentialGeluMlp(quantized=False).cuda().to(torch.bfloat16).eval()
+    fc1 = block.mlp[0]
+    fc2 = block.mlp[3]
+  else:
+    block = AttributeGeluMlp(quantized=False).cuda().to(torch.bfloat16).eval()
+    fc1 = block.fc1
+    fc2 = block.fc2
+  x = torch.randn(1, 260, 256, dtype=torch.bfloat16, device="cuda:0")
+  fc1 = _quantize_projection(fc1, x, runtime)
+  fc2 = _quantize_projection(
+    fc2,
+    torch.randn(1, 260, 512, dtype=torch.bfloat16, device="cuda:0"),
+    runtime,
+  )
+  if kind == "sequential":
+    block.mlp[0] = fc1
+    block.mlp[3] = fc2
+  else:
+    block.fc1 = fc1
+    block.fc2 = fc2
+
+  with torch.inference_mode():
+    reference = block(x)
+
+  original_fused = fused_runtime.fused_gelu_mlp
+  fused_calls = []
+
+  def _counted_fused(*args, **kwargs):
+    fused_calls.append(1)
+    return original_fused(*args, **kwargs)
+
+  monkeypatch.setattr(fused_runtime, "fused_gelu_mlp", _counted_fused)
+  assert apply_passes(block, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 1}
+  with torch.inference_mode():
+    fused = block(x)
+  assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
   assert fused_calls

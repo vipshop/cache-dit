@@ -126,6 +126,169 @@ def _fused_swiglu_geometry(up: nn.Module, gate: nn.Module | None, down: nn.Modul
   return None
 
 
+_ACTIVATION_ATTRS = ("activation_fn", "act_fn", "mlp_act", "act", "activation")
+
+# (value/up, gate, down) aliases used by diffusers LLAMA/SwiGLU MLPs.
+_GATED_ALIAS_GROUPS = (
+  ("proj", "gate_layer", "out"),
+  ("up_proj", "gate_proj", "down_proj"),
+  ("up", "gate", "down"),
+  # Llama/Z-Image compute down(silu(w1(x)) * w3(x)): w3 is the value operand.
+  ("w3", "w1", "w2"),
+)
+
+_GELU_CHAIN_ALIASES = (
+  ("fc1", "fc2"),
+  ("linear1", "linear2"),
+  ("dense_in", "dense_out"),
+)
+
+
+def _activation_spec(parent: nn.Module) -> tuple[str | None, object | None]:
+  """Return the first declared activation attribute, without walking modules."""
+
+  for name in _ACTIVATION_ATTRS:
+    if hasattr(parent, name):
+      value = getattr(parent, name)
+      if value is not None:
+        return name, value
+  return None, None
+
+
+def _is_silu_activation(value: object) -> bool:
+  """Recognize both ``nn.SiLU`` modules and functional ``F.silu``."""
+
+  if isinstance(value, nn.SiLU):
+    return True
+  if value is F.silu:
+    return True
+  return callable(value) and getattr(value, "__name__", None) == "silu"
+
+
+def _is_standalone_mlp(parent: nn.Module,
+                       layers: tuple[nn.Module, ...],
+                       activation: object | None = None) -> bool:
+  """Require that patching *parent* bypasses only the target MLP operations."""
+
+  allowed = {id(layer) for layer in layers}
+  if isinstance(activation, nn.Module):
+    allowed.add(id(activation))
+  for child in parent.children():
+    if id(child) in allowed:
+      continue
+    if isinstance(child, (nn.Dropout, nn.Identity)):
+      continue
+    return False
+  return True
+
+
+def _select_named_gated(parent: nn.Module):
+  """Select a supported gated MLP by conventional attribute aliases."""
+
+  from .linear import SVDQW4A4Linear
+
+  activation_name, activation = _activation_spec(parent)
+  for up_name, gate_name, down_name in _GATED_ALIAS_GROUPS:
+    up = getattr(parent, up_name, None)
+    gate = getattr(parent, gate_name, None)
+    down = getattr(parent, down_name, None)
+    if not all(isinstance(layer, SVDQW4A4Linear) for layer in (up, gate, down)):
+      continue
+    if activation is not None and not _is_silu_activation(activation):
+      return None, f"non_silu_activation:{activation_name}"
+    if not _is_standalone_mlp(parent, (up, gate, down), activation):
+      return None, "non_standalone_mlp"
+    return (up, gate, down), None
+
+  if activation is None or not _is_silu_activation(activation):
+    return None, None
+
+  # Three same-shape projections with unknown names cannot establish which one
+  # is value and which one is gate. Do not guess; report them as unsupported.
+  layers = [child for child in parent.children() if isinstance(child, SVDQW4A4Linear)]
+  if len(layers) == 3 and _is_standalone_mlp(parent, tuple(layers), activation):
+    return None, "unsupported_gated_names"
+  return None, None
+
+
+def _detect_sequential_gelu(parent: nn.Sequential):
+  """Detect ``Sequential(Linear, GELU, [Dropout], Linear)``."""
+
+  from .linear import SVDQW4A4Linear
+
+  children = list(parent.children())
+  if len(children) not in (3, 4):
+    return None
+  fc1 = children[0]
+  act = children[1]
+  fc2 = children[-1]
+  if not isinstance(fc1, SVDQW4A4Linear) or not isinstance(fc2, SVDQW4A4Linear):
+    return None
+  if not _is_gelu_module(act):
+    return None
+  if len(children) == 4 and not isinstance(children[2], nn.Dropout):
+    return None
+  if fc1.out_features != fc2.in_features:
+    return None
+  return {
+    "parent": parent,
+    "fc1": fc1,
+    "fc2": fc2,
+    "activation": act,
+    "pattern": "sequential",
+  }
+
+
+def _detect_attribute_gelu(parent: nn.Module):
+  """Detect an MLP whose fc1/activation/fc2 are direct module attributes."""
+
+  from .linear import SVDQW4A4Linear
+
+  for fc1_name, fc2_name in _GELU_CHAIN_ALIASES:
+    fc1 = getattr(parent, fc1_name, None)
+    fc2 = getattr(parent, fc2_name, None)
+    if not isinstance(fc1, SVDQW4A4Linear) or not isinstance(fc2, SVDQW4A4Linear):
+      continue
+    activation_name, activation = _activation_spec(parent)
+    if not _is_gelu_module(activation):
+      continue
+    if int(fc1.out_features) != int(fc2.in_features):
+      return None, "gelu_chain_width_mismatch"
+    if not _is_standalone_mlp(parent, (fc1, fc2), activation):
+      return None, "non_standalone_mlp"
+    return {
+      "parent": parent,
+      "fc1": fc1,
+      "fc2": fc2,
+      "activation": activation,
+      "pattern": f"attributes:{fc1_name}/{activation_name}/{fc2_name}",
+    }, None
+  return None, None
+
+
+def _gelu_chain_reason(parent: nn.Module, fc1: nn.Module, fc2: nn.Module,
+                       activation: nn.Module) -> str | None:
+  """Validate a non-gated fused GELU chain independent of its container type."""
+
+  from .dtensor import SVDQW4A4ShardLinear
+
+  if isinstance(fc1, SVDQW4A4ShardLinear) or isinstance(fc2, SVDQW4A4ShardLinear):
+    return "tp_sharded"
+  guard = _inference_guard(parent)
+  if guard is not None:
+    return guard
+  gelu_modules = [child for child in parent.modules() if _is_gelu_module(child)]
+  if len(gelu_modules) != 1 or gelu_modules[0] is not activation:
+    return "ambiguous_gelu"
+  approximate = _gelu_approximate(activation)
+  if approximate != "tanh":
+    return f"exact_gelu:{approximate}"
+  geometry = _fused_gelu_geometry(fc1, fc2)
+  if geometry is not None:
+    return geometry
+  return None
+
+
 class BasePass:
   """Abstract base for a model pass.
 
@@ -377,11 +540,16 @@ class FusedGeluMlpPass(BasePass):
     (default ``gelu-approximate``)
   - **Prior Transformer**: ``PriorTransformer`` (``gelu``)
 
-  Models that use **gated** activations (``GEGLU``, ``SwiGLU``,
-  ``LinearActivation``) or custom ``FeedForward`` classes (e.g.
-  Flux2, ErnieImage, LongCat Audio DiT, AuraFlow, OmniGen,
-  Kandinsky5, HiDream, Z Image, Lumina2) are **not** targeted by
-  this pass.
+  The pass also detects two non-gated layouts:
+
+  - ``nn.Sequential(Linear, GELU, [Dropout], Linear)``;
+  - direct ``fc1``/``linear1`` + GELU + ``fc2``/``linear2`` attributes.
+
+  The patched parent must own only the two layers, the activation, and
+  Dropout/Identity children; blocks that also own attention, normalization,
+  or other operational modules are skipped. Gated activations (SwiGLU,
+  GEGLU), packed QKV+MLP blocks, and custom residual/MoE MLPs are not
+  targeted by this pass.
   """
 
   name = "fused_gelu_mlp"
@@ -391,61 +559,48 @@ class FusedGeluMlpPass(BasePass):
 
     targets: list[dict[str, Any]] = []
     for parent_name, parent in module.named_modules():
-      if parent.__class__.__name__ != "FeedForward":
-        continue
       if hasattr(parent, _PASS_MARKER):
         continue
-      net = getattr(parent, "net", None)
-      if (not isinstance(net, nn.ModuleList) or len(net) != 3
-          or not isinstance(net[1], (nn.Dropout, nn.Identity))):
+
+      target = None
+      reason = None
+      if parent.__class__.__name__ == "FeedForward":
+        net = getattr(parent, "net", None)
+        if (not isinstance(net, nn.ModuleList) or len(net) != 3
+            or not isinstance(net[1], (nn.Dropout, nn.Identity))):
+          continue
+        act_mod = net[0]
+        fc1 = getattr(act_mod, "proj", None)
+        fc2 = net[2]
+        if (not _is_gelu_module(act_mod) or not isinstance(fc1, SVDQW4A4Linear)
+            or not isinstance(fc2, SVDQW4A4Linear)):
+          continue
+        target = {
+          "parent": parent,
+          "fc1": fc1,
+          "fc2": fc2,
+          "activation": act_mod,
+          "pattern": "feedforward",
+        }
+      elif isinstance(parent, nn.Sequential):
+        target = _detect_sequential_gelu(parent)
+      else:
+        target, reason = _detect_attribute_gelu(parent)
+
+      if target is None:
+        if reason is not None:
+          self._skip(f"fused_gelu_mlp:{reason}")
         continue
 
-      act_mod = net[0]
-      fc1 = getattr(act_mod, "proj", None)
-      fc2 = net[2]
-      if not isinstance(fc1, SVDQW4A4Linear) or not isinstance(fc2, SVDQW4A4Linear):
+      reason = _gelu_chain_reason(target["parent"], target["fc1"], target["fc2"],
+                                  target["activation"])
+      if reason is not None:
+        self._skip(f"fused_gelu_mlp:{reason}")
+        logger.debug("%s is not fused: %s.", parent_name, reason)
         continue
 
-      if isinstance(fc1, SVDQW4A4ShardLinear) or isinstance(fc2, SVDQW4A4ShardLinear):
-        self._skip("fused_gelu_mlp:tp_sharded")
-        logger.debug("FeedForward %s uses TP-sharded SVDQ layers — skipping fused MLP.",
-                     parent_name)
-        continue
-
-      guard = _inference_guard(parent)
-      if guard is not None:
-        self._skip(f"fused_gelu_mlp:{guard}")
-        continue
-
-      gelu_modules = [child for child in parent.modules() if _is_gelu_module(child)]
-      if len(gelu_modules) != 1 or gelu_modules[0] is not act_mod:
-        self._skip("fused_gelu_mlp:ambiguous_gelu")
-        logger.debug("FeedForward %s has %d GELU modules; skipping fused MLP.", parent_name,
-                     len(gelu_modules))
-        continue
-
-      approximate = _gelu_approximate(act_mod)
-      if approximate != "tanh":
-        self._skip(f"fused_gelu_mlp:exact_gelu:{approximate}")
-        logger.debug(
-          "FeedForward %s uses GELU(approximate=%r); only the tanh qout epilogue is fused.",
-          parent_name,
-          approximate,
-        )
-        continue
-
-      geometry = _fused_gelu_geometry(fc1, fc2)
-      if geometry is not None:
-        self._skip(f"fused_gelu_mlp:{geometry}")
-        logger.debug("FeedForward %s is not fused: %s.", parent_name, geometry)
-        continue
-
-      targets.append({
-        "parent": parent,
-        "fc1": fc1,
-        "fc2": fc2,
-        "parent_name": parent_name,
-      })
+      target["parent_name"] = parent_name
+      targets.append(target)
 
     return targets
 
@@ -719,19 +874,20 @@ class FusedSwiGluMlpPass(BasePass):
   Two structures are detected, both after quantization has replaced their projections with
   ``SVDQW4A4Linear``:
 
-  1. **Separate gate projection** — a parent module that owns ``proj`` (value), ``gate_layer``
-     (gate) and ``out`` (down) together with an ``nn.SiLU`` submodule. This is the
-     ``QwenImage21SwiGLUFeedForward`` shape: ``out(silu(gate_layer(x)) * proj(x))``.
-  2. **Single gated projection** — a diffusers ``FeedForward`` whose ``net[0]`` is a ``SwiGLU``
-     wrapper: one ``proj`` emitting ``2 * inner`` columns that ``chunk(2, -1)`` splits into value
-     and gate.
+  1. **Separate gate projection** — a standalone MLP owning one of these alias groups:
+     ``proj/gate_layer/out``, ``up_proj/gate_proj/down_proj``, ``up/gate/down``, or
+     ``w3/w1/w2`` (`w3` is the value operand for Llama-style ``down(silu(w1)*w3)``).
+     Functional ``F.silu`` and ``nn.SiLU`` are equivalent. The parent may own only the three
+     projections, the activation module, and Dropout/Identity; attention/norm-containing blocks
+     are skipped even when their projection names match.
+  2. **Single gated projection** — a standard three-slot diffusers ``FeedForward`` whose ``net[0]``
+     is a ``SwiGLU`` wrapper: one ``proj`` emits ``2 * inner`` columns split into value and gate.
 
   In both cases the gate is applied by the activation producer of ``down`` (see
   ``fused_swiglu_mlp``), which removes the standalone gating kernel and one ``[tokens, hidden]``
-  HBM round trip. Detection is structural for the separate-gate shape (attribute names plus an
-  ``nn.SiLU``) and name based for the diffusers wrapper (``FeedForward`` owning a ``SwiGLU``). Both
-  compare padded widths, so a model whose hidden size is not 128-aligned is skipped instead of
-  failing inside the kernel. ``QwenImage21AdaLayerNormContinuous`` and similar modulation blocks are
+  HBM round trip. Geometry uses the producer's logical hidden contract rather than GEMM tile
+  widths. GEGLU blocks with a non-SiLU activation attribute are rejected and left for the future
+  activation-mode kernel. ``QwenImage21AdaLayerNormContinuous`` and similar modulation blocks are
   never matched because they own at most one quantized projection.
   """
 
@@ -742,8 +898,11 @@ class FusedSwiGluMlpPass(BasePass):
     for parent_name, parent in module.named_modules():
       if hasattr(parent, _PASS_MARKER):
         continue
-      target = self._detect_separate_gate(parent)
+      target, reason = _select_named_gated(parent)
       if target is None:
+        if reason is not None:
+          self._skip(f"fused_swiglu_mlp:{reason}")
+          continue
         target = self._detect_gated_projection(parent)
       if target is None:
         continue
@@ -775,20 +934,6 @@ class FusedSwiGluMlpPass(BasePass):
         "parent_name": parent_name,
       })
     return targets
-
-  @staticmethod
-  def _detect_separate_gate(parent: nn.Module, ) -> tuple[nn.Module, nn.Module, nn.Module] | None:
-    from .linear import SVDQW4A4Linear
-
-    up = getattr(parent, "proj", None)
-    gate = getattr(parent, "gate_layer", None)
-    down = getattr(parent, "out", None)
-    if not all(isinstance(layer, SVDQW4A4Linear) for layer in (up, gate, down)):
-      return None
-    activation = getattr(parent, "activation_fn", None)
-    if not isinstance(activation, nn.SiLU):
-      return None
-    return up, gate, down
 
   @staticmethod
   def _detect_gated_projection(

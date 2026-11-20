@@ -316,10 +316,12 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
    - 对齐 FP4 pass 护栏：training/Dropout、唯一 GELU、幂等、`*args/**kwargs`。
    - 记录 `_svdq_fused_mlp_targets` 和 skip reason；零命中不能只写 debug。
    - 补 GELU 两 pass 的 detect/apply、`fused_mlp` 端到端、serialize/load、padding、compile、TP skip 和负例。
-2. **P1 passes 覆盖**
-   - 泛化独立 gate 检测：`w1/w3/w2`、`gate_proj/up_proj/down_proj`、`gate/up/down`、`proj_in/proj_out`、函数式 `F.silu`。覆盖 Z-Image、HiDream dense、Lumina2、Krea2、LongCat-Video-Avatar、StableAudio3。
-   - 检测 `Sequential(Linear, GELU, [Dropout], Linear)` 或 `fc1/act/fc2`，覆盖 Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5。
+2. **P1 passes 覆盖（2026-11-20 泛化 gate + nested GELU 代码/单测已落地；真实模型验收待补）**
+   - 泛化独立 gate 检测：`proj/gate_layer/out`、`up_proj/gate_proj/down_proj`、`up/gate/down`、`w3/w1/w2`，支持函数式 `F.silu`。synthetic 已覆盖 Z-Image/HiDream、ACE-Step/Cosmos、Krea2；`proj_in/proj_out` 因 StableAudio3 的 value-first half-split 不做，Lumina2 的 `linear_1/2/3 + FP32SiLU` 仍未覆盖。
+   - 检测 `Sequential(Linear, GELU, [Dropout], Linear)` 或 `fc1/act/fc2`；synthetic 已验证，Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5 的真实模型 acceptance 仍待补。
+   - standalone 约束要求 parent 只拥有投影/activation/Dropout，含 attention/norm 的 block 不整 forward patch；未知三投影命名不猜 value/gate 方向。
    - 不猜 half-split 列序；FLUX.2/3 只在列布局确认后接入。每个新 pattern 必须用一个真实模型做 qact/chain/e2e acceptance。
+
 3. **P2 kernel activation 扩展**
    - producer 的 gate activation 从固定 SiLU 扩为显式 `gate_act`/`act_mode`，至少 SiLU、tanh GELU、exact GELU（GEGLU）。
    - 非门控 qout 的 exact GELU epilogue 仅在 exact 模型占比显著时再做；否则长期保持"exact 跳过"更划算。
