@@ -132,6 +132,8 @@ def _is_quantized_linear(module) -> bool:
       return True
     if getattr(weight, "dtype", None) in (torch.float8_e4m3fn, torch.float8_e5m2):
       return True
+  if getattr(module, "_is_inner_quantized", False):
+    return True
   return hasattr(module, "qweight")
 
 
@@ -241,9 +243,16 @@ class QuantizeObserver:
         continue
       ref_w, ref_b = references[name]
       if self.config.keep_refs_on_gpu:
-        device = getattr(getattr(module, "weight", None), "device", None)
-        device = device or getattr(module, "qweight", None)
-        device = getattr(device, "device", None) or torch.device("cuda")
+        # Pick the layer's own device: dense ``weight`` (TorchAO/FP8), packed
+        # ``weight_packed`` (MXFP4) or ``qweight`` (SVDQ). Falling back to cuda
+        # unconditionally breaks CPU models and multi-GPU placements.
+        device = None
+        for attr in ("weight", "weight_packed", "qweight"):
+          candidate = getattr(module, attr, None)
+          device = getattr(candidate, "device", None)
+          if device is not None:
+            break
+        device = device or torch.device("cuda")
         ref_w = ref_w.to(device)
         ref_b = None if ref_b is None else ref_b.to(device)
       self._hooks.append(module.register_forward_hook(self._make_hook(name, ref_w, ref_b)))

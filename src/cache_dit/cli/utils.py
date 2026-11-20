@@ -689,6 +689,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "float8_weight_only",
       "nvfp4",
       "nvfp4_weight_only",
+      "mxfp4_weight_only",
       "int8_per_row",
       "int8_per_tensor",
       "int8_weight_only",
@@ -810,6 +811,29 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Enable TorchAO NVFP4 weight-only quantization for transformer",
+  )
+  parser.add_argument(
+    "--mxfp4",
+    action="store_true",
+    default=False,
+    help=("Enable native MXFP4 (OCP E2M1 + E8M0 group-32) weight-only quantization for "
+          "transformer; alias of --mxfp4-weight-only"),
+  )
+  parser.add_argument(
+    "--mxfp4-weight-only",
+    "--mxfp4-wo",
+    action="store_true",
+    default=False,
+    help="Enable native MXFP4 weight-only quantization for transformer",
+  )
+  parser.add_argument(
+    "--mxfp4-quantize-device",
+    type=str,
+    default="auto",
+    choices=["auto", "cpu", "cuda"],
+    help=("Device used for the one-time MXFP4 weight packing. The default 'auto' packs on the "
+          "accelerator when available, so CPU-resident models still quantize fast before the "
+          "final move to the GPU."),
   )
   parser.add_argument(
     "--svdq-int4-r32-dq",
@@ -1626,6 +1650,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     ("int4_weight_only", args.int4_weight_only),
     ("nvfp4", args.nvfp4),
     ("nvfp4_weight_only", args.nvfp4_weight_only),
+    ("mxfp4_weight_only", args.mxfp4 or args.mxfp4_weight_only),
     ("svdq_int4_r32_dq", args.svdq_int4_r32_dq),
     ("svdq_int4_r64_dq", args.svdq_int4_r64_dq),
     ("svdq_int4_r128_dq", args.svdq_int4_r128_dq),
@@ -2430,6 +2455,7 @@ def maybe_quantize_transformer(
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
           fp4_fused_mlp=bool(args.fp4_fused_mlp),
+          mxfp4_quantize_device=args.mxfp4_quantize_device,
           verbose=args.quantize_verbose,
         ),
       )
@@ -2450,6 +2476,7 @@ def maybe_quantize_transformer(
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
           fp4_fused_mlp=bool(args.fp4_fused_mlp),
+          mxfp4_quantize_device=args.mxfp4_quantize_device,
           verbose=args.quantize_verbose,
         ),
       )
