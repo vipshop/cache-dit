@@ -4,10 +4,10 @@
 // SVDQ source map
 // ----------------
 // Public host surface:
-//   svdq.h                 This file. Declares the only two public runtime dispatchers,
-//                          `gemm_w4a4` and `quantize_w4a4`, in `cache_dit::svdq` like the other
-//                          operator families. The kernel namespaces (`svdq::native_kernels`,
-//                          `svdq::cute_kernels`) stay global and are the implementation detail.
+//   svdq.h                 This file. Declares the public W4A4 and W8A8 runtime dispatchers in
+//                          `cache_dit::svdq` like the other operator families. The kernel
+//                          namespaces (`svdq::native_kernels`, `svdq::cute_kernels`) stay global
+//                          and are the implementation detail.
 //   svdq.cpp                Their definitions plus the pybind registrar: it normalizes
 //                          RuntimeParams/LoraLayout and selects native or CuTe.
 //   runtime.h               Host-only RuntimeKernel/RuntimeParams (runtime/fp4/alpha/
@@ -43,6 +43,12 @@
 //                          Shared TiledMMA/TiledCopy implementation for rank-specialized TUs.
 //   cute/fp4/quantize/quantize_r{32,64,128}.cu
 //                          Independent rank-specific fused and split-K instantiations.
+//   cute/fp8/gemm/gemm_w8a8.{h,cuh,cu}
+//                          SM120 E4M3 GEMM with a fused BF16 LoRA-up epilogue.
+//   cute/fp8/quantize/quantize_w8a8.{h,cuh,cu}
+//                          Fused per-token E4M3 activation and BF16 LoRA-down producer.
+//   cute/fp8/quantize/quantize_w8a8_r{32,64,128}.cu
+//                          Rank-specialized producer instantiations.
 //
 // Selection summary:
 //   native + native layout -> native gemm_w4a4 (INT4 and NVFP4 share one kernel family)
@@ -89,7 +95,22 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::vector<float> lora_scales, const std::string &lora_layout,
                    const std::string &gate_act, bool gate_first);
 
-// Hooks the two public dispatchers onto the extension's `ops` submodule.
+// Single public W8A8 GEMM with a fused BF16 LoRA-up epilogue. Unlike `gemm_w4a4` there is only one
+// implementation (CuTe SM120) and one scale contract: per-token activation scale,
+// per-output-channel residual scale, both FP32. The low-rank branch is never launched as a separate
+// GEMM.
+void gemm_w8a8(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+               std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+               std::optional<torch::Tensor> wscales, std::optional<torch::Tensor> lora_act_in,
+               std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias);
+
+// Single public W8A8 activation producer: per-token E4M3 quantization fused with the BF16
+// LoRA-down projection, so the low-rank branch never launches a standalone GEMM either.
+void quantize_w8a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
+
+// Hooks the public dispatchers onto the extension's `ops` submodule.
 void register_svdq_ops(pybind11::module_ &ops);
 
 }  // namespace cache_dit::svdq

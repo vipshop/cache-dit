@@ -304,6 +304,12 @@ def _required_svdquant_sources() -> list[str]:
     "csrc/kernels/svdq/cute/fp4/quantize/quantize_r32.cu",
     "csrc/kernels/svdq/cute/fp4/quantize/quantize_r64.cu",
     "csrc/kernels/svdq/cute/fp4/quantize/quantize_r128.cu",
+    # CuTe W8A8 (SVDQ-FP8) GEMM with the fused BF16 LoRA-up epilogue.
+    "csrc/kernels/svdq/cute/fp8/gemm/gemm_w8a8.cu",
+    "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8.cu",
+    "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r32.cu",
+    "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r64.cu",
+    "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r128.cu",
   ]
 
 
