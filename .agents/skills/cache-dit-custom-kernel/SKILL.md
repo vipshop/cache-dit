@@ -320,10 +320,11 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
    - 泛化独立 gate 检测：`proj/gate_layer/out`、`up_proj/gate_proj/down_proj`、`up/gate/down`、`w3/w1/w2`，支持函数式 `F.silu`。synthetic 已覆盖 Z-Image/HiDream、ACE-Step/Cosmos、Krea2；`proj_in/proj_out` 因 StableAudio3 的 value-first half-split 不做，Lumina2 的 `linear_1/2/3 + FP32SiLU` 仍未覆盖。
    - 检测 `Sequential(Linear, GELU, [Dropout], Linear)` 或 `fc1/act/fc2`；synthetic 已验证，Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5 的真实模型 acceptance 仍待补。
    - standalone 约束要求 parent 只拥有投影/activation/Dropout，含 attention/norm 的 block 不整 forward patch；未知三投影命名不猜 value/gate 方向。
-   - 不猜 half-split 列序；FLUX.2/3 只在列布局确认后接入。每个新 pattern 必须用一个真实模型做 qact/chain/e2e acceptance。
+   - 不猜未知 half-split 列序；FLUX.2/3 standalone FFN 已在 P2 显式接入 gate-first，packed QKV+MLP 仍排除。每个新 pattern 必须用一个真实模型做 qact/chain/e2e acceptance。
 
-3. **P2 kernel activation 扩展**
-   - producer 的 gate activation 从固定 SiLU 扩为显式 `gate_act`/`act_mode`，至少 SiLU、tanh GELU、exact GELU（GEGLU）。
+3. **P2 kernel activation 扩展（2026-11-20 producer variants + GEGLU/FLUX standalone 已落地）**
+   - producer 的 gate activation 已扩为显式 `gate_act`：SiLU、tanh GELU、exact GELU；另有 `gate_first` 处理 FLUX.2/3 的 `[gate | value]`。
+   - 新增 `fused_geglu_mlp`；native/CuTe、rank16/32/64/128、M tail、独立 gate 均有对拍；两套 Klein CLI e2e 已跑通。
    - 非门控 qout 的 exact GELU epilogue 仅在 exact 模型占比显著时再做；否则长期保持"exact 跳过"更划算。
    - FLUX.2/3 packed QKV+MLP、FLUX.1 concat 整链融合属于架构专项，不混进 activation enum。
 

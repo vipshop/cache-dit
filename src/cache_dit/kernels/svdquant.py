@@ -144,6 +144,8 @@ def _call_svdq_quantize_w4a4_native(
   gate: torch.Tensor | None,
   fuse_glu: bool,
   fp4: bool,
+  gate_act: str,
+  gate_first: bool,
 ) -> None:
   """Bridge the Python activation quantizer wrapper to the compiled extension.
 
@@ -161,6 +163,8 @@ def _call_svdq_quantize_w4a4_native(
     supplies it.
   :param fuse_glu: Whether GLU fusion should be enabled in the kernel.
   :param fp4: Whether to use the FP4/NVFP4 quantization path.
+  :param gate_act: Gate activation name forwarded to the extension.
+  :param gate_first: Whether packed input stores gate before value.
   """
 
   ops_module = _get_required_ops_module()
@@ -190,6 +194,8 @@ def _call_svdq_quantize_w4a4_native(
       fp4,
       [],
       "native",
+      gate_act,
+      gate_first,
     )
     return
 
@@ -205,6 +211,8 @@ def _call_svdq_quantize_w4a4_native(
     fp4,
     [],
     "native",
+    gate_act,
+    gate_first,
   )
 
 
@@ -300,6 +308,8 @@ def _call_svdq_quantize_w4a4(
   fp4: bool,
   lora_scales: list[float],
   lora_layout: str,
+  gate_act: str,
+  gate_first: bool,
 ) -> None:
   """Bridge the unified native/CuTe activation producer through one raw op."""
   ops = _get_required_ops_module()
@@ -315,12 +325,14 @@ def _call_svdq_quantize_w4a4(
     fp4=fp4,
     lora_scales=lora_scales,
     lora_layout=lora_layout,
+    gate_act=gate_act,
+    gate_first=gate_first,
   )
 
 
 torch.library.define(
   "cache_dit_cuda_ops::svdq_quantize_w4a4",
-  "(Tensor input, Tensor? lora_down, Tensor? smooth, Tensor? gate, str lora_layout, bool fuse_glu, bool fp4, float[] lora_scales, int pad_size) -> (Tensor output, Tensor oscales, Tensor lora_act)",
+  "(Tensor input, Tensor? lora_down, Tensor? smooth, Tensor? gate, str lora_layout, bool fuse_glu, bool fp4, float[] lora_scales, int pad_size, str gate_act=\"silu\", bool gate_first=False) -> (Tensor output, Tensor oscales, Tensor lora_act)",
 )
 
 
@@ -335,6 +347,8 @@ def _svdq_quantize_w4a4(
   fp4: bool,
   lora_scales: list[float],
   pad_size: int,
+  gate_act: str = "silu",
+  gate_first: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   batch_size, channels = input.shape
   batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
@@ -375,7 +389,7 @@ def _svdq_quantize_w4a4(
                           device=input.device)
     lora_act = torch.empty((batch_size_pad, rank), dtype=torch.bfloat16, device=input.device)
     _call_svdq_quantize_w4a4(padded_input, output, oscales, lora_down, lora_act, smooth, gate,
-                             fuse_glu, True, lora_scales, "row_major")
+                             fuse_glu, True, lora_scales, "row_major", gate_act, gate_first)
     return output, oscales, lora_act
 
   output = torch.empty(batch_size_pad, value_channels // 2, dtype=torch.uint8, device=input.device)
@@ -407,6 +421,8 @@ def _svdq_quantize_w4a4(
     gate,
     fuse_glu,
     fp4,
+    gate_act,
+    gate_first,
   )
   return output, oscales, lora_act_out
 
@@ -422,8 +438,10 @@ def _fake_svdq_quantize_w4a4(
   fp4: bool,
   lora_scales: list[float],
   pad_size: int,
+  gate_act: str = "silu",
+  gate_first: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-  del smooth, lora_scales
+  del smooth, lora_scales, gate_act, gate_first
   batch_size, channels = input.shape
   batch_size_pad = ((batch_size + pad_size - 1) // pad_size) * pad_size
   rank = 0 if lora_down is None else lora_down.shape[1]
@@ -612,6 +630,8 @@ def svdq_quantize_w4a4(
   gate: torch.Tensor | None = None,
   lora_scales: list[float] | None = None,
   pad_size: int = 256,
+  gate_act: str = "silu",
+  gate_first: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """Quantize activations and fuse the LoRA-down reduction into one producer launch.
 
@@ -625,15 +645,22 @@ def svdq_quantize_w4a4(
   :param smooth: Optional smoothing factors `[in_features]`; required by `'row_major'`.
   :param lora_layout: LoRA-down output layout, either `'native'` or `'row_major'`.
   :param fp4: Whether the packed activations use FP4/NVFP4 instead of INT4.
-  :param fuse_glu: Whether to gate the activations as `value * silu(gate)` before quantizing.
-  :param gate: Optional `[tokens, in_features]` gating half of a fused SwiGLU. When omitted, the
-    second half of `input` supplies it and `input` must be twice as wide as the quantized output.
+  :param fuse_glu: Whether to gate the activations as `value * act(gate)` before quantizing.
+  :param gate: Optional `[tokens, in_features]` gating half of a fused GLU. When omitted, one half
+    of `input` supplies it and `input` must be twice as wide as the quantized output.
   :param lora_scales: Optional FP32 scale per 16-rank group, consumed by `'row_major'` and
     defaulting to ones.
   :param pad_size: Token padding multiple required by the packed activation layout.
+  :param gate_act: Gate activation, one of `'silu'`, `'gelu_tanh'`, or exact `'gelu'`.
+  :param gate_first: Interpret packed `input` as `[gate | value]` instead of `[value | gate]`.
+    Only valid with `fuse_glu=True` and no separate `gate` tensor.
   :returns: `(packed_activations, activation_scales, lora_down_output)`.
   :raises ValueError: If `lora_layout` is unknown, or if `'row_major'` is asked for an INT4 pack.
   """
+  if gate_act not in ("silu", "gelu_tanh", "gelu"):
+    raise ValueError(f"gate_act must be 'silu', 'gelu_tanh', or 'gelu', got {gate_act!r}.")
+  if gate_first and (not fuse_glu or gate is not None):
+    raise ValueError("gate_first=True is only valid with fuse_glu=True and gate=None.")
   normalized_layout = _normalize_svdq_lora_layout(lora_layout)
   if normalized_layout == "row_major" and not fp4:
     raise ValueError("lora_layout='row_major' implements the NVFP4 producer only; pass fp4=True.")
@@ -643,7 +670,8 @@ def svdq_quantize_w4a4(
     normalized_scales = [1.0] * max(1, rank // 16)
   return torch.ops.cache_dit_cuda_ops.svdq_quantize_w4a4(input, lora_down, smooth, gate,
                                                          normalized_layout, fuse_glu, fp4,
-                                                         normalized_scales, pad_size)
+                                                         normalized_scales, pad_size, gate_act,
+                                                         gate_first)
 
 
 def svdq_gemm_w4a4(

@@ -271,13 +271,14 @@ template <typename Config, bool USE_FP4>
 void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor output, Tensor oscales,
                                                       Tensor lora_down, Tensor lora_act_out,
                                                       Tensor smooth, Tensor gate, bool fuse_glu,
-                                                      bool fp4) {
+                                                      bool fp4, GateAct gate_act, bool gate_first) {
   const int actualM = input.numel() / input.shape[-1];
   const int actualN = input.shape[-1];
   // With GLU fusion the quantized width is the gated width. A separate gate tensor already has that
   // width, while the single-tensor form stores both halves side by side and therefore halves it.
   const bool split_gate = fuse_glu && gate.valid();
   const int value_cols = (fuse_glu && !split_gate) ? actualN / 2 : actualN;
+  assert(!gate_first || (fuse_glu && !split_gate));
 
   const int M = ceilDiv(actualM, GEMM::BLOCK_M) * GEMM::BLOCK_M;
   const int N = ceilDiv(value_cols, GEMM::BLOCK_N) * GEMM::BLOCK_N;
@@ -321,16 +322,19 @@ void GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(Tensor input, Tensor outpu
     // the value tensor; both reduce to one base pointer plus a row stride.
     // A null gate means "not a GLU call": the kernel never dereferences it, so it must not even be
     // formed from `input` (that pointer would be one full row-range out of bounds).
-    const half_t *gate_ptr = gate.valid()
-                               ? gate.data_ptr<half_t>()
-                               : (fuse_glu ? input.data_ptr<half_t>() + value_cols : nullptr);
+    const half_t *input_ptr = input.data_ptr<half_t>() + (gate_first ? value_cols : 0);
+    const half_t *gate_ptr =
+      gate.valid()
+        ? gate.data_ptr<half_t>()
+        : (fuse_glu ? input.data_ptr<half_t>() + (gate_first ? 0 : value_cols) : nullptr);
     const int gate_stride = gate.valid() ? static_cast<int>(gate.shape[-1]) : actualN;
 
     func<<<grid, GEMM::WARP_SIZE * GEMM::NUM_WARPS, kernel::SHMEM_SIZE, getCurrentCUDAStream()>>>(
       typename kernel::Arguments{
-        .input = input.data_ptr<half_t>(),
+        .input = input_ptr,
         .gate = gate_ptr,
         .gate_stride = gate_stride,
+        .gate_act = gate_act,
         .smooth_factor = smooth.valid() ? smooth.data_ptr<packed_wscale_t>() : nullptr,
         .output = output.data_ptr<packed_act_t>(),
         .oscales = oscales.data_ptr<typename kernel::oscales_t>(),

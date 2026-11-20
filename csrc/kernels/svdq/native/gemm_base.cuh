@@ -581,17 +581,16 @@ class GEMMBase : public Config {
   };
 
   // loads act of [WARP_M, WARP_N] and stores to fpsum_warp
-  // When `fuse_glu` the loaded values are `input * silu(gate)`: `input` supplies the value half and
-  // `gate` the gating half, which lets the caller either point at a separate gate tensor or at the
-  // second half of the same row-major tensor.
+  // When `fuse_glu` the loaded values are `value * gate_act(gate)`. The gate can be a separate
+  // tensor or one half of the same row-major tensor; gate_first selects which packed half is which.
   template <bool fuse_glu>
   struct load_act_to_fpsum {
     using matrix_t = half_t[INSN_M][WARP_N + 8];
     static constexpr size_t SHMEM_SIZE = sizeof(matrix_t);
 
     __device__ __forceinline__ void operator()(const half_t *input, int stride, const half_t *gate,
-                                               int gate_stride, int maxRows, int maxCols,
-                                               fpsum_warp &out, void *shmem) {
+                                               int gate_stride, GateAct gate_act, int maxRows,
+                                               int maxCols, fpsum_warp &out, void *shmem) {
       const int laneId = threadIdx.x % WARP_SIZE;
 
       matrix_t &mat = *reinterpret_cast<matrix_t *>(shmem);
@@ -621,7 +620,7 @@ class GEMMBase : public Config {
             }
 #pragma unroll
             for (int j = 0; j < PACK_SIZE; j++) {
-              pack[j] = value[j] * silu(gated[j]);
+              pack[j] = value[j] * apply_gate_act(gated[j], gate_act);
             }
           } else {
             pack.fill(half_t(0));

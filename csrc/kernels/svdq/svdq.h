@@ -54,6 +54,7 @@
 #include <vector>
 
 #include "torch.h"
+#include "gate_activation.h"
 
 namespace pybind11 {
 class module_;
@@ -85,7 +86,8 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth,
                    std::optional<torch::Tensor> gate, bool fuse_glu, bool fp4,
-                   std::vector<float> lora_scales, const std::string &lora_layout);
+                   std::vector<float> lora_scales, const std::string &lora_layout,
+                   const std::string &gate_act, bool gate_first);
 
 // Hooks the two public dispatchers onto the extension's `ops` submodule.
 void register_svdq_ops(pybind11::module_ &ops);

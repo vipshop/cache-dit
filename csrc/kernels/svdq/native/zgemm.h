@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "Tensor.h"
+#include "gate_activation.h"
 
 namespace svdq::native_kernels {
 
@@ -28,6 +29,6 @@ void gemm_w4a4(Tensor act,            // packed act [M, K / 2]
 
 void quantize_w4a4(Tensor input, Tensor output, Tensor oscales, Tensor lora_down,
                    Tensor lora_act_out, Tensor smooth = {}, Tensor gate = {}, bool fuse_glu = false,
-                   bool fp4 = false);
+                   bool fp4 = false, GateAct gate_act = GateAct::kSiLU, bool gate_first = false);
 
 };  // namespace svdq::native_kernels

@@ -64,22 +64,23 @@ struct W4A4QuantizeUniversalKernel {
     return uint32_t(lo) | (uint32_t(hi) << 16);
   }
 
-  /// Gated-linear-unit product of one fragment: `value * silu(gate)` on the four packed pairs. The
-  /// pair math is shared with `quantize_impl.cuh` through `quantize_glu.cuh`.
-  static __device__ __forceinline__ void apply_glu(PackedBF16 &value, PackedBF16 const &gate) {
+  /// Gated-linear-unit product of one fragment: `value * gate_act(gate)` on four packed pairs.
+  /// The pair math is shared with `quantize_impl.cuh` through `quantize_glu.cuh`.
+  static __device__ __forceinline__ void apply_glu(PackedBF16 &value, PackedBF16 const &gate,
+                                                   GateAct gate_act) {
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
-      value.data[i] = glu_pair(value.data[i], gate.data[i]);
+      value.data[i] = glu_pair(value.data[i], gate.data[i], gate_act);
     }
   }
 
-  /// Fold `value * silu(gate)` into the fragments of one 16x64 half. The gate tile is staged
+  /// Fold `value * gate_act(gate)` into the fragments of one 16x64 half. The gate tile is staged
   /// through the same warp-private buffer the value tile used, so the caller must already have
   /// consumed the value fragments. kAStride is the padded row stride of that staging tile.
   template <int kAStride>
   static __device__ __forceinline__ void apply_glu_tile(const __nv_bfloat16 *gate, int gate_stride,
-                                                        int row0, int k0, int lane,
-                                                        __nv_bfloat16 *warp_stage,
+                                                        GateAct gate_act, int row0, int k0,
+                                                        int lane, __nv_bfloat16 *warp_stage,
                                                         PackedBF16 (&raw)[4]) {
 #pragma unroll
     for (int row = 0; row < 16; row += 4) {
@@ -97,7 +98,7 @@ struct W4A4QuantizeUniversalKernel {
       const int col = n * 16 + lane / 16 * 8;
       ldmatrix_x4(warp_stage + row * kAStride + col, tmp);
       const PackedBF16 gated = *reinterpret_cast<PackedBF16 *>(&tmp);
-      apply_glu(raw[n], gated);
+      apply_glu(raw[n], gated, gate_act);
     }
     __syncwarp();
   }
@@ -361,7 +362,7 @@ struct W4A4QuantizeUniversalKernel {
   template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
   static __device__ void quantize_w4a4_fused_lora(
     const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate,
-    int gate_stride, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+    int gate_stride, GateAct gate_act, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
     const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
     uint8_t *__restrict__ ascales, __nv_bfloat16 *__restrict__ lora_act, LoraScaleParams scales,
     int M, int K) {
@@ -453,8 +454,8 @@ struct W4A4QuantizeUniversalKernel {
           raw_all[mt][n] = *reinterpret_cast<PackedBF16 *>(&tmp);
         }
         if (gate != nullptr) {
-          apply_glu_tile<kAStride>(gate, gate_stride, row0 + mt * 16, k0, lane, warp_stage,
-                                   raw_all[mt]);
+          apply_glu_tile<kAStride>(gate, gate_stride, gate_act, row0 + mt * 16, k0, lane,
+                                   warp_stage, raw_all[mt]);
         }
         // The next M16 half overwrites the same warp-private staging tile, so every lane must
         // have completed its ldmatrix before the next store phase begins.
@@ -649,7 +650,7 @@ struct W4A4QuantizeUniversalKernel {
   template <int kRankTiles, int kWarps>
   static __device__ void quantize_w4a4_split_k(
     const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate,
-    int gate_stride, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+    int gate_stride, GateAct gate_act, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
     const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
     uint8_t *__restrict__ ascales, float *__restrict__ lora_scratch, int M, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
@@ -708,7 +709,7 @@ struct W4A4QuantizeUniversalKernel {
           raw_all[mt][slice][n] = *reinterpret_cast<PackedBF16 *>(&tmp);
         }
         if (gate != nullptr) {
-          apply_glu_tile<64 + 8>(gate, gate_stride, row0 + mt * 16, k0, lane, warp_stage,
+          apply_glu_tile<64 + 8>(gate, gate_stride, gate_act, row0 + mt * 16, k0, lane, warp_stage,
                                  raw_all[mt][slice]);
         }
         __syncwarp();
@@ -812,11 +813,12 @@ struct W4A4QuantizeUniversalKernel {
 template <int kRankTiles, int kWarps>
 __global__ void quantize_w4a4_split_k_kernel(
   const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate, int gate_stride,
-  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+  GateAct gate_act, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
   const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
   uint8_t *__restrict__ ascales, float *__restrict__ lora_scratch, int M, int K) {
   W4A4QuantizeUniversalKernel::quantize_w4a4_split_k<kRankTiles, kWarps>(
-    input, gate, gate_stride, input_stride, smooth, lora_down, qact, ascales, lora_scratch, M, K);
+    input, gate, gate_stride, gate_act, input_stride, smooth, lora_down, qact, ascales,
+    lora_scratch, M, K);
 }
 
 // Convert the accumulated FP32 split-K scratch to row-major BF16 and apply the per-16-rank scale.
@@ -875,20 +877,20 @@ __global__ void finalize_lora_bf16_kernel(const float *__restrict__ scratch,
 template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 __global__ void quantize_w4a4_fused_lora_kernel(
   const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate, int gate_stride,
-  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+  GateAct gate_act, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
   const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
   uint8_t *__restrict__ ascales, __nv_bfloat16 *__restrict__ lora_act, LoraScaleParams scales,
   int M, int K) {
   W4A4QuantizeUniversalKernel::quantize_w4a4_fused_lora<kRankTiles, kWarps, kReductionBuffers,
                                                         kRankSplits>(
-    input, gate, gate_stride, input_stride, smooth, lora_down, qact, ascales, lora_act, scales, M,
-    K);
+    input, gate, gate_stride, gate_act, input_stride, smooth, lora_down, qact, ascales, lora_act,
+    scales, M, K);
 }
 
 /// Size dynamic shared memory and launch one producer specialization on the current stream.
 template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *gate, int gate_stride,
-                          int input_stride, const __nv_bfloat16 *smooth,
+                          GateAct gate_act, int input_stride, const __nv_bfloat16 *smooth,
                           const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
                           __nv_bfloat16 *lora_act, LoraScaleParams scales, int M, int K,
                           cudaStream_t stream) {
@@ -911,17 +913,18 @@ void launch_quantize_w4a4(const __nv_bfloat16 *input, const __nv_bfloat16 *gate,
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
   }
   kernel<<<dim3(M / 32, kRankSplits), dim3(kWarps * 32), kSmemBytes, stream>>>(
-    input, gate, gate_stride, input_stride, smooth, lora_down, qact, ascales, lora_act, scales, M,
-    K);
+    input, gate, gate_stride, gate_act, input_stride, smooth, lora_down, qact, ascales, lora_act,
+    scales, M, K);
 }
 
 /// Launch the 256-row split-K producer, then finalize FP32 scratch into row-major BF16 D.
 template <int kRankTiles, int kWarps>
 void launch_quantize_w4a4_split_k(const __nv_bfloat16 *input, const __nv_bfloat16 *gate,
-                                  int gate_stride, int input_stride, const __nv_bfloat16 *smooth,
-                                  const __nv_bfloat16 *lora_down, uint8_t *qact, uint8_t *ascales,
-                                  float *scratch, __nv_bfloat16 *lora_act, LoraScaleParams scales,
-                                  int M, int K, cudaStream_t stream) {
+                                  int gate_stride, GateAct gate_act, int input_stride,
+                                  const __nv_bfloat16 *smooth, const __nv_bfloat16 *lora_down,
+                                  uint8_t *qact, uint8_t *ascales, float *scratch,
+                                  __nv_bfloat16 *lora_act, LoraScaleParams scales, int M, int K,
+                                  cudaStream_t stream) {
   constexpr int kRank = kRankTiles * 16;
   constexpr int kRows = kWarps * 32;
   constexpr int kSharedFloats = kWarps * W4A4QuantizeUniversalKernel::kAStageFloats;
@@ -934,7 +937,8 @@ void launch_quantize_w4a4_split_k(const __nv_bfloat16 *input, const __nv_bfloat1
   }
   checkCUDA(cudaMemsetAsync(scratch, 0, static_cast<size_t>(M) * kRank * sizeof(float), stream));
   kernel<<<dim3(M / kRows, (K + 127) / 128), dim3(kWarps * 32), kSmemBytes, stream>>>(
-    input, gate, gate_stride, input_stride, smooth, lora_down, qact, ascales, scratch, M, K);
+    input, gate, gate_stride, gate_act, input_stride, smooth, lora_down, qact, ascales, scratch, M,
+    K);
   const int total = M * kRank;
   const int vectors = total / 8;
   finalize_lora_bf16_kernel<kRankTiles, kWarps>
@@ -949,6 +953,7 @@ struct QuantizeLaunchArgs {
   // `gate_stride`; the host resolves the second-half form to `input + K` before filling the struct.
   const __nv_bfloat16 *gate;
   int gate_stride;
+  GateAct gate_act;
   int input_stride;
   const __nv_bfloat16 *smooth;
   const __nv_bfloat16 *lora_down;
@@ -965,8 +970,9 @@ struct QuantizeLaunchArgs {
 template <int kRankTiles, int kWarps, int kReductionBuffers = kWarps, int kRankSplits = 1>
 void launch_quantize_w4a4(const QuantizeLaunchArgs &args) {
   launch_quantize_w4a4<kRankTiles, kWarps, kReductionBuffers, kRankSplits>(
-    args.input, args.gate, args.gate_stride, args.input_stride, args.smooth, args.lora_down,
-    args.qact, args.ascales, args.lora_act, args.scales, args.M, args.K, args.stream);
+    args.input, args.gate, args.gate_stride, args.gate_act, args.input_stride, args.smooth,
+    args.lora_down, args.qact, args.ascales, args.lora_act, args.scales, args.M, args.K,
+    args.stream);
 }
 
 }  // namespace
@@ -974,7 +980,7 @@ void launch_quantize_w4a4(const QuantizeLaunchArgs &args) {
 void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                   std::vector<float> lora_scales, svdq::Tensor lora_scratch, svdq::Tensor gate,
-                  bool fuse_glu) {
+                  bool fuse_glu, GateAct gate_act, bool gate_first) {
   W4A4QuantizeUniversalKernel::require(
     input.valid() && output.valid() && ascales.valid() && smooth.valid(),
     "quantize_w4a4 requires input/output/ascales/smooth");
@@ -994,6 +1000,8 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
   // value and gate halves side by side and therefore halves it.
   const bool split_gate = fuse_glu && gate.valid();
   const int K = (fuse_glu && !split_gate) ? input_cols / 2 : input_cols;
+  W4A4QuantizeUniversalKernel::require(!gate_first || (fuse_glu && !split_gate),
+                                       "gate_first requires a single packed GLU tensor");
   if (split_gate) {
     W4A4QuantizeUniversalKernel::require(
       gate.dtype() == svdq::Tensor::BF16 && gate.is_contiguous() && gate.shape[-1] == K &&
@@ -1025,13 +1033,16 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
   for (size_t i = 0; i < lora_scales.size(); ++i) {
     scales.values[i] = lora_scales[i];
   }
-  const __nv_bfloat16 *input_ptr = input.data_ptr<__nv_bfloat16>();
-  const __nv_bfloat16 *gate_ptr =
-    split_gate ? gate.data_ptr<__nv_bfloat16>() : (fuse_glu ? input_ptr + K : nullptr);
+  const __nv_bfloat16 *input_base = input.data_ptr<__nv_bfloat16>();
+  const __nv_bfloat16 *input_ptr = input_base + (gate_first ? K : 0);
+  const __nv_bfloat16 *gate_ptr = split_gate
+                                    ? gate.data_ptr<__nv_bfloat16>()
+                                    : (fuse_glu ? input_base + (gate_first ? 0 : K) : nullptr);
   const QuantizeLaunchArgs args{
     input_ptr,
     gate_ptr,
     split_gate ? gate.shape[-1] : input_cols,
+    gate_act,
     input_cols,
     smooth.data_ptr<__nv_bfloat16>(),
     rank > 0 ? lora_down.data_ptr<__nv_bfloat16>() : nullptr,
@@ -1051,17 +1062,17 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
       "split-K quantize_w4a4 requires an FP32 scratch of at least M*rank elements");
     float *scratch = lora_scratch.data_ptr<float>();
     if (rank == 32) {
-      launch_quantize_w4a4_split_k<2, 8>(args.input, args.gate, args.gate_stride, args.input_stride,
-                                         args.smooth, args.lora_down, args.qact, args.ascales,
-                                         scratch, args.lora_act, scales, M, K, args.stream);
+      launch_quantize_w4a4_split_k<2, 8>(
+        args.input, args.gate, args.gate_stride, args.gate_act, args.input_stride, args.smooth,
+        args.lora_down, args.qact, args.ascales, scratch, args.lora_act, scales, M, K, args.stream);
     } else if (rank == 64) {
-      launch_quantize_w4a4_split_k<4, 8>(args.input, args.gate, args.gate_stride, args.input_stride,
-                                         args.smooth, args.lora_down, args.qact, args.ascales,
-                                         scratch, args.lora_act, scales, M, K, args.stream);
+      launch_quantize_w4a4_split_k<4, 8>(
+        args.input, args.gate, args.gate_stride, args.gate_act, args.input_stride, args.smooth,
+        args.lora_down, args.qact, args.ascales, scratch, args.lora_act, scales, M, K, args.stream);
     } else if (rank == 128) {
-      launch_quantize_w4a4_split_k<8, 8>(args.input, args.gate, args.gate_stride, args.input_stride,
-                                         args.smooth, args.lora_down, args.qact, args.ascales,
-                                         scratch, args.lora_act, scales, M, K, args.stream);
+      launch_quantize_w4a4_split_k<8, 8>(
+        args.input, args.gate, args.gate_stride, args.gate_act, args.input_stride, args.smooth,
+        args.lora_down, args.qact, args.ascales, scratch, args.lora_act, scales, M, K, args.stream);
     } else {
       throw std::runtime_error("split-K quantize_w4a4 supports rank 32/64/128 only");
     }

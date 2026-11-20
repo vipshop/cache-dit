@@ -863,6 +863,7 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
       // `[M, N/2]` tensor or at column N/2 of `input`; it is never read otherwise.
       const half_t *gate;
       int gate_stride;
+      GateAct gate_act;
       const packed_wscale_t *smooth_factor;
       packed_act_t *output;
       oscales_t *oscales;
@@ -912,7 +913,8 @@ class GEMM_W4A4<GEMMConfig_W4A4_FP16> : public GEMMBase<GEMMConfig_W4A4_FP16> {
           : args.gate + static_cast<int64_t>(m_offset) * args.gate_stride + n_offset;
       Base::template load_act_to_fpsum<fuse_glu>()(
         args.input + m_offset * args.actualN + n_offset, args.actualN, gate_base, args.gate_stride,
-        args.actualM - m_offset, value_cols - n_offset, fpsum, shmem + warpId * SHMEM_PER_WARP
+        args.gate_act, args.actualM - m_offset, value_cols - n_offset, fpsum,
+        shmem + warpId * SHMEM_PER_WARP
         // args.smooth_factor ? args.smooth_factor + n_offset : nullptr
       );
 

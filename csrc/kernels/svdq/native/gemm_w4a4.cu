@@ -52,10 +52,12 @@ void gemm_w4a4(Tensor act,            // packed act [M, K / 2]
 }
 
 void quantize_w4a4(Tensor input, Tensor output, Tensor oscales, Tensor lora_down,
-                   Tensor lora_act_out, Tensor smooth, Tensor gate, bool fuse_glu, bool fp4) {
+                   Tensor lora_act_out, Tensor smooth, Tensor gate, bool fuse_glu, bool fp4,
+                   GateAct gate_act, bool gate_first) {
   invoke_launch(input.dtype(), fp4, [&]<typename Config, bool USE_FP4>() {
     GEMM_W4A4_Launch<Config, USE_FP4>::quantize_w4a4(input, output, oscales, lora_down,
-                                                     lora_act_out, smooth, gate, fuse_glu, fp4);
+                                                     lora_act_out, smooth, gate, fuse_glu, fp4,
+                                                     gate_act, gate_first);
   });
 }
 

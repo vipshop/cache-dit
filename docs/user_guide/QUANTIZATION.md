@@ -1381,19 +1381,20 @@ pipe.transformer = cache_dit.load(
 )
 ```
 
-When ``fused_mlp`` is enabled, cache-dit applies three complementary passes:
+When ``fused_mlp`` is enabled, cache-dit applies four complementary passes:
 
 | Pass | Targets | Fusion |
 |---|---|---|
-| ``fused_gelu_mlp`` | Standard ``FeedForward`` double blocks | fc1 + GELU + fc2 (qout path, no fp16 HBM write) |
-| ``fused_gelu_proj`` | Single-stream blocks with concat MLP | fc1 + GELU only (fp16 output, concat unchanged) |
-| ``fused_swiglu_mlp`` | Gated MLPs (`down(gate(x) * up(x))`) | gate applied inside the activation producer |
+| ``fused_gelu_mlp`` | Standard non-gated ``FeedForward`` and nested GELU chains | fc1 + tanh-GELU + fc2 (qout path, no fp16 HBM write) |
+| ``fused_gelu_proj`` | Single-stream blocks with concat MLP | fc1 + tanh-GELU only (fp16 output, concat unchanged) |
+| ``fused_swiglu_mlp`` | SiLU-gated MLPs, including FLUX.2/3 standalone gate-first FFNs | gate applied inside the activation producer |
+| ``fused_geglu_mlp`` | Value-first packed GEGLU ``FeedForward`` blocks | exact/tanh GELU gate inside the activation producer |
 
-All three passes use generic structural detection — they work with most diffusers transformers (FLUX, SD3, PixArt, HunyuanVideo, Wan, Cosmos, Bria, QwenImage, Chroma, Motif Video, and many more) without per-model code changes.
+All passes use structural detection with standalone/geometry guards. Unsupported blocks remain on the original forward path and are reported through the pass skip statistics.
 
-**Gated MLPs (SwiGLU)**
+**Gated MLPs (SwiGLU and GEGLU)**
 
-``fused_swiglu_mlp`` covers two shapes: a block that owns ``proj`` / ``gate_layer`` / ``out`` together with an ``nn.SiLU`` (the Qwen-Image-2.1 layout), and a diffusers ``FeedForward`` whose ``net[0]`` is a ``SwiGLU`` wrapper emitting ``2 * inner`` columns. The gate cannot be applied in the GEMM epilogue, because its second operand comes from a different projection; it is fused into the activation producer of ``out`` instead, which replaces the standalone ``silu``/multiply kernel and its ``[tokens, hidden]`` HBM round trip. Both activation producers implement the gate (``value * silu(gate)``) — the native one and the CuTe ``row_major`` one — so the pass runs on either ``lora_layout``, including the CuTe default. ``GEGLU`` is not fused.
+The gate is fused into the activation producer of ``down`` instead of the GEMM epilogue, because its second operand comes from a different projection. This replaces the standalone activation/multiply kernel and its ``[tokens, hidden]`` HBM round trip. Both native and CuTe producers support ``silu``, ``gelu_tanh``, and exact ``gelu``. SiLU remains the default; GEGLU uses the producer's value-first packed layout. FLUX.2/3 standalone FFNs explicitly select gate-first order for their ``[gate | value]`` projection, while packed QKV+MLP blocks remain outside this pass.
 
 ```bash
 # Qwen-Image-2.1 style gated MLP on the CuTe GEMM with its default row-major D contract.

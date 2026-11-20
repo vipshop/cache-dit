@@ -44,6 +44,19 @@ class GELU(nn.Module):
     return torch.nn.functional.gelu(self.proj(x), approximate=self.approximate)
 
 
+class GEGLU(nn.Module):
+  """Value-first packed GEGLU wrapper used by diffusers FeedForward."""
+
+  def __init__(self, proj: nn.Module, approximate: str = "none") -> None:
+    super().__init__()
+    self.proj = proj
+    self.approximate = approximate
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    value, gate = self.proj(x).chunk(2, dim=-1)
+    return value * torch.nn.functional.gelu(gate, approximate=self.approximate)
+
+
 class FeedForward(nn.Module):
   """Minimal diffusers FeedForward shape for pass detection."""
 
@@ -53,14 +66,17 @@ class FeedForward(nn.Module):
                approximate: str,
                *,
                quantized: bool = True,
-               runtime: str = "cute") -> None:
+               runtime: str = "cute",
+               activation: str = "gelu") -> None:
     super().__init__()
-    fc1 = (_svdq(in_features, hidden, bias=True, runtime=runtime)
-           if quantized else nn.Linear(in_features, hidden, bias=True))
+    fc1_out = 2 * hidden if activation == "geglu" else hidden
+    fc1 = (_svdq(in_features, fc1_out, bias=True, runtime=runtime)
+           if quantized else nn.Linear(in_features, fc1_out, bias=True))
     fc2 = (_svdq(hidden, in_features, bias=True, runtime=runtime)
            if quantized else nn.Linear(hidden, in_features, bias=True))
+    act = GEGLU(fc1, approximate) if activation == "geglu" else GELU(fc1, approximate)
     self.net = nn.ModuleList([
-      GELU(fc1, approximate),
+      act,
       nn.Dropout(0.0),
       fc2,
     ])
@@ -234,7 +250,12 @@ def test_gelu_mlp_pass_is_idempotent_and_preserves_state() -> None:
 
   counts = apply_passes(block, ["fused_gelu_mlp"])
   assert counts == {"fused_gelu_mlp": 1}
-  assert block._svdq_fused_mlp_targets == {"gelu_mlp": 1, "gelu_proj": 0, "swiglu": 0}
+  assert block._svdq_fused_mlp_targets == {
+    "gelu_mlp": 1,
+    "gelu_proj": 0,
+    "swiglu": 0,
+    "geglu_mlp": 0
+  }
   assert block._svdq_fused_mlp_passes == counts
   assert block._svdq_fused_mlp_skipped == {"fused_gelu_mlp": {}}
   assert block._svdq_fused_mlp_pass == "fused_gelu_mlp"
@@ -247,7 +268,12 @@ def test_gelu_mlp_pass_is_idempotent_and_preserves_state() -> None:
 
   assert apply_passes(block, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 0}
   assert block.forward is patched_forward
-  assert block._svdq_fused_mlp_targets == {"gelu_mlp": 1, "gelu_proj": 0, "swiglu": 0}
+  assert block._svdq_fused_mlp_targets == {
+    "gelu_mlp": 1,
+    "gelu_proj": 0,
+    "swiglu": 0,
+    "geglu_mlp": 0
+  }
   assert block._svdq_fused_mlp_passes == counts
 
 
@@ -263,7 +289,12 @@ def test_partial_pass_application_accumulates_target_counts() -> None:
   block = _Composite().eval()
   assert apply_passes(block, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 1}
   assert apply_passes(block, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
-  assert block._svdq_fused_mlp_targets == {"gelu_mlp": 1, "gelu_proj": 0, "swiglu": 1}
+  assert block._svdq_fused_mlp_targets == {
+    "gelu_mlp": 1,
+    "gelu_proj": 0,
+    "swiglu": 1,
+    "geglu_mlp": 0
+  }
   assert block._svdq_fused_mlp_passes == {"fused_gelu_mlp": 1, "fused_swiglu_mlp": 1}
 
 
@@ -307,6 +338,45 @@ def test_swiglu_alias_detection_and_standalone_guard() -> None:
   assert apply_passes(unknown, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 0}
   assert any("unsupported_gated_names" in reason
              for reason in unknown._svdq_fused_mlp_skipped["fused_swiglu_mlp"])
+
+
+def test_geglu_pass_distinguishes_exact_tanh_and_inference_guards() -> None:
+  import cache_dit.quantization.svdquant.passes as passes
+
+  for approximate, expected_act in (("none", "gelu"), ("tanh", "gelu_tanh")):
+    block = FeedForward(256, 512, approximate, activation="geglu").eval()
+    detected = passes.get_pass("fused_geglu_mlp")().detect(block)
+    assert detected[0]["gate_act"] == expected_act
+    assert detected[0]["gate_first"] is False
+    assert apply_passes(block, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 1}
+    assert block._svdq_fused_mlp_pass == "fused_geglu_mlp"
+    assert block._svdq_fused_mlp_targets["geglu_mlp"] == 1
+    assert block._svdq_fused_mlp_targets["swiglu"] == 0
+
+  training = FeedForward(256, 512, "none", activation="geglu").train()
+  assert apply_passes(training, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 0}
+  assert any("training" in reason for reason in training._svdq_fused_mlp_skipped["fused_geglu_mlp"])
+
+  dropout = FeedForward(256, 512, "none", activation="geglu").eval()
+  dropout.net[1].p = 0.1
+  assert apply_passes(dropout, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 0}
+  assert any("active_dropout" in reason
+             for reason in dropout._svdq_fused_mlp_skipped["fused_geglu_mlp"])
+
+
+def test_flux_gate_first_requires_silu_and_standalone() -> None:
+  from diffusers.models.transformers.transformer_flux2 import Flux2FeedForward
+  import cache_dit.quantization.svdquant.passes as passes
+
+  block = Flux2FeedForward(dim=256, inner_dim=512).eval()
+  block.linear_in = _svdq(256, 1024)
+  block.linear_out = _svdq(512, 256)
+  block.act_fn.gate_fn = nn.GELU()
+  assert passes.get_pass("fused_swiglu_mlp")().detect(block) == []
+
+  block.act_fn.gate_fn = nn.SiLU()
+  block.extra_norm = nn.LayerNorm(256)
+  assert passes.get_pass("fused_swiglu_mlp")().detect(block) == []
 
 
 def test_nested_gelu_detection_respects_tanh_and_standalone() -> None:
@@ -458,6 +528,11 @@ def test_fused_geometry_is_checked_before_patching() -> None:
   native_swiglu = SwiGLUBlock(hidden=640, runtime="native").eval()
   assert apply_passes(native_swiglu, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
 
+  geglu = FeedForward(256, 1000, "none", activation="geglu").eval()
+  assert apply_passes(geglu, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 0}
+  assert any("not divisible by 64" in reason
+             for reason in geglu._svdq_fused_mlp_skipped["fused_geglu_mlp"])
+
 
 def test_all_passes_skip_tp_shards_before_kernel_use() -> None:
   spec = SVDQShardSpec(
@@ -493,6 +568,11 @@ def test_all_passes_skip_tp_shards_before_kernel_use() -> None:
   assert apply_passes(swiglu, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 0}
   assert any("tp_sharded" in reason
              for reason in swiglu._svdq_fused_mlp_skipped["fused_swiglu_mlp"])
+
+  geglu = FeedForward(256, 256, "none", activation="geglu").eval()
+  geglu.net[0].proj = shard
+  assert apply_passes(geglu, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 0}
+  assert any("tp_sharded" in reason for reason in geglu._svdq_fused_mlp_skipped["fused_geglu_mlp"])
 
 
 def test_swiglu_pass_skips_training_and_is_idempotent() -> None:
@@ -766,6 +846,129 @@ def test_nested_gelu_pass_matches_unfused(kind: str, runtime: str, monkeypatch) 
 
   monkeypatch.setattr(fused_runtime, "fused_gelu_mlp", _counted_fused)
   assert apply_passes(block, ["fused_gelu_mlp"]) == {"fused_gelu_mlp": 1}
+  with torch.inference_mode():
+    fused = block(x)
+  assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
+  assert fused_calls
+
+
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_geglu_pass_matches_unfused(approximate: str, runtime: str, monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.fused as fused_runtime
+
+  _require_sm120()
+  torch.manual_seed(20261204)
+  block = FeedForward(256, 512, approximate, quantized=False,
+                      activation="geglu").cuda().to(torch.bfloat16).eval()
+  x = torch.randn(1, 260, 256, dtype=torch.bfloat16, device="cuda:0")
+  block.net[0].proj = _quantize_projection(block.net[0].proj, x, runtime)
+  block.net[2] = _quantize_projection(
+    block.net[2],
+    torch.randn(1, 260, 512, dtype=torch.bfloat16, device="cuda:0"),
+    runtime,
+  )
+
+  with torch.inference_mode():
+    reference = block(x)
+
+  original_fused = fused_runtime.fused_swiglu_mlp
+  fused_calls = []
+
+  def _counted_fused(*args, **kwargs):
+    fused_calls.append(1)
+    assert kwargs["gate_act"] == ("gelu_tanh" if approximate == "tanh" else "gelu")
+    assert kwargs["gate_first"] is False
+    return original_fused(*args, **kwargs)
+
+  monkeypatch.setattr(fused_runtime, "fused_swiglu_mlp", _counted_fused)
+  assert apply_passes(block, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 1}
+  with torch.inference_mode():
+    fused = block(x)
+  assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
+  assert fused_calls
+
+
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+def test_diffusers_geglu_feedforward_pass_matches_unfused(runtime: str) -> None:
+  from diffusers.models.attention import FeedForward as DiffusersFeedForward
+
+  _require_sm120()
+  torch.manual_seed(20261206)
+  block = DiffusersFeedForward(dim=256, inner_dim=512,
+                               activation_fn="geglu").cuda().to(torch.bfloat16).eval()
+  x = torch.randn(1, 260, 256, dtype=torch.bfloat16, device="cuda:0")
+  block.net[0].proj = _quantize_projection(block.net[0].proj, x, runtime)
+  block.net[2] = _quantize_projection(
+    block.net[2],
+    torch.randn(1, 260, 512, dtype=torch.bfloat16, device="cuda:0"),
+    runtime,
+  )
+
+  with torch.inference_mode():
+    reference = block(x)
+  assert apply_passes(block, ["fused_geglu_mlp"]) == {"fused_geglu_mlp": 1}
+  with torch.inference_mode():
+    fused = block(x)
+  assert _relative_l2(fused, reference) < 5e-3
+  cosine = torch.nn.functional.cosine_similarity(fused.flatten().float(),
+                                                 reference.flatten().float(),
+                                                 dim=0)
+  assert cosine > 0.999
+
+
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+@pytest.mark.parametrize("flux_version", [2, 3])
+def test_flux_standalone_gate_first_pass_matches_unfused(flux_version: int, runtime: str,
+                                                         monkeypatch) -> None:
+  import cache_dit.quantization.svdquant.fused as fused_runtime
+  import cache_dit.quantization.svdquant.passes as passes
+
+  _require_sm120()
+  torch.manual_seed(20261205)
+  if flux_version == 2:
+    from diffusers.models.transformers.transformer_flux2 import Flux2FeedForward
+
+    block = Flux2FeedForward(dim=256, inner_dim=512).cuda().to(torch.bfloat16).eval()
+  else:
+    from diffusers.models.transformers.transformer_flux3 import Flux3FeedForward
+
+    block = Flux3FeedForward(dim=256, inner_dim=512).cuda().to(torch.bfloat16).eval()
+  x = torch.randn(1, 260, 256, dtype=torch.bfloat16, device="cuda:0")
+  block.linear_in = _quantize_projection(block.linear_in, x, runtime)
+  block.linear_out = _quantize_projection(
+    block.linear_out,
+    torch.randn(1, 260, 512, dtype=torch.bfloat16, device="cuda:0"),
+    runtime,
+  )
+
+  with torch.inference_mode():
+    reference = block(x)
+
+  detected = passes.get_pass("fused_swiglu_mlp")().detect(block)
+  assert len(detected) == 1
+  assert detected[0]["gate_first"] is True
+  assert detected[0]["gate"] is None
+
+  original_fused = fused_runtime.fused_swiglu_mlp
+  fused_calls = []
+
+  def _counted_fused(*args, **kwargs):
+    fused_calls.append(1)
+    assert kwargs["gate_act"] == "silu"
+    assert kwargs["gate_first"] is True
+    return original_fused(*args, **kwargs)
+
+  monkeypatch.setattr(fused_runtime, "fused_swiglu_mlp", _counted_fused)
+  assert apply_passes(block, ["fused_swiglu_mlp"]) == {"fused_swiglu_mlp": 1}
   with torch.inference_mode():
     fused = block(x)
   assert _relative_l2(fused, reference) < 5e-3

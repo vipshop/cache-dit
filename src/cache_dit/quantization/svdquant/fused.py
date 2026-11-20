@@ -219,6 +219,8 @@ def fused_swiglu_mlp(
   down: nn.Module | SVDQW4A4Linear,
   gate: nn.Module | SVDQW4A4Linear | None = None,
   pad_size: int = 256,
+  gate_act: str = "silu",
+  gate_first: bool = False,
 ) -> torch.Tensor:
   """Fused quantized gated MLP: ``down(gate(x) * up(x))`` through one producer.
 
@@ -235,9 +237,15 @@ def fused_swiglu_mlp(
   :param down: Output projection (hidden → output).
   :param gate: Optional separate gate projection with the same output width as ``up``.
   :param pad_size: Batch padding size for CUDA kernel efficiency. Default is 256.
+  :param gate_act: Gate activation (`silu`, `gelu_tanh`, or exact `gelu`). Default is SiLU.
+  :param gate_first: Interpret packed ``up(x)`` as `[gate | value]`; required by FLUX.2/3
+      standalone FFNs. The default is value-first, as used by diffusers SwiGLU/GEGLU.
   :returns: Output tensor with shape ``[..., down.out_features]``.
   :raises ValueError: If the widths do not describe a gated MLP.
   """
+  if gate_first and gate is not None:
+    raise ValueError(
+      "gate_first=True is only valid when gate=None and up returns packed GLU columns.")
   _require_fusable(up, down) if gate is None else _require_fusable(up, gate, down)
   if x.ndim < 2:
     raise ValueError(f"input must have shape [..., in_features], got {tuple(x.shape)}.")
@@ -259,12 +267,18 @@ def fused_swiglu_mlp(
 
   value = up(x)
   if gate is None:
-    quantized, ascales, lora_act = down.quantize(value, pad_size=pad_size, fuse_glu=True)
+    quantized, ascales, lora_act = down.quantize(value,
+                                                 pad_size=pad_size,
+                                                 fuse_glu=True,
+                                                 gate_act=gate_act,
+                                                 gate_first=gate_first)
   else:
     quantized, ascales, lora_act = down.quantize(value,
                                                  pad_size=pad_size,
                                                  fuse_glu=True,
-                                                 gate=gate(x))
+                                                 gate=gate(x),
+                                                 gate_act=gate_act,
+                                                 gate_first=gate_first)
 
   output = down.forward_quant(quantized, ascales, lora_act)
   output = output[:token_count]

@@ -1170,6 +1170,90 @@ def test_glu_producer_matches_an_explicit_gate(mode: str, runtime: str, layout: 
   assert _relative_l2(_logical_d(layout, d_glu), _logical_d(layout, d_ref)) < 1e-2
 
 
+@pytest.mark.parametrize("rank", [0, 16, 32, 64, 128])
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+@pytest.mark.parametrize("gate_act", ["silu", "gelu_tanh", "gelu"])
+@pytest.mark.parametrize("gate_first", [False, True])
+def test_glu_producer_activation_variants_and_column_order(rank: int, runtime: str, gate_act: str,
+                                                           gate_first: bool) -> None:
+  _require_sm120()
+  torch.manual_seed(20261121)
+  batch_size, channels = 256, 512
+  value = torch.randn(batch_size, channels, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn(batch_size, channels, dtype=torch.bfloat16, device="cuda")
+  layout = "row_major" if runtime == "cute" else "native"
+  down = _build_quantized(runtime, layout, channels, channels, rank, value)
+  packed = torch.cat((gate, value) if gate_first else (value, gate), dim=-1).contiguous()
+  if gate_act == "silu":
+    activated = torch.nn.functional.silu(gate)
+  else:
+    activated = torch.nn.functional.gelu(
+      gate,
+      approximate="tanh" if gate_act == "gelu_tanh" else "none",
+    )
+  reference = value * activated
+
+  with torch.inference_mode():
+    q_ref, sf_ref, d_ref = down.quantize(reference)
+    q_glu, sf_glu, d_glu = down.quantize(
+      packed,
+      fuse_glu=True,
+      gate_act=gate_act,
+      gate_first=gate_first,
+    )
+
+  mismatch = (q_glu.view(torch.uint8) != q_ref.view(torch.uint8)).float().mean().item()
+  if gate_act == "silu":
+    # Keep the producer's established approximate-sigmoid tolerance.
+    assert mismatch < 2e-2
+  else:
+    # A few tanh evaluations can round to the neighbouring BF16 value and FP4 code.
+    assert mismatch < 2e-4
+  torch.testing.assert_close(sf_glu, sf_ref, rtol=0, atol=0)
+  assert _relative_l2(_logical_d(layout, d_glu), _logical_d(layout, d_ref)) < 2e-3
+
+
+@pytest.mark.parametrize("rank", [32, 64, 128])
+@pytest.mark.parametrize("runtime", ["native", "cute"])
+@pytest.mark.parametrize("gate_act", ["silu", "gelu_tanh", "gelu"])
+def test_glu_producer_activation_variants_with_separate_gate(rank: int, runtime: str,
+                                                             gate_act: str) -> None:
+  _require_sm120()
+  torch.manual_seed(20261123)
+  value = torch.randn(256, 512, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn_like(value)
+  layout = "row_major" if runtime == "cute" else "native"
+  down = _build_quantized(runtime, layout, 512, 512, rank, value)
+  if gate_act == "silu":
+    activated = torch.nn.functional.silu(gate)
+  else:
+    activated = torch.nn.functional.gelu(
+      gate,
+      approximate="tanh" if gate_act == "gelu_tanh" else "none",
+    )
+
+  with torch.inference_mode():
+    q_ref, sf_ref, d_ref = down.quantize(value * activated)
+    q_glu, sf_glu, d_glu = down.quantize(value, fuse_glu=True, gate=gate, gate_act=gate_act)
+
+  mismatch = (q_glu.view(torch.uint8) != q_ref.view(torch.uint8)).float().mean().item()
+  assert mismatch < (2e-2 if gate_act == "silu" else 2e-4)
+  torch.testing.assert_close(sf_glu, sf_ref, rtol=0, atol=0)
+  assert _relative_l2(_logical_d(layout, d_glu), _logical_d(layout, d_ref)) < 2e-3
+
+
+def test_glu_producer_rejects_unknown_activation_and_separate_gate_order() -> None:
+  _require_sm120()
+  value = torch.randn(256, 256, dtype=torch.bfloat16, device="cuda")
+  gate = torch.randn_like(value)
+  down = _build_quantized("native", "native", 256, 256, 32, value)
+  packed = torch.cat((value, gate), dim=-1).contiguous()
+  with pytest.raises(ValueError, match="gate_act"):
+    down.quantize(packed, fuse_glu=True, gate_act="relu")
+  with pytest.raises(ValueError, match="gate_first"):
+    down.quantize(value, fuse_glu=True, gate=gate, gate_first=True)
+
+
 class _SwiGLUBlock(nn.Module):
   """Minimal Qwen-Image-2.1 shape: `out(silu(gate_layer(x)) * proj(x))`."""
 

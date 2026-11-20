@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Tensor.h"
+#include "gate_activation.h"
 
 #include <vector>
 
@@ -44,24 +45,28 @@ constexpr bool is_specialized_rank(int rank) { return rank == 32 || rank == 64 |
 void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
-                  svdq::Tensor gate = {}, bool fuse_glu = false);
+                  svdq::Tensor gate = {}, bool fuse_glu = false, GateAct gate_act = GateAct::kSiLU,
+                  bool gate_first = false);
 
 /// Rank-32 CuTe TiledMMA/TiledCopy producer. Requires two values in `lora_scales` (R32/R16).
 void quantize_r32(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
-                  svdq::Tensor gate = {}, bool fuse_glu = false);
+                  svdq::Tensor gate = {}, bool fuse_glu = false, GateAct gate_act = GateAct::kSiLU,
+                  bool gate_first = false);
 
 /// Rank-64 CuTe TiledMMA/TiledCopy producer. Requires four values in `lora_scales` (R64/R16).
 void quantize_r64(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                   svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                   std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
-                  svdq::Tensor gate = {}, bool fuse_glu = false);
+                  svdq::Tensor gate = {}, bool fuse_glu = false, GateAct gate_act = GateAct::kSiLU,
+                  bool gate_first = false);
 
 /// Rank-128 CuTe TiledMMA/TiledCopy producer. Requires eight values in `lora_scales` (R128/R16).
 void quantize_r128(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                    svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                    std::vector<float> lora_scales, svdq::Tensor lora_scratch = {},
-                   svdq::Tensor gate = {}, bool fuse_glu = false);
+                   svdq::Tensor gate = {}, bool fuse_glu = false, GateAct gate_act = GateAct::kSiLU,
+                   bool gate_first = false);
 
 }  // namespace svdq::cute_kernels

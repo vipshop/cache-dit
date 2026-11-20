@@ -41,7 +41,7 @@ class GEMM_W4A4_Launch {
 
   static void quantize_w4a4(Tensor input, Tensor output, Tensor oscales, Tensor lora_down,
                             Tensor lora_act_out, Tensor smooth, Tensor gate, bool fuse_glu,
-                            bool fp4);
+                            bool fp4, GateAct gate_act, bool gate_first);
 };
 
 };  // namespace svdq::native_kernels
