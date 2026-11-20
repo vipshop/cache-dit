@@ -18,12 +18,14 @@ user-invocable: true
 | 从上游仓库移植算子 | 有 nunchaku / deepcompressor / flashinfer 参照实现 | `references/operator-migration.md` |
 | 改现有算子实现 | 只改 `.cu/.cuh/.h`，schema、`setup.py`、Python 包装都不动 | 本文 §5 + 该族 Python 模块 + 对应测试 |
 | 改 SVDQ 融合输出 / 门控 | 动 `qout/oscales/D`、`write_dense`、`fuse_silu/fuse_glu`、`gate` 或 `lora_layout` 的语义 | 本文 §8.3–8.4 + `references/svdq-nvfp4-cute.md` §32 |
+| 规划/扩展 SVDQ fused MLP 覆盖 | 新增/泛化 fused pass、exact GELU、GEGLU、更多 FFN/MLP 结构或 activation | `references/svdq-fused-mlp-roadmap.md` + 本文 §8.5 |
 | 性能优化 | 数值契约与链路不变 | 本文 §6；SVDQ 另读下列专项 ref |
 | SVDQuant 原理 | 推导、误差上界、scale 粒度、低秩残差 | `references/svdquant-mathematics.md` |
 
 SVDQ 专项参考，修改 NVFP4 CuTe 路径前先读：
 
 - `references/svdq-nvfp4-cute.md`：当前实现、有效/无效尝试和实测性能。
+- `references/svdq-fused-mlp-roadmap.md`：fused MLP 的模型 FFN/MLP pattern 覆盖、正确性 P0、passes P1、kernel activation P2 和验收顺序。
 - `references/rfc-cuda-optimizations.md`：优化门槛、待办、状态更新规则。
 - `references/svdq-nvfp4-cute-tma-sync-analysis.md`：TMA/mbarrier、warp/block 同步、K-block 软件流水及 CUTLASS/FlashInfer SM120 对照；做 SVDQ CuTe GEMM 调度与性能优化前先读。
 - `references/svdq-nvfp4-cute-cutlass-collective-analysis.md`：评估 SVDQ CuTe FP4 是否迁移 CUTLASS Collective 时先读；包含 stock/custom Collective 边界、pack 与 LoRA 契约、静态数量分析及既有对照证据。
@@ -301,6 +303,29 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 - SVDQ 各档**跨进程不可复现**（producer 的 D 用 relaxed FP32 原子累加）：FLUX 同档重跑 23.7–28.5 dB、Qwen21 31.9–32.6 dB，而 `base` 是 bit 级可复现（重跑 99 dB）。所以 fused↔unfused、native↔cute 的图像差（23–28 dB）**都在噪声带内**，e2e PSNR 不能作为等价性判据；等价性看 kernel 的 qact 逐字节与链 rel-L2。
 
 未做：CuTe 融合链在 chain 级比 native 慢 **9–13%**，但差距**只**来自融合 epilogue 的 D 归约（只出 qout 时 1.03×，加 D 变 1.14×；native 从累加器寄存器直接 MMA，cute 要回读 smem O tile + `row_major` 的 finalize/scratch）。producer 0.82–0.91×、非融合 GEMM 0.97–1.00×，两侧 cute 都不慢，别去动它们。分档数据见 `references/svdq-nvfp4-cute.md` §32.3，方向是把 D 归约改成读累加器寄存器/单 warp 全 K，而不是再拆 kernel。
+
+### 8.5 Fused MLP 后续路线（2026-11-20）
+
+结论：**主体 kernel 已具备，后续瓶颈在 pass 覆盖率和正确性护栏，不在继续优化 GEMM 微架构。** 完整 pattern 矩阵、目标模型、落点和验收见 `references/svdq-fused-mlp-roadmap.md`。
+
+按三类优先级推进：
+
+1. **P0 正确性**
+   - qout epilogue 固定 tanh GELU，而 pass 不读 `nn.GELU.approximate`；exact GELU 会被静默改数值。先读取 `approximate`，exact 显式跳过，tanh 才融合。
+   - fused 实例要求 BN=256/BK=128 的 N/K 对齐；CuTe 的 `padded_out_features` 只按 128 取整，1920/2688 等宽度可能推理期 throw。pass 装配前必须预检并 skip。
+   - 对齐 FP4 pass 护栏：training/Dropout、唯一 GELU、幂等、`*args/**kwargs`。
+   - 记录 `_svdq_fused_mlp_targets` 和 skip reason；零命中不能只写 debug。
+   - 补 GELU 两 pass 的 detect/apply、`fused_mlp` 端到端、serialize/load、padding、compile、TP skip 和负例。
+2. **P1 passes 覆盖**
+   - 泛化独立 gate 检测：`w1/w3/w2`、`gate_proj/up_proj/down_proj`、`gate/up/down`、`proj_in/proj_out`、函数式 `F.silu`。覆盖 Z-Image、HiDream dense、Lumina2、Krea2、LongCat-Video-Avatar、StableAudio3。
+   - 检测 `Sequential(Linear, GELU, [Dropout], Linear)` 或 `fc1/act/fc2`，覆盖 Wan-Animate-2、LongCat-AudioDiT、SanaWM、Kandinsky5。
+   - 不猜 half-split 列序；FLUX.2/3 只在列布局确认后接入。每个新 pattern 必须用一个真实模型做 qact/chain/e2e acceptance。
+3. **P2 kernel activation 扩展**
+   - producer 的 gate activation 从固定 SiLU 扩为显式 `gate_act`/`act_mode`，至少 SiLU、tanh GELU、exact GELU（GEGLU）。
+   - 非门控 qout 的 exact GELU epilogue 仅在 exact 模型占比显著时再做；否则长期保持"exact 跳过"更划算。
+   - FLUX.2/3 packed QKV+MLP、FLUX.1 concat 整链融合属于架构专项，不混进 activation enum。
+
+禁止把量化收益算成融合收益：FLUX 上融合本身约 +3.1%、Qwen21 约 +4.4%；e2e PSNR 受 SVDQ 原子顺序噪声影响，不能作为等价性判据。不要重复已证伪的 CuTe D 归约微优化、INT4 fused store 或 MoE 强行融合。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
