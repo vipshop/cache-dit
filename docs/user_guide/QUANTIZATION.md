@@ -4,7 +4,7 @@
 
 ## Overview
 
-Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including <span style="color:green;">FP8</span>, <span style="color:green;">INT8</span>, <span style="color:green;">INT4</span>, and <span style="color:green;">NVFP4</span> quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
+Quantization is a powerful technique to reduce the memory footprint and computational cost of deep learning models by representing weights and activations with lower precision data types. Cache-DiT supports various quantization methods, including <span style="color:green;">FP8</span>, <span style="color:green;">INT8</span>, <span style="color:green;">INT4</span>, <span style="color:green;">NVFP4</span> and <span style="color:green;">MXFP4</span> quantization, to help users achieve faster inference and lower memory usage while maintaining acceptable model performance.
 
 |Quantization Types| Description|Devices|
 |:---|:---|:---| 
@@ -18,6 +18,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">int4_weight_only</span>|quantize <span style="color:green;">only weights</span> to int4, keep activations in full precision|<span style="color:#c77dff;">>=sm90</span>, Hopper or newer, TMA required|
 |<span style="color:#c77dff;">nvfp4</span>|Dynamic activation and NVFP4 weight quantization. Available through TorchAO or cache-dit's native backend.|TorchAO: <span style="color:#c77dff;">>=sm100</span>; cache-dit: <span style="color:#c77dff;">>=sm120</span>|
 |<span style="color:#c77dff;">nvfp4_weight_only</span>|TorchAO NVFP4 weight-only quantization with dynamic per-tensor weight scaling; activations remain in their original precision.|<span style="color:#c77dff;">>=sm100</span>, Blackwell or newer|
+|<span style="color:#c77dff;">mxfp4_weight_only</span>|cache-dit native MXFP4 (E2M1 payload + one E8M0 scale per group of 32 along K) weight-only quantization; activations stay in the model dtype. Pure PyTorch packing, no `_C_ops` extension needed.|Any CUDA-like backend without NVFP4 tensor cores; also runs on CPU (slow reference path)|
 |<span style="color:#c77dff;">svdq_int4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with calibration and checkpoint serialization for users who want the higher-accuracy PTQ workflow.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
@@ -254,6 +255,78 @@ levels, and E2M1 packing without materializing a separate gated BF16 tensor.
 The producer retains BF16 SiLU/multiplication rounding under eager execution,
 full-graph compile, and CUDA Graph capture. `torch._scaled_mm` has no public
 activation epilogue, so activation with `use_native=False` raises explicitly.
+
+## MXFP4 Weight-only Quantization
+
+Cache-DiT ships a native MXFP4 (OCP Microscaling: E2M1 payload with one E8M0
+biased-exponent scale per group of 32 elements along K) weight-only path. It
+targets accelerators where torchao's BlockWise-1x32 `torch._scaled_mm` MX path is
+unavailable or broken, and where NVFP4's Blackwell-class tensor cores do not
+exist. Weights are packed once at load time; activations stay in the model dtype
+and every layer dequantizes its 4-bit payload and calls `F.linear`, so the
+runtime cost is one bandwidth-bound dequant pass over the (4x smaller) packed
+weights. `--compile` fuses that pass into the GEMM and keeps the memory
+footprint at the packed size.
+
+```python
+import cache_dit
+from cache_dit import QuantizeConfig
+
+cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="mxfp4_weight_only"),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
+  --mxfp4 --compile
+```
+
+Requirements and limits:
+
+- Only the MX dtypes shipped by PyTorch >= 2.6 (`torch.float4_e2m1fn_x2`,
+  `torch.float8_e8m0fnu`) are required. The `_C_ops` CUDA extension is not
+  involved, so this path also runs on CPU (slow reference path) and on backends
+  without NVFP4 tensor cores.
+- `in_features` must be a multiple of `mxfp4_block_size` (32, the only
+  spec-compliant value). Layers that do not qualify are skipped; a run that packs
+  no layer raises instead of returning an unquantized module.
+- Weight-only: activations are not quantized, so `mxfp4_weight_only` is the only
+  public MXFP4 type (there is no W4A4 `mxfp4` entry, unlike `nvfp4`). `--mxfp4`
+  is an alias of `--mxfp4-weight-only`.
+- Online-only: `calibrate_fn`, `serialize_to`, `precision_plan`, TP/DTensor
+  weights and MXFP4 checkpoint loading/serialization are not supported.
+- `mxfp4_quantize_device` (`auto`/`cpu`/`cuda`, or `--mxfp4-quantize-device`)
+  selects where the one-time packing math runs. `auto` packs on the current
+  accelerator when one is available and falls back to the weight's device; the
+  packed buffers always return to the weight's own device, so quantization never
+  moves a module.
+- `MXFP4Linear` supports device moves but not dtype casting of the packed
+  payload: `.to(dtype)`/`.half()` keep the fp4 payload verbatim and only recast
+  the bias, which drives the dequant output dtype.
+
+Measured cost and quality (FLUX.1-dev, 1024x1024, 28 steps, seed 0, single
+RTX PRO 5000 72GB, identical initial noise for every run):
+
+| Configuration | Latency | Peak memory | PSNR vs bf16 | SSIM vs bf16 |
+|:---|:---|:---|:---|:---|
+| bf16 eager | 16.99 s | 33.82 GiB | - | - |
+| bf16 + `--compile` | 14.88 s | 33.82 GiB | 27.11 (compile floor) | 0.9620 |
+| `mxfp4_weight_only` eager | 36.39 s | **17.75 GiB** | 16.25 | 0.7710 |
+| `mxfp4_weight_only` + `--compile` | 15.38 s | **17.75 GiB** | 16.01 | 0.7610 |
+
+Read the two floors together with the numbers: repeating one configuration is
+bit-identical (PSNR = inf), while `torch.compile` alone already moves the bf16
+output by 27.11 dB / 0.9620. The 16 dB / 0.77 MXFP4 gap is therefore the 4-bit
+weight cost, not measurement drift. Weight-only at 4 bits buys a 47% peak-memory
+cut for a detail-level quality loss (thin high-frequency structures smooth out);
+it is not a lossless drop-in.
+
+Packing, not inference, is where the device matters: the same 494 FLUX layers
+take ~7 s from a CPU-resident transformer with `mxfp4_quantize_device="auto"`
+versus ~11 min when packing on CPU. Reproduce the operator numbers with
+`python3 -m bench.kernels.bench_mxfp4`.
 
 ## Regional Quantization
 
