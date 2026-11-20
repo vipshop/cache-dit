@@ -43,7 +43,9 @@ _REGISTRY: dict[str, type[BasePass]] = {}
 
 # Default pass list applied when ``fused_mlp`` is enabled.  Callers that
 # need a custom subset can override via ``apply_passes(..., pass_names=...)``.
-DEFAULT_FUSED_MLP_PASSES: list[str] = ["fused_gelu_mlp", "fused_gelu_proj", "fused_swiglu_mlp"]
+DEFAULT_FUSED_MLP_PASSES: list[str] = [
+  "fused_gelu_mlp", "fused_gelu_proj", "fused_swiglu_mlp", "fused_geglu_mlp"
+]
 
 _FUSED_N_ALIGNMENT_NATIVE = 128
 _FUSED_N_ALIGNMENT_CUTE = 256
@@ -53,6 +55,7 @@ _TARGET_GROUPS = {
   "fused_gelu_mlp": "gelu_mlp",
   "fused_gelu_proj": "gelu_proj",
   "fused_swiglu_mlp": "swiglu",
+  "fused_geglu_mlp": "geglu_mlp",
 }
 
 
@@ -871,7 +874,7 @@ class FusedGeluProjPass(BasePass):
 class FusedSwiGluMlpPass(BasePass):
   """Fuse gated MLPs whose activation is ``value * silu(gate)``.
 
-  Two structures are detected, both after quantization has replaced their projections with
+  Three structures are detected after quantization has replaced their projections with
   ``SVDQW4A4Linear``:
 
   1. **Separate gate projection** — a standalone MLP owning one of these alias groups:
@@ -882,13 +885,16 @@ class FusedSwiGluMlpPass(BasePass):
      are skipped even when their projection names match.
   2. **Single gated projection** — a standard three-slot diffusers ``FeedForward`` whose ``net[0]``
      is a ``SwiGLU`` wrapper: one ``proj`` emits ``2 * inner`` columns split into value and gate.
+  3. **FLUX.2/3 gate-first FFN** — standalone ``Flux2FeedForward``/``Flux3FeedForward`` modules
+     whose packed ``linear_in`` stores ``[gate | value]`` and whose ``act_fn.gate_fn`` is SiLU.
+     Packed QKV+MLP blocks are deliberately excluded.
 
-  In both cases the gate is applied by the activation producer of ``down`` (see
+  In every case the gate is applied by the activation producer of ``down`` (see
   ``fused_swiglu_mlp``), which removes the standalone gating kernel and one ``[tokens, hidden]``
   HBM round trip. Geometry uses the producer's logical hidden contract rather than GEMM tile
-  widths. GEGLU blocks with a non-SiLU activation attribute are rejected and left for the future
-  activation-mode kernel. ``QwenImage21AdaLayerNormContinuous`` and similar modulation blocks are
-  never matched because they own at most one quantized projection.
+  widths. Value-first GEGLU is handled by ``FusedGegluMlpPass`` with exact/tanh GELU instead of
+  being misclassified as SwiGLU. ``QwenImage21AdaLayerNormContinuous`` and similar modulation
+  blocks are never matched because they own at most one quantized projection.
   """
 
   name = "fused_swiglu_mlp"
@@ -899,11 +905,15 @@ class FusedSwiGluMlpPass(BasePass):
       if hasattr(parent, _PASS_MARKER):
         continue
       target, reason = _select_named_gated(parent)
+      gate_first = False
       if target is None:
         if reason is not None:
           self._skip(f"fused_swiglu_mlp:{reason}")
           continue
         target = self._detect_gated_projection(parent)
+      if target is None:
+        target = self._detect_flux_gated_projection(parent)
+        gate_first = target is not None
       if target is None:
         continue
       up, gate, down = target
@@ -932,6 +942,7 @@ class FusedSwiGluMlpPass(BasePass):
         "gate": gate,
         "down": down,
         "parent_name": parent_name,
+        "gate_first": gate_first,
       })
     return targets
 
@@ -948,13 +959,35 @@ class FusedSwiGluMlpPass(BasePass):
       return None
     activation = net[0]
     if activation.__class__.__name__ == "GEGLU":
-      logger.debug("FeedForward uses GEGLU — skipping fusion (only SwiGLU is supported).")
+      logger.debug("FeedForward uses GEGLU; the dedicated GEGLU pass handles it.")
       return None
     if activation.__class__.__name__ != "SwiGLU":
       return None
     up = getattr(activation, "proj", None)
     down = net[2]
     if not isinstance(up, SVDQW4A4Linear) or not isinstance(down, SVDQW4A4Linear):
+      return None
+    return up, None, down
+
+  @staticmethod
+  def _detect_flux_gated_projection(
+    parent: nn.Module, ) -> tuple[nn.Module, None, nn.Module] | None:
+    """Detect FLUX.2/3's standalone ``[gate | value]`` SwiGLU feed-forward."""
+
+    from .linear import SVDQW4A4Linear
+
+    if parent.__class__.__name__ not in ("Flux2FeedForward", "Flux3FeedForward"):
+      return None
+    activation = getattr(parent, "act_fn", None)
+    if activation.__class__.__name__ not in ("Flux2SwiGLU", "Flux3SwiGLU"):
+      return None
+    if not _is_silu_activation(getattr(activation, "gate_fn", None)):
+      return None
+    up = getattr(parent, "linear_in", None)
+    down = getattr(parent, "linear_out", None)
+    if not isinstance(up, SVDQW4A4Linear) or not isinstance(down, SVDQW4A4Linear):
+      return None
+    if not _is_standalone_mlp(parent, (up, down), activation):
       return None
     return up, None, down
 
@@ -966,26 +999,105 @@ class FusedSwiGluMlpPass(BasePass):
       up = target["up"]
       gate = target["gate"]
       down = target["down"]
+      gate_act = target.get("gate_act", "silu")
+      gate_first = target.get("gate_first", False)
       if hasattr(parent, _PASS_MARKER):
         continue
 
       parent._svdq_fused_mlp_original_forward = parent.forward
       parent._svdq_fused_mlp_pass = self.name
 
-      def _patched_forward(self, hidden_states, *args, _up=up, _gate=gate, _down=down, **kwargs):
+      def _patched_forward(self,
+                           hidden_states,
+                           *args,
+                           _up=up,
+                           _gate=gate,
+                           _down=down,
+                           _gate_act=gate_act,
+                           _gate_first=gate_first,
+                           **kwargs):
         if args or kwargs:
           return self._svdq_fused_mlp_original_forward(hidden_states, *args, **kwargs)
-        return fused_swiglu_mlp(hidden_states, _up, _down, gate=_gate)
+        return fused_swiglu_mlp(hidden_states,
+                                _up,
+                                _down,
+                                gate=_gate,
+                                gate_act=_gate_act,
+                                gate_first=_gate_first)
 
       parent.forward = types.MethodType(_patched_forward, parent)
 
       logger.debug(
-        "Fused SwiGLU MLP patched: %s (up=%s, gate=%s, down=%s)",
+        "Fused gated MLP patched: %s (up=%s, gate=%s, down=%s, act=%s, gate_first=%s)",
         target["parent_name"],
         up.__class__.__name__,
         None if gate is None else gate.__class__.__name__,
         down.__class__.__name__,
+        gate_act,
+        gate_first,
       )
+
+
+@register_pass
+class FusedGegluMlpPass(FusedSwiGluMlpPass):
+  """Fuse diffusers ``FeedForward(GEGLU(...))`` with exact or tanh GELU gating.
+
+  GEGLU is value-first: ``proj(x).chunk(2, -1)`` yields value then gate. The
+  producer therefore uses the default column order and only changes the gate
+  activation. Exact GELU maps to ``gate_act='gelu'``; tanh maps to
+  ``gate_act='gelu_tanh'``. Upstream diffusers GEGLU is exact-only; the tanh
+  branch covers custom GEGLU-compatible modules exposing ``approximate='tanh'``.
+  The numerical and structural guards are shared
+  with the SwiGLU pass, but hits are reported as ``geglu_mlp``.
+  """
+
+  name = "fused_geglu_mlp"
+
+  def detect(self, module: nn.Module) -> list[dict[str, Any]]:
+    from .linear import SVDQW4A4Linear
+
+    targets: list[dict[str, Any]] = []
+    for parent_name, parent in module.named_modules():
+      if hasattr(parent, _PASS_MARKER) or parent.__class__.__name__ != "FeedForward":
+        continue
+      net = getattr(parent, "net", None)
+      if (not isinstance(net, nn.ModuleList) or len(net) != 3
+          or not isinstance(net[1], (nn.Dropout, nn.Identity))):
+        continue
+      activation = net[0]
+      if activation.__class__.__name__ != "GEGLU":
+        continue
+      approximate = _gelu_approximate(activation)
+      if approximate not in ("none", "tanh"):
+        self._skip(f"fused_geglu_mlp:unsupported_gelu_approximate:{approximate}")
+        continue
+      gate_act = "gelu_tanh" if approximate == "tanh" else "gelu"
+      up = getattr(activation, "proj", None)
+      down = net[2]
+      if not isinstance(up, SVDQW4A4Linear) or not isinstance(down, SVDQW4A4Linear):
+        continue
+
+      guard = _inference_guard(parent)
+      if guard is not None:
+        self._skip(f"fused_geglu_mlp:{guard}")
+        continue
+      if isinstance(up, SVDQW4A4ShardLinear) or isinstance(down, SVDQW4A4ShardLinear):
+        self._skip("fused_geglu_mlp:tp_sharded")
+        continue
+      geometry = _fused_swiglu_geometry(up, None, down)
+      if geometry is not None:
+        self._skip(f"fused_geglu_mlp:{geometry}")
+        continue
+      targets.append({
+        "parent": parent,
+        "up": up,
+        "gate": None,
+        "down": down,
+        "parent_name": parent_name,
+        "gate_act": gate_act,
+        "gate_first": False,
+      })
+    return targets
 
 
 __all__ = [
@@ -993,6 +1105,7 @@ __all__ = [
   "DEFAULT_FUSED_MLP_PASSES",
   "FusedGeluMlpPass",
   "FusedGeluProjPass",
+  "FusedGegluMlpPass",
   "FusedSwiGluMlpPass",
   "apply_passes",
   "get_pass",

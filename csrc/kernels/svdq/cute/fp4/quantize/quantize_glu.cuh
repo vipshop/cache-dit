@@ -2,6 +2,8 @@
 
 #include <cuda_bf16.h>
 
+#include "gate_activation.h"
+
 namespace svdq::cute_kernels {
 
 // Shared gated-linear-unit math for the CuTe activation producers.
@@ -21,20 +23,29 @@ static __device__ __forceinline__ float sigmoid_approx_bf16(float x) {
   return 1.0f / (1.0f + e);
 }
 
-// One BF16 pair of the gated product `value * silu(gate)`.
-//
-// `silu(gate)` is rounded to BF16 before the product, because that is the arithmetic the model
-// itself performs: both operands of a SwiGLU block are BF16 activations, so torch computes
-// `bf16(value * bf16(silu(gate)))`. Rounding once at the end instead would make the fused chain
-// differ from the `silu(gate) * value` it replaces by more than the FP4 quantization noise on a
-// measurable share of the codes.
-static __device__ __forceinline__ __nv_bfloat162 glu_pair(__nv_bfloat162 value,
-                                                          __nv_bfloat162 gate) {
+// Evaluate the selected gate activation and round it to BF16 before the product. This is the
+// arithmetic the model performs with two BF16 activation operands: `bf16(value * bf16(act(gate)))`.
+// SiLU keeps the producer's existing approximate sigmoid; the new GELU variants use the same
+// formulas as torch and rely on CUDA's full-precision tanhf/erff rather than an approximation.
+static __device__ __forceinline__ float gate_activation_bf16(float x, GateAct act) {
+  float activated;
+  if (act == GateAct::kSiLU) {
+    activated = x * sigmoid_approx_bf16(x);
+  } else if (act == GateAct::kGeluTanh) {
+    activated = 0.5f * x * (1.0f + tanhf(0.7978845608f * (x + 0.044715f * x * x * x)));
+  } else {
+    activated = 0.5f * x * (1.0f + erff(0.7071067812f * x));
+  }
+  return __bfloat162float(__float2bfloat16_rn(activated));
+}
+
+// One BF16 pair of the gated product `value * act(gate)`.
+static __device__ __forceinline__ __nv_bfloat162 glu_pair(__nv_bfloat162 value, __nv_bfloat162 gate,
+                                                          GateAct act) {
   const float2 v = __bfloat1622float2(value);
   const float2 g = __bfloat1622float2(gate);
-  const float2 s = __bfloat1622float2(__float22bfloat162_rn(
-    make_float2(g.x * sigmoid_approx_bf16(g.x), g.y * sigmoid_approx_bf16(g.y))));
-  return __float22bfloat162_rn(make_float2(v.x * s.x, v.y * s.y));
+  return __float22bfloat162_rn(
+    make_float2(v.x * gate_activation_bf16(g.x, act), v.y * gate_activation_bf16(g.y, act)));
 }
 
 }  // namespace svdq::cute_kernels

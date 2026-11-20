@@ -46,6 +46,7 @@ from .linear import SVDQW4A4Linear
 from .passes import apply_passes
 from .passes import BasePass
 from .passes import DEFAULT_FUSED_MLP_PASSES
+from .passes import FusedGegluMlpPass
 from .passes import FusedGeluMlpPass
 from .passes import FusedGeluProjPass
 from .passes import FusedSwiGluMlpPass
@@ -61,6 +62,7 @@ __all__ = [
   "apply_passes",
   "BasePass",
   "DEFAULT_FUSED_MLP_PASSES",
+  "FusedGegluMlpPass",
   "FusedGeluMlpPass",
   "fused_gelu_mlp",
   "fused_gelu_proj",

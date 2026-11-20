@@ -22,6 +22,7 @@ namespace cache_dit::svdq {
 
 // The host-side routing types still live in the global `svdq` namespace next to the kernel
 // implementations; pull them in so this file reads like the other `cache_dit::<family>` layers.
+using ::svdq::GateAct;
 using ::svdq::LoraLayout;
 using ::svdq::RuntimeKernel;
 using ::svdq::RuntimeParams;
@@ -47,6 +48,20 @@ LoraLayout parse_lora_layout(const std::string &lora_layout) {
     return LoraLayout::kRowMajor;
   }
   throw std::runtime_error("lora_layout must be 'native' or 'row_major', got '" + lora_layout +
+                           "'.");
+}
+
+GateAct parse_gate_act(const std::string &gate_act) {
+  if (gate_act == "silu") {
+    return GateAct::kSiLU;
+  }
+  if (gate_act == "gelu_tanh") {
+    return GateAct::kGeluTanh;
+  }
+  if (gate_act == "gelu") {
+    return GateAct::kGeluExact;
+  }
+  throw std::runtime_error("gate_act must be 'silu', 'gelu_tanh', or 'gelu', got '" + gate_act +
                            "'.");
 }
 
@@ -131,8 +146,13 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth,
                    std::optional<torch::Tensor> gate, bool fuse_glu, bool fp4,
-                   std::vector<float> lora_scales, const std::string &lora_layout) {
+                   std::vector<float> lora_scales, const std::string &lora_layout,
+                   const std::string &gate_act_name, bool gate_first) {
   const auto layout = parse_lora_layout(lora_layout);
+  const auto gate_act = parse_gate_act(gate_act_name);
+  if (gate_first && (!fuse_glu || gate.has_value())) {
+    throw std::runtime_error("gate_first=True is only valid with fuse_glu=True and gate=None.");
+  }
   TorchOpContext ctx;
   if (layout == LoraLayout::kRowMajor) {
     if (!fp4) {
@@ -170,12 +190,13 @@ void quantize_w4a4(std::optional<torch::Tensor> input, std::optional<torch::Tens
     }
     quantize(get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
              get_tensor(lora_act), get_tensor(smooth), std::move(lora_scales), lora_scratch,
-             get_tensor(gate), fuse_glu);
+             get_tensor(gate), fuse_glu, gate_act, gate_first);
     return;
   }
   ::svdq::native_kernels::quantize_w4a4(get_tensor(input), get_tensor(output), get_tensor(ascales),
                                         get_tensor(lora_down), get_tensor(lora_act),
-                                        get_tensor(smooth), get_tensor(gate), fuse_glu, fp4);
+                                        get_tensor(smooth), get_tensor(gate), fuse_glu, fp4,
+                                        gate_act, gate_first);
 }
 
 void register_svdq_ops(py::module_ &ops) {
@@ -189,7 +210,8 @@ void register_svdq_ops(py::module_ &ops) {
     .def("quantize_w4a4", &quantize_w4a4, py::arg("input"), py::arg("output"), py::arg("ascales"),
          py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"), py::arg("gate"),
          py::arg("fuse_glu"), py::arg("fp4"), py::arg("lora_scales"),
-         py::arg("lora_layout") = "native");
+         py::arg("lora_layout") = "native", py::arg("gate_act") = "silu",
+         py::arg("gate_first") = false);
 }
 
 }  // namespace cache_dit::svdq

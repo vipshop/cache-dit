@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include "common.h"
+#include "gate_activation.h"
 #include "utils.cuh"
 
 namespace svdq::native_kernels {
@@ -347,6 +348,18 @@ __device__ __forceinline__ static T silu(const T &x) {
   // x * sigmoid(x)
   return (T)((float)x * cuda_sigmoidf((float)x));
   // return (T)__fdividef((float)x, 1.0f + __expf((float)-x));
+}
+
+template <typename T>
+__device__ __forceinline__ static T apply_gate_act(const T &x, GateAct act) {
+  if (act == GateAct::kSiLU) {
+    return silu(x);
+  }
+  const float xf = static_cast<float>(x);
+  if (act == GateAct::kGeluTanh) {
+    return (T)(0.5f * xf * (1.0f + tanhf(0.7978845608f * (xf + 0.044715f * xf * xf * xf))));
+  }
+  return (T)(0.5f * xf * (1.0f + erff(0.7071067812f * xf)));
 }
 
 __device__ __forceinline__ static half2 h2div(half2 a, half2 b) {

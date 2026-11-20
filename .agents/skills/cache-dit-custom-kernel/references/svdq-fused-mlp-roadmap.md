@@ -199,6 +199,17 @@ kernel 的 dense SiLU 已存在（`fuse_silu`），但没有公开 pass。若真
 
 ## 6. P2：kernel activation 模式扩展
 
+状态（2026-11-20）：P2-1 producer `gate_act` 已落地 native/CuTe，支持 `silu`、`gelu_tanh`、exact `gelu`，并新增 packed `gate_first`。新增 `fused_geglu_mlp`（value-first GEGLU）和 FLUX.2/3 standalone gate-first SwiGLU pass。P2-2 非门控 qout exact GELU 尚未实现；FLUX.2 packed QKV+MLP 仍未覆盖。
+
+验收：producer 覆盖 native/CuTe、rank0/16/32/64/128、M=256、value-first/gate-first 与独立 gate；真实 diffusers GEGLU `FeedForward` 和 FLUX.2/3 FFN 的 pass/chain 对拍覆盖 M=260。上游 diffusers GEGLU 只有 exact 模式，tanh GEGLU 覆盖的是带 `approximate='tanh'` 的自定义兼容模块。CuTe fragment 路径的默认 SiLU 现在也先 BF16 舍入 activation 再乘 value，与模型舍入顺序一致，属于有意数值修正。CLI e2e 使用本地 FLUX.2-klein-4B 与 flux-3-image-klein、NVFP4 DQ rank32、4 steps、seed1234：
+
+| 模型 | 命中 | native unfused→fused | CuTe unfused→fused |
+|---|---:|---:|---:|
+| FLUX.2-klein-4B | 10 standalone FFN | 0.68→0.67 s | 0.67→0.68 s |
+| flux-3-image-klein | 28 standalone FFN | 0.91→0.89 s | 0.95→1.02 s |
+
+这些 e2e 时间不构成普遍性能声明。DQ 的跨进程随机低秩分解使图像 PSNR 不能直接用作 pass 对拍；同配置 unfused 重跑已用于确认该噪声量级，正确性以同层 producer/chain 数值为准。
+
 只在前两项完成、覆盖率统计稳定后投入。优先做与真实模型明确相关的模式，不为"通用性"预造变体。
 
 ### P2-1. Producer 的 gate activation 枚举

@@ -165,28 +165,28 @@ struct W4A4QuantizeRankKernel {
     return value;
   }
 
-  /// Gated-linear-unit product of one fragment: `value * silu(gate)`. The value half comes from
-  /// `input`, the gate half either from a separate tensor or from the second half of the same row,
-  /// which is the diffusers SwiGLU column order. The pair math is shared with `quantize_uni.cu`.
-  static __device__ __forceinline__ void apply_glu(PackedBF16 &value, PackedBF16 const &gate) {
+  /// Gated-linear-unit product of one fragment: `value * gate_act(gate)`. Gate can be separate or
+  /// packed beside value; gate_first selects the packed column order. Shared with quantize_uni.cu.
+  static __device__ __forceinline__ void apply_glu(PackedBF16 &value, PackedBF16 const &gate,
+                                                   GateAct gate_act) {
 #pragma unroll
     for (int i = 0; i < 4; ++i) {
-      value.data[i] = glu_pair(value.data[i], gate.data[i]);
+      value.data[i] = glu_pair(value.data[i], gate.data[i], gate_act);
     }
   }
 
   /// Fragment-shaped variant for the CuTe TiledCopy/TiledMMA path, which stores the same values in
   /// an atom layout rather than in four packed pairs.
   template <class Frag>
-  static __device__ __forceinline__ void apply_glu_fragment(Frag &value, Frag const &gate) {
+  static __device__ __forceinline__ void apply_glu_fragment(Frag &value, Frag const &gate,
+                                                            GateAct gate_act) {
     Element *v = value.data();
     Element const *g = gate.data();
     const int count = size(value);
     for (int i = 0; i < count; ++i) {
-      // Element is cutlass::bfloat16_t, so go through float for both directions.
-      const float gf = static_cast<float>(g[i]);
-      const float value_f = static_cast<float>(v[i]);
-      v[i] = Element(value_f * gf * sigmoid_approx_bf16(gf));
+      // Round the activation before multiplying, matching the model's two BF16 operands.
+      const float activated = gate_activation_bf16(static_cast<float>(g[i]), gate_act);
+      v[i] = Element(static_cast<float>(v[i]) * activated);
     }
   }
 
@@ -337,12 +337,13 @@ struct W4A4QuantizeRankKernel {
   template <class TiledMma, class CopyA>
   static __device__ __forceinline__ auto load_a_glu(const __nv_bfloat16 *input, int input_stride,
                                                     const __nv_bfloat16 *gate, int gate_stride,
-                                                    int row0, int k0, bool valid, Element *stage,
-                                                    TiledMma const &mma, CopyA const &copy_a) {
+                                                    GateAct gate_act, int row0, int k0, bool valid,
+                                                    Element *stage, TiledMma const &mma,
+                                                    CopyA const &copy_a) {
     auto value = load_a(input, input_stride, row0, k0, valid, stage, mma, copy_a);
     if (gate != nullptr) {
       auto gated = load_a(gate, gate_stride, row0, k0, valid, stage, mma, copy_a);
-      apply_glu_fragment(value, gated);
+      apply_glu_fragment(value, gated, gate_act);
     }
     return value;
   }
@@ -485,7 +486,7 @@ struct W4A4QuantizeRankKernel {
 template <int kRankTiles, int kWarps, int kMaxSlices = 2, bool kAsyncA = true>
 __global__ void quantize_w4a4_split_k_kernel(
   const __nv_bfloat16 *__restrict__ input, const __nv_bfloat16 *__restrict__ gate, int gate_stride,
-  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+  GateAct gate_act, int input_stride, const __nv_bfloat16 *__restrict__ smooth,
   const __nv_bfloat16 *__restrict__ lora_down, uint8_t *__restrict__ qact,
   uint8_t *__restrict__ ascales, float *__restrict__ lora_scratch, int M, int K) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
@@ -537,8 +538,8 @@ __global__ void quantize_w4a4_split_k_kernel(
         return Kernel::read_a(input, input_stride, row0, k_begin + slice * 64, valid, stage, mma);
       }
     }
-    return Kernel::load_a_glu(input, input_stride, gate, gate_stride, row0, k_begin + slice * 64,
-                              valid, stage, mma, copy_a);
+    return Kernel::load_a_glu(input, input_stride, gate, gate_stride, gate_act, row0,
+                              k_begin + slice * 64, valid, stage, mma, copy_a);
   };
   // Keep A fragments in registers across quantization and LoRA MMA. Synchronous schedules safely
   // reuse a_base0 after load_a's trailing warp barrier; asynchronous schedules use the two stages.
@@ -643,7 +644,8 @@ template <int kRankTiles, int kWarps, int kReductionBuffers, int kRankSplits>
 __global__ void __launch_bounds__(kWarps * 32, 1)
   quantize_w4a4_fused_lora_kernel(const __nv_bfloat16 *__restrict__ input,
                                   const __nv_bfloat16 *__restrict__ gate, int gate_stride,
-                                  int input_stride, const __nv_bfloat16 *__restrict__ smooth,
+                                  GateAct gate_act, int input_stride,
+                                  const __nv_bfloat16 *__restrict__ smooth,
                                   const __nv_bfloat16 *__restrict__ lora_down,
                                   uint8_t *__restrict__ qact, uint8_t *__restrict__ ascales,
                                   __nv_bfloat16 *__restrict__ lora_act, LoraScaleParams scales,
@@ -684,8 +686,8 @@ __global__ void __launch_bounds__(kWarps * 32, 1)
   // fragment remains live across both phases, so each input tile is read from global memory once.
   for (int k0 = warp * 64; k0 < K; k0 += kWarps * 64) {
     Kernel::issue_b_warp(lora_down, kRank, k0, rank0, 0, b_base);
-    auto raw = Kernel::load_a_glu(input, input_stride, gate, gate_stride, row0, k0, true, a_base,
-                                  mma, copy_a);
+    auto raw = Kernel::load_a_glu(input, input_stride, gate, gate_stride, gate_act, row0, k0, true,
+                                  a_base, mma, copy_a);
     if (kRankSplits == 1 || blockIdx.y == 0) {
       __nv_bfloat162 smooth0[4];
       __nv_bfloat162 smooth1[4];
@@ -857,6 +859,7 @@ struct QuantizeLaunchArgs {
   // `gate_stride`; the host resolves the second-half form to `input + K` before filling the struct.
   const __nv_bfloat16 *gate;
   int gate_stride;
+  GateAct gate_act;
   int input_stride;
   const __nv_bfloat16 *smooth;
   const __nv_bfloat16 *lora_down;
@@ -894,9 +897,9 @@ void launch_quantize_split_k(QuantizeLaunchArgs const &args, float *scratch) {
   checkCUDA(
     cudaMemsetAsync(scratch, 0, static_cast<size_t>(args.M) * kRank * sizeof(float), args.stream));
   kernel<<<dim3(args.M / (kWarps * 32), (args.K + kKChunk - 1) / kKChunk), dim3(kWarps * 32),
-           kSmemBytes, args.stream>>>(args.input, args.gate, args.gate_stride, args.input_stride,
-                                      args.smooth, args.lora_down, args.qact, args.ascales, scratch,
-                                      args.M, args.K);
+           kSmemBytes, args.stream>>>(args.input, args.gate, args.gate_stride, args.gate_act,
+                                      args.input_stride, args.smooth, args.lora_down, args.qact,
+                                      args.ascales, scratch, args.M, args.K);
   const int total = args.M * kRank;
   finalize_lora_bf16_kernel<kRankTiles, kWarps>
     <<<(total / 8 + 255) / 256, 256, 0, args.stream>>>(scratch, args.lora_act, args.scales, total);
@@ -923,8 +926,8 @@ void launch_quantize_fused(QuantizeLaunchArgs const &args) {
       cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, kSmemBytes));
   }
   kernel<<<dim3(args.M / 32, kRankSplits), dim3(kWarps * 32), kSmemBytes, args.stream>>>(
-    args.input, args.gate, args.gate_stride, args.input_stride, args.smooth, args.lora_down,
-    args.qact, args.ascales, args.lora_act, args.scales, args.M, args.K);
+    args.input, args.gate, args.gate_stride, args.gate_act, args.input_stride, args.smooth,
+    args.lora_down, args.qact, args.ascales, args.lora_act, args.scales, args.M, args.K);
 }
 
 // Host-side entry instantiated by quantize_r32/r64/r128. kRankTiles is fixed by the including TU,
@@ -940,7 +943,7 @@ template <int kRankTiles>
 void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
                    svdq::Tensor lora_down, svdq::Tensor lora_act, svdq::Tensor smooth,
                    std::vector<float> lora_scales, svdq::Tensor lora_scratch, svdq::Tensor gate,
-                   bool fuse_glu) {
+                   bool fuse_glu, GateAct gate_act, bool gate_first) {
   static_assert(kRankTiles == 2 || kRankTiles == 4 || kRankTiles == 8);
   constexpr int kRank = kRankTiles * 16;
   W4A4QuantizeRankKernel::require(
@@ -962,6 +965,8 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
   // value and gate halves side by side and therefore halves it.
   const bool split_gate = fuse_glu && gate.valid();
   const int K = (fuse_glu && !split_gate) ? input_cols / 2 : input_cols;
+  W4A4QuantizeRankKernel::require(!gate_first || (fuse_glu && !split_gate),
+                                  "gate_first requires a single packed GLU tensor");
   if (split_gate) {
     W4A4QuantizeRankKernel::require(
       gate.dtype() == svdq::Tensor::BF16 && gate.is_contiguous() && gate.shape[-1] == K &&
@@ -990,13 +995,16 @@ void quantize_cute(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales
 
   LoraScaleParams scales{};
   for (size_t i = 0; i < lora_scales.size(); ++i) scales.values[i] = lora_scales[i];
-  const __nv_bfloat16 *input_ptr = input.data_ptr<__nv_bfloat16>();
-  const __nv_bfloat16 *gate_ptr =
-    split_gate ? gate.data_ptr<__nv_bfloat16>() : (fuse_glu ? input_ptr + K : nullptr);
+  const __nv_bfloat16 *input_base = input.data_ptr<__nv_bfloat16>();
+  const __nv_bfloat16 *input_ptr = input_base + (gate_first ? K : 0);
+  const __nv_bfloat16 *gate_ptr = split_gate
+                                    ? gate.data_ptr<__nv_bfloat16>()
+                                    : (fuse_glu ? input_base + (gate_first ? 0 : K) : nullptr);
   const QuantizeLaunchArgs args{
     input_ptr,
     gate_ptr,
     split_gate ? gate.shape[-1] : input_cols,
+    gate_act,
     input_cols,
     smooth.data_ptr<__nv_bfloat16>(),
     lora_down.data_ptr<__nv_bfloat16>(),

@@ -288,16 +288,19 @@ class SVDQW4A4Linear(nn.Module):
                x: torch.Tensor,
                pad_size: int = 256,
                fuse_glu: bool = False,
-               gate: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+               gate: torch.Tensor | None = None,
+               gate_act: str = "silu",
+               gate_first: bool = False) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Quantize activations and compute the low-rank down-projection input.
 
     :param x: Flattened activations with shape `[tokens, in_features]`. With `fuse_glu` and no
       `gate` this is twice as wide as the quantized output.
     :param pad_size: Token padding multiple required by the fused activation
       quantizer.
-    :param fuse_glu: Whether to gate the activations as `x * silu(gate)` before quantizing. The GLU
-      producer only exists on the native layout, which is what a fused SwiGLU chain uses.
-    :param gate: Optional gating half with the quantized width.
+    :param fuse_glu: Whether to gate activations as `value * act(gate)` before quantizing.
+    :param gate: Optional separate gating half with the quantized width.
+    :param gate_act: Gate activation: `'silu'`, `'gelu_tanh'`, or exact `'gelu'`.
+    :param gate_first: Use `[gate | value]` instead of `[value | gate]` for packed GLU input.
     :returns: A tuple `(quantized_x, ascales, lora_act_out)` ready for
       `forward_quant`.
     """
@@ -323,6 +326,8 @@ class SVDQW4A4Linear(nn.Module):
         lora_layout="row_major",
         fp4=True,
         pad_size=pad_size,
+        gate_act=gate_act,
+        gate_first=gate_first,
       )
 
     # The native producer owns the fast K-split LoRA-down reduction. Its packed FP32 fragment D is
@@ -337,6 +342,8 @@ class SVDQW4A4Linear(nn.Module):
       lora_layout="native",
       fp4=self.precision == "nvfp4",
       pad_size=pad_size,
+      gate_act=gate_act,
+      gate_first=gate_first,
     )
 
   def _load_from_state_dict(self, *args, **kwargs) -> None:
