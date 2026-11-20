@@ -219,6 +219,42 @@ Requirements and limits:
 - `nvfp4_weight_only` continues to use TorchAO, and `AUTO` still routes plain
   `nvfp4` to TorchAO. Only an explicit `backend="cache_dit"` selects this path.
 
+### Native NVFP4 Fused MLP
+
+Set `QuantizeConfig(fp4_fused_mlp=True)` or pass `--fp4-fused-mlp` with
+`--quantize-backend cache_dit` to enable structural GELU and SwiGLU fusion after
+online NVFP4 module replacement. The option is disabled by default and is
+rejected for TorchAO, SVDQ, and native FP8 configurations.
+
+```python
+config = QuantizeConfig(
+  quant_type="nvfp4",
+  backend="cache_dit",
+  fp4_fused_mlp=True,
+)
+cache_dit.quantize(pipe.transformer, config)
+```
+
+```bash
+python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
+  --nvfp4 --quantize-backend cache_dit --fp4-fused-mlp --compile
+```
+
+The supported structures match native FP8: standard diffusers FeedForward with
+exact or tanh GELU, single-stream `proj_mlp -> GELU -> concat` blocks such as
+FLUX, and SwiGLU with either separate value/gate projections or one half-split
+projection. Logs report each pass's target count; enabling the option with no
+supported target raises an error.
+
+For GELU, the first GEMM applies its level-1 scales, bias, and activation in the
+CUTLASS EVT. The second layer still computes its original row global scale and
+per-16 block scales, so this path does not claim dense-store elimination. For
+SwiGLU, the next layer's producer computes `value * silu(gate)`, both scale
+levels, and E2M1 packing without materializing a separate gated BF16 tensor.
+The producer retains BF16 SiLU/multiplication rounding under eager execution,
+full-graph compile, and CUDA Graph capture. `torch._scaled_mm` has no public
+activation epilogue, so activation with `use_native=False` raises explicitly.
+
 ## Regional Quantization
 
 Cache-DiT also supports <span style="color:green;">regional quantization</span>, which allows users to quantize only the repeated blocks in a transformer. This can be useful for better balancing the <span style="color:#c77dff;">precision</span> and efficiency. Users can specify the blocks to be quantized via the <span style="color:green;">regional_quantize</span> and <span style="color:green;">repeated_blocks</span> arguments in <span style="color:#c77dff;">QuantizeConfig</span>. For example, to quantize repeated blocks of the Flux2's transformer:

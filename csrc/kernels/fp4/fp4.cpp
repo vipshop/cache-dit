@@ -6,7 +6,9 @@ namespace cache_dit::fp4 {
 
 void register_fp4_ops(pybind11::module_& ops) {
   ops.def("fp4_quantize", &fp4_quantize);
+  ops.def("fp4_quantize_swiglu", &fp4_quantize_swiglu);
   ops.def("fp4_gemm", &fp4_gemm);
+  ops.def("fp4_gemm_activation", &fp4_gemm_activation);
 }
 
 }  // namespace cache_dit::fp4

@@ -172,7 +172,36 @@ class NVFP4Linear(nn.Module):
     module._is_inner_quantized = True
     return module
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
+  def forward_quant(
+    self,
+    qx: torch.Tensor,
+    sx: torch.Tensor,
+    gx: torch.Tensor,
+    leading_shape: tuple[int, ...],
+    activation: str | None = None,
+  ) -> torch.Tensor:
+    """Evaluate the two-level NVFP4 GEMM from an already quantized activation.
+
+    :param qx: Packed E2M1 activation with this layer's padded input width.
+    :param sx: Canonical UE4M3 activation block scales.
+    :param gx: Per-row FP32 activation global scales.
+    :param leading_shape: Original activation dimensions before flattening.
+    :param activation: Optional exact/tanh GELU epilogue.
+    :returns: BF16 output with its original leading dimensions and logical width.
+    """
+
+    out = fp4_gemm(qx,
+                   self.qweight,
+                   sx,
+                   self.wscales,
+                   gx,
+                   self.wglobal_scales,
+                   bias=self.bias,
+                   activation=activation)
+    out = out[:, :self.out_features]
+    return out.reshape(*leading_shape, self.out_features)
+
+  def forward(self, x: torch.Tensor, activation: str | None = None) -> torch.Tensor:
     """Dynamically quantize activations and run the two-level NVFP4 GEMM.
 
     Leading dimensions are flattened only for quantization/GEMM and restored
@@ -180,6 +209,7 @@ class NVFP4Linear(nn.Module):
     call; weight buffers are read-only and reused across calls.
 
     :param x: BF16 activation ``[..., in_features]`` on CUDA.
+    :param activation: Optional ``gelu`` or ``gelu_tanh`` GEMM epilogue.
     :returns: BF16 output ``[..., out_features]``.
     """
 
@@ -194,9 +224,7 @@ class NVFP4Linear(nn.Module):
     if self.quantized_in_features != self.in_features:
       flat = F.pad(flat, (0, self.quantized_in_features - self.in_features))
     qx, sx, gx = fp4_quantize(flat)
-    out = fp4_gemm(qx, self.qweight, sx, self.wscales, gx, self.wglobal_scales, bias=self.bias)
-    out = out[:, :self.out_features]
-    return out.reshape(*leading_shape, self.out_features)
+    return self.forward_quant(qx, sx, gx, leading_shape, activation=activation)
 
   def dequantize_weight(self) -> torch.Tensor:
     """Reconstruct the dense weight for diagnostics.

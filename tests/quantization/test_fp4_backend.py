@@ -58,6 +58,69 @@ class _Transformer(nn.Module):
     return self.modulation(x)
 
 
+class _MLPModel(nn.Module):
+
+  def __init__(self, block: nn.Module) -> None:
+    super().__init__()
+    self.block = block
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.block(x)
+
+
+class _SingleGeluBlock(nn.Module):
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.proj_mlp = nn.Linear(256, 1024)
+    self.act_mlp = nn.GELU(approximate="tanh")
+    self.proj_out = nn.Linear(1280, 256)
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    mlp = self.act_mlp(self.proj_mlp(x))
+    return self.proj_out(torch.cat((x, mlp), dim=-1))
+
+
+class _DoubleGeluBlock(_SingleGeluBlock):
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.act_extra = nn.GELU(approximate="tanh")
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    mlp = self.act_extra(self.act_mlp(self.proj_mlp(x)))
+    return self.proj_out(torch.cat((x, mlp), dim=-1))
+
+
+class _SeparateSwigluBlock(nn.Module):
+
+  def __init__(self, hidden: int = 1024) -> None:
+    super().__init__()
+    self.proj = nn.Linear(256, hidden)
+    self.gate_layer = nn.Linear(256, hidden)
+    self.out = nn.Linear(hidden, 256)
+    self.activation_fn = nn.SiLU()
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    return self.out(self.activation_fn(self.gate_layer(x)) * self.proj(x))
+
+
+def _fused_mlp_model(kind: str, hidden: int = 1024) -> _MLPModel:
+  from diffusers.models.attention import FeedForward
+
+  if kind == "gelu_mlp":
+    block = FeedForward(dim=256, activation_fn="gelu-approximate")
+  elif kind == "gelu_proj":
+    block = _SingleGeluBlock()
+  elif kind == "swiglu":
+    block = _SeparateSwigluBlock(hidden)
+  elif kind == "swiglu_half_split":
+    block = FeedForward(dim=256, activation_fn="swiglu", inner_dim=hidden)
+  else:
+    raise ValueError(kind)
+  return _MLPModel(block)
+
+
 def _plain_state(module: nn.Module) -> dict:
   """Clone float weights before quantization.
 
@@ -214,3 +277,123 @@ def test_native_fp4_load_is_rejected() -> None:
   config = QuantizeConfig(backend="cache_dit", quant_type="nvfp4")
   with pytest.raises(ValueError, match="online-only"):
     load(module, config)
+
+
+@requires_native_fp4
+@pytest.mark.parametrize("kind", ["gelu_mlp", "gelu_proj", "swiglu", "swiglu_half_split"])
+def test_native_fp4_fused_mlp_matches_unfused_and_compiles(kind: str, monkeypatch) -> None:
+  monkeypatch.setattr(torch._dynamo.config, "recompile_limit", 64)
+  torch.manual_seed(51)
+  model = _fused_mlp_model(kind).cuda().to(torch.bfloat16).eval()
+  reference = _fused_mlp_model(kind).cuda().to(torch.bfloat16).eval()
+  reference.load_state_dict(_plain_state(model))
+  quantize(reference,
+           QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
+  quantize(
+    model,
+    QuantizeConfig(backend="cache_dit",
+                   quant_type="nvfp4",
+                   regional_quantize=False,
+                   fp4_fused_mlp=True))
+  expected_pass = "swiglu" if kind.startswith("swiglu") else kind
+  assert model._fp4_fused_mlp_targets[expected_pass] == 1
+  assert sum(model._fp4_fused_mlp_targets.values()) == 1
+
+  x = torch.randn(2, 3, 256, dtype=torch.bfloat16, device="cuda")
+  with torch.no_grad():
+    expected = reference(x)
+    actual = model(x)
+  rel_l2 = ((actual.float() - expected.float()).norm() / expected.float().norm().clamp_min(1e-12))
+  assert float(rel_l2) < 2e-3
+
+  compiled = torch.compile(lambda value: model(value), fullgraph=True)
+  with torch.no_grad():
+    compiled_actual = compiled(x)
+  compiled_rel_l2 = ((compiled_actual.float() - expected.float()).norm() /
+                     expected.float().norm().clamp_min(1e-12))
+  assert float(compiled_rel_l2) < 2e-3
+
+
+@requires_native_fp4
+@pytest.mark.parametrize("kind", ["swiglu", "swiglu_half_split"])
+def test_native_fp4_fused_swiglu_pads_unaligned_hidden(kind: str, monkeypatch) -> None:
+  monkeypatch.setattr(torch._dynamo.config, "recompile_limit", 64)
+  torch.manual_seed(52)
+  model = _fused_mlp_model(kind, hidden=960).cuda().to(torch.bfloat16).eval()
+  reference = _fused_mlp_model(kind, hidden=960).cuda().to(torch.bfloat16).eval()
+  reference.load_state_dict(_plain_state(model))
+  quantize(reference,
+           QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False))
+  quantize(
+    model,
+    QuantizeConfig(backend="cache_dit",
+                   quant_type="nvfp4",
+                   regional_quantize=False,
+                   fp4_fused_mlp=True))
+  x = torch.randn(2, 3, 256, dtype=torch.bfloat16, device="cuda")
+  with torch.no_grad():
+    expected = reference(x)
+    actual = model(x)
+    compiled = torch.compile(lambda value: model(value), fullgraph=True)
+    compiled_actual = compiled(x)
+  assert torch.equal(actual, expected)
+  assert torch.equal(compiled_actual, expected)
+
+
+@requires_native_fp4
+def test_native_fp4_fused_mlp_regional_and_idempotent() -> None:
+  from cache_dit.quantization.fp4.passes import apply_fused_mlp_passes
+
+  model = _fused_mlp_model("gelu_mlp").cuda().to(torch.bfloat16).eval()
+  model._repeated_blocks = ["FeedForward"]
+  quantize(model, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", fp4_fused_mlp=True))
+  assert model._fp4_fused_mlp_targets["gelu_mlp"] == 1
+  original_forward = model.block.forward
+  assert sum(apply_fused_mlp_passes(model).values()) == 0
+  assert model.block.forward is original_forward
+  x = torch.randn(2, 256, dtype=torch.bfloat16, device="cuda")
+  assert model(x).shape == (2, 256)
+
+
+@requires_native_fp4
+def test_native_fp4_fused_mlp_structure_guards() -> None:
+  from cache_dit.quantization.fp4.passes import apply_fused_mlp_passes
+
+  config = QuantizeConfig(backend="cache_dit", quant_type="nvfp4", regional_quantize=False)
+  double_gelu = _MLPModel(_DoubleGeluBlock()).cuda().to(torch.bfloat16).eval()
+  quantize(double_gelu, config)
+  assert sum(apply_fused_mlp_passes(double_gelu).values()) == 0
+
+  dropout = _fused_mlp_model("gelu_mlp").cuda().to(torch.bfloat16).eval()
+  dropout.block.net[1].p = 0.1
+  quantize(dropout, config)
+  assert sum(apply_fused_mlp_passes(dropout).values()) == 0
+
+  training = _fused_mlp_model("gelu_mlp").cuda().to(torch.bfloat16).train()
+  quantize(training, config)
+  assert sum(apply_fused_mlp_passes(training).values()) == 0
+
+
+@requires_native_fp4
+def test_native_fp4_fused_mlp_rejects_zero_targets() -> None:
+  model = _Transformer().cuda().to(torch.bfloat16).eval()
+  with pytest.raises(ValueError, match="found no supported"):
+    quantize(model, QuantizeConfig(backend="cache_dit", quant_type="nvfp4", fp4_fused_mlp=True))
+
+
+def test_fp4_fused_mlp_config_strify_and_validation() -> None:
+  config = QuantizeConfig(
+    backend="cache_dit",
+    quant_type="nvfp4",
+    fp4_fused_mlp=True,
+    components_to_quantize={"transformer": {
+      "fp4_fused_mlp": True
+    }},
+  )
+  assert config.strify() == "<transformer:nvfp4_cache_dit_fused_mlp>"
+  expanded = QuantizeConfig.expand_configs(config)
+  assert len(expanded) == 1 and expanded[0].fp4_fused_mlp is True
+  with pytest.raises(ValueError, match="fp4_fused_mlp=True requires"):
+    QuantizeConfig(backend="torchao", quant_type="nvfp4", fp4_fused_mlp=True)
+  with pytest.raises(ValueError, match="fp4_fused_mlp=True requires"):
+    QuantizeConfig(backend="cache_dit", quant_type="float8_per_row", fp4_fused_mlp=True)
