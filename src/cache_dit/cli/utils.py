@@ -827,6 +827,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable native MXFP4 weight-only quantization for transformer",
   )
   parser.add_argument(
+    "--mxfp4-quantize-device",
+    type=str,
+    default="auto",
+    choices=["auto", "cpu", "cuda"],
+    help=("Device used for the one-time MXFP4 weight packing. The default 'auto' packs on the "
+          "accelerator when available, so CPU-resident models still quantize fast before the "
+          "final move to the GPU."),
+  )
+  parser.add_argument(
     "--svdq-int4-r32-dq",
     "--svdq-r32",
     action="store_true",
@@ -2447,6 +2456,7 @@ def maybe_quantize_transformer(
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
           fp4_fused_mlp=bool(args.fp4_fused_mlp),
+          mxfp4_quantize_device=args.mxfp4_quantize_device,
           verbose=args.quantize_verbose,
         ),
       )
@@ -2467,6 +2477,7 @@ def maybe_quantize_transformer(
           svdq_kwargs=_resolve_cli_svdq_kwargs(),
           fp8_fused_mlp=bool(args.fp8_fused_mlp),
           fp4_fused_mlp=bool(args.fp4_fused_mlp),
+          mxfp4_quantize_device=args.mxfp4_quantize_device,
           verbose=args.quantize_verbose,
         ),
       )

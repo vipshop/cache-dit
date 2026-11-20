@@ -1,6 +1,5 @@
 # coding=utf-8
 # Copyright (c) Cache-DiT Contributors. All rights reserved.
-
 """MXFP4 Linear: weights stored as MXFP4 (E2M1 + E8M0 group scales).
 
 The default compute path dequantizes weights to the activation dtype and calls
@@ -15,6 +14,7 @@ Environment controls:
 """
 
 import os
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -25,19 +25,27 @@ _CACHE_DEQUANT = os.environ.get("CACHE_DIT_MXFP4_CACHE_DEQUANT", "0") == "1"
 
 
 class MXFP4Linear(torch.nn.Module):
-  """Drop-in replacement of ``torch.nn.Linear`` with MXFP4 weight storage."""
+  """Drop-in replacement of ``torch.nn.Linear`` with MXFP4 weight storage.
+
+  ``quantize_device`` only selects where the one-time packing math runs; the
+  packed buffers and bias always stay on the source linear's device, so
+  quantizing a CPU-resident module never moves it.
+  """
 
   def __init__(self,
                linear: torch.nn.Linear,
                block_size: int = MXFP4_BLOCK_SIZE,
-               weight_only: bool = False):
+               weight_only: bool = False,
+               quantize_device: Optional[torch.device] = None):
     super().__init__()
     out_f, in_f = linear.weight.shape
     if in_f % (2 * block_size) != 0:
       raise ValueError(f"Linear in_features={in_f} is not divisible by {2 * block_size}, "
                        "cannot MXFP4-pack along K.")
 
-    mx = MXFP4Tensor.from_weight(linear.weight.detach(), block_size=block_size)
+    mx = MXFP4Tensor.from_weight(linear.weight.detach(),
+                                 block_size=block_size,
+                                 device=quantize_device)
     self.register_buffer("weight_packed", mx.packed)
     self.register_buffer("weight_scales", mx.scales)
     if linear.bias is not None:

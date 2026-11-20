@@ -14,7 +14,8 @@
 
 from .linear import MXFP4Linear
 from .ptq import quantize_mxfp4
-from .tensor import MXFP4_BLOCK_SIZE, MXFP4Tensor, dequantize_mxfp4, mxfp4_is_available, quantize_mxfp4_weight
+from .tensor import (MXFP4_BLOCK_SIZE, MXFP4Tensor, dequantize_mxfp4, mxfp4_is_available,
+                     quantize_mxfp4_weight, resolve_mxfp4_quantize_device)
 
 __all__ = [
   "MXFP4_BLOCK_SIZE",
@@ -24,4 +25,5 @@ __all__ = [
   "dequantize_mxfp4",
   "quantize_mxfp4",
   "mxfp4_is_available",
+  "resolve_mxfp4_quantize_device",
 ]

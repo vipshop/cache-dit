@@ -1,6 +1,5 @@
 # coding=utf-8
 # Copyright (c) Cache-DiT Contributors. All rights reserved.
-
 """MXFP4 post-training quantization entry (native Cache-DiT backend)."""
 
 from typing import Dict, List, Optional
@@ -9,6 +8,7 @@ import torch
 
 from ..config import QuantizeConfig
 from .linear import MXFP4Linear
+from .tensor import resolve_mxfp4_quantize_device
 from ...logger import init_logger
 
 logger = init_logger(__name__)
@@ -30,6 +30,7 @@ def _replace_linears(
   block_size = int(getattr(quantize_config, "mxfp4_block_size", 32) or 32)
   weight_only = quantize_config.quant_type.endswith("weight_only")
   exclude_layers = list(quantize_config.exclude_layers or [])
+  requested_device = getattr(quantize_config, "mxfp4_quantize_device", "auto")
 
   for name, submod in list(container.named_modules()):
     if not isinstance(submod, torch.nn.Linear):
@@ -45,8 +46,14 @@ def _replace_linears(
       continue
     parent_path, _, attr = name.rpartition(".")
     parent = container.get_submodule(parent_path) if parent_path else container
-    quantized = MXFP4Linear(submod, block_size=block_size, weight_only=weight_only)
-    quantized.to(device=submod.weight.device)
+    # Pack on the accelerator when one is available and keep the packed buffers
+    # on the weight's original device, so quantization never moves the module.
+    quantize_device = resolve_mxfp4_quantize_device(submod.weight, requested_device)
+    stats["device"] = stats["device"] or str(quantize_device)
+    quantized = MXFP4Linear(submod,
+                            block_size=block_size,
+                            weight_only=weight_only,
+                            quantize_device=quantize_device)
     setattr(parent, attr, quantized)
     stats["quantized"] += 1
 
@@ -67,11 +74,12 @@ def quantize_mxfp4(
                    module.__class__.__name__, getattr(module, "_quantize_type", None))
     return module
 
-  stats = {"quantized": 0, "skipped": 0}
+  stats = {"quantized": 0, "skipped": 0, "device": ""}
   skipped_names: List[str] = []
 
-  repeated_blocks: Optional[List[str]] = (list(getattr(quantize_config, "repeated_blocks", None) or
-                                               getattr(module, "_repeated_blocks", None) or []))
+  repeated_blocks: Optional[List[str]] = (list(
+    getattr(quantize_config, "repeated_blocks", None) or getattr(module, "_repeated_blocks", None)
+    or []))
   if quantize_config.regional_quantize and repeated_blocks:
     containers = [m for m in module.modules() if m.__class__.__name__ in repeated_blocks]
     if not containers:
@@ -84,9 +92,10 @@ def quantize_mxfp4(
     _replace_linears(container, quantize_config, stats, skipped_names)
 
   logger.info(
-    "MXFP4 quantization done for %s: %d Linear layers quantized (block_size=%d), %d skipped.",
-    module.__class__.__name__, stats["quantized"],
-    int(getattr(quantize_config, "mxfp4_block_size", 32) or 32), stats["skipped"])
+    "MXFP4 quantization done for %s: %d Linear layers quantized (block_size=%d), "
+    "%d skipped, packing on %s.", module.__class__.__name__, stats["quantized"],
+    int(getattr(quantize_config, "mxfp4_block_size", 32) or 32), stats["skipped"], stats["device"]
+    or "no layer")
   if quantize_config.verbose and skipped_names:
     logger.info("MXFP4 skipped layers: %s", skipped_names[:32])
 

@@ -516,6 +516,11 @@ class QuantizeConfig:
   # the field is exposed for future variants but 32 is the only spec-compliant
   # value today (validated in `quantize_mxfp4`).
   mxfp4_block_size: int = 32
+  # Device used for the one-time MXFP4 weight packing. ``auto`` packs on the
+  # accelerator when CUDA is available (250-300x faster than CPU) and falls
+  # back to the weight device otherwise; the packed buffers always return to
+  # the weight's original device. Use ``cpu`` to force the slow reference path.
+  mxfp4_quantize_device: str = "auto"
   # Whether to print detailed quantization information, such as the quantization
   # type of each layer, the reason for skipping quantization, etc. This is useful
   # for debugging and analysis.
@@ -592,6 +597,9 @@ class QuantizeConfig:
       if int(self.mxfp4_block_size) != 32:
         raise ValueError("MXFP4 currently only supports mxfp4_block_size=32 "
                          "(OCP Microscaling spec).")
+      if str(self.mxfp4_quantize_device).lower() not in ("auto", "cpu", "cuda"):
+        raise ValueError("mxfp4_quantize_device must be one of 'auto', 'cpu' or 'cuda'; "
+                         f"got {self.mxfp4_quantize_device!r}.")
       if self.precision_plan is not None:
         raise ValueError("precision_plan is not supported for MXFP4 quantization yet.")
       if self.per_tensor_fallback is not True:
@@ -877,6 +885,8 @@ class QuantizeConfig:
           svdq_kwargs=cfg.get("svdq_kwargs", config.svdq_kwargs),
           fp8_fused_mlp=cfg.get("fp8_fused_mlp", config.fp8_fused_mlp),
           fp4_fused_mlp=cfg.get("fp4_fused_mlp", config.fp4_fused_mlp),
+          mxfp4_block_size=cfg.get("mxfp4_block_size", config.mxfp4_block_size),
+          mxfp4_quantize_device=cfg.get("mxfp4_quantize_device", config.mxfp4_quantize_device),
           verbose=cfg.get("verbose", config.verbose),
           observer=cfg.get("observer", config.observer),
         ) for component, cfg in config.components_to_quantize.items()
