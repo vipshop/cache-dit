@@ -8,6 +8,9 @@ fusible, so under ``torch.compile`` the overhead collapses into a single
 bandwidth-bound pass over the (4x smaller) packed weights, which makes this
 path useful even on platforms without a fused MXFP4 GEMM.
 
+MXFP4 is a weight-only format here: activations stay in the model dtype, which
+is why the public quant type is ``mxfp4_weight_only``.
+
 Environment controls:
   * ``CACHE_DIT_MXFP4_CACHE_DEQUANT=1``  cache the dequantized weight per layer
     (faster steady-state, but loses the runtime memory advantage).
@@ -35,13 +38,13 @@ class MXFP4Linear(torch.nn.Module):
   def __init__(self,
                linear: torch.nn.Linear,
                block_size: int = MXFP4_BLOCK_SIZE,
-               weight_only: bool = False,
                quantize_device: Optional[torch.device] = None):
     super().__init__()
     out_f, in_f = linear.weight.shape
-    if in_f % (2 * block_size) != 0:
-      raise ValueError(f"Linear in_features={in_f} is not divisible by {2 * block_size}, "
-                       "cannot MXFP4-pack along K.")
+    if in_f % block_size != 0 or in_f % 2 != 0:
+      raise ValueError(f"Linear in_features={in_f} must be a multiple of block_size="
+                       f"{block_size} and even (two E2M1 codes per byte), cannot "
+                       "MXFP4-pack along K.")
 
     mx = MXFP4Tensor.from_weight(linear.weight.detach(),
                                  block_size=block_size,
@@ -56,12 +59,50 @@ class MXFP4Linear(torch.nn.Module):
     self.in_features = in_f
     self.out_features = out_f
     self.block_size = block_size
-    self.weight_only = weight_only  # metadata for summary/serialization only
     self._dequant_cache = None
     # Keep the original weight dtype for exact dequant output dtype.
     self._orig_dtype = linear.weight.dtype
+    # Shared marker with the native FP8 module: tells the observer that this is
+    # a quantized linear even though it carries no ``weight`` parameter.
+    self._is_inner_quantized = True
 
-  def dequant_weight(self) -> torch.Tensor:
+  def _apply(self, fn, recurse: bool = True):
+    """Move the packed payload/scales without ever dtype-casting them.
+
+    ``float4_e2m1fn_x2`` and ``float8_e8m0fnu`` have no ``copy_`` kernel, so a
+    plain ``module.half()`` / ``module.to(dtype)`` would raise. They are storage
+    formats, not floats to cast: keep them verbatim, honor device moves, and let
+    the bias cast (done by ``super()._apply``) drive the dequant output dtype.
+
+    :param fn: Tensor transform installed by ``Module.to``/``cuda``/``half``.
+    :param recurse: Whether children are transformed too.
+    :returns: The transformed module.
+    """
+    packed, scales = self.weight_packed, self.weight_scales
+    self.weight_packed = None
+    self.weight_scales = None
+    try:
+      module = super()._apply(fn, recurse)
+    except Exception:
+      # Never lose the payload if the transform rejects the module.
+      self.weight_packed, self.weight_scales = packed, scales
+      raise
+    if packed is not None:
+      # One float probe yields both the target device and the target dtype: a
+      # zero-sized tensor makes the copy free, and the fp4/e8m0 buffers are never
+      # asked to dtype-cast (torch has no ``copy_`` kernel for them).
+      probe = fn(torch.empty(0, dtype=self._orig_dtype, device=packed.device))
+      module.weight_packed = packed.to(probe.device)
+      module.weight_scales = scales.to(probe.device)
+      module._orig_dtype = probe.dtype
+    module._dequant_cache = None
+    return module
+
+  def dequantize_weight(self) -> torch.Tensor:
+    """Materialize the dense weight in the current dequant output dtype.
+
+    :returns: Dense ``[out_features, in_features]`` weight.
+    """
     if _CACHE_DEQUANT and self._dequant_cache is not None:
       return self._dequant_cache
     w = MXFP4Tensor(self.weight_packed, self.weight_scales, self.out_features, self.in_features,
@@ -71,7 +112,7 @@ class MXFP4Linear(torch.nn.Module):
     return w
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
-    w = self.dequant_weight()
+    w = self.dequantize_weight()
     return F.linear(x, w, self.bias)
 
   def extra_repr(self) -> str:

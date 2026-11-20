@@ -82,12 +82,17 @@ def _quant_codes(w: torch.Tensor) -> torch.Tensor:
   """Map a float tensor with |w| <= 6.0 to 4-bit E2M1 codes via nearest search."""
   mids = torch.tensor(_E2M1_MIDPOINTS, device=w.device, dtype=torch.float32)
   mag = w.abs().clamp(max=_E2M1_MAX).to(torch.float32)
+  # bucketize(right=False) keeps the *lower* index on an exact hit, i.e. a value
+  # equal to mids[k] lands on code k with k + 1 as the other tie candidate.
   idx = torch.bucketize(mag, mids)  # 0..7, nearest-magnitude bucket
-  # Round-to-nearest-even on ties: values exactly on a midpoint between an even
-  # and odd code are bumped toward the even code.
-  on_mid = (mag[..., None] == mids).any(dim=-1)
+  # Round-to-nearest-even on ties: an odd (odd code) tie bumps up to the even
+  # code above it, an even tie already is the even code. Gathering the candidate
+  # midpoint keeps this to one extra bool tensor instead of a [..., 7] broadcast.
+  n_mid = len(_E2M1_MIDPOINTS)
+  on_mid = (idx < n_mid) & (mag == mids.gather(0,
+                                               idx.clamp(max=n_mid - 1).reshape(-1)).view_as(idx))
   even_idx = (idx % 2 == 0)
-  idx = torch.where(on_mid & ~even_idx, idx - 1, idx)
+  idx = torch.where(on_mid & ~even_idx, idx + 1, idx)
   codes = idx.to(torch.uint8)
   codes = torch.where(w < 0, codes | 0x08, codes)
   return codes
@@ -112,8 +117,10 @@ def quantize_mxfp4_weight(
     raise ValueError(
       f"MXFP4 quantization expects 2-D Linear weights, got shape {tuple(weight.shape)}")
   out_f, in_f = weight.shape
-  if in_f % (2 * block_size) != 0:
-    raise ValueError(f"in_features={in_f} must be divisible by 2*block_size={2 * block_size} "
+  # E8M0 scales are one per block_size elements along K; byte packing needs an
+  # even K, which an even block_size (32) already implies.
+  if in_f % block_size != 0 or in_f % 2 != 0:
+    raise ValueError(f"in_features={in_f} must be a multiple of block_size={block_size} and even "
                      "for MXFP4 packing along K.")
 
   storage_device = weight.device

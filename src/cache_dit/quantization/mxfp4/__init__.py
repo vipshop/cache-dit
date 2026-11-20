@@ -8,9 +8,10 @@
 # BlockWise 1x32 scaling, which is not functional on all accelerators (e.g. it
 # faults or returns NaN on PPU devices), while NVFP4 (E4M3 group-of-16 scales)
 # requires Blackwell-class tensor cores. This package provides a pure-PyTorch
-# MXFP4 weight representation + Linear module so that MXFP4 checkpoints and
-# memory-compact DiT inference work on any CUDA-like backend, with the fast
-# fused-GEMM paths enabled opportunistically when the platform supports them.
+# MXFP4 weight representation + Linear module so that memory-compact DiT
+# inference works on any CUDA-like backend. Quantization is online only (weights
+# are packed at load time); there is no MXFP4 checkpoint load/serialize path yet,
+# and a fused MXFP4 GEMM can be added later without changing the storage format.
 
 from .linear import MXFP4Linear
 from .ptq import quantize_mxfp4

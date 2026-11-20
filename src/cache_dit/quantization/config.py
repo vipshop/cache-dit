@@ -390,7 +390,7 @@ _CACHE_DIT_FP8_TYPES = frozenset({
   "float8_per_tensor",
   "float8_per_block",
 })
-_CACHE_DIT_ONLINE_TYPES = _CACHE_DIT_FP8_TYPES.union({"nvfp4", "mxfp4", "mxfp4_weight_only"})
+_CACHE_DIT_ONLINE_TYPES = _CACHE_DIT_FP8_TYPES.union({"nvfp4", "mxfp4_weight_only"})
 
 
 @dataclasses.dataclass
@@ -514,7 +514,7 @@ class QuantizeConfig:
   # MXFP4 (native CACHE_DIT backend) group size along K. The OCP Microscaling
   # spec defines MX formats with a group size of 32 and an E8M0 shared scale;
   # the field is exposed for future variants but 32 is the only spec-compliant
-  # value today (validated in `quantize_mxfp4`).
+  # value today (validated in `QuantizeConfig.__post_init__`).
   mxfp4_block_size: int = 32
   # Device used for the one-time MXFP4 weight packing. ``auto`` packs on the
   # accelerator when CUDA is available (250-300x faster than CPU) and falls
@@ -579,15 +579,18 @@ class QuantizeConfig:
       raise ValueError("fp4_fused_mlp=True requires backend='cache_dit' and quant_type='nvfp4'; "
                        f"got backend={self.backend}, quant_type={self.quant_type!r}.")
     assert QuantizeBackend.is_supported(
-      self.backend), f"Quantization backend {self.backend} is not supported in this environment."
+      self.backend, self.quant_type, raw_svdq_kwargs
+    ), f"Quantization backend {self.backend} is not supported for quant_type " \
+       f"{self.quant_type!r} in this environment."
     if self.backend == QuantizeBackend.TORCHAO and self.is_svdq():
       raise ValueError("SVDQuant quant_type requires backend='cache_dit' or backend='auto'.")
     if self.backend == QuantizeBackend.CACHE_DIT and not self.is_svdq():
       if self.quant_type not in _CACHE_DIT_ONLINE_TYPES:
         raise ValueError(
-          "The cache-dit quantization backend supports SVDQuant, three FP8 types and NVFP4 "
-          f"{sorted(_CACHE_DIT_ONLINE_TYPES)}; got {self.quant_type!r}. Use "
-          "--quantize-backend torchao for other quantization types.")
+          "The cache-dit quantization backend supports SVDQuant, three FP8 types and NVFP4; "
+          f"supported types are {sorted(_CACHE_DIT_ONLINE_TYPES)} (MXFP4 is weight-only). "
+          f"Got {self.quant_type!r}. Use --quantize-backend torchao for other quantization "
+          "types.")
       if self.calibrate_fn is not None or self.serialize_to is not None:
         raise ValueError("cache-dit native FP8/NVFP4 is online-only; calibrate_fn and serialize_to "
                          "are not supported.")
@@ -710,7 +713,7 @@ class QuantizeConfig:
   def is_mxfp4(self) -> bool:
     """Return whether this config targets cache-dit's native MXFP4 backend.
 
-    :returns: `True` when `quant_type` selects an `mxfp4*` workflow.
+    :returns: `True` when `quant_type` selects the `mxfp4_weight_only` workflow.
     """
 
     return isinstance(self.quant_type, str) and self.quant_type.startswith("mxfp4")

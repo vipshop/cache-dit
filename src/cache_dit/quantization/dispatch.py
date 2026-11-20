@@ -151,6 +151,10 @@ def remove_quantization_stats(module: torch.nn.Module) -> torch.nn.Module:
       del module._fp4_skipped_layers
     if hasattr(module, "_fp4_fused_mlp_targets"):
       del module._fp4_fused_mlp_targets
+    if hasattr(module, "_mxfp4_quantized_layers"):
+      del module._mxfp4_quantized_layers
+    if hasattr(module, "_mxfp4_skipped_layers"):
+      del module._mxfp4_skipped_layers
 
   _remove_quantization_stats(module)
 

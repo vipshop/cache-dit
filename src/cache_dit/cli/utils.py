@@ -689,7 +689,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "float8_weight_only",
       "nvfp4",
       "nvfp4_weight_only",
-      "mxfp4",
       "mxfp4_weight_only",
       "int8_per_row",
       "int8_per_tensor",
@@ -817,7 +816,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--mxfp4",
     action="store_true",
     default=False,
-    help="Enable native MXFP4 (OCP E2M1 + E8M0 group-32) dynamic quantization for transformer",
+    help=("Enable native MXFP4 (OCP E2M1 + E8M0 group-32) weight-only quantization for "
+          "transformer; alias of --mxfp4-weight-only"),
   )
   parser.add_argument(
     "--mxfp4-weight-only",
@@ -1650,8 +1650,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     ("int4_weight_only", args.int4_weight_only),
     ("nvfp4", args.nvfp4),
     ("nvfp4_weight_only", args.nvfp4_weight_only),
-    ("mxfp4", args.mxfp4),
-    ("mxfp4_weight_only", args.mxfp4_weight_only),
+    ("mxfp4_weight_only", args.mxfp4 or args.mxfp4_weight_only),
     ("svdq_int4_r32_dq", args.svdq_int4_r32_dq),
     ("svdq_int4_r64_dq", args.svdq_int4_r64_dq),
     ("svdq_int4_r128_dq", args.svdq_int4_r128_dq),
