@@ -13,6 +13,9 @@ from cache_dit.kernels import fp8_gemm
 from cache_dit.kernels import fp8_quantize
 from cache_dit.kernels import svdq_gemm_w8a8
 from cache_dit.kernels import svdq_quantize_w8a8
+from cache_dit.kernels import svdq_gemm_w4a8
+from cache_dit.kernels import svdq_quantize_w4a8
+from cache_dit.quantization.svdquant.w4a8 import quantize_residual_fp4_per_row
 
 DEFAULT_SHAPES = (
   (4096, 3072, 3072),
@@ -61,8 +64,9 @@ def main() -> None:
 
   torch.manual_seed(0)
   print(
-    "| M | N | K | rank | FP8 total ms | SVDQ producer ms | SVDQ GEMM ms | SVDQ total ms | ratio |")
-  print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    "| M | N | K | rank | FP8 total ms | W8A8 producer ms | W8A8 GEMM ms | W8A8 total ms "
+    "| W8A8/FP8 | W4A8 producer ms | W4A8 GEMM ms | W4A8 total ms | W4A8/W8A8 | qB bytes ratio |")
+  print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
   for m, n, k in shapes:
     x = torch.randn(m, k, device="cuda", dtype=torch.bfloat16)
     w = torch.randn(n, k, device="cuda", dtype=torch.bfloat16) / 8
@@ -97,8 +101,18 @@ def main() -> None:
         time_ms(lambda: svdq_gemm_w8a8(qa, qb, sa, sb, lora_act_in=d, lora_up=up, bias=bias),
                 args.warmup, args.iters))
       total = producer_ms + gemm_ms
+      qb4, sb4 = quantize_residual_fp4_per_row(residual)
+      producer4_ms = statistics.median(
+        time_ms(lambda: svdq_quantize_w4a8(x, smooth, down), args.warmup, args.iters))
+      qa4, sa4, d4 = svdq_quantize_w4a8(x, smooth, down)
+      gemm4_ms = statistics.median(
+        time_ms(lambda: svdq_gemm_w4a8(qa4, qb4, sa4, sb4, lora_act_in=d4, lora_up=up, bias=bias),
+                args.warmup, args.iters))
+      total4 = producer4_ms + gemm4_ms
       print(f"| {m} | {n} | {k} | {rank} | {plain_total:.3f} | {producer_ms:.3f} "
-            f"| {gemm_ms:.3f} | {total:.3f} | {total / plain_total:.3f}x |")
+            f"| {gemm_ms:.3f} | {total:.3f} | {total / plain_total:.3f}x | {producer4_ms:.3f} "
+            f"| {gemm4_ms:.3f} | {total4:.3f} | {total4 / total:.3f}x | "
+            f"{qb4.numel() / qb.numel():.3f}x |")
 
 
 if __name__ == "__main__":

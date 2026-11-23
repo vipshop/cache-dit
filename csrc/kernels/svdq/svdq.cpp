@@ -16,7 +16,9 @@
 #include "cute/fp4/gemm/gemm_w4a4.h"
 #include "cute/fp4/quantize/quantize.h"
 #include "cute/fp8/gemm/gemm_w8a8.h"
+#include "cute/fp8/gemm/gemm_w4a8.h"
 #include "cute/fp8/quantize/quantize_w8a8.h"
+#include "cute/fp8/quantize/quantize_w4a8.h"
 
 namespace py = pybind11;
 
@@ -211,27 +213,47 @@ void gemm_w8a8(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
                                   get_tensor(lora_up), get_tensor(bias));
 }
 
-void quantize_w8a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
-                   std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
-                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth) {
+void gemm_w4a8(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+               std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+               std::optional<torch::Tensor> wscales, std::optional<torch::Tensor> lora_act_in,
+               std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias) {
   TorchOpContext ctx;
-  // Split-K needs a zeroed FP32 accumulator that the kernel entry point finalizes into BF16 D.
-  torch::Tensor scratch;
+  ::svdq::cute_kernels::gemm_w4a8(get_tensor(act), get_tensor(wgt), get_tensor(out),
+                                  get_tensor(ascales), get_tensor(wscales), get_tensor(lora_act_in),
+                                  get_tensor(lora_up), get_tensor(bias));
+}
+
+static torch::Tensor allocate_fp8_lora_scratch(std::optional<torch::Tensor> const &input,
+                                               std::optional<torch::Tensor> const &lora_down) {
   const int64_t rank = lora_down && lora_down->dim() == 2 ? lora_down->size(0) : 0;
   if (rank > 0 && input && input->dim() == 2) {
     const int M = static_cast<int>(input->size(0));
     const int K = static_cast<int>(input->size(1));
     if (::svdq::cute_kernels::quantize_w8a8_k_splits(M, K) > 1) {
-      scratch = at::zeros({M, rank}, input->options().dtype(at::kFloat));
+      return at::zeros({M, rank}, input->options().dtype(at::kFloat));
     }
   }
-  ::Tensor scratch_view;
-  if (scratch.defined()) {
-    scratch_view = from_torch(scratch);
-  }
-  ::svdq::cute_kernels::quantize_w8a8(get_tensor(input), get_tensor(output), get_tensor(ascales),
-                                      get_tensor(lora_down), get_tensor(lora_act),
-                                      get_tensor(smooth), scratch_view);
+  return {};
+}
+
+void quantize_w8a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth) {
+  TorchOpContext ctx;
+  torch::Tensor scratch = allocate_fp8_lora_scratch(input, lora_down);
+  ::svdq::cute_kernels::quantize_w8a8(
+    get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
+    get_tensor(lora_act), get_tensor(smooth), scratch.defined() ? from_torch(scratch) : ::Tensor{});
+}
+
+void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth) {
+  TorchOpContext ctx;
+  torch::Tensor scratch = allocate_fp8_lora_scratch(input, lora_down);
+  ::svdq::cute_kernels::quantize_w4a8(
+    get_tensor(input), get_tensor(output), get_tensor(ascales), get_tensor(lora_down),
+    get_tensor(lora_act), get_tensor(smooth), scratch.defined() ? from_torch(scratch) : ::Tensor{});
 }
 
 void register_svdq_ops(py::module_ &ops) {
@@ -251,6 +273,11 @@ void register_svdq_ops(py::module_ &ops) {
          py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"), py::arg("lora_up"),
          py::arg("bias"))
     .def("svdq_quantize_w8a8", &quantize_w8a8, py::arg("input"), py::arg("output"),
+         py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"))
+    .def("svdq_gemm_w4a8", &gemm_w4a8, py::arg("act"), py::arg("wgt"), py::arg("out"),
+         py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"), py::arg("lora_up"),
+         py::arg("bias"))
+    .def("svdq_quantize_w4a8", &quantize_w4a8, py::arg("input"), py::arg("output"),
          py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
 }
 

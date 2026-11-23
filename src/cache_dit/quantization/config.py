@@ -9,7 +9,7 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4|fp8))_r(\d+)(_dq)?$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4|fp8|w4a8))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer", "flashinfer+cute-dsl",
                          "flashinfer+cutlass-sm120")
@@ -170,7 +170,8 @@ def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
   if match is None:
     raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
                      "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, `svdq_nvfp4_r{rank}_dq`, "
-                     "`svdq_fp8_r{rank}`, or `svdq_fp8_r{rank}_dq`, "
+                     "`svdq_fp8_r{rank}`, `svdq_fp8_r{rank}_dq`, `svdq_w4a8_r{rank}`, "
+                     "or `svdq_w4a8_r{rank}_dq`, "
                      f"got {quant_type!r}.")
   return match.group(1), int(match.group(2)), match.group(3) == "_dq"
 
@@ -619,7 +620,8 @@ class QuantizeConfig:
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
-      if _get_svdq_precision(self.quant_type) == "fp8":
+      precision = _get_svdq_precision(self.quant_type)
+      if precision in ("fp8", "w4a8"):
         unsupported = {
           "runtime_kernel": None,
           "lora_layout": None,
@@ -636,7 +638,7 @@ class QuantizeConfig:
         for key, default in unsupported.items():
           if self.svdq_kwargs[key] != default:
             raise ValueError(f"svdq_kwargs[{key!r}]={self.svdq_kwargs[key]!r} is not supported "
-                             "for SVDQ-FP8; leave it at its default value.")
+                             f"for SVDQ-{precision.upper()}; leave it at its default value.")
       runtime_kernel = self.svdq_kwargs["runtime_kernel"] or ""
       is_flashinfer = runtime_kernel.startswith("flashinfer")
       if runtime_kernel == "cute" and _get_svdq_precision(self.quant_type) == "int4":
