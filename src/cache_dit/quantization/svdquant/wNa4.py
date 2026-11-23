@@ -1,48 +1,230 @@
 """SVDQ A4 runtimes, single-layer quantizers and module quantization flows.
 
-Two-stage NVFP4 weight quantization (the standard W4A4/W3A4 codec)
--------------------------------------------------------------------
-For a residual matrix R[N,K], every 16 consecutive K elements form one scale
-group g. The encoder writes two multiplicative scales and a code:
+This module owns both the standard W4A4 flow and the packed W1/W2/W3 runtime.
+The packed formats change only how the residual weight is stored and decoded;
+they all execute on the ordinary W4A4 block-scaled MMA.
 
-  A_g       = max_{k in g} |R[n,k]|
-  s_c[n]    = BF16(max_g A_g / (448 * C_b))                 (coarse, per output channel)
-  s_g[n,g]  = FP8_E4M3(A_g / (s_c[n] * C_b))                (micro, per 16 inputs)
-  q[n,k]    = argmin_{c in Q_b} |R[n,k] / (s_c[n] * s_g[n,g]) - c|
-  R_hat     = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
+Notation
+--------
+R[N,K] is the residual after the low-rank split. A scale group g contains 16
+consecutive K elements. Q_b is the codebook for b stored bits, C_b is its
+largest legal magnitude, and q[n,k] is the stored integer code:
 
-C_b is the largest legal magnitude of the selected codebook Q_b: 6 for W3, 1.5
-for W1/W2. Keeping 448 = FP8_E4M3 max in the coarse divisor guarantees
-normalized values stay inside that range before the FP8 cast. The coarse scale
-is rounded to BF16 first and the group scale/codes are derived from the value
-the W4A4 kernel actually applies. This is the same two-level contract as
-NVFP4; only Q_b and C_b change for the packed formats. W3 uses a two-bit
-magnitude plane, while W1/W2 store sign plus zero/one magnitude bit.
+  Q_1 = {-1.5, +1.5}
+  Q_2 = {-1.5, -0.5, +0.5, +1.5}
+  Q_3 = {-6, -3, -1.5, -0.5, +0.5, +1.5, +3, +6}
+  C_1 = C_2 = 1.5
+  C_3 = 6
 
-Three-stage refinement (production default for W1A4/W2A4)
----------------------------------------------------------
-Two-stage W1/W2 have too few reconstruction levels inside a 16-element group,
-so the optional third stage partitions each group into four 4-element
-subgroups j and stores a 2-bit exponent e[n,j]. The decoder maps
-(e, q) through a table T_b directly to an E2M1 nibble:
+Two-stage NVFP4 weight quantization
+-----------------------------------
+The standard W4A4 codec, also used by W3A4 and by W1/W2 when stages=2:
 
-  e = 0: W1 {0.5,1.5}                 W2 {0.5,1.5}
-  e = 1: W1 {1.5} (same base)         W2 {1,3}
-  e = 2: W1 {3}                       W2 {2,6}
-  e = 3: W1 {6}                       W2 {2,6} (reserved duplicate)
+  A[n,g]     = max_{k in g} |R[n,k]|
+  s_c[n]     = BF16(max_g A[n,g] / (448 * C_b))
+  s_g[n,g]   = FP8_E4M3(A[n,g] / (s_c[n] * C_b))
+  x[n,k]     = R[n,k] / (s_c[n] * s_g[n,g])
+  q[n,k]     = argmin_{c in Q_b} |x[n,k] - c|
+  R_hat[n,k] = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
 
-  R_hat = s_c[n] * s_g[n,g] * T_b[e[n,k/4], q[n,k]]
+`448` is the largest finite E4M3 value. Dividing by `448 * C_b` guarantees
+that both `s_g` and the normalized values fit the FP8/E2M1 ranges. `s_c` is
+rounded to BF16 *before* `s_g` and the codes are derived, because the W4A4
+epilogue applies that exact BF16 value; deriving `s_g` from the original FP32
+number would make the encoder and decoder disagree. This two-level contract is
+the compatibility boundary: the packed W1/W2/W3 kernels keep the same
+`wscales` and `wcscales` tensors, the same per-16 grouping, and the same
+`Y = ... + D @ L1^T` epilogue as NVFP4.
 
-Every table entry is a legal E2M1 value, so the MMA never sees a fourth scale
-multiply: the exponent is absorbed into the nibble during expansion. Storage
-adds four 2-bit exponents per byte, i.e. 0.5 bit/weight; W1 becomes 2 bit/weight
-and W2 3 bit/weight before the per-16 scales. The outer two scales still follow
-the NVFP4 equations above, which keeps stages=2 checkpoints and the standard
-W4A4 path bit-exact.
+Why W1/W2 need a third stage
+----------------------------
+Two-stage W2 has only four reconstruction values in an entire 16-element group,
+and two-stage W1 has only two. A group can contain both large and small
+weights, while `s_c * s_g` is shared by all 16 elements. With one shared scale,
+W2 cannot represent a large chunk near +/-6 and a small chunk near +/-0.5 at
+the same time; many weights collapse to the same code and the generated image
+becomes blurry. W1 is more extreme: every nonzero weight in a group has the
+same magnitude.
 
-Packed runtimes keep only the packed tensors in HBM. Forward expands the
-current projection into a transient E2M1 workspace, overlaps that expansion
-with the activation producer, then invokes the unmodified W4A4 GEMM.
+Three-stage refinement
+----------------------
+The third stage partitions every 16-element group into four consecutive
+4-element chunks:
+
+  K[0:4]   -> exponent e[..., 0] / one 2-bit field
+  K[4:8]   -> exponent e[..., 1] / one 2-bit field
+  K[8:12]  -> exponent e[..., 2] / one 2-bit field
+  K[12:16] -> exponent e[..., 3] / one 2-bit field
+
+Each exponent selects a table of *legal E2M1 magnitudes* for its chunk. The
+code `q` is still chosen independently for every weight inside that chunk:
+
+  +-------+--------------------------+------------------------------+
+  | e     | W1 table                 | W2 table                     |
+  +-------+--------------------------+------------------------------+
+  | 0     | {-0.5, +0.5}             | {-1.5,-0.5,+0.5,+1.5}       |
+  | 1     | {-1.5, +1.5}             | {-3,-1,+1,+3}               |
+  | 2     | {-3, +3}                 | {-6,-2,+2,+6}               |
+  | 3     | {-6, +6}                 | reserved, same as e=2       |
+  +-------+--------------------------+------------------------------+
+
+W1 stores one sign bit per weight, so its code has two entries per table. W2
+stores sign plus one magnitude bit, so its code has four entries per table.
+The table is shared by the 4-element chunk; the code is not. In other words,
+W2 still chooses one of four values per weight, but the four-value grid can
+shift by a power of two for that chunk.
+
+Mathematical form
+-----------------
+Let `b` be the storage width (1 or 2), `s_b(q)` the sign bit and `a_b(q)` the
+base-magnitude bit:
+
+  s_1(q) = q,                    a_1(q) = 0
+  s_2(q) = floor(q / 2),         a_2(q) = q mod 2
+
+  m_1(a) = 1.5
+  m_2(a) = 0.5 if a == 0 else 1.5
+
+  f_1(e) = {1/3, 1, 2, 4} for e = {0, 1, 2, 3}
+  f_2(e) = {1,   2, 4, 4} for e = {0, 1, 2, 3}
+
+  T_b(e,q) = (-1)^s_b(q) * m_b(a_b(q)) * f_b(e)
+
+  R_hat[n,k] = s_c[n] * s_g[n,g] * T_b(e[n,k/4], q[n,k])
+
+`f_1` converts W1's base 1.5 into {0.5, 1.5, 3, 6}. `f_2` converts W2's base
+{0.5, 1.5} into {0.5,1.5}, {1,3}, and {2,6}; factor 4 is duplicated for e=3
+because no further power of two keeps the result inside E2M1. The encoder only
+emits W2 exponents 0..2. A corrupted checkpoint that stores 3 is rejected by
+``_validate_inner_scales`` instead of silently aliasing to e=2.
+
+Encoder algorithm
+-----------------
+The two outer scales are derived first with the same equations as the
+two-stage codec, but the three-stage path uses
+
+  C_3stage = 6
+
+instead of W2's two-stage `C_b = 1.5`. The reason is that the largest value in
+any three-stage table is 6; using 1.5 would clip the e=2/e=3 chunks before the
+inner table could represent them. Therefore:
+
+  A[n,g]     = max_{k in g} |R[n,k]|
+  s_c[n]     = BF16(max_g A[n,g] / (448 * 6))
+  s_g[n,g]   = FP8_E4M3(A[n,g] / (s_c[n] * 6))
+  x[n,k]     = R[n,k] / (s_c[n] * s_g[n,g])
+
+Only after these two scales are fixed does the encoder select the inner table.
+For every 4-element chunk, it tests every allowed table, quantizes all four
+values to that table, and keeps the table/code pair with the smallest sum of
+squared errors:
+
+  for chunk j in 0..3:
+    for e in allowed_exponents:
+      q = nearest(T_b(e), x[j*4:(j+1)*4])
+      err[e] = sum((x[j*4:(j+1)*4] - T_b(e)[q])^2)
+    choose e with minimum err[e]
+
+This is a joint table/code search, not a second scale fit. The outer two scales
+stay untouched by that search, so the two-stage equations and the W4A4 epilogue
+remain valid; only the cap changes from 1.5 to 6 because the decoded table now
+contains values up to 6. A stages=2 checkpoint still uses `C_b = 1.5` for W1/W2
+and therefore remains bit-exact with the old format. The quantizer lives in
+``quantize_residual_3stage``.
+
+Worked example
+--------------
+Suppose the normalized values (after `s_c * s_g`) are:
+
+  chunk 0: [ 3.8, -5.5,  2.2, -6.0]
+  chunk 1: [ 0.4, -0.5,  1.2, -1.1]
+  chunk 2: [ 1.0, -2.9,  2.1, -0.9]
+
+W2 can choose a different table per chunk:
+
+  chunk 0 -> e=2, table {+/-2, +/-6}   -> [ 2, -6,  2, -6]
+  chunk 1 -> e=0, table {+/-0.5,+/-1.5} -> [ 0.5, -0.5, 1.5, -1.5]
+  chunk 2 -> e=1, table {+/-1, +/-3}   -> [ 1, -3,  3, -1]
+
+A two-stage W2 group would have to use one of those tables for all 12 values.
+That is exactly why the three-stage image no longer collapses into color bands.
+
+Storage layout
+--------------
+`qweight` keeps the normal packed-code layout:
+  W1: uint8[N, ceil(K/8)], eight sign bits per byte (two 4-wide chunks)
+  W2: uint8[N, ceil(K/4)], four codes per byte (one 4-wide chunk)
+  W3: low2 magnitude plane uint8[N, ceil(K/4)] plus sign plane uint8[N, ceil(K/8)]
+
+`wmicroscales` is uint8[N, ceil(K/16)]. Each byte is one 16-element group and
+stores four little-endian 2-bit exponents:
+
+  bit [1:0] = chunk 0, bit [3:2] = chunk 1,
+  bit [5:4] = chunk 2, bit [7:6] = chunk 3
+
+For W2, one qweight byte and one 2-bit exponent field both describe the same
+four consecutive K elements. For W1, one qweight byte covers two chunks, while
+the exponent byte covers all four chunks of the 16-element group.
+
+The third stage costs 2 bits per 4 weights = 0.5 bit/weight:
+
+  format       code bits   exponent bits   per-16 scale bits   total
+  W1 stage 3       1            0.5               0.5            2.0
+  W2 stage 3       2            0.5               0.5            3.0
+  W3 stage 2       3            0                 0.5            3.5
+
+The per-channel coarse scale is negligible. LoRA, smooth factors and padding
+are accounted separately at module/model level.
+
+Why this remains W4A4
+---------------------
+Every table entry above is already a legal E2M1 value. Consequently the
+runtime does not multiply by a fourth floating-point scale. It decodes
+`(e, q)` directly into an E2M1 nibble, then feeds the ordinary W4A4 GEMM:
+
+  (e, q) -> E2M1 nibble
+  Y = E2M1(A) @ E2M1(W)^T * s_g * s_c + D @ L1^T + bias
+
+The exponent disappears before the tensor-core instruction. This is why the
+feature needs no new MMA atom, no epilogue change, no extra accumulator scale,
+and no change to the activation producer. `expand_wna4` applies the same table
+in the production path; `packed_a4_nibble` in gemm_w4a4.cuh applies it in the
+on-chip packed-B path used by tests and benchmarks.
+
+W2 exponent 3 is reserved because `f_2(3) = 4` would duplicate e=2. W1 uses all
+four exponents because its base magnitude is 1.5 and `{1/3, 1, 2, 4}` is the
+smallest power-of-two family that reaches {0.5, 1.5, 3, 6}.
+
+Relation to W3
+--------------
+W2+stage3 and W3 both spend roughly 3 bits per weight, but they are not the
+same format. W3 has three code bits and eight fixed values shared by the whole
+16-element group. W2+stage3 has two code bits plus one 2-bit table selector per
+four weights, so it can adapt locally and can represent 1 and 2, which W3
+cannot. W3 has more levels inside one table and fewer metadata bits. On FLUX,
+W2 r512 stage3 approaches W3 r32 visual quality, but its larger rank makes the
+persistent model larger; W3 r32 remains the better memory/quality trade-off.
+Three-stage is therefore the rescue path for very low W1/W2 storage, not a
+replacement for W3.
+
+Checkpoint and default contract
+-------------------------------
+W1/W2 `QuantizeConfig` defaults `packed_a4_stages` to 3; passing 2 explicitly
+selects the legacy NVFP4-compatible layout. A stages=3 checkpoint persists
+`qweight`, `wscales`, `wcscales` and `wmicroscales`, while stages=2 omits the
+micro tensor entirely so old strict state_dict loads keep working. The module
+constructor, single-layer quantizer, manifest loader and CLI all resolve the
+same default; W3 always stays at stages=2. `_validate_inner_scales` runs during
+checkpoint loading and rejects W2 exponent 3.
+
+Runtime storage
+---------------
+Packed runtimes keep only the packed qweight, scales, coarse scales and (for
+stages=3) micro-scales in HBM. Forward expands the current projection into a
+transient E2M1 workspace, overlaps that expansion with the activation producer
+on a side stream, then invokes the unmodified W4A4 GEMM. No full-model W4A4
+copy is created, and the expansion workspace is freed with the normal tensor
+lifetime.
 """
 from __future__ import annotations
 
