@@ -10,11 +10,11 @@ from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.kernels import svdq_gemm_w4a8
 from cache_dit.kernels import svdq_quantize_w4a8
 from cache_dit.kernels import svdq_quantize_w8a8
-from cache_dit.quantization.svdquant.w4a8 import E2M1_CODEBOOK
-from cache_dit.quantization.svdquant.w4a8 import dequantize_e2m1
-from cache_dit.quantization.svdquant.w4a8 import pack_e2m1
-from cache_dit.quantization.svdquant.w4a8 import quantize_linear_svdq_w4a8
-from cache_dit.quantization.svdquant.w4a8 import unpack_e2m1
+from cache_dit.quantization.svdquant.wNa8 import E2M1_CODEBOOK
+from cache_dit.quantization.svdquant.wNa8 import dequantize_e2m1
+from cache_dit.quantization.svdquant.wNa8 import pack_e2m1
+from cache_dit.quantization.svdquant.wNa8 import _quantize_svdq_w4a8
+from cache_dit.quantization.svdquant.wNa8 import unpack_e2m1
 
 pytestmark = pytest.mark.skipif(
   not torch.cuda.is_available() or not cuda_ext_is_available()
@@ -90,7 +90,7 @@ def test_w4a8_producer_matches_w8a8():
 def test_w4a8_module_matches_dequantized_reference(rank):
   torch.manual_seed(0)
   linear = nn.Linear(320, 192, dtype=torch.bfloat16, device="cuda")
-  packed = quantize_linear_svdq_w4a8(linear, rank=rank, smooth_strategy="weight")
+  packed = _quantize_svdq_w4a8(linear, rank=rank, smooth_strategy="weight")
   weight_error = ((packed.dequantize_weight() - linear.weight.float()).norm() /
                   linear.weight.float().norm()).item()
   assert weight_error < 0.25
@@ -111,7 +111,7 @@ def test_w4a8_module_matches_dequantized_reference(rank):
 
 def test_w4a8_forward_has_no_standalone_bf16_gemm():
   linear = nn.Linear(256, 256, dtype=torch.bfloat16, device="cuda")
-  packed = quantize_linear_svdq_w4a8(linear, rank=32)
+  packed = _quantize_svdq_w4a8(linear, rank=32)
 
   class ForbidMatmul(TorchDispatchMode):
 
@@ -134,8 +134,7 @@ def test_w4a8_fake_and_fullgraph_compile():
     scales = torch.empty(128, device="cuda", dtype=torch.float32)
     assert svdq_gemm_w4a8(act, wgt, scales, scales).shape == (128, 128)
 
-  packed = quantize_linear_svdq_w4a8(nn.Linear(128, 128, dtype=torch.bfloat16, device="cuda"),
-                                     rank=32)
+  packed = _quantize_svdq_w4a8(nn.Linear(128, 128, dtype=torch.bfloat16, device="cuda"), rank=32)
   compiled = torch.compile(packed, fullgraph=True)
   x = torch.randn(128, 128, device="cuda", dtype=torch.bfloat16)
   torch.testing.assert_close(compiled(x), packed(x), atol=2e-3, rtol=2e-3)

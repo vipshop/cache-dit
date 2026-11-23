@@ -62,7 +62,7 @@ from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant import fused as fused_mod
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.packing import convert_svdq_nvfp4_pack_to_cute
-from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant.quantizer import _quantize_svdq_w4a4_layer
 
 DEFAULT_SHAPES = (
   (4096, 3072, 3072),
@@ -158,7 +158,7 @@ def prepare_case(m: int,
   torch.manual_seed(seed)
   x = torch.randn(m, k, dtype=torch.bfloat16, device=device)
   linear = torch.nn.Linear(k, n, bias=True).to(device=device, dtype=torch.bfloat16)
-  state = quantize_linear_svdq_w4a4(
+  state = _quantize_svdq_w4a4_layer(
     linear,
     [x[:min(256, m)]],
     rank=rank,
@@ -559,7 +559,7 @@ def prepare_mlp_case(m: int,
   layout = lora_layout or ("row_major" if runtime == "cute" else "native")
 
   def build(linear: torch.nn.Linear, activations: torch.Tensor) -> SVDQW4A4Linear:
-    state = quantize_linear_svdq_w4a4(linear, [activations],
+    state = _quantize_svdq_w4a4_layer(linear, [activations],
                                       rank=rank,
                                       precision="nvfp4",
                                       device=device,

@@ -8,8 +8,8 @@ from cache_dit import QuantizeConfig
 from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.kernels import svdq_gemm_w8a8
 from cache_dit.kernels import svdq_quantize_w8a8
-from cache_dit.quantization.svdquant.fp8 import SVDQW8A8Linear
-from cache_dit.quantization.svdquant.fp8 import quantize_linear_svdq_fp8
+from cache_dit.quantization.svdquant.wNa8 import SVDQW8A8Linear
+from cache_dit.quantization.svdquant.wNa8 import _quantize_svdq_w8a8
 
 EPS = 1e-12
 
@@ -121,7 +121,7 @@ def test_linear_module_matches_reference(rank):
   torch.manual_seed(0)
   n, k = 192, 320
   linear = nn.Linear(k, n, bias=True, dtype=torch.bfloat16, device="cuda")
-  packed = quantize_linear_svdq_fp8(linear, rank=rank, smooth_strategy="weight")
+  packed = _quantize_svdq_w8a8(linear, rank=rank, smooth_strategy="weight")
   x = torch.randn(3, 200, k, device="cuda", dtype=torch.bfloat16)
   out = packed(x)
   assert out.shape == (3, 200, n)
@@ -133,7 +133,7 @@ def test_linear_module_matches_reference(rank):
 
 def test_linear_forward_has_no_standalone_bf16_gemm(monkeypatch):
   linear = nn.Linear(256, 256, dtype=torch.bfloat16, device="cuda")
-  packed = quantize_linear_svdq_fp8(linear, rank=32, smooth_strategy="weight")
+  packed = _quantize_svdq_w8a8(linear, rank=32, smooth_strategy="weight")
   x = torch.randn(128, 256, device="cuda", dtype=torch.bfloat16)
 
   def forbidden(*args, **kwargs):
@@ -153,7 +153,7 @@ def test_low_rank_weight_beats_plain_fp8():
   linear = nn.Linear(k, n, bias=False, dtype=torch.bfloat16, device="cuda")
   with torch.no_grad():
     linear.weight.copy_((base + 0.02 * torch.randn(n, k, device="cuda")).bfloat16())
-  packed = quantize_linear_svdq_fp8(linear, rank=rank, smooth_strategy="identity")
+  packed = _quantize_svdq_w8a8(linear, rank=rank, smooth_strategy="identity")
   x = torch.randn(256, k, device="cuda", dtype=torch.bfloat16)
   exact = x.float() @ linear.weight.float().t()
   svdq_err = ((packed(x).float() - exact).norm() / exact.norm()).item()
@@ -183,7 +183,7 @@ def test_fake_tensor_registration():
 
 def test_fullgraph_compile_smoke():
   linear = nn.Linear(128, 128, dtype=torch.bfloat16, device="cuda")
-  packed = quantize_linear_svdq_fp8(linear, rank=32, smooth_strategy="weight")
+  packed = _quantize_svdq_w8a8(linear, rank=32, smooth_strategy="weight")
   compiled = torch.compile(packed, fullgraph=True)
   x = torch.randn(128, 128, device="cuda", dtype=torch.bfloat16)
   out = compiled(x)

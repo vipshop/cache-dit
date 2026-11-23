@@ -107,13 +107,13 @@ def test_flashinfer_pack_reconstructs_the_source_weight() -> None:
   """
   from torch import nn
 
-  from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
+  from cache_dit.quantization.svdquant.quantizer import _quantize_svdq_w4a4_layer
 
   torch.manual_seed(0)
   k, n, rank = 384, 256, 32
   linear = nn.Linear(k, n, bias=False, dtype=torch.bfloat16)
   x = torch.randn(64, k, dtype=torch.bfloat16) / (k ** 0.25)
-  module = quantize_linear_svdq_w4a4(linear, [x], rank=rank, precision="nvfp4", device="cpu")
+  module = _quantize_svdq_w4a4_layer(linear, [x], rank=rank, precision="nvfp4", device="cpu")
   qweight, w_sf, proj_up, proj_down, _, pre_quant_scale = convert_svdq_nvfp4_pack_to_flashinfer(
     module.qweight, module.wscales, module.proj_up, module.proj_down, module.bias, module.wcscales,
     module.smooth_factor)

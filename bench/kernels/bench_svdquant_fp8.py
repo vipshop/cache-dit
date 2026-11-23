@@ -15,7 +15,7 @@ from cache_dit.kernels import svdq_gemm_w8a8
 from cache_dit.kernels import svdq_quantize_w8a8
 from cache_dit.kernels import svdq_gemm_w4a8
 from cache_dit.kernels import svdq_quantize_w4a8
-from cache_dit.quantization.svdquant.w4a8 import quantize_residual_fp4_per_row
+from cache_dit.quantization.svdquant.wNa8 import quantize_residual_fp4_per_row
 
 DEFAULT_SHAPES = (
   (4096, 3072, 3072),

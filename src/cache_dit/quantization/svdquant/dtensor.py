@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 import torch
 import torch.distributed as dist
 
-from .linear import SVDQW4A4Linear
+from .wNa4 import SVDQW4A4Linear
 
 if TYPE_CHECKING:
   from torch.distributed import ProcessGroup

@@ -10,7 +10,7 @@ from torch import nn
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
-from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant import _quantize_svdq_w4a4_layer
 from cache_dit.quantization.svdquant.packing import pack_svdq_w4a4_linear_tensors
 
 RANKS_WITH_BASELINE = (0, 16, 32, 128)
@@ -395,7 +395,7 @@ def quantize_toy_model(
   quantized_model = copy.deepcopy(model).eval()
   for module_name in TOY_ATTENTION_LINEAR_NAMES:
     float_module = model.get_submodule(module_name)
-    quantized_module = quantize_linear_svdq_w4a4(
+    quantized_module = _quantize_svdq_w4a4_layer(
       float_module,
       activations_by_module[module_name],
       rank=rank,

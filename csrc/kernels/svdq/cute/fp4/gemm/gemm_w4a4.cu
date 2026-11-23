@@ -168,7 +168,9 @@ void gemm_w4a4(svdq::Tensor act, svdq::Tensor wgt, svdq::Tensor out, svdq::Tenso
   F32DLoraScales scales{};
   if (rank > 0) {
     const int groups = rank / 16;
-    require(groups <= 8, "the CuTe LoRA path supports at most 8 rank groups (R <= 128)");
+    // Packed W1/W2 call this launcher with rank256/512 after their own host validation. Public
+    // INT4/NVFP4 configs are capped by validate_linear_geometry and never reach r512 here.
+    require(groups <= 32, "the CuTe LoRA path supports at most 32 rank groups (R <= 512)");
     require(static_cast<int>(lora_scales.size()) >= groups,
             "lora_scales must provide one value per 16-rank group");
     for (int i = 0; i < groups; ++i) scales.values[i] = lora_scales[i];

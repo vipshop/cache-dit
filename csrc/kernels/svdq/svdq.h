@@ -4,12 +4,13 @@
 // SVDQ source map
 // ----------------
 // Public host surface:
-//   svdq.h                 This file. Declares the public W4A4 and W8A8 runtime dispatchers in
-//                          `cache_dit::svdq` like the other operator families. The kernel
-//                          namespaces (`svdq::native_kernels`, `svdq::cute_kernels`) stay global
-//                          and are the implementation detail.
+//   svdq.h                 This file. Declares the public W4A4, W8A8, W4A8 and packed
+//                          W1/W2/W3 A4 dispatchers in `cache_dit::svdq` like the other operator
+//                          families. The kernel namespaces (`svdq::native_kernels`,
+//                          `svdq::cute_kernels`) stay global and are the implementation detail.
 //   svdq.cpp                Their definitions plus the pybind registrar: it normalizes
-//                          RuntimeParams/LoraLayout and selects native or CuTe.
+//                          RuntimeParams/LoraLayout and selects native or CuTe, and routes
+//                          expand_wna4/gemm_wna4 to `svdq::cute_kernels`.
 //   runtime.h               Host-only RuntimeKernel/RuntimeParams (runtime/fp4/alpha/
 //                          act_unsigned) plus the shared LoraLayout enum; no device kernel body
 //                          depends on it.
@@ -37,6 +38,13 @@
 // CuTe runtime:
 //   cute/fp4/gemm/gemm_w4a4.{h,cuh,cu}
 //                          SM120 CuTe NVFP4 TMA/MMA implementation for native and row-major D.
+//                          `gemm_w4a4.cuh` also owns the shared `packed_a4_nibble` codec used by
+//                          both packed-weight decoders.
+//   cute/fp4/gemm/gemm_wNa4.{h,cu}
+//                          Packed W1/W2/W3 A4 host surface. `expand_wna4` decodes compact
+//                          sign/magnitude/sign-plane plus the optional per-4 micro-exponent into
+//                          a transient E2M1 pack for the unchanged W4A4 GEMM. `gemm_wna4`
+//                          exposes the direct on-chip packed-B decode used by tests/benchmarks.
 //   cute/fp4/quantize/quantize_uni.cu
 //                          Universal producer for rank 0 and all non-specialized rank values.
 //   cute/fp4/quantize/quantize_impl.cuh
@@ -58,6 +66,8 @@
 //   native + native layout -> native gemm_w4a4 (INT4 and NVFP4 share one kernel family)
 //   cute + FP4 -> cute gemm_w4a4 with LoraLayout kNative/kRowMajor
 //   native producer -> native quantize_w4a4; row_major producer -> cute quantize_w4a4
+//   W1/W2/W3A4 -> expand_wna4 (packed -> transient E2M1) then cute gemm_w4a4; gemm_wna4 is the
+//                  direct packed-B decode path reserved for numerical tests and benchmarks
 
 #include <optional>
 #include <string>
@@ -123,7 +133,22 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
 
-// Hooks the public dispatchers onto the extension's `ops` submodule.
+// Packed W1/W2/W3 A4 host surface. `expand_wna4` is the production path: it decodes compact
+// weights into one transient E2M1 buffer that the unchanged W4A4 GEMM consumes. `wgt_micro` is the
+// optional per-4 exponent plane for W1/W2 three-stage; W3 rejects it. `gemm_wna4` performs the
+// equivalent decode directly into the B fragment and exists for kernel parity tests/benchmarks.
+void expand_wna4(std::optional<torch::Tensor> wgt_lo, std::optional<torch::Tensor> wgt_hi,
+                 std::optional<torch::Tensor> out, int64_t bits, int64_t K,
+                 std::optional<torch::Tensor> wgt_micro, int64_t inner_group);
+
+void gemm_wna4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt_lo,
+               std::optional<torch::Tensor> wgt_hi, std::optional<torch::Tensor> out,
+               std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
+               std::optional<torch::Tensor> lora_act_in, std::optional<torch::Tensor> lora_up,
+               std::optional<torch::Tensor> bias, std::optional<torch::Tensor> wcscales,
+               double alpha, int64_t K, int64_t bits, std::optional<torch::Tensor> wgt_micro,
+               int64_t inner_group);
+
 void register_svdq_ops(pybind11::module_ &ops);
 
 }  // namespace cache_dit::svdq

@@ -11,7 +11,7 @@ from cache_dit.kernels.flashinfer import CUTE_DSL_RUNTIME
 from cache_dit.kernels.flashinfer import CUTLASS_SM120_RUNTIME
 from cache_dit.kernels.flashinfer import flashinfer_available
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
-from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant.quantizer import _quantize_svdq_w4a4_layer
 
 pytestmark = pytest.mark.skipif(
   not torch.cuda.is_available() or not cuda_ext_is_available() or not flashinfer_available(),
@@ -33,7 +33,7 @@ def _make_pair(m: int, n: int, k: int, rank: int = 32, runtime: str = CUTE_DSL_R
   torch.manual_seed(0)
   linear = nn.Linear(k, n, bias=True).to(device="cuda", dtype=torch.bfloat16)
   x = torch.randn(m, k, device="cuda", dtype=torch.bfloat16) / (k ** 0.25)
-  native = quantize_linear_svdq_w4a4(linear, [x], rank=rank, precision="nvfp4").to("cuda")
+  native = _quantize_svdq_w4a4_layer(linear, [x], rank=rank, precision="nvfp4").to("cuda")
   other = SVDQW4A4Linear(k,
                          n,
                          rank=rank,

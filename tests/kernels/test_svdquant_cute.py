@@ -7,7 +7,7 @@ import torch.nn as nn
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
-from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant.quantizer import _quantize_svdq_w4a4_layer
 
 
 def _require_sm120() -> None:
@@ -180,7 +180,7 @@ def test_cute_large_k_g2r_matches_native(m: int, rank: int) -> None:
   in_features, out_features = 12288, 3072
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(linear, [calibration],
+  state_dict = _quantize_svdq_w4a4_layer(linear, [calibration],
                                          rank=rank,
                                          precision="nvfp4",
                                          device="cuda:0",
@@ -268,7 +268,7 @@ def test_cute_gemm_matches_native_runtime(rank: int) -> None:
   in_features = out_features = 512
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -309,7 +309,7 @@ def test_cute_gemm_native_layout_applies_rank_scales() -> None:
   in_features, out_features, rank = 256, 384, 32
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -410,7 +410,7 @@ def test_row_major_pipeline_matches_native_runtime(rank: int) -> None:
   in_features = out_features = 512
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -475,7 +475,7 @@ def test_rank_specialized_long_k_pipeline_matches_native(m: int, k: int, rank: i
   torch.manual_seed(20261116)
   linear = nn.Linear(k, 128, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, k, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -508,7 +508,7 @@ def test_cute_gemm_large_m_dispatch(lora_layout: str) -> None:
   rank, tokens = 32, 16384
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
   calibration = torch.randn(256, in_features, dtype=torch.bfloat16, device="cuda:0")
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -730,7 +730,7 @@ def test_lora_layout_validation() -> None:
 
 
 def test_row_major_quantize_uses_cute_pack(monkeypatch) -> None:
-  import cache_dit.quantization.svdquant.linear as svdq_linear
+  import cache_dit.quantization.svdquant.wNa4 as svdq_linear
 
   module = SVDQW4A4Linear(128,
                           128,
@@ -756,7 +756,7 @@ def test_row_major_quantize_uses_cute_pack(monkeypatch) -> None:
 
 
 def test_row_major_rank_zero_quantize_passes_none_lora_down(monkeypatch) -> None:
-  import cache_dit.quantization.svdquant.linear as svdq_linear
+  import cache_dit.quantization.svdquant.wNa4 as svdq_linear
 
   module = SVDQW4A4Linear(128,
                           128,
@@ -781,7 +781,7 @@ def test_row_major_rank_zero_quantize_passes_none_lora_down(monkeypatch) -> None
 
 
 def test_row_major_forward_quant_passes_layout(monkeypatch) -> None:
-  import cache_dit.quantization.svdquant.linear as svdq_linear
+  import cache_dit.quantization.svdquant.wNa4 as svdq_linear
 
   module = SVDQW4A4Linear(128,
                           128,
@@ -821,7 +821,7 @@ def test_row_major_forward_quant_passes_layout(monkeypatch) -> None:
   ])
 def test_large_k_g2r_selects_native_weight_pack(monkeypatch, in_features, out_features, m, bias,
                                                 with_wcscales, expect_large_k) -> None:
-  import cache_dit.quantization.svdquant.linear as svdq_linear
+  import cache_dit.quantization.svdquant.wNa4 as svdq_linear
 
   module = SVDQW4A4Linear(in_features,
                           out_features,
@@ -853,7 +853,7 @@ def test_large_k_g2r_selects_native_weight_pack(monkeypatch, in_features, out_fe
 
 
 def test_native_layout_keeps_native_d_contract(monkeypatch) -> None:
-  import cache_dit.quantization.svdquant.linear as svdq_linear
+  import cache_dit.quantization.svdquant.wNa4 as svdq_linear
 
   module = SVDQW4A4Linear(128, 128, rank=32, precision="int4")
   assert module.lora_layout == "native"
@@ -997,7 +997,7 @@ def _build_quantized(runtime: str, layout: str, in_features: int, out_features: 
   """
 
   linear = nn.Linear(in_features, out_features, bias=True).cuda().to(torch.bfloat16)
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration],
     rank=rank,
@@ -1288,7 +1288,7 @@ def test_swiglu_pass_fuses_the_qwen21_shape(layout: str) -> None:
   # Quantize the three projections in place, then let the pass rewrite the block's forward.
   for name, calibration in (("proj", x), ("gate_layer", x)):
     linear = getattr(block, name)
-    state = quantize_linear_svdq_w4a4(linear, [calibration],
+    state = _quantize_svdq_w4a4_layer(linear, [calibration],
                                       rank=rank,
                                       precision="nvfp4",
                                       device="cuda:0",
@@ -1304,7 +1304,7 @@ def test_swiglu_pass_fuses_the_qwen21_shape(layout: str) -> None:
                            torch_dtype=torch.bfloat16).cuda().eval()
     layer.load_state_dict(state)
     setattr(block, name, layer)
-  state = quantize_linear_svdq_w4a4(
+  state = _quantize_svdq_w4a4_layer(
     block.out, [torch.randn(256, mlp_hidden, dtype=torch.bfloat16, device="cuda:0")],
     rank=rank,
     precision="nvfp4",

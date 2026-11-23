@@ -6,7 +6,7 @@ Call chain overview
 Offline quantization path used by tests and model conversion:
 
     tests.quantization._svdq_test_utils.quantize_toy_model(...)
-        -> quantize_linear_svdq_w4a4(...)
+        -> _quantize_svdq_w4a4_layer(...)
             -> standardize_calibration_activations(...)
             -> compute_smooth_scale(...)
             -> decompose_lowrank_residual(...)
@@ -43,6 +43,12 @@ from .fused import fused_gelu_mlp
 from .fused import fused_gelu_proj
 from .fused import fused_swiglu_mlp
 from .linear import SVDQW4A4Linear
+from .linear import SVDQW8A8Linear
+from .linear import SVDQW4A8Linear
+from .linear import SVDQWNA4Linear
+from .linear import SVDQW1A4Linear
+from .linear import SVDQW2A4Linear
+from .linear import SVDQW3A4Linear
 from .passes import apply_passes
 from .passes import BasePass
 from .passes import DEFAULT_FUSED_MLP_PASSES
@@ -54,13 +60,12 @@ from .passes import get_pass
 from .passes import register_pass
 from .quantizer import CalibrationInputs
 from .quantizer import compute_smooth_scale
-from .fp8 import SVDQW8A8Linear
-from .fp8 import quantize_linear_svdq_fp8
-from .fp8 import quantize_svdq_fp8
-from .w4a8 import SVDQW4A8Linear
-from .w4a8 import quantize_linear_svdq_w4a8
-from .w4a8 import quantize_svdq_w4a8
-from .quantizer import quantize_linear_svdq_w4a4
+from .wNa8 import _quantize_svdq_w8a8
+from .wNa8 import _quantize_svdq_w4a8
+from .wNa4 import _quantize_svdq_wNa4
+from .wNaN import quantize_svdq_wNaN
+from .ptq import load_svdq
+from .quantizer import _quantize_svdq_w4a4_layer
 from .quantizer import standardize_calibration_activations
 from .quantizer import validate_linear_geometry
 
@@ -81,13 +86,14 @@ __all__ = [
   "SVDQW4A4ShardLinear",
   "SVDQW4A4Linear",
   "compute_smooth_scale",
-  "quantize_linear_svdq_w4a4",
-  "quantize_linear_svdq_fp8",
-  "quantize_svdq_fp8",
+  "SVDQWNA4Linear",
+  "SVDQW1A4Linear",
+  "SVDQW2A4Linear",
+  "SVDQW3A4Linear",
+  "quantize_svdq_wNaN",
+  "load_svdq",
   "SVDQW8A8Linear",
   "SVDQW4A8Linear",
-  "quantize_linear_svdq_w4a8",
-  "quantize_svdq_w4a8",
   "standardize_calibration_activations",
   "validate_linear_geometry",
 ]

@@ -9,7 +9,14 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4|fp8|w4a8))_r(\d+)(_dq)?$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(
+  r"^(svdq_(?:int4|nvfp4|fp8|w4a8|w1a4|w2a4|w3a4))_r(\d+)(_dq)?$")
+# W1/W2 spend less on the residual code, so they accept rank512 to recover accuracy. W3 does not.
+_SVDQ_PACKED_A4_RANKS = {
+  "w1a4": (0, 32, 64, 128, 256, 512),
+  "w2a4": (0, 32, 64, 128, 256, 512),
+  "w3a4": (0, 32, 64, 128),
+}
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer", "flashinfer+cute-dsl",
                          "flashinfer+cutlass-sm120")
@@ -162,6 +169,16 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # The default value is 0, which disables refinement and keeps the original
   # one-shot SVD behavior.
   "svd_refine_iters": 0,
+  # Number of weight scale stages for packed W1/W2. QuantizeConfig resolves an
+  # omitted value to 3 for W1/W2, because the two-stage codebook alone cannot
+  # produce meaningful images at these bit widths. 3 adds a packed inner E2M1
+  # exponent on top of the standard NVFP4 per-channel + per-16 hierarchy.
+  # W3 and every non-packed format keep 2.
+  "packed_a4_stages": 2,
+  # Number of consecutive K elements that share one three-stage exponent.
+  # 4 is the original layout; 2 doubles the exponent bytes for finer local
+  # range and is available for W1/W2 only when packed_a4_stages == 3.
+  "packed_a4_inner_group": 4,
 }
 
 
@@ -171,7 +188,8 @@ def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
     raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
                      "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, `svdq_nvfp4_r{rank}_dq`, "
                      "`svdq_fp8_r{rank}`, `svdq_fp8_r{rank}_dq`, `svdq_w4a8_r{rank}`, "
-                     "or `svdq_w4a8_r{rank}_dq`, "
+                     "`svdq_w1a4_r{rank}`, `svdq_w2a4_r{rank}`, `svdq_w3a4_r{rank}`, "
+                     "or their `_dq` forms, "
                      f"got {quant_type!r}.")
   return match.group(1), int(match.group(2)), match.group(3) == "_dq"
 
@@ -275,6 +293,22 @@ def _resolve_svdq_non_negative_int(key: str, value: Any) -> int:
   return value
 
 
+def _resolve_svdq_packed_a4_stages(key: str, value: Any) -> int:
+  if isinstance(value, bool) or not isinstance(value, int):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be an int, got {type(value)}.")
+  if value not in (2, 3):
+    raise ValueError(f"svdq_kwargs[{key!r}] must be 2 or 3, got {value}.")
+  return value
+
+
+def _resolve_svdq_packed_a4_inner_group(key: str, value: Any) -> int:
+  if isinstance(value, bool) or not isinstance(value, int):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be an int, got {type(value)}.")
+  if value not in (2, 4):
+    raise ValueError(f"svdq_kwargs[{key!r}] must be 2 or 4, got {value}.")
+  return value
+
+
 def _resolve_svdq_positive_float(key: str, value: Any) -> float:
   if isinstance(value, bool) or not isinstance(value, (int, float)):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a float, got {type(value)}.")
@@ -368,6 +402,8 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "few_shot_auto_compile": _resolve_svdq_bool_kwarg,
     "fused_mlp": _resolve_svdq_bool_kwarg,
     "svd_refine_iters": _resolve_svdq_non_negative_int,
+    "packed_a4_stages": _resolve_svdq_packed_a4_stages,
+    "packed_a4_inner_group": _resolve_svdq_packed_a4_inner_group,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
@@ -612,7 +648,12 @@ class QuantizeConfig:
 
     # Validate SVDQuant PTQ workflow configuration
     if self.is_svdq():
-      _parse_svdq_quant_type(self.quant_type)
+      _, svdq_rank, _ = _parse_svdq_quant_type(self.quant_type)
+      packed_ranks = _SVDQ_PACKED_A4_RANKS.get(_get_svdq_precision(self.quant_type))
+      if packed_ranks is not None and svdq_rank not in packed_ranks:
+        raise ValueError(f"SVDQ-{_get_svdq_precision(self.quant_type).upper()} supports rank "
+                         f"{packed_ranks}, got {svdq_rank}.")
+      precision = _get_svdq_precision(self.quant_type)
       if self.components_to_quantize is not None:
         raise ValueError("components_to_quantize is not supported for SVDQuant PTQ yet.")
       if self.precision_plan is not None:
@@ -620,8 +661,19 @@ class QuantizeConfig:
       if self.per_tensor_fallback is not True:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
-      precision = _get_svdq_precision(self.quant_type)
-      if precision in ("fp8", "w4a8"):
+      stages_unspecified = raw_svdq_kwargs is None or "packed_a4_stages" not in raw_svdq_kwargs
+      if precision in ("w1a4", "w2a4") and stages_unspecified:
+        self.svdq_kwargs["packed_a4_stages"] = 3
+      if self.svdq_kwargs["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4"):
+        raise ValueError("svdq_kwargs['packed_a4_stages'] = 3 is only supported for W1A4/W2A4.")
+      if self.svdq_kwargs["packed_a4_inner_group"] == 2 and precision not in ("w1a4", "w2a4"):
+        raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 is only supported for "
+                         "W1A4/W2A4.")
+      if self.svdq_kwargs["packed_a4_inner_group"] == 2 and self.svdq_kwargs[
+          "packed_a4_stages"] != 3:
+        raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 requires "
+                         "svdq_kwargs['packed_a4_stages'] = 3.")
+      if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
         unsupported = {
           "runtime_kernel": None,
           "lora_layout": None,
@@ -695,7 +747,8 @@ class QuantizeConfig:
             "SVDQuant PTQ currently only supports svdq_kwargs['smooth_strategy'] = 'activation'.")
         if self.calibrate_fn is None:
           raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
-        if self.serialize_to is None and _get_svdq_precision(self.quant_type) != "fp8":
+        if self.serialize_to is None and _get_svdq_precision(
+            self.quant_type) not in ("fp8", "w1a4", "w2a4", "w3a4"):
           raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
       if self.serialize_to is not None:
         normalized_filename = f"{self.quant_type}.safetensors"
