@@ -1013,6 +1013,8 @@ def _filter_serialized_svdq_kwargs(precision: str, svdq_kwargs: dict[str, Any]) 
   filtered = dict(svdq_kwargs)
   if precision not in ("w1a4", "w2a4") or int(filtered.get("packed_a4_stages", 2)) == 2:
     filtered.pop("packed_a4_stages", None)
+  if (precision not in ("w1a4", "w2a4") or int(filtered.get("packed_a4_inner_group", 4)) == 4):
+    filtered.pop("packed_a4_inner_group", None)
   return filtered
 
 
@@ -1593,7 +1595,8 @@ def load_svdq(
         raise ValueError(f"SVDQ-{precision.upper()} checkpoints require BF16 LoRA/smooth tensors, "
                          f"got {torch_dtype}.")
       constructor_kwargs = {
-        "stages": int(svdq_kwargs.get("packed_a4_stages", 2))
+        "stages": int(svdq_kwargs.get("packed_a4_stages", 2)),
+        "inner_group": int(svdq_kwargs.get("packed_a4_inner_group", 4)),
       } if precision in ("w1a4", "w2a4", "w3a4") else {}
       quantized_module = linear_type(
         in_features=float_module.in_features,

@@ -139,14 +139,15 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
 // equivalent decode directly into the B fragment and exists for kernel parity tests/benchmarks.
 void expand_wna4(std::optional<torch::Tensor> wgt_lo, std::optional<torch::Tensor> wgt_hi,
                  std::optional<torch::Tensor> out, int64_t bits, int64_t K,
-                 std::optional<torch::Tensor> wgt_micro);
+                 std::optional<torch::Tensor> wgt_micro, int64_t inner_group);
 
 void gemm_wna4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt_lo,
                std::optional<torch::Tensor> wgt_hi, std::optional<torch::Tensor> out,
                std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
                std::optional<torch::Tensor> lora_act_in, std::optional<torch::Tensor> lora_up,
                std::optional<torch::Tensor> bias, std::optional<torch::Tensor> wcscales,
-               double alpha, int64_t K, int64_t bits, std::optional<torch::Tensor> wgt_micro);
+               double alpha, int64_t K, int64_t bits, std::optional<torch::Tensor> wgt_micro,
+               int64_t inner_group);
 
 void register_svdq_ops(pybind11::module_ &ops);
 

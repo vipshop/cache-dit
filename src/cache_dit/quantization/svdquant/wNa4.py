@@ -70,9 +70,12 @@ code `q` is still chosen independently for every weight inside that chunk:
 
 W1 stores one sign bit per weight, so its code has two entries per table. W2
 stores sign plus one magnitude bit, so its code has four entries per table.
-The table is shared by the 4-element chunk; the code is not. In other words,
-W2 still chooses one of four values per weight, but the four-value grid can
-shift by a power of two for that chunk.
+The table is shared by an `inner_group`-element chunk; the code is not. The
+production default is `inner_group=4`; `inner_group=2` is available for W1/W2
+when three stages are enabled. In other words, W2 still chooses one of four
+values per weight, but the four-value grid can shift by a power of two for each
+chunk. Halving the chunk size increases the exponent bytes but follows local
+magnitude changes more closely.
 
 Mathematical form
 -----------------
@@ -90,7 +93,7 @@ base-magnitude bit:
 
   T_b(e,q) = (-1)^s_b(q) * m_b(a_b(q)) * f_b(e)
 
-  R_hat[n,k] = s_c[n] * s_g[n,g] * T_b(e[n,k/4], q[n,k])
+  R_hat[n,k] = s_c[n] * s_g[n,g] * T_b(e[n,k/G], q[n,k]),  G = inner_group
 
 `f_1` converts W1's base 1.5 into {0.5, 1.5, 3, 6}. `f_2` converts W2's base
 {0.5, 1.5} into {0.5,1.5}, {1,3}, and {2,6}; factor 4 is duplicated for e=3
@@ -115,14 +118,14 @@ inner table could represent them. Therefore:
   x[n,k]     = R[n,k] / (s_c[n] * s_g[n,g])
 
 Only after these two scales are fixed does the encoder select the inner table.
-For every 4-element chunk, it tests every allowed table, quantizes all four
-values to that table, and keeps the table/code pair with the smallest sum of
-squared errors:
+For every chunk of `G = inner_group` consecutive K elements, it tests every
+allowed table, quantizes all G values to that table, and keeps the table/code
+pair with the smallest sum of squared errors:
 
-  for chunk j in 0..3:
+  for chunk j in 0 .. 16/G - 1:
     for e in allowed_exponents:
-      q = nearest(T_b(e), x[j*4:(j+1)*4])
-      err[e] = sum((x[j*4:(j+1)*4] - T_b(e)[q])^2)
+      q = nearest(T_b(e), x[j*G:(j+1)*G])
+      err[e] = sum((x[j*G:(j+1)*G] - T_b(e)[q])^2)
     choose e with minimum err[e]
 
 This is a joint table/code search, not a second scale fit. The outer two scales
@@ -156,22 +159,30 @@ Storage layout
   W2: uint8[N, ceil(K/4)], four codes per byte (one 4-wide chunk)
   W3: low2 magnitude plane uint8[N, ceil(K/4)] plus sign plane uint8[N, ceil(K/8)]
 
-`wmicroscales` is uint8[N, ceil(K/16)]. Each byte is one 16-element group and
-stores four little-endian 2-bit exponents:
+`wmicroscales` stores four little-endian 2-bit exponents per byte, so one byte
+covers `4 * G` consecutive K elements:
 
-  bit [1:0] = chunk 0, bit [3:2] = chunk 1,
-  bit [5:4] = chunk 2, bit [7:6] = chunk 3
+  G=4: uint8[N, ceil(K/16)], one byte per 16 values
+  G=2: uint8[N, ceil(K/8)],  two bytes per 16 values
 
-For W2, one qweight byte and one 2-bit exponent field both describe the same
-four consecutive K elements. For W1, one qweight byte covers two chunks, while
-the exponent byte covers all four chunks of the 16-element group.
+Within a byte the fields are:
 
-The third stage costs 2 bits per 4 weights = 0.5 bit/weight:
+  bit [1:0] = first chunk, bit [3:2] = second chunk,
+  bit [5:4] = third chunk, bit [7:6] = fourth chunk
 
-  format       code bits   exponent bits   per-16 scale bits   total
-  W1 stage 3       1            0.5               0.5            2.0
-  W2 stage 3       2            0.5               0.5            3.0
-  W3 stage 2       3            0                 0.5            3.5
+For W2, one qweight byte covers four consecutive K elements: one G=4 chunk or
+two G=2 chunks. For W1, one qweight byte covers eight consecutive K elements:
+two G=4 chunks or four G=2 chunks. The exponent byte is the only layout change;
+qweight packing is untouched.
+
+The third stage costs 2/G bits per weight:
+
+  format       G   code bits   exponent bits   per-16 scale bits   total
+  W1 stage 3   4       1            0.5               0.5            2.0
+  W1 stage 3   2       1            1.0               0.5            2.5
+  W2 stage 3   4       2            0.5               0.5            3.0
+  W2 stage 3   2       2            1.0               0.5            3.5
+  W3 stage 2   4       3            0                 0.5            3.5
 
 The per-channel coarse scale is negligible. LoRA, smooth factors and padding
 are accounted separately at module/model level.
@@ -210,12 +221,15 @@ replacement for W3.
 Checkpoint and default contract
 -------------------------------
 W1/W2 `QuantizeConfig` defaults `packed_a4_stages` to 3; passing 2 explicitly
-selects the legacy NVFP4-compatible layout. A stages=3 checkpoint persists
-`qweight`, `wscales`, `wcscales` and `wmicroscales`, while stages=2 omits the
-micro tensor entirely so old strict state_dict loads keep working. The module
-constructor, single-layer quantizer, manifest loader and CLI all resolve the
-same default; W3 always stays at stages=2. `_validate_inner_scales` runs during
-checkpoint loading and rejects W2 exponent 3.
+selects the legacy NVFP4-compatible layout. `packed_a4_inner_group` defaults to
+4; only per-2 W1/W2 three-stage checkpoints persist the value 2 in the manifest,
+so old per-4 checkpoints remain readable without that key. A stages=3
+checkpoint persists `qweight`, `wscales`, `wcscales` and `wmicroscales`, while
+stages=2 omits the micro tensor entirely so old strict state_dict loads keep
+working. The module constructor, single-layer quantizer, manifest loader and CLI
+all resolve the same defaults; W3 always stays at stages=2 and inner_group=4.
+`_validate_inner_scales` runs during checkpoint loading and rejects W2
+exponent 3.
 
 Runtime storage
 ---------------
@@ -254,9 +268,10 @@ _CODEBOOKS = {
 _CODE_MAX = {1: 1.5, 2: 1.5, 3: 6.0}
 _E2M1_VALUES = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
                 -6.0)
-# Nibble mapping for the optional per-4 inner scale. W1 stores only a sign, so each inner exponent
-# selects one E2M1 magnitude. W2 stores sign + one magnitude bit, so pidx shifts both base
-# magnitudes by a power of two. The tables are indexed by (pidx, code).
+# Nibble mapping for the optional three-stage inner exponent. The table is shared by either 2 or 4
+# consecutive K elements (`packed_a4_inner_group`). W1 stores only a sign, so the exponent selects
+# one E2M1 magnitude; W2 stores sign + one magnitude bit, so pidx shifts both base magnitudes.
+# Indexed by (pidx, code); W2's fourth table is reserved because it duplicates pidx=2.
 _PACKED_A4_3STAGE_NIBBLES = {
   1: ((1, 9), (3, 11), (5, 13), (7, 15)),
   2: ((1, 3, 9, 11), (2, 5, 10, 13), (4, 7, 12, 15)),
@@ -405,35 +420,42 @@ def quantize_residual(residual: torch.Tensor, bits: int) -> tuple[torch.Tensor, 
   return packed, flat_scales, coarse
 
 
-def quantize_residual_3stage(residual: torch.Tensor, bits: int) -> tuple[torch.Tensor, ...]:
-  """Quantize a residual with a per-4 inner E2M1 exponent on top of NVFP4 scales.
+def quantize_residual_3stage(residual: torch.Tensor,
+                             bits: int,
+                             inner_group: int = 4) -> tuple[torch.Tensor, ...]:
+  """Quantize a residual with a shared E2M1 exponent per ``inner_group`` weights.
 
   The first two stages are identical to :func:`quantize_residual`: BF16
   per-channel ``s_c`` and FP8_E4M3 per-16 ``s_g`` still normalize the residual,
   so old stages=2 checkpoints and the W4A4 kernel contract remain valid. The
-  encoder then splits each 16-wide group into four 4-wide subgroups and chooses
-  one exponent ``e`` per subgroup:
+  encoder then splits each 16-wide group into ``16 / inner_group`` chunks and
+  chooses one exponent ``e`` per chunk:
 
   .. code-block:: text
 
-    e=0: W1 {0.5,1.5}              W2 {0.5,1.5}
+    e=0: W1 {0.5}                  W2 {0.5,1.5}
     e=1: W1 {1.5}                  W2 {1,3}
     e=2: W1 {3}                    W2 {2,6}
     e=3: W1 {6}                    W2 {2,6} (reserved duplicate)
 
-  For each subgroup we test all four tables, pick the table+code with the
-  smallest squared error, and emit a 2-bit exponent. The exponent is stored as
-  four fields per uint8, costing 0.5 bit per weight. Because every table value
-  is already a legal E2M1 nibble, the runtime expansion can write the final
-  nibble directly; no extra multiplication or fourth scale is needed by MMA.
+  For each chunk we test all tables, pick the table+code with the smallest
+  squared error, and emit a 2-bit exponent. Exponents are packed four per uint8
+  regardless of ``inner_group``. The byte therefore covers 16 K values when
+  ``inner_group=4`` and 8 K values when ``inner_group=2``. Because every table
+  value is already a legal E2M1 nibble, the runtime expansion can write the
+  final nibble directly; no extra multiplication or fourth scale is needed by
+  MMA.
 
   :param residual: Floating-point residual ``[N,K]`` after the low-rank split.
   :param bits: ``1`` for sign-only W1 or ``2`` for W2.
-  :returns: ``(packed, group_scales, channel_scales, inner_scales)`` where ``inner_scales`` is
-    ``uint8 [N,K/16]`` and packs four per-4 exponents little-endian.
+  :param inner_group: Consecutive K elements sharing one exponent, 2 or 4.
+  :returns: ``(packed, group_scales, channel_scales, inner_scales)`` where
+    ``inner_scales`` is ``uint8 [N, K / (4 * inner_group)]``.
   """
   if bits not in (1, 2):
     raise ValueError(f"Three-stage quantization supports W1/W2 only, got bits={bits}.")
+  if inner_group not in (2, 4):
+    raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
   residual = residual.float()
   rows, channels = residual.shape
   if channels % 16:
@@ -450,10 +472,11 @@ def quantize_residual_3stage(residual: torch.Tensor, bits: int) -> tuple[torch.T
   group_scale_fp8 = group_scale.to(torch.float8_e4m3fn)
   normalized = grouped / channel_scale / group_scale_fp8.float()
   normalized = torch.where(group_scale_fp8.float() > 0, normalized, torch.zeros_like(normalized))
-  # Stage 3: pick one power-of-two table per four consecutive K elements. The
+  # Stage 3: pick one power-of-two table per `inner_group` consecutive K elements. The
   # outer scales are fixed first, so the inner exponent only refines precision
   # and cannot perturb the already-validated NVFP4 scale path.
-  sub = normalized.view(rows, groups, 4, 4)
+  chunks = 16 // inner_group
+  sub = normalized.view(rows, groups, chunks, inner_group)
   best_error = None
   best_codes = None
   best_pidx = None
@@ -473,11 +496,15 @@ def quantize_residual_3stage(residual: torch.Tensor, bits: int) -> tuple[torch.T
       best_codes = torch.where(better.unsqueeze(-1), codes, best_codes)
       best_pidx = torch.where(better, pidx, best_pidx)
   packed = pack_codes(best_codes.reshape(rows, channels), bits)
-  # The checkpoint stores 4 x 2-bit exponents in one byte; the C++/CUDA
-  # decoders read the same little-endian fields before every 4-weight decode.
-  micro = torch.zeros((rows, groups), dtype=torch.uint8, device=residual.device)
+  # Four exponents share one byte. inner_group=4 => one byte per 16 K;
+  # inner_group=2 => two bytes per 16 K. The C++/CUDA decoders use the same
+  # little-endian field order.
+  flat_pidx = best_pidx.reshape(rows, -1)
+  if flat_pidx.shape[1] % 4:
+    raise ValueError("Three-stage exponent count must be divisible by four.")
+  micro = torch.zeros((rows, flat_pidx.shape[1] // 4), dtype=torch.uint8, device=residual.device)
   for index in range(4):
-    micro |= best_pidx[..., index].to(torch.uint8) << (2 * index)
+    micro |= flat_pidx[..., index::4].to(torch.uint8) << (2 * index)
   flat_scales = swizzle_fp4_scales(group_scale_fp8.squeeze(-1).view(torch.float8_e4m3fn))
   coarse = channel_scale.reshape(-1).to(torch.bfloat16)
   return packed, flat_scales, coarse, micro
@@ -487,14 +514,20 @@ def dequantize_packed_3stage(packed: torch.Tensor,
                              scale: torch.Tensor,
                              bits: int,
                              inner: torch.Tensor,
-                             high: torch.Tensor | None = None) -> torch.Tensor:
+                             high: torch.Tensor | None = None,
+                             inner_group: int = 4) -> torch.Tensor:
   """Diagnostic FP32 reconstruction for a three-stage W1/W2 residual."""
   if bits not in (1, 2):
     raise ValueError(f"Three-stage dequantization supports W1/W2 only, got bits={bits}.")
+  if inner_group not in (2, 4):
+    raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
   _validate_inner_scales(inner, bits)
   codes = unpack_codes(packed, bits, high).long()
   pidx = torch.stack([(inner >> (2 * index)) & 3 for index in range(4)], dim=-1).flatten(-2).long()
-  pidx = pidx.repeat_interleave(4, dim=-1)
+  if pidx.shape[-1] != codes.shape[-1] // inner_group:
+    raise ValueError(f"inner scale shape implies {pidx.shape[-1] * inner_group} weights, "
+                     f"expected {codes.shape[-1]}.")
+  pidx = pidx.repeat_interleave(inner_group, dim=-1)
   if pidx.shape != codes.shape:
     raise ValueError(
       f"inner scale shape implies {pidx.shape[1]} weights, expected {codes.shape[1]}.")
@@ -885,7 +918,8 @@ class SVDQWNA4Linear(nn.Module):
                bias: bool = True,
                torch_dtype: torch.dtype = torch.bfloat16,
                device: str | torch.device | None = None,
-               stages: int | None = None) -> None:
+               stages: int | None = None,
+               inner_group: int = 4) -> None:
     super().__init__()
     if bits not in (1, 2, 3):
       raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
@@ -893,6 +927,10 @@ class SVDQWNA4Linear(nn.Module):
       stages = 3 if bits in (1, 2) else 2
     if stages not in (2, 3) or (bits == 3 and stages != 2):
       raise ValueError(f"W{bits}A4 stages must be 2, and W1/W2 also accept 3, got {stages}.")
+    if inner_group not in (2, 4):
+      raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
+    if inner_group == 2 and (bits == 3 or stages != 3):
+      raise ValueError("inner_group=2 is only supported for three-stage W1A4/W2A4.")
     allowed_ranks = _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"]
     if rank not in allowed_ranks:
       raise ValueError(f"W{bits}A4 rank must be one of {allowed_ranks}, got {rank}.")
@@ -902,6 +940,7 @@ class SVDQWNA4Linear(nn.Module):
     self.out_features = out_features
     self.bits = bits
     self.stages = stages
+    self.inner_group = inner_group
     self.rank = rank
     self.quantized_in_features = _pad(in_features, 128)
     self.quantized_out_features = _pad(out_features, 256)
@@ -919,8 +958,10 @@ class SVDQWNA4Linear(nn.Module):
     else:
       self.register_buffer("qweight_hi", None)
     if stages == 3:
-      self.register_buffer("wmicroscales",
-                           torch.zeros((np_, kp // 16), dtype=torch.uint8, device=device))
+      self.register_buffer(
+        "wmicroscales", torch.zeros((np_, kp // (4 * inner_group)),
+                                    dtype=torch.uint8,
+                                    device=device))
     else:
       self.register_buffer("wmicroscales", None)
     # The flat 128x4 SF buffer pads each 4-group atom to 512 B per 128 rows.
@@ -950,7 +991,11 @@ class SVDQWNA4Linear(nn.Module):
                                   kp // 16).float().view(self.quantized_out_features, -1)
     high = self.qweight_hi
     if self.stages == 3:
-      values = dequantize_packed_3stage(self.qweight, scales, self.bits, self.wmicroscales)
+      values = dequantize_packed_3stage(self.qweight,
+                                        scales,
+                                        self.bits,
+                                        self.wmicroscales,
+                                        inner_group=self.inner_group)
     else:
       values = dequantize_packed(self.qweight, scales, self.bits, high)
     values = values * self.wcscales.float().unsqueeze(1)
@@ -981,7 +1026,8 @@ class SVDQWNA4Linear(nn.Module):
       expanded = expand_wna4(self.qweight,
                              self.qweight_hi,
                              self.bits,
-                             wgt_micro=self.wmicroscales if self.stages == 3 else None)
+                             wgt_micro=self.wmicroscales if self.stages == 3 else None,
+                             inner_group=self.inner_group)
     qact, ascales, lora_act = svdq_quantize_w4a4(input=flat,
                                                  lora_down=self.proj_down if self.rank else None,
                                                  smooth=self.smooth_factor,
@@ -1016,10 +1062,15 @@ def _quantize_linear(linear: nn.Linear,
                      torch_dtype: torch.dtype = torch.bfloat16,
                      device: str | torch.device | None = None,
                      calibrate_precision: str = "low",
-                     stages: int | None = None) -> SVDQWNA4Linear:
+                     stages: int | None = None,
+                     inner_group: int = 4) -> SVDQWNA4Linear:
   from .quantizer import _compute_weight_only_smooth_scale
   if stages is None:
     stages = 3 if bits in (1, 2) else 2
+  if inner_group not in (2, 4):
+    raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
+  if inner_group == 2 and (bits == 3 or stages != 3):
+    raise ValueError("inner_group=2 is only supported for three-stage W1A4/W2A4.")
   device = torch.device(device or linear.weight.device)
   module_type = {1: SVDQW1A4Linear, 2: SVDQW2A4Linear, 3: SVDQW3A4Linear}[bits]
   module = module_type(linear.in_features,
@@ -1028,7 +1079,8 @@ def _quantize_linear(linear: nn.Linear,
                        bias=linear.bias is not None,
                        torch_dtype=torch_dtype,
                        device=device,
-                       stages=stages)
+                       stages=stages,
+                       inner_group=inner_group)
   weight = linear.weight.detach().to(device=device, dtype=torch.float32)
   if smooth_factor is None:
     smooth = _compute_weight_only_smooth_scale(weight.abs().amax(dim=0),
@@ -1047,7 +1099,7 @@ def _quantize_linear(linear: nn.Linear,
   # logical-shape swizzle followed by a buffer assignment is incorrect for ragged N/K.
   residual = torch.nn.functional.pad(residual, (0, kp - k, 0, np_ - n))
   if stages == 3:
-    packed, scales, coarse, micro = quantize_residual_3stage(residual, bits)
+    packed, scales, coarse, micro = quantize_residual_3stage(residual, bits, inner_group)
     module.qweight.copy_(packed)
     module.wmicroscales.copy_(micro)
   else:
@@ -1105,12 +1157,14 @@ def _quantize_svdq_wNa4(
   device: str | torch.device | None = None,
   calibrate_precision: str = "low",
   stages: int | None = None,
+  inner_group: int = 4,
 ) -> SVDQWNA4Linear:
   """Quantize one Linear into packed W1/W2/W3, with DQ or activation-calibrated PTQ.
 
   :param stages: Weight scale stages. ``None`` selects the production default:
     three stages for W1/W2 and the standard two-stage NVFP4 codec for W3. Pass
     ``2`` explicitly to reproduce the legacy packed path.
+  :param inner_group: K elements sharing one three-stage exponent, 2 or 4.
   """
   from .quantizer import _compute_weight_only_smooth_scale
   from .quantizer import compute_smooth_scale
@@ -1158,7 +1212,8 @@ def _quantize_svdq_wNa4(
                           torch_dtype=torch_dtype,
                           device=device,
                           calibrate_precision=calibrate_precision,
-                          stages=stages)
+                          stages=stages,
+                          inner_group=inner_group)
 
 
 def _quantize_svdq_w1a4(linear, representative_activations=None, **kwargs):

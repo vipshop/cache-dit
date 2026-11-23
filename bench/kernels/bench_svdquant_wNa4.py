@@ -34,18 +34,24 @@ def main() -> None:
   parser.add_argument("--k", type=int, default=3072)
   parser.add_argument("--rank", type=int, default=32)
   parser.add_argument("--stages", type=int, default=2, choices=[2, 3])
+  parser.add_argument("--inner-group", type=int, default=4, choices=[2, 4])
   parser.add_argument("--warmup", type=int, default=10)
   parser.add_argument("--iters", type=int, default=30)
   args = parser.parse_args()
   torch.manual_seed(0)
   x = torch.randn(args.m, args.k, device="cuda", dtype=torch.bfloat16)
   linear = nn.Linear(args.k, args.n, bias=False, dtype=torch.bfloat16, device="cuda")
-  print("| bits/stages | qweight+sign+micro B | scales B | producer ms | expand ms | GEMM ms | "
-        "serial total ms | W4A4 total ms | ratio | on-chip GEMM ms | module total ms | "
-        "module/W4A4 |")
+  print(
+    "| bits/stages/group | qweight+sign+micro B | scales B | producer ms | expand ms | GEMM ms | "
+    "serial total ms | W4A4 total ms | ratio | on-chip GEMM ms | module total ms | "
+    "module/W4A4 |")
   print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
   for bits in ((1, 2) if args.rank == 512 or args.stages == 3 else (1, 2, 3)):
-    module = _quantize_svdq_wNa4(linear, bits, rank=args.rank, stages=args.stages)
+    module = _quantize_svdq_wNa4(linear,
+                                 bits,
+                                 rank=args.rank,
+                                 stages=args.stages,
+                                 inner_group=args.inner_group)
     qact, ascales, lora_act = svdq_quantize_w4a4(x,
                                                  module.proj_down,
                                                  module.smooth_factor,
@@ -53,14 +59,15 @@ def main() -> None:
                                                  fp4=True,
                                                  pad_size=256)
     micro = module.wmicroscales
-    expanded = expand_wna4(module.qweight, module.qweight_hi, bits, micro)
+    expanded = expand_wna4(module.qweight, module.qweight_hi, bits, micro, args.inner_group)
     wscales = module.wscales.view(torch.float8_e4m3fn)
     producer_ms = time_ms(
       lambda: svdq_quantize_w4a4(
         x, module.proj_down, module.smooth_factor, lora_layout="row_major", fp4=True, pad_size=256),
       args.warmup, args.iters)
-    expand_ms = time_ms(lambda: expand_wna4(module.qweight, module.qweight_hi, bits, micro),
-                        args.warmup, args.iters)
+    expand_ms = time_ms(
+      lambda: expand_wna4(module.qweight, module.qweight_hi, bits, micro, args.inner_group),
+      args.warmup, args.iters)
     gemm_fn = lambda: svdq_gemm_w4a4(qact,
                                      expanded,
                                      ascales,
@@ -81,6 +88,7 @@ def main() -> None:
                              lora_up=module.proj_up,
                              wcscales=module.wcscales,
                              wgt_micro=micro,
+                             inner_group=args.inner_group,
                              bits=bits), args.warmup, args.iters)
     total = producer_ms + expand_ms + gemm_ms
     baseline = producer_ms + gemm_ms
@@ -88,7 +96,8 @@ def main() -> None:
     qbytes = module.qweight.numel() + (module.qweight_hi.numel() if bits == 3 else 0)
     qbytes += module.wmicroscales.numel() if micro is not None else 0
     sbytes = module.wscales.numel() + module.wcscales.numel() * module.wcscales.element_size()
-    print(f"| {bits}/{args.stages} | {qbytes} | {sbytes} | {producer_ms:.3f} | {expand_ms:.3f} "
+    print(f"| {bits}/{args.stages}/{args.inner_group} | {qbytes} | {sbytes} | "
+          f"{producer_ms:.3f} | {expand_ms:.3f} "
           f"| {gemm_ms:.3f} | {total:.3f} | {baseline:.3f} | {total / baseline:.3f}x "
           f"| {onchip_ms:.3f} | {module_ms:.3f} | {module_ms / baseline:.3f}x |")
 

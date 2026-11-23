@@ -171,10 +171,14 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   "svd_refine_iters": 0,
   # Number of weight scale stages for packed W1/W2. QuantizeConfig resolves an
   # omitted value to 3 for W1/W2, because the two-stage codebook alone cannot
-  # produce meaningful images at these bit widths. 3 adds a packed per-4 E2M1
+  # produce meaningful images at these bit widths. 3 adds a packed inner E2M1
   # exponent on top of the standard NVFP4 per-channel + per-16 hierarchy.
   # W3 and every non-packed format keep 2.
   "packed_a4_stages": 2,
+  # Number of consecutive K elements that share one three-stage exponent.
+  # 4 is the original layout; 2 doubles the exponent bytes for finer local
+  # range and is available for W1/W2 only when packed_a4_stages == 3.
+  "packed_a4_inner_group": 4,
 }
 
 
@@ -297,6 +301,14 @@ def _resolve_svdq_packed_a4_stages(key: str, value: Any) -> int:
   return value
 
 
+def _resolve_svdq_packed_a4_inner_group(key: str, value: Any) -> int:
+  if isinstance(value, bool) or not isinstance(value, int):
+    raise TypeError(f"svdq_kwargs[{key!r}] must be an int, got {type(value)}.")
+  if value not in (2, 4):
+    raise ValueError(f"svdq_kwargs[{key!r}] must be 2 or 4, got {value}.")
+  return value
+
+
 def _resolve_svdq_positive_float(key: str, value: Any) -> float:
   if isinstance(value, bool) or not isinstance(value, (int, float)):
     raise TypeError(f"svdq_kwargs[{key!r}] must be a float, got {type(value)}.")
@@ -391,6 +403,7 @@ def _resolve_svdq_kwargs(svdq_kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any
     "fused_mlp": _resolve_svdq_bool_kwarg,
     "svd_refine_iters": _resolve_svdq_non_negative_int,
     "packed_a4_stages": _resolve_svdq_packed_a4_stages,
+    "packed_a4_inner_group": _resolve_svdq_packed_a4_inner_group,
   }
   for key, value in svdq_kwargs.items():
     resolved[key] = validators[key](key, value)
@@ -653,6 +666,13 @@ class QuantizeConfig:
         self.svdq_kwargs["packed_a4_stages"] = 3
       if self.svdq_kwargs["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4"):
         raise ValueError("svdq_kwargs['packed_a4_stages'] = 3 is only supported for W1A4/W2A4.")
+      if self.svdq_kwargs["packed_a4_inner_group"] == 2 and precision not in ("w1a4", "w2a4"):
+        raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 is only supported for "
+                         "W1A4/W2A4.")
+      if self.svdq_kwargs["packed_a4_inner_group"] == 2 and self.svdq_kwargs[
+          "packed_a4_stages"] != 3:
+        raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 requires "
+                         "svdq_kwargs['packed_a4_stages'] = 3.")
       if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
         unsupported = {
           "runtime_kernel": None,

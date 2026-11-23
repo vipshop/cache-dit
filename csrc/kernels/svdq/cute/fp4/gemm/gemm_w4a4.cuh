@@ -947,19 +947,23 @@ class W4A4GemmKernel {
    *
    * @param wgt_lo          Packed sign/magnitude codes, one byte per 8/4/4 weights for W1/W2/W3.
    * @param wgt_hi          W3 sign plane; null for W1/W2.
-   * @param wgt_micro       Optional W1/W2 per-4 exponent plane, four 2-bit fields per byte; null
-   * for stages=2 and W3.
+   * @param wgt_micro       Optional W1/W2 exponent plane, four 2-bit fields per byte; null for
+   *                        stages=2 and W3.
    * @param row_bytes_lo    Packed byte stride of `wgt_lo`.
    * @param row_bytes_hi    Byte stride of `wgt_hi`; zero when unused.
    * @param row_bytes_micro Byte stride of `wgt_micro`; zero when unused.
+   * @param inner_group     Consecutive K elements sharing one exponent (2 or 4).
    * @param n0/kt/stage     Output-row tile, K tile and pipeline ring slot.
    * @param tid             Consumer thread index.
    * @param sB              Destination E2M1 B smem stage.
    */
   template <class SmemB>
-  __device__ __forceinline__ static void decode_packed_B(
-    uint8_t const *wgt_lo, uint8_t const *wgt_hi, uint8_t const *wgt_micro, int row_bytes_lo,
-    int row_bytes_hi, int row_bytes_micro, int n0, int kt, int stage, int tid, SmemB &sB) {
+  __device__ __forceinline__ static void decode_packed_B(uint8_t const *wgt_lo,
+                                                         uint8_t const *wgt_hi,
+                                                         uint8_t const *wgt_micro, int row_bytes_lo,
+                                                         int row_bytes_hi, int row_bytes_micro,
+                                                         int inner_group, int n0, int kt, int stage,
+                                                         int tid, SmemB &sB) {
     constexpr int kGroupCodes = 8;
     constexpr int kGroupsPerRow = kBK / kGroupCodes;
     constexpr int kGroups = kBN * kGroupsPerRow;
@@ -991,15 +995,15 @@ class W4A4GemmKernel {
       }
       uint32_t micro = 0;
       if (wgt_micro != nullptr) {
-        micro =
-          __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro + (k0 + col) / 16);
+        micro = __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro +
+                      (k0 + col) / (4 * inner_group));
       }
 #pragma unroll
       for (int i = 0; i < kGroupCodes; ++i) {
         const int code = (raw >> (i * kLoBits)) & ((1 << kLoBits) - 1);
         int inner = -1;
         if (wgt_micro != nullptr) {
-          const int shift = (((k0 + col) % 16) / 4 + i / 4) * 2;
+          const int shift = (((k0 + col) % (4 * inner_group)) / inner_group + i / inner_group) * 2;
           inner = (micro >> shift) & 3;
         }
         if constexpr (Traits::kWeightBits == 3) {
@@ -1022,7 +1026,7 @@ class W4A4GemmKernel {
     SrcB const &tCsB, DstB &tCrB_view, SrcSFB const &tCsSFB, DstSFB &tCrSFB_view, FragB &tCrB,
     FragSFB &tCrSFB, FragA &tCrA, FragSFA &tCrSFA, Acc &tCrC, uint8_t const *wgt_lo,
     uint8_t const *wgt_hi, uint8_t const *wgt_micro, int row_bytes_lo, int row_bytes_hi,
-    int row_bytes_micro, int n0, SmemBFull &sB) {
+    int row_bytes_micro, int inner_group, int n0, SmemBFull &sB) {
     const int g_offset = kLoRAFirst ? nRt : 0;
 #pragma unroll 1
     for (int kt = 0; kt < nKt; ++kt) {
@@ -1031,8 +1035,8 @@ class W4A4GemmKernel {
       const int phase = (g / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
       if constexpr (Traits::kPackedWeight) {
-        decode_packed_B(wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
-                        kt, stage, tid, sB);
+        decode_packed_B(wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro,
+                        inner_group, n0, kt, stage, tid, sB);
       }
 #pragma unroll
       for (int k_block = 0; k_block < kBK / 64; ++k_block) {
@@ -1471,7 +1475,7 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                    bool write_dense, int rank_down, bool fuse_silu,
                    uint8_t const *__restrict__ wgt_lo, uint8_t const *__restrict__ wgt_hi,
                    uint8_t const *__restrict__ wgt_micro, int row_bytes_lo, int row_bytes_hi,
-                   int row_bytes_micro) {
+                   int row_bytes_micro, int inner_group) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -1719,14 +1723,14 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     Gemm::apply_inverse_scale(wcscales, alpha, n0, nRt, tScC_rc, tCrC);
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
                         tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
-                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
-                        sB_full);
+                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro,
+                        inner_group, n0, sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
   } else {
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
                         tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
-                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
-                        sB_full);
+                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro,
+                        inner_group, n0, sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
     if constexpr (kF32DLora) {
       Gemm::gemm_f32d_lora(full, empty, tid, nKt, nRt, gTotal, lora_act_f32, scales, m0, rank,
@@ -1837,7 +1841,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream,
                       uint8_t const *wgt_lo = nullptr, uint8_t const *wgt_hi = nullptr,
                       int row_bytes_lo = 0, int row_bytes_hi = 0,
-                      uint8_t const *wgt_micro = nullptr, int row_bytes_micro = 0) {
+                      uint8_t const *wgt_micro = nullptr, int row_bytes_micro = 0,
+                      int inner_group = 4) {
   using Traits =
     W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown, kWeightBits>;
   using Element = typename Traits::Element;
@@ -1916,7 +1921,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
     lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
     d_atomic, write_dense, rank_down, fuse_silu, wgt_lo, wgt_hi, wgt_micro, row_bytes_lo,
-    row_bytes_hi, row_bytes_micro);
+    row_bytes_hi, row_bytes_micro, inner_group);
   if constexpr (kFuseOut && kFuseDown && !kF32DLora) {
     // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
     // scattered FP32 scratch is rounded here once, after every CTA has contributed.

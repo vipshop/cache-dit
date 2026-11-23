@@ -32,7 +32,7 @@ namespace {
 __global__ void expand_wna4_kernel(uint8_t const *__restrict__ lo, uint8_t const *__restrict__ hi,
                                    uint8_t const *__restrict__ micro, uint8_t *__restrict__ out,
                                    int rows, int K, int bits, int row_bytes_lo, int row_bytes_hi,
-                                   int row_bytes_micro) {
+                                   int row_bytes_micro, int inner_group) {
   const int groups_per_row = K / 8;
   const int group = blockIdx.x * blockDim.x + threadIdx.x;
   if (group >= rows * groups_per_row) return;
@@ -54,7 +54,9 @@ __global__ void expand_wna4_kernel(uint8_t const *__restrict__ lo, uint8_t const
   uint32_t sign_bits = 0;
   if (bits == 3) sign_bits = hi[row * row_bytes_hi + k0 / 8];
   uint32_t micro_bits = 0;
-  if (micro != nullptr) micro_bits = __ldg(micro + row * row_bytes_micro + k0 / 16);
+  if (micro != nullptr) {
+    micro_bits = __ldg(micro + row * row_bytes_micro + k0 / (4 * inner_group));
+  }
   uint32_t packed = 0;
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
@@ -63,7 +65,7 @@ __global__ void expand_wna4_kernel(uint8_t const *__restrict__ lo, uint8_t const
       packed |= static_cast<uint32_t>(1 + 2 * code + 8 * ((sign_bits >> i) & 1)) << (4 * i);
       continue;
     }
-    const int shift = (((k0 % 16) / 4) + i / 4) * 2;
+    const int shift = (((k0 % (4 * inner_group)) / inner_group) + i / inner_group) * 2;
     const int inner = micro != nullptr ? static_cast<int>((micro_bits >> shift) & 3) : -1;
     packed |= static_cast<uint32_t>(packed_a4_nibble(bits, code, inner)) << (4 * i);
   }
@@ -74,7 +76,7 @@ template <int kBits>
 void launch_wna4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                  svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                  svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-                 svdq::Tensor wgt_micro) {
+                 svdq::Tensor wgt_micro, int inner_group) {
   auto require = [](bool condition, const char *message) {
     if (!condition) {
       throw std::runtime_error(spdlog::fmt_lib::format("gemm_wNa4: {}", message));
@@ -90,6 +92,10 @@ void launch_wna4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::
           "wgt_hi must be a uint8/INT8 byte tensor");
   require(!wgt_micro.valid() || wgt_micro.dtype() == svdq::Tensor::INT8,
           "wgt_micro must be a uint8/INT8 byte tensor");
+  require(inner_group == 2 || inner_group == 4, "inner_group must be 2 or 4");
+  if constexpr (kBits == 3) {
+    require(inner_group == 4, "W3 requires inner_group=4");
+  }
   require(ascales.dtype() == svdq::Tensor::FP8_E4M3 && wscales.dtype() == svdq::Tensor::FP8_E4M3,
           "scales must be FP8_E4M3");
   const int M = act.size(0);
@@ -126,8 +132,9 @@ void launch_wna4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::
   }
   if (wgt_micro.valid()) {
     require(kBits != 3, "W3 does not support the three-stage inner scale");
-    require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == N && wgt_micro.size(1) * 16 >= K,
-            "micro scales must be uint8 [N,ceil(K/16)]");
+    require(
+      wgt_micro.ndims() == 2 && wgt_micro.size(0) == N && wgt_micro.size(1) * 4 * inner_group >= K,
+      "micro scales must be uint8 [N,ceil(K/(4*inner_group))]");
     require(wgt_micro.is_cuda() && wgt_micro.is_contiguous(),
             "micro scales must be a contiguous CUDA tensor");
   }
@@ -156,14 +163,14 @@ void launch_wna4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::
     wgt_hi.valid() ? static_cast<uint8_t const *>(wgt_hi.data_ptr()) : nullptr,
     static_cast<int>(wgt_lo.size(1)), wgt_hi.valid() ? static_cast<int>(wgt_hi.size(1)) : 0,
     wgt_micro.valid() ? static_cast<uint8_t const *>(wgt_micro.data_ptr()) : nullptr,
-    wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0);
+    wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0, inner_group);
   checkCUDA(cudaGetLastError());
 }
 
 }  // namespace
 
 void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int bits, int K,
-                 svdq::Tensor wgt_micro) {
+                 svdq::Tensor wgt_micro, int inner_group) {
   auto require = [](bool condition, const char *message) {
     if (!condition) {
       throw std::runtime_error(spdlog::fmt_lib::format("expand_wna4: {}", message));
@@ -172,6 +179,8 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
   require(wgt_lo.valid() && wgt_lo.ndims() == 2 && out.valid() && out.ndims() == 2,
           "packed weight and output must be 2D");
   require(bits >= 1 && bits <= 3, "bits must be 1, 2 or 3");
+  require(inner_group == 2 || inner_group == 4, "inner_group must be 2 or 4");
+  require(bits != 3 || inner_group == 4, "W3 requires inner_group=4");
   require(bits != 3 || (wgt_hi.valid() && wgt_hi.ndims() == 2),
           "W3 requires a valid 2D sign plane");
   require(!wgt_hi.valid() || wgt_hi.dtype() == svdq::Tensor::INT8,
@@ -184,10 +193,12 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
   const int rows = wgt_lo.size(0);
   require(out.size(0) == rows && out.size(1) * 2 == K, "out must be packed E2M1 [rows,K/2]");
   if (wgt_micro.valid()) {
-    require(bits != 3 && K % 16 == 0, "three-stage expansion requires W1/W2 and K divisible by 16");
-    require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == rows && wgt_micro.size(1) * 16 >= K &&
-              wgt_micro.is_cuda() && wgt_micro.is_contiguous(),
-            "micro scales must be a contiguous uint8 [rows,ceil(K/16)] CUDA tensor");
+    require(bits != 3 && K % (4 * inner_group) == 0,
+            "three-stage expansion requires W1/W2 and K divisible by 4*inner_group");
+    require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == rows &&
+              wgt_micro.size(1) * 4 * inner_group >= K && wgt_micro.is_cuda() &&
+              wgt_micro.is_contiguous(),
+            "micro scales must be uint8 [rows,ceil(K/(4*inner_group))] on CUDA");
   }
   const int groups = rows * (K / 8);
   const int threads = 256;
@@ -197,32 +208,32 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
     wgt_micro.valid() ? static_cast<uint8_t const *>(wgt_micro.data_ptr()) : nullptr,
     static_cast<uint8_t *>(out.data_ptr()), rows, K, bits, static_cast<int>(wgt_lo.size(1)),
     wgt_hi.valid() ? static_cast<int>(wgt_hi.size(1)) : 0,
-    wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0);
+    wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0, inner_group);
   checkCUDA(cudaGetLastError());
 }
 
 void gemm_w1a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro) {
+               svdq::Tensor wgt_micro, int inner_group) {
   launch_wna4<1>(act, wgt_lo, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales, alpha, K,
-                 wgt_hi, wgt_micro);
+                 wgt_hi, wgt_micro, inner_group);
 }
 
 void gemm_w2a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro) {
+               svdq::Tensor wgt_micro, int inner_group) {
   launch_wna4<2>(act, wgt_lo, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales, alpha, K,
-                 wgt_hi, wgt_micro);
+                 wgt_hi, wgt_micro, inner_group);
 }
 
 void gemm_w3a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro) {
+               svdq::Tensor wgt_micro, int inner_group) {
   launch_wna4<3>(act, wgt_lo, out, ascales, wscales, lora_act_in, lora_up, bias, wcscales, alpha, K,
-                 wgt_hi, wgt_micro);
+                 wgt_hi, wgt_micro, inner_group);
 }
 
 }  // namespace svdq::cute_kernels

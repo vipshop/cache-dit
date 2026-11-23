@@ -50,6 +50,8 @@ def _quantize_svdq_wNaN(module: nn.Module, quantize_config, quantize_linear,
   format_kwargs = {}
   if precision in ("w1a4", "w2a4"):
     format_kwargs["stages"] = int(kwargs["packed_a4_stages"]) if "packed_a4_stages" in kwargs else 3
+    format_kwargs["inner_group"] = (int(kwargs["packed_a4_inner_group"])
+                                    if "packed_a4_inner_group" in kwargs else 4)
 
   captured: dict[str, torch.Tensor] = {}
   if not is_dq:

@@ -1200,7 +1200,7 @@ $$
 
 ### Three-stage math (default for W1/W2)
 
-Two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. The default three-stage codec keeps the two NVFP4 scales and adds four 2-bit exponents per group, one per 4-element subgroup:
+Two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. The default three-stage codec keeps the two NVFP4 scales and adds 2-bit exponents, one per subgroup. The subgroup size defaults to 4 and can be set to 2 with `svdq_kwargs={"packed_a4_inner_group": 2}` for finer local refinement. A 4-element subgroup uses four exponents per 16 elements; a 2-element subgroup uses eight:
 
 $$
 \begin{aligned}
@@ -1238,17 +1238,26 @@ f_2(e) &=
   \end{cases} \\[4pt]
 T_b(e,q) &= (-1)^{s_b(q)}\, m_b(a_b(q))\, f_b(e), \\[4pt]
 \hat{R}_{n,k} &= s^{(c)}_{n} s^{(g)}_{n,g}\,
-  T_b\!\left(e_{n,\lfloor k/4 \rfloor}, q_{n,k}\right).
+  T_b\!\left(e_{n,\lfloor k/G \rfloor}, q_{n,k}\right), \quad G \in \{2,4\}.
 \end{aligned}
 $$
 
-The encoder tests all exponent tables for each subgroup, picks the table and code with the smallest squared error, and packs four exponents into one `uint8` per 16 K elements (`wmicroscales`, `uint8 [N,ceil(K/16)]`). This costs 0.5 bit/weight. Every table value is already a legal E2M1 magnitude, so the exponent is folded into the B nibble during expansion; the MMA still sees exactly one scale per 16 K elements and there is no fourth runtime multiply. Explicit `svdq_kwargs={"packed_a4_stages": 2}` restores the standard two-stage format for compatibility or controlled comparisons.
+The encoder tests all exponent tables for each subgroup, picks the table and code with the smallest squared error, and packs four 2-bit exponents into one `uint8`. The default 4-element subgroup covers 16 K elements per byte (`wmicroscales`, `uint8 [N,ceil(K/16)]`) and costs 0.5 bit/weight. The optional 2-element subgroup covers 8 K elements per byte (`uint8 [N,ceil(K/8)]`) and costs 1 bit/weight; W1 then totals 2.5 bit/weight and W2 3.5 bit/weight before the coarse scale. Every table value is already a legal E2M1 magnitude, so the exponent is folded into the B nibble during expansion; the MMA still sees exactly one scale per 16 K elements and there is no fourth runtime multiply. Explicit `svdq_kwargs={"packed_a4_stages": 2}` restores the standard two-stage format for compatibility or controlled comparisons.
 
 ```python
 # W1/W2 default to three stages.
 pipe.transformer = cache_dit.quantize(
   pipe.transformer,
   QuantizeConfig(quant_type="svdq_w2a4_r512_dq"),
+)
+
+# Optional finer per-2 exponent grouping (W1/W2, three stages only).
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(
+    quant_type="svdq_w2a4_r32_dq",
+    svdq_kwargs={"packed_a4_inner_group": 2},
+  ),
 )
 
 # Explicit two-stage NVFP4-compatible storage.
@@ -1261,9 +1270,11 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
+The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec; `--svdq-packed-a4-inner-group 2` selects the per-2 exponent layout while the default stays per-4. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
 
 Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-dev, the 494 quantized block linears contain 11.83B weights; rank 512 costs 2.75B LoRA parameters (23.2% of the block weights), rank 128 costs 5.8%, rank 64 costs 2.9%, and rank 32 costs 1.45%. With three stages enabled, the tested W2 ranks 32/64 already produce complete structure and readable text while retaining only about 4.46/4.78 GiB of persistent weights; W2 r512 reaches about 9.27 GiB on the same padded geometry. Rank 512 is therefore not the first choice for W2 unless additional prompts show a specific need for it. W3A4 r32 is 5.15 GiB and W4A4 r32 is 6.53 GiB.
+
+The per-2 option doubles the exponent bytes. W2A4 r32 per-2 uses about 5.15 GiB and produced a valid image in the same FLUX compile check; W1A4 r32/r64 per-2 still did not produce a semantically valid image, so per-2 is not a substitute for switching W1 to W2. The per-4 layout remains the default and the recommended format for W2.
 
 ### Compile performance
 
@@ -1277,13 +1288,14 @@ Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-st
 | W2A4 r32, three stages | 4.46 GiB | 6.54s | 2.27x |
 | W2A4 r64, three stages | 4.78 GiB | 6.82s | 2.17x |
 | W3A4 r32 | 5.15 GiB | 6.44s | 2.30x |
+| W3A4 r64 | 5.47 GiB | 6.72s | 2.21x |
 | W4A4 (NVFP4) r32 | 6.53 GiB | 6.00s | 2.47x |
 
-The gallery below shows the valid compiled outputs for the same prompt and seed. W1 uses rank 512, W2 uses ranks 32/64, all with three stages; W3/W4 use rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 r256 is omitted because its generated image is not semantically valid even though it executes and is included in the performance table.
+The gallery below shows the valid compiled outputs for the same prompt and seed. W2 uses ranks 32/64 with three stages, W3 uses ranks 32/64 with the standard two-stage codec, and W4 uses rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 is excluded from the gallery because none of the tested W1 configurations produced a semantically valid image; its performance and memory entries remain in the table for completeness.
 
 ![Packed A4 compile comparison](../assets/svdq_packed_a4_compile_gallery.png)
 
-W2A4 with three stages removes the low-bit blur at ranks 32/64 and reaches W3A4 r32-level perceptual quality while using less persistent weight memory. W1A4 remains an experimental tier even with rank 512 and three stages.
+W2A4 with three stages removes the low-bit blur at ranks 32/64 and reaches W3A4-level perceptual quality while using less persistent weight memory. W1A4 remains an experimental tier and is not a recommended deployment option.
 
 The packed persistent tensors are never replaced by a full-model W4A4 copy. Forward expands only the current projection into a transient E2M1 workspace and overlaps that expansion with activation production on a side CUDA stream. This preserves the W4A4 GEMM path and fullgraph compile, at the cost of one projection-sized workspace. Fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are rejected.
 

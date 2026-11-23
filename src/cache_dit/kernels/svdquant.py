@@ -1214,13 +1214,14 @@ def _wNa4_logical_k(wgt_lo: torch.Tensor, bits: int) -> int:
   return wgt_lo.shape[1] * 4 if bits == 3 else wgt_lo.shape[1] * 8 // bits
 
 
-torch.library.define("cache_dit_cuda_ops::svdq_expand_wna4",
-                     "(Tensor wgt_lo, Tensor? wgt_hi, int bits, Tensor? wgt_micro) -> Tensor")
+torch.library.define(
+  "cache_dit_cuda_ops::svdq_expand_wna4",
+  "(Tensor wgt_lo, Tensor? wgt_hi, int bits, Tensor? wgt_micro, int inner_group) -> Tensor")
 
 
 @torch.library.impl("cache_dit_cuda_ops::svdq_expand_wna4", "CUDA")
 def _svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bits: int,
-                      wgt_micro: torch.Tensor | None) -> torch.Tensor:
+                      wgt_micro: torch.Tensor | None, inner_group: int) -> torch.Tensor:
   k = _wNa4_logical_k(wgt_lo, bits)
   out = torch.empty((wgt_lo.shape[0], k // 2), dtype=torch.int8, device=wgt_lo.device)
   _get_required_ops_module().svdq_expand_wna4(wgt_lo=wgt_lo,
@@ -1228,14 +1229,15 @@ def _svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bits: i
                                               out=out,
                                               bits=bits,
                                               K=k,
-                                              wgt_micro=wgt_micro)
+                                              wgt_micro=wgt_micro,
+                                              inner_group=inner_group)
   return out
 
 
 @torch.library.register_fake("cache_dit_cuda_ops::svdq_expand_wna4")
 def _fake_svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bits: int,
-                           wgt_micro: torch.Tensor | None) -> torch.Tensor:
-  del wgt_hi, wgt_micro
+                           wgt_micro: torch.Tensor | None, inner_group: int) -> torch.Tensor:
+  del wgt_hi, wgt_micro, inner_group
   k = _wNa4_logical_k(wgt_lo, bits)
   return wgt_lo.new_empty((wgt_lo.shape[0], k // 2), dtype=torch.int8)
 
@@ -1243,11 +1245,14 @@ def _fake_svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bi
 def expand_wna4(wgt_lo: torch.Tensor,
                 wgt_hi: torch.Tensor | None,
                 bits: int,
-                wgt_micro: torch.Tensor | None = None) -> torch.Tensor:
+                wgt_micro: torch.Tensor | None = None,
+                inner_group: int = 4) -> torch.Tensor:
   """Expand packed W1/W2/W3 weights into standard packed E2M1 bytes."""
   if bits not in (1, 2, 3) or (bits == 3 and wgt_hi is None):
     raise ValueError("W1/W2 need no high plane; W3 requires its sign plane.")
-  if bits == 3 and wgt_micro is not None:
+  if inner_group not in (2, 4):
+    raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
+  if bits == 3 and (wgt_micro is not None or inner_group != 4):
     raise ValueError("W3 does not support the three-stage inner scale.")
   if wgt_lo.dim() != 2 or wgt_lo.dtype != torch.uint8 or not wgt_lo.is_contiguous():
     raise ValueError("wgt_lo must be a contiguous 2D uint8 tensor.")
@@ -1256,13 +1261,15 @@ def expand_wna4(wgt_lo: torch.Tensor,
   if wgt_micro is not None and (wgt_micro.dim() != 2 or wgt_micro.dtype != torch.uint8):
     raise ValueError("wgt_micro must be a 2D uint8 tensor.")
   k = _wNa4_logical_k(wgt_lo, bits)
-  if k % 8 or (wgt_micro is not None and k % 16):
-    raise ValueError("Packed W1/W2/W3 requires a multiple-of-8 K extent; "
-                     "three-stage requires a multiple of 16.")
+  if k % 8:
+    raise ValueError("Packed W1/W2/W3 requires a multiple-of-8 K extent.")
+  if wgt_micro is not None and wgt_micro.shape[1] * 4 * inner_group < k:
+    raise ValueError(f"wgt_micro row must cover at least {k // (4 * inner_group)} bytes.")
   return torch.ops.cache_dit_cuda_ops.svdq_expand_wna4(wgt_lo=wgt_lo,
                                                        wgt_hi=wgt_hi,
                                                        bits=bits,
-                                                       wgt_micro=wgt_micro)
+                                                       wgt_micro=wgt_micro,
+                                                       inner_group=inner_group)
 
 
 def svdq_gemm_wna4(act: torch.Tensor,
@@ -1275,13 +1282,16 @@ def svdq_gemm_wna4(act: torch.Tensor,
                    bias: torch.Tensor | None = None,
                    wcscales: torch.Tensor | None = None,
                    wgt_micro: torch.Tensor | None = None,
+                   inner_group: int = 4,
                    *,
                    alpha: float = 1.0,
                    bits: int = 2) -> torch.Tensor:
   """Run the packed W1/W2/W3 FP4 GEMM with on-chip weight expansion."""
   if bits not in (1, 2, 3):
     raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
-  if bits == 3 and wgt_micro is not None:
+  if inner_group not in (2, 4):
+    raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
+  if bits == 3 and (wgt_micro is not None or inner_group != 4):
     raise ValueError("W3 does not support the three-stage inner scale.")
   out = torch.empty((act.shape[0], wgt_lo.shape[0]), dtype=torch.bfloat16, device=act.device)
   _get_required_ops_module().svdq_gemm_wna4(act=act,
@@ -1297,7 +1307,8 @@ def svdq_gemm_wna4(act: torch.Tensor,
                                             alpha=alpha,
                                             K=act.shape[1] * 2,
                                             bits=bits,
-                                            wgt_micro=wgt_micro)
+                                            wgt_micro=wgt_micro,
+                                            inner_group=inner_group)
   return out
 
 

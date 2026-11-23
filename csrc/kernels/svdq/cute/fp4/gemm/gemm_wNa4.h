@@ -15,21 +15,21 @@
 namespace svdq::cute_kernels {
 
 void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int bits, int K,
-                 svdq::Tensor wgt_micro);
+                 svdq::Tensor wgt_micro, int inner_group);
 
 void gemm_w1a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro);
+               svdq::Tensor wgt_micro, int inner_group);
 
 void gemm_w2a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro);
+               svdq::Tensor wgt_micro, int inner_group);
 
 void gemm_w3a4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::Tensor ascales,
                svdq::Tensor wscales, svdq::Tensor lora_act_in, svdq::Tensor lora_up,
                svdq::Tensor bias, svdq::Tensor wcscales, float alpha, int K, svdq::Tensor wgt_hi,
-               svdq::Tensor wgt_micro);
+               svdq::Tensor wgt_micro, int inner_group);
 
 }  // namespace svdq::cute_kernels

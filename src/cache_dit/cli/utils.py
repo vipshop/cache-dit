@@ -1027,6 +1027,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Weight scale stages for packed W1A4/W2A4. Default: 3; pass 2 for standard NVFP4.",
   )
   parser.add_argument(
+    "--svdq-packed-a4-inner-group",
+    type=int,
+    default=None,
+    choices=[2, 4],
+    help="Elements sharing one three-stage exponent. Default: 4; pass 2 for finer refinement.",
+  )
+  parser.add_argument(
     "--svdq-runtime",
     "--svdq-runtime-kernel",
     type=str,
@@ -2504,6 +2511,9 @@ def maybe_quantize_transformer(
       **({
         "packed_a4_stages": args.svdq_packed_a4_stages
       } if args.svdq_packed_a4_stages is not None else {}),
+      **({
+        "packed_a4_inner_group": args.svdq_packed_a4_inner_group
+      } if args.svdq_packed_a4_inner_group is not None else {}),
     }
 
   # Quantize transformer by default if quantization is enabled
