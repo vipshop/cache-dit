@@ -44,6 +44,8 @@ import cache_dit.kernels.svdquant as svdq_ops
     ("svdq_gemm_w4a4", svdq_ops),
     ("svdq_quantize_w8a8", svdq_ops),
     ("svdq_gemm_w8a8", svdq_ops),
+    ("svdq_quantize_w4a8", svdq_ops),
+    ("svdq_gemm_w4a8", svdq_ops),
   ],
 )
 def test_public_api_is_reexported_from_domain_module(op_name: str, source_module) -> None:
@@ -93,9 +95,11 @@ def test_svdq_has_single_public_gemm() -> None:
                     reason="requires the cache-dit CUDA extension")
 def test_svdq_pybind_exports_are_module_prefixed() -> None:
   ops = cuda_ext._get_required_ops_module()
-  for name in ("svdq_gemm_w4a4", "svdq_quantize_w4a4", "svdq_gemm_w8a8", "svdq_quantize_w8a8"):
+  for name in ("svdq_gemm_w4a4", "svdq_quantize_w4a4", "svdq_gemm_w8a8", "svdq_quantize_w8a8",
+               "svdq_gemm_w4a8", "svdq_quantize_w4a8"):
     assert hasattr(ops, name)
-  for name in ("gemm_w4a4", "quantize_w4a4", "gemm_w8a8", "quantize_w8a8"):
+  for name in ("gemm_w4a4", "quantize_w4a4", "gemm_w8a8", "quantize_w8a8", "gemm_w4a8",
+               "quantize_w4a8"):
     assert not hasattr(ops, name)
 
 

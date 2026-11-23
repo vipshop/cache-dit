@@ -310,6 +310,9 @@ def _required_svdquant_sources() -> list[str]:
     "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r32.cu",
     "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r64.cu",
     "csrc/kernels/svdq/cute/fp8/quantize/quantize_w8a8_r128.cu",
+    # Mixed E4M3 x packed-E2M1 GEMM and the shared-producer W4A8 ABI.
+    "csrc/kernels/svdq/cute/fp8/gemm/gemm_w4a8.cu",
+    "csrc/kernels/svdq/cute/fp8/quantize/quantize_w4a8.cu",
   ]
 
 

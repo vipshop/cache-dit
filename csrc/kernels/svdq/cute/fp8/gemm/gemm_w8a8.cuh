@@ -13,7 +13,9 @@
 #include <cute/arch/copy_sm80.hpp>
 #include <cute/arch/copy_sm90.hpp>
 #include <cute/arch/copy_sm90_tma.hpp>
+#include <cute/arch/copy_sm100.hpp>
 #include <cute/arch/mma_sm120.hpp>
+#include <cute/atom/copy_traits_sm100.hpp>
 #include <cute/atom/copy_traits_sm90_tma.hpp>
 #include <cute/atom/mma_traits_sm120.hpp>
 #include <cutlass/arch/barrier.h>
@@ -59,13 +61,16 @@ CUTE_DEVICE auto w8a8_acc_rowcol(Layout acc_layout) {
 //   lora_up  [N, R] BF16 L1, row-major
 //   bias     [N] BF16, optional
 // R is 0, 32, 64 or 128. M/N/K must be multiples of the tile extents enforced by the host wrapper.
+// With Traits::kW4A8, wgt is instead packed E2M1 uint8 [N,K/2] in gmem; its TMA/SU4 path expands
+// codes into the same smem/container fragment geometry while retaining the logical [N,K] contract.
 
-template <int kBN_ = 128, int kStages_ = 3, int kBK_ = 128>
+template <int kBN_ = 128, int kStages_ = 3, int kBK_ = 128, bool kW4A8_ = false>
 struct W8A8CuteTraits {
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
   static constexpr int kStages = kStages_;
+  static constexpr bool kW4A8 = kW4A8_;
   // LoRA rank is streamed in 32-wide slices, the same granularity as the FP4 kernel: one D/L1 slice
   // is 8 KiB and therefore always fits inside one A/B stage even though FP8 stages are twice as
   // large as the packed E2M1 ones.
@@ -76,14 +81,15 @@ struct W8A8CuteTraits {
   static_assert(kStages >= 2, "kStages >= 2");
 
   using Element = cutlass::float_e4m3_t;
+  using ElementB = conditional_t<kW4A8, cutlass::float_e2m1_t, Element>;
   using ElementAB = uint8_t;
   using ElementLora = cutlass::bfloat16_t;
   using ElementO = cutlass::bfloat16_t;
   using ElementAcc = float;
 
-  // Dense SM120 FP8 MMA. The permutation matches the dense (non block-scaled) SM120 builder:
-  // M widens to BM, N stays 32 and K is exactly one 32-element atom per fragment step.
-  using MmaAtom = MMA_Atom<SM120_16x8x32_TN<Element, Element, ElementAcc>>;
+  // Dense SM120 F8F6F4 MMA. W4A8 selects E4M3 x E2M1; W8A8 keeps E4M3 x E4M3. The permutation
+  // matches the dense SM120 builder and is unchanged by the operand formats.
+  using MmaAtom = MMA_Atom<SM120_16x8x32_TN<Element, ElementB, ElementAcc>>;
   using AtomLayoutMNK = Layout<Shape<_4, _2, _1>>;
   using PermutationMNK = Tile<Int<kBM>, _32, _32>;
   using TiledMma = decltype(make_tiled_mma(MmaAtom{}, AtomLayoutMNK{}, PermutationMNK{}));
@@ -118,7 +124,11 @@ struct W8A8CuteTraits {
   using SmemLayoutL1 = decltype(tile_to_shape(
     LoraSmemAtom{}, make_shape(Int<kBN>{}, Int<kRankTile>{}, Int<kLoraStages>{})));
 
-  using SmemCopyAtomAB = Copy_Atom<SM75_U32x4_LDSM_N, ElementAB>;
+  using SmemCopyAtomA = Copy_Atom<SM75_U32x4_LDSM_N, ElementAB>;
+  // 16U4 TMA leaves one FP4 code in each 8-bit smem container; the SU4 LDSM variant expands the
+  // packed source into the same B fragment layout used by the mixed-precision atom.
+  using SmemCopyAtomB =
+    Copy_Atom<conditional_t<kW4A8, SM100_SU4_DU8x16_x4_LDSM_N, SM75_U32x4_LDSM_N>, ElementAB>;
   using SmemCopyAtomLora = Copy_Atom<SM75_U32x4_LDSM_N, ElementLora>;
 
   using SmemAtomO = GMMA::Layout_K_SW128_Atom<ElementO>;
@@ -141,7 +151,8 @@ struct W8A8CuteTraits {
   // ring costs no occupancy as long as it stays under the SM120 opt-in limit.
   static_assert(kSmemBytes <= 99 * 1024, "pipeline plus LoRA storage exceeds the SM120 budget");
 
-  static constexpr uint32_t kTxBytesMain = kAStageBytes + kBStageBytes;
+  // TMA counts packed source bytes, while the 16U4 smem layout reserves expanded containers.
+  static constexpr uint32_t kTxBytesMain = kAStageBytes + (kW4A8 ? kBStageBytes / 2 : kBStageBytes);
 };
 
 template <class TmaA_, class TmaB_, class TmaC_>
@@ -187,8 +198,8 @@ class W8A8GemmKernel {
   /**
    * Issue one main-K tile's asynchronous A and B TMA copies.
    *
-   * Both operands are E4M3 codes in row-major gmem; the copies only move bytes and share one
-   * transaction barrier whose budget is A+B. The caller must already own an empty stage.
+   * A is E4M3 and B is E4M3 or packed E2M1 in row-major gmem. The copies share one transaction
+   * barrier whose budget counts packed source bytes. The caller must already own an empty stage.
    *
    * @param tma     Descriptor bundle; only tma.a and tma.b are used.
    * @param full    Transaction-barrier ring; full[stage] is armed by this call.
@@ -212,7 +223,7 @@ class W8A8GemmKernel {
   }
 
   /**
-   * Execute the E4M3 main reduction into the shared FP32 accumulator.
+   * Execute the E4M3 x (E4M3 or E2M1) main reduction into the shared FP32 accumulator.
    *
    * Each K tile is split into BK/32 sub-blocks so only one A/B atom pair is live at a time. This
    * helper applies no scales: ascale/wscale are handled by the caller after the reduction.
@@ -220,8 +231,8 @@ class W8A8GemmKernel {
    * @param full/empty Shared barrier rings; warp leaders release the stage after the last MMA.
    * @param tid        Consumer thread index.
    * @param nKt        Number of main K tiles.
-   * @param tiled_mma  FP8 tiled MMA descriptor.
-   * @return           void; tCrC holds the raw E4M3 product on return.
+   * @param tiled_mma  F8F6F4 tiled MMA descriptor.
+   * @return           void; tCrC holds the raw mixed-precision product on return.
    */
   template <class TiledMma, class CopyA, class CopyB, class SrcA, class SrcB, class DstA,
             class DstB, class FragA, class FragB, class Acc>
@@ -238,6 +249,10 @@ class W8A8GemmKernel {
       for (int k_block = 0; k_block < kBK / 32; ++k_block) {
         copy(s2r_copy_a, tCsA(_, _, k_block, stage), tCrA_view(_, _, k_block));
         copy(s2r_copy_b, tCsB(_, _, k_block, stage), tCrB_view(_, _, k_block));
+        if constexpr (Traits::kW4A8) {
+          using MMAOp = typename TiledMma::MMA_Op;
+          cute::fp4_shift_B(MMAOp{}, tCrB(_, _, k_block));
+        }
         cute::gemm(tiled_mma, tCrA(_, _, k_block), tCrB(_, _, k_block), tCrC);
       }
       __syncwarp();
@@ -487,8 +502,8 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
 
   TiledMma tiled_mma;
   auto thr_mma = tiled_mma.get_thread_slice(tid);
-  auto s2r_copy_a = make_tiled_copy_A(typename Traits::SmemCopyAtomAB{}, tiled_mma);
-  auto s2r_copy_b = make_tiled_copy_B(typename Traits::SmemCopyAtomAB{}, tiled_mma);
+  auto s2r_copy_a = make_tiled_copy_A(typename Traits::SmemCopyAtomA{}, tiled_mma);
+  auto s2r_copy_b = make_tiled_copy_B(typename Traits::SmemCopyAtomB{}, tiled_mma);
   auto s2r_thr_a = s2r_copy_a.get_thread_slice(tid);
   auto s2r_thr_b = s2r_copy_b.get_thread_slice(tid);
   auto tCsA = s2r_thr_a.partition_S(as_position_independent_swizzle_tensor(sA_full));

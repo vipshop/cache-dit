@@ -358,6 +358,28 @@ C = sum_g( (qA_g @ qB_g^T) * ascales[:,g] * wscales[nb,g] ) + D @ L1^T + bias
 
 验收矩阵：量化/反量化对拍（含零 block 和 padding）、rank 0/32/64/128、LoRA 不被 scale 污染、fake + fullgraph compile、两种粒度 save/load 及旧 checkpoint 兼容、同 runtime unfused 对照、FLUX 精度。性能基线（RTX PRO 5000，M4096/N12288/K3072，2026-11-23）：plain FP8 GEMM per-row 0.698ms、per-block 0.714ms；producer 0.010ms/0.016ms。目标是保留现有 LoRA 融合开销模型，不出现第二遍 dense 输出或独立 BF16 GEMM；若 BN64 明显慢于 CUTLASS per-block，再转向 collective 集成，不接受仅功能正确的慢路径直接落地。
 
+### 8.7 SVDQ-FP6 / W4A8 实现记录与 W6A6 预研（2026-11-23）
+
+**硬件结论已经本地执行验证，不要照抄网络截图。** SM120 没有 tcgen05 这一点正确，但“只能 MX block-scale、只支持 scale_vec::1X/UE8M0”错误：`cute/arch/mma_sm120.hpp` 提供非 block-scaled `SM120_16x8x32_TN` 的 `kind::f8f6f4`，现有 NVFP4 还使用 `SM120_16x8x64_TN_VS<E2M1,E2M1,F32,UE4M3,16>`（scale_vec::4X、block16）。最小 all-ones 探针在 RTX PRO 5000 上实际执行通过：E2M3×E2M3、E3M2×E3M2、E4M3×E2M1 的每个输出均为 K=32。编译探针使用显式 `-gencode arch=compute_120a,code=sm_120a`；简写 `-arch=sm_120a` 曾在本机生成 sm_120 PTX 并被 ptxas 拒绝，不能把该工具链现象误判成硬件不支持。
+
+**首选非 block-scaled atom + FP32 per-row scale，而不是 MX/UE8M0。** 这样可沿用 W8A8 的 `ascales[M]`、`wscales[N]` 和“全 K 归约后只乘一次”的结构，也不需要 blockwise promotion。MX-FP6（E2M3/E3M2、UE8M0/32 元素）可作为后续对照，但不是硬件强制路径。W4A8 更不能复用 NVFP4 的 K64/UE4M3/block16 契约；混合 E4M3×E2M1 使用 K32 atom。
+
+关键数据路径约束：非 block-scaled F8F6F4 的 A fragment 固定 4 个 b32、B fragment 固定 2 个 b32，FP6/FP4 以 **8-bit container** 进入 MMA，并非直接消费紧密打包位流。FP4 还需按 `fp4_shift_A/B` 将低 4-bit code 左移 2 位；FP6 不做该 shift。若 qweight/qact 直接以每码一字节存储，W6A6/W4A8 相对 FP8 没有运行时容量或带宽收益，只有精度损失——这种实现只能做正确性原型，禁止作为交付路径。生产路径必须保留 packed gmem；16U4 TMA 会把 FP4 展开到 2B/code 的 smem container，不要求 packed smem。`fp4_shift_B` 必须以 `typename TiledMma::MMA_Op{}` 调用；误传 `TiledMma` 会命中通用空重载，数值静默错误。
+
+**优先级 1：W4A8，可行且改造面最小。**
+
+- A 仍是 E4M3 `[M,K]` + FP32 `ascales[M]`，完整复用 `svdq_quantize_w8a8` 的激活量化 + LoRA-down producer；不要另起 BF16 down GEMM。
+- residual B 使用 E2M1 packed `[N,K/2]` + FP32 `wscales[N]`，scale 为 per-output-channel amax/6；离线量化复用 `packing.fp_quantize` 的 LUT-argmin 语义，nibble 序固定为 even-k 低、odd-k 高；不要把 Python LUT 的 tie 行为误写成设备 `cvt` 契约。
+- GEMM 使用 `SM120_16x8x32_TN<E4M3,E2M1,float>`，A 维持 W8A8 的 TMA/LDSM；B 采用 `16U4_ALIGN16B` TMA + `SM100_SU4_DU8x16_x4_LDSM_N`，再对每个 K32 block 调一次 `fp4_shift_B(MMA_Op{})`。`expect_tx` 按 packed gmem 字节计 `A+B/2`，smem 仍按展开 container 计 `A+B`。LoRA-up 仍是 BF16 并共享 FP32 accumulator，A/B scale 不得乘到 LoRA 项。
+- 建议新 quant type `svdq_w4a8_r{32,64,128}[_dq]`、新模块 `SVDQW4A8Linear` 和新 pybind 名 `svdq_gemm_w4a8`；checkpoint 用独立 precision 标记 packed 布局，不走 W4A4/W8A8 loader。W4A8 不需要新的 activation producer 符号，如为 API 对称增加 `svdq_quantize_w4a8`，也只能是现有 W8A8 producer 的薄包装。
+- 不含 LoRA/scale 时权重存储相对 FP8 减半；MMA 仍是 m16n8k32，不能宣称有 FP8→FP4 的算力倍率。实测 M4096/N12288/K3072/r32：W4A8 TMA GEMM 0.662ms，W8A8 0.767ms；packed-B 直接 G2R 为 4.62ms，已拒绝该慢路径。离线 FLUX 层 W4A8 误差仍显著高于 W8A8，定位是权重容量/带宽而非精度升级。
+
+W4A8 最终实现落在 `cute/fp8/gemm/gemm_w4a8.cu`（单 TU，无 `_sm120` 后缀）与 `quantize/quantize_w4a8.cu` 薄别名。FLUX r32/r64/r128 eager 为 9.47/9.56/10.13s，compile 为 7.60/7.75/8.36s；相对 BF16 的 eager PSNR/SSIM 为 17.60/0.808、18.38/0.842、19.79/0.878，视觉结构正常但不达到 W8A8 精度。真实 FLUX r32 checkpoint 5.852GiB、494 层，加载 2.33s，加载/内存推理 9.73/9.68s，往返图 PSNR/SSIM 39.40/0.9909。NCU：Tensor 85.7%、168 REG、0 spill、DRAM 10.76%，因此停止继续调主循环。
+
+**优先级 2：W6A6，硬件可行但后置。** 建议 quant type `svdq_fp6_r{32,64,128}[_dq]`，先用 E2M3，E3M2 作为动态范围对照。A/B 都是 FP6 packed 6-bit（4 码 3 字节）+ FP32 per-row scales，主 MMA 分别使用 E2M3×E2M3 或 E3M2×E3M2。CUTLASS 已有 `cvt.rn.satfinite.e2m3x2/e3m2x2.f32`，producer 可沿用 split-K + LoRA-down 结构，但必须新增 FP6 量化、packed activation ABI 和 A/B 两侧的 6→8 fragment 解包。权重/激活理论存储流量相对 FP8 各减 25%（不含 scale/LoRA），没有自动的 1.5× tensor-core 算力提升。只有真实 FLUX 离线误差和原型性能证明其相对 W4A8/FP8 有优势时才继续。
+
+共同验收：packed 随机位型与饱和/零值对拍、PyTorch 解包参考 GEMM、rank 0/32/64/128、LoRA scale 隔离、ragged-M/N/K、fake + fullgraph compile、PTQ/DQ 与 checkpoint 往返、旧格式不回归、无独立 BF16 分支；最后用同一份量化因子比较 FLUX 精度和性能。先用离线 codebook/真实激活探针筛选 W6A6 与 W4A8，避免在收益不成立时投入完整 kernel。
+
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
 `comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。

@@ -1069,6 +1069,10 @@ def _save_quantized_module(
     from .fp8 import SVDQW8A8Linear
 
     expected_linear_type = SVDQW8A8Linear
+  elif precision == "w4a8":
+    from .w4a8 import SVDQW4A8Linear
+
+    expected_linear_type = SVDQW4A8Linear
   for layer_name in quantized_layer_names:
     submodule = _get_named_submodule(module, layer_name)
     if not isinstance(submodule, expected_linear_type):
@@ -1236,8 +1240,8 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   rank = payload.get("rank")
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid integer rank.")
-  if precision == "fp8" and rank not in (0, 32, 64, 128):
-    raise ValueError(f"SVDQ-FP8 checkpoint at {path} has invalid rank {rank}; "
+  if precision in ("fp8", "w4a8") and rank not in (0, 32, 64, 128):
+    raise ValueError(f"SVDQ-{precision.upper()} checkpoint at {path} has invalid rank {rank}; "
                      "expected 0, 32, 64 or 128.")
 
   quantized_layer_names = payload.get("quantized_layer_names")
@@ -1752,15 +1756,22 @@ def load_svdq(
 
     torch_dtype = layer_state_dict["smooth_factor"].dtype
     local_weight, tp_spec = SVDQW4A4ShardLinear.resolve_local(float_module.weight)
-    if precision == "fp8":
-      from .fp8 import SVDQW8A8Linear
+    if precision in ("fp8", "w4a8"):
+      if precision == "fp8":
+        from .fp8 import SVDQW8A8Linear
 
+        linear_type = SVDQW8A8Linear
+      else:
+        from .w4a8 import SVDQW4A8Linear
+
+        linear_type = SVDQW4A8Linear
       if tp_spec is not None:
-        raise NotImplementedError("SVDQ-FP8 checkpoint loading does not support DTensor/TP layers.")
+        raise NotImplementedError(f"SVDQ-{precision.upper()} checkpoint loading does not support "
+                                  "DTensor/TP layers.")
       if torch_dtype != torch.bfloat16:
-        raise ValueError(
-          f"SVDQ-FP8 checkpoints require BF16 LoRA/smooth tensors, got {torch_dtype}.")
-      quantized_module = SVDQW8A8Linear(
+        raise ValueError(f"SVDQ-{precision.upper()} checkpoints require BF16 LoRA/smooth tensors, "
+                         f"got {torch_dtype}.")
+      quantized_module = linear_type(
         in_features=float_module.in_features,
         out_features=float_module.out_features,
         rank=rank,

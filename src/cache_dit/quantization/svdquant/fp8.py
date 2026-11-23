@@ -280,21 +280,24 @@ def quantize_linear_svdq_fp8(
                                     calibrate_precision=calibrate_precision)
 
 
-def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
-  """Quantize a module in place with SVDQ-FP8, honoring the shared SVDQ scoping rules.
+def _quantize_svdq_fp8_family(module: nn.Module, quantize_config, quantize_linear,
+                              precision: str) -> nn.Module:
+  """Share PTQ/DQ, calibration and checkpoint flow across FP8-activation SVDQ formats.
 
   :param module: Root module containing the float `nn.Linear` layers to quantize.
-  :param quantize_config: `QuantizeConfig` whose `quant_type` is `svdq_fp8_r{rank}[_dq]`.
-  :returns: The module with eligible linears replaced by `SVDQW8A8Linear` instances.
+  :param quantize_config: SVDQ config whose precision equals `precision`.
+  :param quantize_linear: Format-specific function that packs one linear layer.
+  :param precision: `fp8` for W8A8 or `w4a8` for packed-E2M1 residual weights.
+  :returns: The module with eligible linears replaced by their packed runtime modules.
   """
   if not isinstance(module, nn.Module):
     raise TypeError(f"Expected nn.Module, got {type(module)}.")
-  if not quantize_config.is_svdq() or quantize_config.get_svdq_precision() != "fp8":
-    raise ValueError(f"quantize_svdq_fp8 requires an svdq_fp8_* config, got "
+  if not quantize_config.is_svdq() or quantize_config.get_svdq_precision() != precision:
+    raise ValueError(f"SVDQ {precision} quantization requires an svdq_{precision}_* config, got "
                      f"{quantize_config.quant_type!r}.")
   if check_quantized(module):
-    logger.warning("Module %s is already quantized, skipping SVDQ-FP8 quantization.",
-                   module.__class__.__name__)
+    logger.warning("Module %s is already quantized, skipping SVDQ-%s quantization.",
+                   module.__class__.__name__, precision.upper())
     return module
   from .ptq import SVDQPTQContext
   from .ptq import _attach_quantization_metadata
@@ -351,13 +354,13 @@ def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
       context._record_skip(name, "not observed during calibration")
       continue
     linear = _get_named_submodule(module, name)
-    packed = quantize_linear_svdq_fp8(linear,
-                                      captured.get(name),
-                                      rank=context.rank,
-                                      smooth_strategy=strategy,
-                                      torch_dtype=linear.weight.dtype,
-                                      device=quantize_device,
-                                      calibrate_precision=calibrate_precision)
+    packed = quantize_linear(linear,
+                             captured.get(name),
+                             rank=context.rank,
+                             smooth_strategy=strategy,
+                             torch_dtype=linear.weight.dtype,
+                             device=quantize_device,
+                             calibrate_precision=calibrate_precision)
     if name == "":
       result = packed
     else:
@@ -410,3 +413,8 @@ def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
   )
   _maybe_collect_svdq_garbage(quantize_device)
   return result
+
+
+def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
+  """Quantize a module in place with SVDQ-FP8, including optional checkpoint serialization."""
+  return _quantize_svdq_fp8_family(module, quantize_config, quantize_linear_svdq_fp8, "fp8")

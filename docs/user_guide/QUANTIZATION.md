@@ -24,6 +24,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_w4a8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -853,6 +854,25 @@ pipe.transformer = cache_dit.load(pipe.transformer, "./FLUX.1-dev-svdq-fp8-r128/
 ```
 
 The converter CLI also accepts FP8 DQ types, for example <span style="color:#c77dff;">cache-dit-convert --quant-type svdq-fp8-r128-dq ...</span>. Checkpoint loading currently supports ordinary single-GPU modules; DTensor/TP and layerwise-offload checkpoint paths are rejected. The W4A4 fused-MLP epilogue is not yet implemented for SVDQ-FP8, so <span style="color:#c77dff;">fused_mlp=True</span> is explicitly rejected.
+
+## SVDQuant-W4A8
+
+<span style="color:green;">SVDQ-W4A8</span> uses the same per-token E4M3 activation and fused BF16 low-rank branch as SVDQ-FP8, but stores the residual weight as packed E2M1 codes. Its `qweight` buffer is uint8 `[N,K/2]` with even-k in the low nibble and odd-k in the high nibble, so residual-weight storage is half of W8A8. This is a memory-oriented format, not a claim of better accuracy than W8A8; measure the target model before selecting a rank.
+
+DQ uses <span style="color:#c77dff;">svdq_w4a8_r{32|64|128}_dq</span> and defaults to <span style="color:#c77dff;">identity</span> smoothing:
+
+```python
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="svdq_w4a8_r64_dq"),
+)
+```
+
+The generate CLI accepts the corresponding <span style="color:#c77dff;">--svdq-w4a8-r{32|64|128}-dq</span> shortcuts, and the converter accepts <span style="color:#c77dff;">--quant-type svdq-w4a8-r64-dq</span> with BF16 source weights.
+
+PTQ uses the type without `_dq`, for example <span style="color:#c77dff;">svdq_w4a8_r64</span>, plus the same <span style="color:#c77dff;">calibrate_fn</span> and activation-derived smoothing described in the SVDQ-FP8 PTQ section. Unobserved layers are skipped.
+
+Both DQ and PTQ support <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span> with checkpoint files, directories, or a matching `QuantizeConfig`. The manifest precision is `w4a8`, which keeps this packed format out of both the W4A4 and W8A8 loaders. W4A8 currently requires sm120+ and BF16 source weights; fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are explicitly rejected.
 
 ## SVDQuant (W4A4) DQ
 

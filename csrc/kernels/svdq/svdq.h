@@ -49,6 +49,10 @@
 //                          Fused per-token E4M3 activation and BF16 LoRA-down producer.
 //   cute/fp8/quantize/quantize_w8a8_r{32,64,128}.cu
 //                          Rank-specialized producer instantiations.
+//   cute/fp8/gemm/gemm_w4a8.{h,cuh,cu}
+//                          Mixed E4M3 x packed-E2M1 GEMM with fused BF16 LoRA-up.
+//   cute/fp8/quantize/quantize_w4a8.{h,cu}
+//                          W4A8 ABI alias of the W8A8 activation/LoRA-down producer.
 //
 // Selection summary:
 //   native + native layout -> native gemm_w4a4 (INT4 and NVFP4 share one kernel family)
@@ -107,6 +111,15 @@ void gemm_w8a8(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
 // Single public W8A8 activation producer: per-token E4M3 quantization fused with the BF16
 // LoRA-down projection, so the low-rank branch never launches a standalone GEMM either.
 void quantize_w8a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
+
+// W4A8 keeps the W8A8 activation/scratch contract and changes only the packed residual-weight GEMM.
+void gemm_w4a8(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+               std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+               std::optional<torch::Tensor> wscales, std::optional<torch::Tensor> lora_act_in,
+               std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias);
+void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
 

@@ -54,6 +54,10 @@ def quantize(
         from .svdquant.fp8 import quantize_svdq_fp8
 
         return quantize_svdq_fp8(module, quantize_config)
+      if quantize_config.get_svdq_precision() == "w4a8":
+        from .svdquant.w4a8 import quantize_svdq_w4a8
+
+        return quantize_svdq_w4a8(module, quantize_config)
 
       if quantize_config.is_svdq_dq():
         module = quantize_svdq_dq(module, quantize_config)

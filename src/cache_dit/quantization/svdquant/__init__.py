@@ -57,6 +57,9 @@ from .quantizer import compute_smooth_scale
 from .fp8 import SVDQW8A8Linear
 from .fp8 import quantize_linear_svdq_fp8
 from .fp8 import quantize_svdq_fp8
+from .w4a8 import SVDQW4A8Linear
+from .w4a8 import quantize_linear_svdq_w4a8
+from .w4a8 import quantize_svdq_w4a8
 from .quantizer import quantize_linear_svdq_w4a4
 from .quantizer import standardize_calibration_activations
 from .quantizer import validate_linear_geometry
@@ -82,6 +85,9 @@ __all__ = [
   "quantize_linear_svdq_fp8",
   "quantize_svdq_fp8",
   "SVDQW8A8Linear",
+  "SVDQW4A8Linear",
+  "quantize_linear_svdq_w4a8",
+  "quantize_svdq_w4a8",
   "standardize_calibration_activations",
   "validate_linear_geometry",
 ]

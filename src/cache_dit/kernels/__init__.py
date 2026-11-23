@@ -38,6 +38,8 @@ from .svdquant import svdq_gemm_w4a4
 from .svdquant import svdq_quantize_w4a4
 from .svdquant import svdq_gemm_w8a8
 from .svdquant import svdq_quantize_w8a8
+from .svdquant import svdq_gemm_w4a8
+from .svdquant import svdq_quantize_w4a8
 
 __all__ = [
   "ulysses_fp8_o_permute_quant",
@@ -78,4 +80,6 @@ __all__ = [
   "svdq_gemm_w4a4",
   "svdq_gemm_w8a8",
   "svdq_quantize_w8a8",
+  "svdq_gemm_w4a8",
+  "svdq_quantize_w4a8",
 ]
