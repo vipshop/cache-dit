@@ -65,7 +65,7 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 
 1. `csrc/kernels/<族>/<kernel>.cu`：kernel + 入口 `TORCH_CHECK`。
 2. 声明头：`void <op>(at::Tensor ...)`，`namespace cache_dit::<族>`。
-3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("<op>", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。
+3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("{MODULE_NAME}_{OPS_NAME}", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。pybind 导出名必须带模块/算子族前缀（例如 `svdq_gemm_w4a4`、`svdq_quantize_w8a8`），不要导出裸的 `gemm_*` / `quantize_*`，避免后续扩展与其他算子族冲突；公开 torch.library schema 和 Python 包装沿用同一个带前缀名字。C++ 内部 dispatcher/kernel 是否带前缀不影响这条导出约束。
 4. `setup.py`：加 `_required_<族>_sources()`、并进 `_required_cuda_sources()`、族目录加进 `_get_cuda_extension()` 的 `include_dirs`。没有 per-family extension 了；arch 谓词只有 `_is_supported_cuda_sm_target`（ref §5.1/§5.3）。
 5. `src/cache_dit/kernels/<族>.py` 五段：`from .cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
 6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/cuda_ext.py`）；`__all__` 等于全部非下划线**算子**成员（子模块 `attn` / `comm` / `cuda_ext` / `fp8` / `models` / `svdquant` 是包属性但不进 `__all__`）。
@@ -98,7 +98,7 @@ SVDQW4A4Linear.quantize / forward_quant
   - `zgemm.h`：对外只声明 `gemm_w4a4` 与 `quantize_w4a4`。
 - `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合、TMA pipeline，以及**融合 epilogue**（`qout`/`oscales`/`lora_down`/`lora_act_out`/`smooth_factor`/`fuse_silu`；`kFuseOut` 是独立模板维度，非融合实例 SASS 与数值不变）。契约见 `references/svdq-nvfp4-cute.md` §32。
 - `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译；`quantize_glu.cuh` 是两族 producer 共用的 `value * silu(gate)` 成对数学（含 BF16 舍入顺序），改门控语义只改这一处。公共入口声明在 `quantize.h`。
-- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` / `svdq_quantize_w4a4` 与 W8A8 对应入口，没有私有宽 ABI 旁路。pybind 导出也必须使用 `svdq_gemm_*` / `svdq_quantize_*`；`gemm_w4a4` / `quantize_w4a4` 这类裸名只允许作为 C++ 内部 dispatcher/kernel 名。
 - `csrc/kernels/svdq/runtime.h`：`RuntimeKernel` / `RuntimeParams` 与 `LoraLayout` 的**唯一**定义处。原 `runtime_params.h` 已删除；`LoraLayout` 原先定义在 cute 的 `gemm_w4a4.h`，现由 `runtime.h` 提供、cute 头 include 它。只有 host 侧依赖这个头，device kernel 体不依赖。
 - 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
@@ -308,6 +308,8 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 
 结论：**主体 kernel 已具备，后续瓶颈在 pass 覆盖率和正确性护栏，不在继续优化 GEMM 微架构。** 完整 pattern 矩阵、目标模型、落点和验收见 `references/svdq-fused-mlp-roadmap.md`。
 
+**SVDQ-FP8 的 fused MLP 尚未支持（2026-11-23）**：`svdq_fp8_*` 在配置层明确拒绝 `fused_mlp=True`，W8A8 GEMM 当前只有 dense BF16 输出，没有 W4A4 的 `qout/oscales/lora_down/lora_act_out/write_dense` 融合 epilogue。这是后续重点之一：先定义 E4M3 qout + per-token scale 的链间 ABI，再让 FP8 GEMM 在融合 epilogue 中完成 activation、下一层量化与 LoRA-down；可以复用 W4A4 pass 的 pattern 检测，但不能复用 4-bit pack 或 scale 布局。验收必须包含同 runtime 的 unfused 对照、rank32/64/128、ragged-M、compile、save/load 和数值对拍，禁止只测 latency。
+
 按三类优先级推进：
 
 1. **P0 正确性（2026-11-20 代码与单测已落地；真实 exact-GELU 模型回归待验收）**
@@ -329,6 +331,32 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
    - FLUX.2/3 packed QKV+MLP、FLUX.1 concat 整链融合属于架构专项，不混进 activation enum。
 
 禁止把量化收益算成融合收益：FLUX 上融合本身约 +3.1%、Qwen21 约 +4.4%；e2e PSNR 受 SVDQ 原子顺序噪声影响，不能作为等价性判据。不要重复已证伪的 CuTe D 归约微优化、INT4 fused store 或 MoE 强行融合。
+
+### 8.6 SVDQ-FP8 per-block 预研方案（未实现，2026-11-23）
+
+**结论：中高难度，主要难点在 GEMM 主循环，不在 quantizer。** 当前 W8A8 契约是 A `[M,K]` 每 token 一个 scale、B `[N,K]` 每输出通道一个 scale，二者都不随 K 变化，所以 `gemm_fp8_main` 先对全 K 做原始 FP32 累加，再由 `apply_scales` 乘一次。目标 blockwise 契约应对齐 plain FP8：
+
+```text
+G = K / 128
+qA[M,K], ascales[M,G]          # 激活 1x128
+qB[N,K], wscales[N/128,G]      # 残差权重 128x128
+C = sum_g( (qA_g @ qB_g^T) * ascales[:,g] * wscales[nb,g] ) + D @ L1^T + bias
+```
+
+任意一侧的 scale 随 K 变化，都不能再提到归约外；必须每个 K128 block 做 FP32 promotion 并累加。不能在现有 epilogue 上改 shape 就宣称支持。LoRA-up 仍与主分支共享 FP32 accumulator，但不能被 A/B block scale 乘到。
+
+现有可复用证据：`csrc/kernels/fp8/gemm/gemm.cuh` 的 `Fp8BlockScaleConfig = Sm120BlockwiseScaleConfig<1,128,128,K,K>`、`Fp8BlockMainloop` 和 `tile_atom_to_shape_SFA/SFB` 已实现相同 scale 布局；`csrc/kernels/fp8/quantize.cu` 已有 1x128 activation 和 128x128 weight 量化。不能直接复用整个 `GemmUniversal` 后补 LoRA：CUTLASS block scale 在 mainloop 内，LoRA-up 是另一段 MMA，普通 EVT 做不了；只允许复用 collective/layout，不允许退回独立 BF16 GEMM。
+
+**推荐先做自有 CuTe kernel 的 BN64 原型**：保留当前 TMA/LDSM、LoRA ring 和输出路径，把 K128 tile 的原始 partial 放到 `tCrP`，tile 末执行 `tCrC += tCrP * sa[m,g] * sb[nb,g]`，最后再做 LoRA-up 和 bias。BN128 下两份 C accumulator 预计会把当前约 168 REG 推到 spill 区；BN64 将 C 从 64 减到 32 REG，再加 32 REG partial，理论上接近原预算。`BM128/BN64/BK128/S3` 主流水 72KiB，加 LoRA 两档 24KiB，总计 96KiB，仍低于 sm120 的 99KiB 上限。该数字是设计估算，必须编译后查 ptxas 并实测，不能当作已验证结果。代价是 N/64 CTA 数翻倍、A 的 L2/TMA 流量增加；若原型性能不达标，再评估把 `Fp8BlockMainloop` 接入自定义 kernel，在 collective 归约后运行现有 LoRA MMA。后者可保留 BN128，但 pipeline、SharedStorage、register reconfig 的集成复杂度更高，且不修改 vendored CUTLASS。
+
+实施拆分：
+
+1. **配置与格式（低）**：默认 `per_row` 不变；增加仅 FP8 可用的 `scale_granularity="per_block"`（或等价显式字段），不能靠 scale ndim 静默猜测。`SVDQW8A8Linear`、fake schema、state-dict 与 manifest 都记录该粒度；旧 per-row checkpoint 必须原样可加载，粒度不匹配先报错。
+2. **量化器与 producer（中）**：离线 residual 按 `[N/128,128,G,128]` 求 amax；producer 输出 `ascales[M,G]`，在现有 split-K 量化+D kernel 内按全局 `k/128` 取 scale。D 的全 K BF16 归约和 finalize 不变，不能调用 plain FP8 producer 后再单独补 D。
+3. **GEMM（高）**：先完成 BN64 双 accumulator 原型，再做 rank32/64/128 和 ragged-M 包装；优化时优先查 register/spill、scale 读放大的指令数和 A 流量，不先动 LoRA 微优化。
+4. **精度预期**：收益预计主要来自 A 的 1x128 量化。既有 FLUX 探针显示 FP8 权重的相对重构误差不随 scale 粒度显著变化，因此不能承诺 128x128 B scale 本身带来明显收益；用同一份量化 checkpoint 比较 per-row/per-block，避免随机 SVD 和 split-K 原子噪声污染排序。
+
+验收矩阵：量化/反量化对拍（含零 block 和 padding）、rank 0/32/64/128、LoRA 不被 scale 污染、fake + fullgraph compile、两种粒度 save/load 及旧 checkpoint 兼容、同 runtime unfused 对照、FLUX 精度。性能基线（RTX PRO 5000，M4096/N12288/K3072，2026-11-23）：plain FP8 GEMM per-row 0.698ms、per-block 0.714ms；producer 0.010ms/0.016ms。目标是保留现有 LoRA 融合开销模型，不出现第二遍 dense 输出或独立 BF16 GEMM；若 BN64 明显慢于 CUTLASS per-block，再转向 collective 集成，不接受仅功能正确的慢路径直接落地。
 
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 

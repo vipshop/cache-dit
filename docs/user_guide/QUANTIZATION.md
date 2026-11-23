@@ -23,7 +23,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports in-memory DQ and PTQ; checkpoint serialization is not implemented yet.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -802,17 +802,57 @@ cache_dit.enable_cache(pipe, cache_config=..., parallelism_config=...)
 
 The producer fuses per-token activation quantization with the BF16 low-rank down projection. The GEMM accumulates the E4M3 residual product and BF16 low-rank up projection into the same FP32 accumulator; there is no standalone BF16 GEMM or second pass over the dense output. Only sm120 or newer is supported, and ranks 32, 64, and 128 are available.
 
+### SVDQ-FP8 DQ
+
+The default DQ smooth strategy is <span style="color:#c77dff;">identity</span>, matching SVDQ W4A4 DQ. It needs no calibration data and no extra `svdq_kwargs`:
+
 ```python
 pipe.transformer = cache_dit.quantize(
   pipe.transformer,
-  QuantizeConfig(
-    quant_type="svdq_fp8_r32_dq",
-    svdq_kwargs={"smooth_strategy": "weight"},
-  ),
+  QuantizeConfig(quant_type="svdq_fp8_r32_dq"),
 )
 ```
 
-The generate CLI accepts <span style="color:#c77dff;">--quantize-type svdq_fp8_r{32|64|128}_dq</span> and the corresponding <span style="color:#c77dff;">--svdq-fp8-r{32|64|128}-dq</span> shortcuts. In-memory PTQ is also available with <span style="color:#c77dff;">svdq_fp8_r{rank}</span> plus <span style="color:#c77dff;">calibrate_fn</span>. Unlike the W4A4 workflows, SVDQ-FP8 currently rejects <span style="color:#c77dff;">serialize_to</span> because its checkpoint save/load format is not implemented yet.
+The generate CLI accepts <span style="color:#c77dff;">--quantize-type svdq_fp8_r{32|64|128}_dq</span> and the corresponding <span style="color:#c77dff;">--svdq-fp8-r{32|64|128}-dq</span> shortcuts.
+
+The DQ-only <span style="color:#c77dff;">weight</span> and <span style="color:#c77dff;">weight_inv</span> strategies are optional zero-calibration heuristics, not defaults. They derive a per-input-channel scale from weight spans and can change which directions the low-rank SVD retains, but they do not use real activation outliers and are not a substitute for PTQ calibration. Measure the target model before opting in; `weight` is not accepted by the PTQ workflow.
+
+### SVDQ-FP8 PTQ
+
+Use <span style="color:#c77dff;">svdq_fp8_r{32|64|128}</span> without the `_dq` suffix and provide <span style="color:#c77dff;">calibrate_fn</span>. PTQ always uses <span style="color:#c77dff;">smooth_strategy="activation"</span>: each calibration forward updates a per-input-channel activation span, and the smooth scale is computed from those spans and the weight spans. Layers not observed during calibration are skipped rather than partially quantized with an invented scale.
+
+```python
+def calibrate_fn(module):
+  for batch in calibration_batches:
+    module(batch)
+
+quant_config = QuantizeConfig(
+  quant_type="svdq_fp8_r128",
+  calibrate_fn=calibrate_fn,
+  serialize_to="./FLUX.1-dev-svdq-fp8-r128-ptq/",
+)
+pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+```
+
+For SVDQ-FP8 PTQ, <span style="color:#c77dff;">serialize_to</span> is optional: omit it for an in-memory quantized model, or set it to produce a reusable checkpoint. Unlike SVDQ-FP8, W4A4 PTQ requires a serialization destination.
+
+### SVDQ-FP8 checkpoint save/load
+
+Both DQ and PTQ support checkpoint serialization. Cache-DiT writes <span style="color:green;">{quant_type}.safetensors</span> and a sibling <span style="color:green;">quant_config.json</span>. Load the checkpoint into a fresh float transformer with <span style="color:#c77dff;">cache_dit.load(transformer, path)</span>, where `path` can be the checkpoint file, its directory, or a matching `QuantizeConfig`. The manifest records `precision="fp8"`, so FP8 checkpoints never enter the W4A4 unpacking path.
+
+```python
+quant_config = QuantizeConfig(
+  quant_type="svdq_fp8_r128_dq",
+  serialize_to="./FLUX.1-dev-svdq-fp8-r128/",
+  svdq_kwargs={"quantize_device": "cuda"},
+)
+pipe.transformer = cache_dit.quantize(pipe.transformer, quant_config)
+
+# Later, construct the same float transformer and restore the packed weights:
+pipe.transformer = cache_dit.load(pipe.transformer, "./FLUX.1-dev-svdq-fp8-r128/")
+```
+
+The converter CLI also accepts FP8 DQ types, for example <span style="color:#c77dff;">cache-dit-convert --quant-type svdq-fp8-r128-dq ...</span>. Checkpoint loading currently supports ordinary single-GPU modules; DTensor/TP and layerwise-offload checkpoint paths are rejected. The W4A4 fused-MLP epilogue is not yet implemented for SVDQ-FP8, so <span style="color:#c77dff;">fused_mlp=True</span> is explicitly rejected.
 
 ## SVDQuant (W4A4) DQ
 
@@ -1108,7 +1148,7 @@ The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</sp
 
 ## SVDQ Converter CLI
 
-Cache-DiT ships a standalone converter CLI that loads a pretrained diffusion pipeline and converts it to an SVDQ W4A4 quantized format in a single step. The converter currently supports <span style="color:green;">SVDQ dynamic quantization (`_dq`)</span> only — it does not require a calibration dataset or a calibration callback.
+Cache-DiT ships a standalone converter CLI that loads a pretrained diffusion pipeline and converts it to an SVDQ W4A4 or SVDQ-FP8 quantized format in a single step. The converter currently supports <span style="color:green;">SVDQ dynamic quantization (`_dq`)</span> only — it does not require a calibration dataset or a calibration callback.
 
 The converter is available via the <span style="color:#c77dff;">cache-dit-convert</span> console script or as a runnable module:
 
@@ -1131,7 +1171,7 @@ python3 -m cache_dit.quantization.converter \
 | :--- | :---: | :---: | :--- |
 | `--model-path` | yes | — | Path to the pretrained diffusion model directory (e.g. `/path/to/FLUX.1-dev`). |
 | `--save-dir` | yes | — | Directory where the quantized checkpoint (`{quant_type}.safetensors`) and `quant_config.json` are saved. |
-| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen (`svdq-int4-r128-dq`) and underscore (`svdq_int4_r128_dq`) forms. Currently only `_dq` types are supported. |
+| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen and underscore forms, including `svdq-int4-r128-dq`, `svdq-nvfp4-r128-dq`, and `svdq-fp8-r128-dq`. Currently only `_dq` types are supported. |
 | `--torch-dtype` | no | `bfloat16` | Torch dtype used when loading the float pipeline. One of: `float16`, `bfloat16`, `float32`. |
 | `--device` | no | `cuda` | Device to run quantization on. |
 | `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
