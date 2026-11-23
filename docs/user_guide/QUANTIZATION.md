@@ -1278,20 +1278,18 @@ The per-2 option doubles the exponent bytes. W2A4 r32 per-2 uses about 5.15 GiB 
 
 ### Compile performance
 
-Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded), speedup over BF16 compile, and persistent transformer-weight memory on one RTX PRO 5000 72GB. W1/W2 use three stages; W3/W4 use the standard two-stage codec. Memory covers the 494 quantized block linears: packed code, FP8/BF16 scales, three-stage exponents, BF16 LoRA and smooth factors with the runtime's padded geometry; it excludes activations, the transient expansion workspace, and biases.
+Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded), speedup over BF16 compile, and persistent transformer-weight memory on one RTX PRO 5000 72GB. W2 uses three stages; W3/W4 use the standard two-stage codec. Memory covers the 494 quantized block linears: packed code, FP8/BF16 scales, three-stage exponents, BF16 LoRA and smooth factors with the runtime's padded geometry; it excludes activations, the transient expansion workspace, and biases.
 
 | Configuration | Persistent weight memory | Inference | Speedup vs BF16 compile |
 |---|---:|---:|---:|
 | BF16 | 22.04 GiB | 14.83s | 1.00x |
-| W1A4 r256, three stages | 5.33 GiB | 8.34s | 1.78x |
-| W1A4 r512, three stages | 7.89 GiB | 10.36s | 1.43x |
 | W2A4 r32, three stages | 4.46 GiB | 6.54s | 2.27x |
 | W2A4 r64, three stages | 4.78 GiB | 6.82s | 2.17x |
 | W3A4 r32 | 5.15 GiB | 6.44s | 2.30x |
 | W3A4 r64 | 5.47 GiB | 6.72s | 2.21x |
 | W4A4 (NVFP4) r32 | 6.53 GiB | 6.00s | 2.47x |
 
-The gallery below shows the valid compiled outputs for the same prompt and seed. W2 uses ranks 32/64 with three stages, W3 uses ranks 32/64 with the standard two-stage codec, and W4 uses rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 is excluded from the gallery because none of the tested W1 configurations produced a semantically valid image; its performance and memory entries remain in the table for completeness.
+The table and gallery below contain the same six configurations for the same prompt and seed. W2 uses ranks 32/64 with three stages, W3 uses ranks 32/64 with the standard two-stage codec, and W4 uses rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 is not included because none of the tested W1 configurations produced a semantically valid image.
 
 ![Packed A4 compile comparison](../assets/svdq_packed_a4_compile_gallery.png)
 
