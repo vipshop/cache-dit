@@ -1181,13 +1181,20 @@ These formats keep E2M1 activations and W4A4 Tensor Core compute, but store the 
 
 For a residual matrix `R[N,K]`, every 16 consecutive K elements form a scale group `g`. The standard NVFP4 two-stage encoder writes one coarse scale per output channel and one FP8_E4M3 micro-scale per group:
 
-```text
-A[n,g]     = max_{k in g} |R[n,k]|
-s_c[n]     = BF16(max_g A[n,g] / (448 * C_b))
-s_g[n,g]   = FP8_E4M3(A[n,g] / (s_c[n] * C_b))
-q[n,k]     = argmin_{c in Q_b} |R[n,k] / (s_c[n] * s_g[n,g]) - c|
-R_hat[n,k] = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
-```
+$$
+\begin{aligned}
+A_{n,g} &= \max_{k \in g} \left| R_{n,k} \right|, \\
+s^{(c)}_{n} &= \operatorname{BF16}\!\left(
+  \frac{\max_{g} A_{n,g}}{448\,C_b}
+\right), \\
+s^{(g)}_{n,g} &= \operatorname{FP8}_{E4M3}\!\left(
+  \frac{A_{n,g}}{s^{(c)}_{n} C_b}
+\right), \\
+q_{n,k} &= \operatorname*{arg\,min}_{c \in Q_b}
+  \left| \frac{R_{n,k}}{s^{(c)}_{n} s^{(g)}_{n,g}} - c \right|, \\
+\hat{R}_{n,k} &= s^{(c)}_{n} s^{(g)}_{n,g} Q_b\!\left[ q_{n,k} \right].
+\end{aligned}
+$$
 
 `C_b` is the largest codebook magnitude: `6` for W3 and `1.5` for W1/W2. The factor `448` is the largest finite E4M3 value. `s_c` is rounded to BF16 before `s_g` and the codes are derived, because that is the exact factor the W4A4 epilogue applies. W3 stores a two-bit magnitude plane plus a separate sign plane; W1 stores only a sign bit; W2 stores sign plus one magnitude bit. W1 cannot represent zero inside a nonzero group and is therefore the experimental maximum-compression tier.
 
@@ -1195,14 +1202,45 @@ R_hat[n,k] = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
 
 Two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. The default three-stage codec keeps the two NVFP4 scales and adds four 2-bit exponents per group, one per 4-element subgroup:
 
-```text
-e = 0: W1 {0.5,1.5}       W2 {0.5,1.5}
-e = 1: W1 {1.5}           W2 {1,3}
-e = 2: W1 {3}             W2 {2,6}
-e = 3: W1 {6}             W2 {2,6} (reserved duplicate)
-
-R_hat[n,k] = s_c[n] * s_g[n,g] * T_b[e[n,k/4], q[n,k]]
-```
+$$
+\begin{aligned}
+s_b(q) &=
+  \begin{cases}
+    q, & b=1, \\
+    \left\lfloor q/2 \right\rfloor, & b=2,
+  \end{cases}
+&
+a_b(q) &=
+  \begin{cases}
+    0, & b=1, \\
+    q \bmod 2, & b=2,
+  \end{cases} \\[4pt]
+m_1(a) &= 1.5,
+&
+m_2(a) &=
+  \begin{cases}
+    0.5, & a=0, \\
+    1.5, & a=1,
+  \end{cases} \\[4pt]
+f_1(e) &=
+  \begin{cases}
+    1/3, & e=0, \\
+    1, & e=1, \\
+    2, & e=2, \\
+    4, & e=3,
+  \end{cases}
+&
+f_2(e) &=
+  \begin{cases}
+    1, & e=0, \\
+    2, & e=1, \\
+    4, & e=2,3,
+  \end{cases} \\[4pt]
+T_b(e,q) &= (-1)^{s_b(q)}\, m_b(a_b(q))\, f_b(e), \\[4pt]
+\hat{R}_{n,k} &= s^{(c)}_{n} s^{(g)}_{n,g}\,
+  T_b\!\left(e_{n,\lfloor k/4 \rfloor}, q_{n,k}\right).
+\end{aligned}
+$$
 
 The encoder tests all exponent tables for each subgroup, picks the table and code with the smallest squared error, and packs four exponents into one `uint8` per 16 K elements (`wmicroscales`, `uint8 [N,ceil(K/16)]`). This costs 0.5 bit/weight. Every table value is already a legal E2M1 magnitude, so the exponent is folded into the B nibble during expansion; the MMA still sees exactly one scale per 16 K elements and there is no fourth runtime multiply. Explicit `svdq_kwargs={"packed_a4_stages": 2}` restores the standard two-stage format for compatibility or controlled comparisons.
 
@@ -1240,6 +1278,10 @@ Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-st
 | W2A4 r512, three stages | 10.37s | 1.43x |
 | W3A4 r32 | 6.44s | 2.30x |
 | W4A4 (NVFP4) r32 | 6.00s | 2.47x |
+
+The gallery below shows the corresponding compiled outputs for the same prompt and seed. W1/W2 use three stages at rank 256/512; W3/W4 use rank 32. Labels repeat the steady-state compile latency from the table.
+
+![Packed A4 compile comparison](../assets/svdq_packed_a4_compile_gallery.png)
 
 W2A4 r512 with three stages removes the low-bit blur and reaches W3A4 r32-level perceptual quality, but W3A4 r32 is smaller and faster. W1A4 remains an experimental tier even with rank 512 and three stages.
 
