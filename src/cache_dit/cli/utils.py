@@ -709,6 +709,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "svdq_w4a8_r32_dq",
       "svdq_w4a8_r64_dq",
       "svdq_w4a8_r128_dq",
+      "svdq_fp6_r32_dq",
+      "svdq_fp6_r64_dq",
+      "svdq_fp6_r128_dq",
       *[
         f"svdq_w{bits}a4_r{rank}_dq" for bits in (1, 2, 3)
         for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank
@@ -933,6 +936,24 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     action="store_true",
     default=False,
     help="Enable SVDQ-W4A8 dynamic quantization with rank 128 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-fp6-r32-dq",
+    action="store_true",
+    default=False,
+    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 32 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-fp6-r64-dq",
+    action="store_true",
+    default=False,
+    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 64 for transformer",
+  )
+  parser.add_argument(
+    "--svdq-fp6-r128-dq",
+    action="store_true",
+    default=False,
+    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 128 for transformer",
   )
   for bits in (1, 2, 3):
     ranks = _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"]
@@ -1737,6 +1758,9 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     ("svdq_w4a8_r32_dq", args.svdq_w4a8_r32_dq),
     ("svdq_w4a8_r64_dq", args.svdq_w4a8_r64_dq),
     ("svdq_w4a8_r128_dq", args.svdq_w4a8_r128_dq),
+    ("svdq_fp6_r32_dq", args.svdq_fp6_r32_dq),
+    ("svdq_fp6_r64_dq", args.svdq_fp6_r64_dq),
+    ("svdq_fp6_r128_dq", args.svdq_fp6_r128_dq),
     *[(f"svdq_w{bits}a4_r{rank}_dq", getattr(args, f"svdq_w{bits}a4_r{rank}_dq"))
       for bits in (1, 2, 3) for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank],
   ]

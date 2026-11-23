@@ -25,6 +25,8 @@
 #include "native/zgemm.h"
 #include "cute/fp4/gemm/gemm_w4a4.h"
 #include "cute/fp4/quantize/quantize.h"
+#include "cute/fp6/gemm/gemm_w6a6.h"
+#include "cute/fp6/quantize/quantize_w6a6.h"
 #include "cute/fp8/gemm/gemm_w8a8.h"
 #include "cute/fp8/gemm/gemm_w4a8.h"
 #include "cute/fp8/quantize/quantize_w8a8.h"
@@ -267,6 +269,28 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
     get_tensor(lora_act), get_tensor(smooth), scratch.defined() ? from_torch(scratch) : ::Tensor{});
 }
 
+void gemm_w6a6(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+               std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+               std::optional<torch::Tensor> wscales, std::optional<torch::Tensor> asf,
+               std::optional<torch::Tensor> wsf, std::optional<torch::Tensor> lora_act_in,
+               std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias) {
+  TorchOpContext ctx;
+  ::svdq::cute_kernels::gemm_w6a6(get_tensor(act), get_tensor(wgt), get_tensor(out),
+                                  get_tensor(ascales), get_tensor(wscales), get_tensor(asf),
+                                  get_tensor(wsf), get_tensor(lora_act_in), get_tensor(lora_up),
+                                  get_tensor(bias));
+}
+
+void quantize_w6a6(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> asf, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth) {
+  TorchOpContext ctx;
+  torch::Tensor scratch = allocate_fp8_lora_scratch(input, lora_down);
+  ::svdq::cute_kernels::quantize_w6a6(
+    get_tensor(input), get_tensor(output), get_tensor(asf), get_tensor(lora_down),
+    get_tensor(lora_act), get_tensor(smooth), scratch.defined() ? from_torch(scratch) : ::Tensor{});
+}
+
 void expand_wna4(std::optional<torch::Tensor> wgt_lo, std::optional<torch::Tensor> wgt_hi,
                  std::optional<torch::Tensor> out, int64_t bits, int64_t K,
                  std::optional<torch::Tensor> wgt_micro, int64_t inner_group) {
@@ -337,7 +361,12 @@ void register_svdq_ops(py::module_ &ops) {
          py::arg("lora_up"), py::arg("bias"), py::arg("wcscales"), py::arg("alpha"), py::arg("K"),
          py::arg("bits"), py::arg("wgt_micro") = py::none(), py::arg("inner_group") = 4)
     .def("svdq_quantize_w4a8", &quantize_w4a8, py::arg("input"), py::arg("output"),
-         py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
+         py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"))
+    .def("svdq_gemm_w6a6", &gemm_w6a6, py::arg("act"), py::arg("wgt"), py::arg("out"),
+         py::arg("ascales"), py::arg("wscales"), py::arg("asf"), py::arg("wsf"),
+         py::arg("lora_act_in"), py::arg("lora_up"), py::arg("bias"))
+    .def("svdq_quantize_w6a6", &quantize_w6a6, py::arg("input"), py::arg("output"), py::arg("asf"),
+         py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
 }
 
 }  // namespace cache_dit::svdq

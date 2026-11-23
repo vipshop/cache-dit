@@ -1096,6 +1096,10 @@ def _save_quantized_module(
     from .linear import SVDQW4A8Linear
 
     expected_linear_type = SVDQW4A8Linear
+  elif precision in ("w6a6", "fp6"):
+    from .linear import SVDQW6A6Linear
+
+    expected_linear_type = SVDQW6A6Linear
   elif precision in ("w1a4", "w2a4", "w3a4"):
     from .linear import SVDQWNA4Linear
 
@@ -1273,7 +1277,7 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid integer rank.")
   _validate_svdq_manifest_rank(precision, rank, path)
-  if precision in ("fp8", "w4a8") and rank not in (0, 32, 64, 128):
+  if precision in ("fp8", "w4a8", "w6a6", "fp6") and rank not in (0, 32, 64, 128):
     raise ValueError(f"SVDQ-{precision.upper()} checkpoint at {path} has invalid rank {rank}; "
                      "expected 0, 32, 64 or 128.")
 
@@ -1569,7 +1573,7 @@ def load_svdq(
 
     torch_dtype = layer_state_dict["smooth_factor"].dtype
     local_weight, tp_spec = SVDQW4A4ShardLinear.resolve_local(float_module.weight)
-    if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
+    if precision in ("fp8", "w4a8", "w6a6", "fp6", "w1a4", "w2a4", "w3a4"):
       if precision == "fp8":
         from .linear import SVDQW8A8Linear
 
@@ -1578,6 +1582,10 @@ def load_svdq(
         from .linear import SVDQW4A8Linear
 
         linear_type = SVDQW4A8Linear
+      elif precision in ("w6a6", "fp6"):
+        from .linear import SVDQW6A6Linear
+
+        linear_type = SVDQW6A6Linear
       else:
         from .linear import SVDQW1A4Linear
         from .linear import SVDQW2A4Linear

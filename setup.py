@@ -314,6 +314,12 @@ def _required_svdquant_sources() -> list[str]:
     # Mixed E4M3 x packed-E2M1 GEMM and the shared-producer W4A8 ABI.
     "csrc/kernels/svdq/cute/fp8/gemm/gemm_w4a8.cu",
     "csrc/kernels/svdq/cute/fp8/quantize/quantize_w4a8.cu",
+    # Block-scaled MXFP6 (E2M3 x E2M3) GEMM and its packed activation producer.
+    "csrc/kernels/svdq/cute/fp6/gemm/gemm_w6a6.cu",
+    "csrc/kernels/svdq/cute/fp6/quantize/quantize_w6a6.cu",
+    "csrc/kernels/svdq/cute/fp6/quantize/quantize_w6a6_r32.cu",
+    "csrc/kernels/svdq/cute/fp6/quantize/quantize_w6a6_r64.cu",
+    "csrc/kernels/svdq/cute/fp6/quantize/quantize_w6a6_r128.cu",
   ]
 
 

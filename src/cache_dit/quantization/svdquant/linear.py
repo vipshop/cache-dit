@@ -10,6 +10,7 @@ from .wNa4 import SVDQW3A4Linear
 from .wNa4 import SVDQWNA4Linear
 from .wNa8 import SVDQW4A8Linear
 from .wNa8 import SVDQW8A8Linear
+from .w6a6 import SVDQW6A6Linear
 from .dtensor import SVDQW4A4ShardLinear
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
   "SVDQW3A4Linear",
   "SVDQWNA4Linear",
   "SVDQW4A8Linear",
+  "SVDQW6A6Linear",
   "SVDQW8A8Linear",
 ]

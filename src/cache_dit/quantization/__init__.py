@@ -16,4 +16,5 @@ from .svdquant import SVDQW3A4Linear
 from .svdquant import SVDQWNA4Linear
 from .svdquant import SVDQW8A8Linear
 from .svdquant import SVDQW4A8Linear
+from .svdquant import SVDQW6A6Linear
 from .svdquant import quantize_svdq_wNaN

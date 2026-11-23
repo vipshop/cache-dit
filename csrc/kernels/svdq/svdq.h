@@ -133,6 +133,18 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> lora_down,
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
 
+// W6A6: both operands are packed E2M3 with UE8M0 32-wide micro-scales consumed by the MX
+// block-scaled MMA, so the producers emit a packed scale row instead of a per-token vector.
+// `asf`/`wsf` are the UE8M0 rows; `ascales`/`wscales` remain optional FP32 second-level scales.
+void gemm_w6a6(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt,
+               std::optional<torch::Tensor> out, std::optional<torch::Tensor> ascales,
+               std::optional<torch::Tensor> wscales, std::optional<torch::Tensor> asf,
+               std::optional<torch::Tensor> wsf, std::optional<torch::Tensor> lora_act_in,
+               std::optional<torch::Tensor> lora_up, std::optional<torch::Tensor> bias);
+void quantize_w6a6(std::optional<torch::Tensor> input, std::optional<torch::Tensor> output,
+                   std::optional<torch::Tensor> asf, std::optional<torch::Tensor> lora_down,
+                   std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
+
 // Packed W1/W2/W3 A4 host surface. `expand_wna4` is the production path: it decodes compact
 // weights into one transient E2M1 buffer that the unchanged W4A4 GEMM consumes. `wgt_micro` is the
 // optional per-4 exponent plane for W1/W2 three-stage; W3 rejects it. `gemm_wna4` performs the
