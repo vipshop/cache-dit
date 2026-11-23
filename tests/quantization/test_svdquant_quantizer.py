@@ -15,7 +15,7 @@ from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization.svdquant.lowrank import decompose_lowrank_residual
 from cache_dit.quantization.svdquant.packing import fp_quantize
 from cache_dit.quantization.svdquant import SVDQW4A4Linear
-from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant import _quantize_svdq_w4a4_layer
 from tests.quantization._svdq_test_utils import EVALUATED_RANKS
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
@@ -97,7 +97,7 @@ def _measure_quantizer_peak_memory(
   torch.cuda.empty_cache()
   torch.cuda.reset_peak_memory_stats()
   torch.cuda.synchronize()
-  _ = quantize_linear_svdq_w4a4(
+  _ = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=rank,
@@ -122,7 +122,7 @@ def test_svdquant_quantizer_returns_module_state_dict() -> None:
   linear = _make_cpu_linear(128, 256)
   representative = torch.randn(3, 5, 128, dtype=torch.float32)
 
-  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+  state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -373,7 +373,7 @@ def test_svdquant_quantizer_accepts_refine_iters(precision: str) -> None:
     dtype=torch.bfloat16,
   )
 
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=32,
@@ -393,7 +393,7 @@ def test_svdquant_quantizer_returns_nvfp4_module_state_dict() -> None:
   linear = _make_cpu_linear(128, 256)
   representative = torch.randn(3, 5, 128, dtype=torch.float32)
 
-  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+  state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -442,7 +442,7 @@ def test_svdquant_quantizer_repairs_invalid_smooth_scales() -> None:
   with torch.no_grad():
     linear.weight.zero_()
 
-  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+  state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
     linear,
     torch.zeros(4, 128, dtype=torch.float32),
     rank=0,
@@ -460,10 +460,11 @@ def test_svdquant_quantizer_repairs_invalid_smooth_scales() -> None:
 
 
 def test_svdquant_quantizer_rejects_unsupported_geometry() -> None:
-  linear = _make_cpu_linear(128, 96)
+  # Ragged out_features is padded to 128; an INT4 input width that is not K64-aligned is invalid.
+  linear = _make_cpu_linear(96, 128)
 
-  with pytest.raises(ValueError, match="out_features"):
-    quantize_linear_svdq_w4a4(
+  with pytest.raises(ValueError, match="in_features"):
+    _quantize_svdq_w4a4_layer(
       linear,
       torch.randn(2, 128, dtype=torch.float32),
       rank=16,
@@ -672,7 +673,7 @@ def test_svdquant_quantizer_state_dict_loads_into_module() -> None:
     torch.randn(4, 128, dtype=torch.float32),
     torch.randn(2, 3, 128, dtype=torch.float32),
   ]
-  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+  state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -700,7 +701,7 @@ def test_svdquant_quantizer_nvfp4_state_dict_loads_into_module() -> None:
     torch.randn(4, 128, dtype=torch.float32),
     torch.randn(2, 3, 128, dtype=torch.float32),
   ]
-  state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+  state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -730,7 +731,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     torch.randn(2, 3, 128, dtype=torch.bfloat16),
   ]
 
-  streamed = quantize_linear_svdq_w4a4(
+  streamed = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -740,7 +741,7 @@ def test_svdquant_quantizer_streaming_matches_eager_state_dict() -> None:
     calibrate_precision=_CALIBRATE_PRECISION,
     streaming=True,
   )
-  eager = quantize_linear_svdq_w4a4(
+  eager = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -781,7 +782,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     torch.randn(6, 128, dtype=torch.bfloat16),
   ]
 
-  buffered = quantize_linear_svdq_w4a4(
+  buffered = _quantize_svdq_w4a4_layer(
     linear,
     (tensor for tensor in representative),
     rank=16,
@@ -792,7 +793,7 @@ def test_svdquant_quantizer_streaming_flush_thresholds_match_eager_state_dict(
     streaming=True,
     **buffer_kwargs,
   )
-  eager = quantize_linear_svdq_w4a4(
+  eager = _quantize_svdq_w4a4_layer(
     linear,
     representative,
     rank=16,
@@ -951,25 +952,25 @@ def test_svdquant_quantizer_runtime_rank32_beats_rank0() -> None:
     device="cpu",
     dtype=dtype,
   )
-  rank0_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(linear,
+  rank0_module: SVDQW4A4Linear = _quantize_svdq_w4a4_layer(linear,
                                                            calibration,
                                                            rank=0,
                                                            device=device,
                                                            torch_dtype=dtype,
                                                            **_quantizer_kwargs())
-  rank16_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(linear,
+  rank16_module: SVDQW4A4Linear = _quantize_svdq_w4a4_layer(linear,
                                                             calibration,
                                                             rank=16,
                                                             device=device,
                                                             torch_dtype=dtype,
                                                             **_quantizer_kwargs())
-  rank32_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(linear,
+  rank32_module: SVDQW4A4Linear = _quantize_svdq_w4a4_layer(linear,
                                                             calibration,
                                                             rank=32,
                                                             device=device,
                                                             torch_dtype=dtype,
                                                             **_quantizer_kwargs())
-  rank128_module: SVDQW4A4Linear = quantize_linear_svdq_w4a4(linear,
+  rank128_module: SVDQW4A4Linear = _quantize_svdq_w4a4_layer(linear,
                                                              calibration,
                                                              rank=128,
                                                              device=device,

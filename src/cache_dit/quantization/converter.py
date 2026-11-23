@@ -127,7 +127,8 @@ def entrypoint(argv: list[str] | None = None) -> None:
       args.quant_type,
     )
     sys.exit(1)
-  if quant_type.startswith(("svdq_fp8_", "svdq_w4a8_")) and args.torch_dtype != "bfloat16":
+  if quant_type.startswith(("svdq_fp8_", "svdq_w4a8_", "svdq_w1a4_", "svdq_w2a4_",
+                            "svdq_w3a4_")) and args.torch_dtype != "bfloat16":
     logger.error("SVDQ %s requires --torch-dtype bfloat16, got %r.", quant_type, args.torch_dtype)
     sys.exit(1)
 

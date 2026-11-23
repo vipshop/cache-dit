@@ -13,7 +13,7 @@ from torch import nn
 import cache_dit
 from cache_dit import QuantizeConfig
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.quantization.svdquant.w4a8 import SVDQW4A8Linear
+from cache_dit.quantization.svdquant.wNa8 import SVDQW4A8Linear
 
 requires_w4a8_cuda = pytest.mark.skipif(
   not torch.cuda.is_available() or not cuda_ext_is_available()

@@ -124,6 +124,16 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
                    std::optional<torch::Tensor> lora_act, std::optional<torch::Tensor> smooth);
 
 // Hooks the public dispatchers onto the extension's `ops` submodule.
+void expand_wna4(std::optional<torch::Tensor> wgt_lo, std::optional<torch::Tensor> wgt_hi,
+                 std::optional<torch::Tensor> out, int64_t bits, int64_t K);
+
+void gemm_wna4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt_lo,
+               std::optional<torch::Tensor> wgt_hi, std::optional<torch::Tensor> out,
+               std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
+               std::optional<torch::Tensor> lora_act_in, std::optional<torch::Tensor> lora_up,
+               std::optional<torch::Tensor> bias, std::optional<torch::Tensor> wcscales,
+               double alpha, int64_t K, int64_t bits);
+
 void register_svdq_ops(pybind11::module_ &ops);
 
 }  // namespace cache_dit::svdq

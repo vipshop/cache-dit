@@ -12,7 +12,6 @@ import torch.nn.functional as F
 from ..config import _SVDQ_RUNTIME_KERNELS
 from .dtensor import SVDQShardSpec
 from .dtensor import SVDQW4A4ShardLinear
-from .linear import SVDQW4A4Linear
 from .lowrank import decompose_lowrank_residual
 from .packing import adapt_svdq_module_state_dict
 from .packing import export_raw_svdq_w4a4_state_dict
@@ -23,7 +22,6 @@ CalibrationInputs = torch.Tensor | tp.Iterable[torch.Tensor]
 __all__ = [
   "CalibrationInputs",
   "compute_smooth_scale",
-  "quantize_linear_svdq_w4a4",
   "standardize_calibration_activations",
   "validate_linear_geometry",
 ]
@@ -42,8 +40,9 @@ def _normalize_svdq_precision(precision: str) -> str:
   if not isinstance(precision, str):
     raise TypeError(f"precision must be a str, got {type(precision)}.")
   normalized = precision.lower()
-  if normalized not in {"int4", "nvfp4", "fp8", "w4a8"}:
-    raise ValueError(f"precision must be 'int4', 'nvfp4', 'fp8' or 'w4a8', got {precision!r}.")
+  if normalized not in {"int4", "nvfp4", "fp8", "w4a8", "w1a4", "w2a4", "w3a4"}:
+    raise ValueError("precision must be 'int4', 'nvfp4', 'fp8', 'w4a8', "
+                     f"'w1a4', 'w2a4' or 'w3a4', got {precision!r}.")
   return normalized
 
 
@@ -54,6 +53,8 @@ def _resolve_svdq_group_size(precision: str) -> int:
   if normalized in ("fp8", "w4a8"):
     # FP8-activation SVDQ formats keep one scale per output channel, not group scales.
     return 1
+  if normalized in ("w1a4", "w2a4", "w3a4"):
+    return 16
   return 64
 
 
@@ -106,7 +107,7 @@ def validate_linear_geometry(
   """
 
   precision = _normalize_svdq_precision(precision)
-  if precision in ("fp8", "w4a8"):
+  if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
     if rank not in (0, 32, 64, 128):
       raise ValueError(f"The SVDQ-{precision.upper()} runtime requires rank 0, 32, 64 or 128, "
                        f"got {rank}.")
@@ -1087,6 +1088,8 @@ def _quantize_from_smooth_scale(
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from an explicitly resolved runtime smooth vector."""
 
+  if _normalize_svdq_precision(precision) in ("w1a4", "w2a4", "w3a4"):
+    raise ValueError("Packed W1/W2/W3 must use quantize_svdq_wNaN, not the W4A4 quantizer.")
   if not isinstance(linear, nn.Linear):
     raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
 
@@ -1230,6 +1233,7 @@ def _quantize_from_smooth_scale(
     "device": device,
   }
   if tp_info is None:
+    from .wNa4 import SVDQW4A4Linear
     quantized = SVDQW4A4Linear(**quantized_kwargs)
   else:
     quantized = SVDQW4A4ShardLinear(tp_spec=tp_info, **quantized_kwargs)
@@ -1264,7 +1268,7 @@ def _quantize_from_activation_span(
 ) -> SVDQW4A4Linear | dict[str, torch.Tensor]:
   """Quantize a linear layer from either PTQ activation spans or DQ mode.
 
-  This is the lower-level worker behind `quantize_linear_svdq_w4a4`. It
+  This is the lower-level worker behind `_quantize_svdq_w4a4_layer`. It
   supports two internal modes controlled by `quant_type`:
 
   - PTQ: calibration has already been reduced to a single per-channel
@@ -1351,7 +1355,7 @@ def _quantize_from_activation_span(
 
 
 @torch.inference_mode()
-def quantize_linear_svdq_w4a4(
+def _quantize_svdq_w4a4_layer(
   linear: nn.Linear,
   representative_activations: CalibrationInputs,
   *,

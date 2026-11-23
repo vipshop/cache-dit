@@ -13,7 +13,7 @@ from cache_dit.quantization.svdquant.dtensor import SVDQShardSpec
 from cache_dit.quantization.svdquant.dtensor import SVDQW4A4ShardLinear
 from cache_dit.quantization.svdquant.linear import SVDQW4A4Linear
 from cache_dit.quantization.svdquant.passes import apply_passes
-from cache_dit.quantization.svdquant.quantizer import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant.quantizer import _quantize_svdq_w4a4_layer
 
 
 def _svdq(in_features: int,
@@ -605,7 +605,7 @@ def _relative_l2(actual: torch.Tensor, expected: torch.Tensor) -> float:
 def _quantize_projection(linear: nn.Linear,
                          calibration: torch.Tensor,
                          runtime: str = "native") -> SVDQW4A4Linear:
-  state_dict = quantize_linear_svdq_w4a4(
+  state_dict = _quantize_svdq_w4a4_layer(
     linear,
     [calibration.reshape(-1, linear.in_features)],
     rank=32,

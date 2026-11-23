@@ -13,7 +13,7 @@ from torch import nn
 import cache_dit
 from cache_dit import QuantizeConfig
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.quantization.svdquant.fp8 import SVDQW8A8Linear
+from cache_dit.quantization.svdquant.wNa8 import SVDQW8A8Linear
 
 requires_fp8_cuda = pytest.mark.skipif(
   not torch.cuda.is_available() or not cuda_ext_is_available()
@@ -112,11 +112,25 @@ def test_fp8_ptq_skips_unobserved_layers_in_checkpoint(tmp_path: Path) -> None:
 
 
 def test_fp8_quantize_rejects_non_fp8_svdq_config() -> None:
-  from cache_dit.quantization.svdquant.fp8 import quantize_svdq_fp8
+  from cache_dit.quantization.svdquant.wNa8 import _quantize_svdq_w8a8
+  from cache_dit.quantization.svdquant.wNaN import _quantize_svdq_wNaN
 
   with pytest.raises(ValueError, match="requires an svdq_fp8"):
-    quantize_svdq_fp8(nn.Linear(64, 64, dtype=torch.bfloat16),
-                      QuantizeConfig(quant_type="svdq_int4_r32_dq"))
+    _quantize_svdq_wNaN(
+      nn.Linear(64, 64, dtype=torch.bfloat16),
+      QuantizeConfig(quant_type="svdq_int4_r32_dq"),
+      _quantize_svdq_w8a8,
+      "fp8",
+    )
+
+
+def test_w8a8_rejects_int8_source_weights() -> None:
+  from cache_dit.quantization.svdquant.wNa8 import _quantize_svdq_w8a8
+
+  linear = nn.Linear(8, 8, dtype=torch.bfloat16)
+  linear.weight = nn.Parameter(torch.ones((8, 8), dtype=torch.int8), requires_grad=False)
+  with pytest.raises(ValueError, match="W8A8 does not support INT8"):
+    _quantize_svdq_w8a8(linear)
 
 
 def test_fp8_converter_rejects_non_bf16_before_loading(tmp_path: Path) -> None:

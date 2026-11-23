@@ -319,8 +319,14 @@ struct FusedLaunchArgs {
 };
 
 template <int kBN_ = 128, int kStages_ = 4, int kBK_ = 64, bool kLoRAFirst_ = true,
-          bool kF32DLora_ = false, bool kFuseOut_ = false, bool kFuseDown_ = false>
+          bool kF32DLora_ = false, bool kFuseOut_ = false, bool kFuseDown_ = false,
+          int kWeightBits_ = 4>
 struct W4A4CuteTraits {
+  static constexpr int kWeightBits = kWeightBits_;
+  static constexpr bool kPackedWeight = kWeightBits < 4;
+  static_assert(kWeightBits == 1 || kWeightBits == 2 || kWeightBits == 3 || kWeightBits == 4,
+                "weight code width must be 1, 2, 3 or 4 bits");
+
   static constexpr bool kLoRAFirst = kLoRAFirst_;
   static constexpr bool kF32DLora = kF32DLora_;
   static constexpr bool kFuseDown = kFuseDown_;
@@ -329,6 +335,8 @@ struct W4A4CuteTraits {
   // separate instantiation so the default path keeps its exact SASS and numerics.
   static constexpr bool kFuseOut = kFuseOut_;
   static_assert(!kFuseDown || kFuseOut, "the LoRA-down epilogue requires kFuseOut");
+  static_assert(kWeightBits == 4 || !kFuseOut,
+                "the fused epilogue is only implemented for NVFP4 weights");
   static constexpr int kBM = 128;
   static constexpr int kBN = kBN_;
   static constexpr int kBK = kBK_;
@@ -490,7 +498,11 @@ struct W4A4CuteTraits {
   // elements. Main stages have no A/SFA TMA transaction because those operands use G2R. LoRA
   // stages replace the transaction with exactly D+L1 bytes. Mixing these budgets would leave the
   // full barrier waiting forever or release a stage before its writes complete.
-  static constexpr uint32_t kTxBytesMain = kBN * kBK / 2 + kSFBStageBytes;
+  // Packed W1/W2/W3 stages are decoded by the consumer from gmem, so their TMA transaction only
+  // covers SFB. NVFP4 keeps B+SFB. A mismatched budget here hangs the full barrier, not just
+  // consumer timing, so this is part of the weight-codec contract.
+  static constexpr uint32_t kTxBytesMain =
+    (kPackedWeight ? 0u : static_cast<uint32_t>(kBN * kBK / 2)) + kSFBStageBytes;
   static constexpr uint32_t kTxBytesLora = kF32DLora
                                              ? static_cast<uint32_t>(kL1StageBytes)
                                              : static_cast<uint32_t>(kDStageBytes + kL1StageBytes);
@@ -586,7 +598,9 @@ class W4A4GemmKernel {
     auto gB = local_tile(mB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
     auto gSFB = local_tile(mSFB, Shape<Int<kBN>, Int<kBK>>{}, make_coord(blockIdx.x, kt));
     TmaBarrier::arrive_and_expect_tx(&full[stage], Traits::kTxBytesMain);
-    copy(tma.b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB(_, _, stage)));
+    if constexpr (!Traits::kPackedWeight) {
+      copy(tma.b.with(full[stage]), b_slice.partition_S(gB), b_slice.partition_D(sB(_, _, stage)));
+    }
     copy(tma.sfb.with(full[stage]), sfb_slice.partition_S(gSFB),
          sfb_slice.partition_D(sSFB(_, _, stage)));
   }
@@ -869,13 +883,76 @@ class W4A4GemmKernel {
    * @param tCrC       Input/output FP32 main-product accumulator.
    * @return           void; all K tiles in the selected mode have been accumulated on return.
    */
+  /**
+   * Decode one packed W1/W2/W3 weight tile into the existing E2M1 B smem layout.
+   *
+   * The packed weight stays compact in gmem. Consumer threads expand eight codes per iteration
+   * directly into the swizzled B stage, so the original LDSM/MMA path is unchanged and no full
+   * W4A4 copy is ever materialized in HBM. W3 additionally reads its sign plane.
+   */
+  template <class SmemB>
+  __device__ __forceinline__ static void decode_packed_B(uint8_t const *wgt_lo,
+                                                         uint8_t const *wgt_hi, int row_bytes_lo,
+                                                         int row_bytes_hi, int n0, int kt,
+                                                         int stage, int tid, SmemB &sB) {
+    constexpr int kGroupCodes = 8;
+    constexpr int kGroupsPerRow = kBK / kGroupCodes;
+    constexpr int kGroups = kBN * kGroupsPerRow;
+    constexpr int kLoBits = Traits::kWeightBits == 3 ? 2 : Traits::kWeightBits;
+    constexpr int kLoGroupBytes = kGroupCodes * kLoBits / 8;
+    constexpr int kHiGroupBytes = Traits::kWeightBits == 3 ? 1 : 0;
+    const int k0 = kt * kBK;
+#pragma unroll 1
+    for (int group = tid; group < kGroups; group += Traits::kNumThreads) {
+      const int row = group / kGroupsPerRow;
+      const int g = group % kGroupsPerRow;
+      const int col = g * kGroupCodes;
+      const uint8_t *lo = wgt_lo + static_cast<int64_t>(n0 + row) * row_bytes_lo +
+                          (static_cast<int64_t>(k0) * kLoBits) / 8 + g * kLoGroupBytes;
+      uint32_t raw = 0;
+      if constexpr (kLoGroupBytes == 2) {
+        raw = __ldg(reinterpret_cast<uint16_t const *>(lo));
+      } else {
+#pragma unroll
+        for (int b = 0; b < kLoGroupBytes; ++b) {
+          raw |= static_cast<uint32_t>(__ldg(lo + b)) << (8 * b);
+        }
+      }
+      uint32_t sign_bits = 0;
+      if constexpr (Traits::kWeightBits == 3) {
+        const uint8_t *hi = wgt_hi + static_cast<int64_t>(n0 + row) * row_bytes_hi +
+                            static_cast<int64_t>(k0) / 8 + g * kHiGroupBytes;
+        sign_bits = __ldg(hi);
+      }
+#pragma unroll
+      for (int i = 0; i < kGroupCodes; ++i) {
+        const int code = (raw >> (i * kLoBits)) & ((1 << kLoBits) - 1);
+        int magnitude = 1;
+        int sign = 0;
+        if constexpr (Traits::kWeightBits == 1) {
+          sign = code & 1;
+        } else if constexpr (Traits::kWeightBits == 2) {
+          magnitude = code & 1;
+          sign = (code >> 1) & 1;
+        } else {
+          magnitude = code & 3;
+          sign = (sign_bits >> i) & 1;
+        }
+        // Positive E2M1 magnitude codes are 1(0.5), 3(1.5), 5(3), 7(6); sign adds 8.
+        sB(row, col + i, stage) = static_cast<uint4_t>(1 + 2 * magnitude + 8 * sign);
+      }
+    }
+    cutlass::arch::NamedBarrier::sync(Traits::kNumThreads, 1);
+  }
+
   template <class TiledMma, class CopyB, class SrcB, class DstB, class SrcSFB, class DstSFB,
-            class FragB, class FragSFB, class FragA, class FragSFA, class Acc>
+            class FragB, class FragSFB, class FragA, class FragSFA, class Acc, class SmemBFull>
   __device__ __forceinline__ static void gemm_fp4_w4a4(
     uint64_t *full, uint64_t *empty, int tid, int nKt, int nRt, uint4 const *act,
     uint32_t const *ascales, int m0, int K, TiledMma const &tiled_mma, CopyB const &s2r_copy_b,
     SrcB const &tCsB, DstB &tCrB_view, SrcSFB const &tCsSFB, DstSFB &tCrSFB_view, FragB &tCrB,
-    FragSFB &tCrSFB, FragA &tCrA, FragSFA &tCrSFA, Acc &tCrC) {
+    FragSFB &tCrSFB, FragA &tCrA, FragSFA &tCrSFA, Acc &tCrC, uint8_t const *wgt_lo,
+    uint8_t const *wgt_hi, int row_bytes_lo, int row_bytes_hi, int n0, SmemBFull &sB) {
     const int g_offset = kLoRAFirst ? nRt : 0;
 #pragma unroll 1
     for (int kt = 0; kt < nKt; ++kt) {
@@ -883,6 +960,9 @@ class W4A4GemmKernel {
       const int stage = g % kStages;
       const int phase = (g / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
+      if constexpr (Traits::kPackedWeight) {
+        decode_packed_B(wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, kt, stage, tid, sB);
+      }
 #pragma unroll
       for (int k_block = 0; k_block < kBK / 64; ++k_block) {
         if (!kLoRAFirst || kt != 0) {
@@ -1317,7 +1397,9 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                    int K, int rank, uint8_t *__restrict__ qout, uint32_t *__restrict__ oscales,
                    cutlass::bfloat16_t const *__restrict__ smooth,
                    cutlass::bfloat16_t const *__restrict__ lora_down, float *__restrict__ d_atomic,
-                   bool write_dense, int rank_down, bool fuse_silu) {
+                   bool write_dense, int rank_down, bool fuse_silu,
+                   uint8_t const *__restrict__ wgt_lo, uint8_t const *__restrict__ wgt_hi,
+                   int row_bytes_lo, int row_bytes_hi) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -1564,11 +1646,13 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     }
     Gemm::apply_inverse_scale(wcscales, alpha, n0, nRt, tScC_rc, tCrC);
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
-                        tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC);
+                        tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
+                        wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
   } else {
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
-                        tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC);
+                        tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
+                        wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
     if constexpr (kF32DLora) {
       Gemm::gemm_f32d_lora(full, empty, tid, nKt, nRt, gTotal, lora_act_f32, scales, m0, rank,
@@ -1666,7 +1750,8 @@ inline void launch_finalize_lora_rows(float const *scratch, cutlass::bfloat16_t 
 //   C. Launch one CTA per BM x BN output tile with 128 extra producer threads.
 // Plain instances live in gemm_w4a4.cu; fused instances are parallel-compiled in gemm_fused.cu.
 template <int kBN = 128, int kStages = 4, int kBK_ = 64, bool kLoRAFirst = true,
-          bool kF32DLora = false, bool kFuseOut = false, bool kFuseDown = false>
+          bool kF32DLora = false, bool kFuseOut = false, bool kFuseDown = false,
+          int kWeightBits = 4>
 void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       cutlass::float_ue4m3_t const *act_sf, cutlass::float_ue4m3_t const *wgt_sf,
                       cutlass::bfloat16_t const *lora_act_in, float const *lora_act_f32,
@@ -1675,8 +1760,11 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       int M, int N, int K, int rank, uint8_t *qout, uint32_t *oscales,
                       cutlass::bfloat16_t const *smooth, cutlass::bfloat16_t const *lora_down,
                       float *d_atomic, cutlass::bfloat16_t *d_final, F32DLoraScales down_scales,
-                      int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream) {
-  using Traits = W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown>;
+                      int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream,
+                      uint8_t const *wgt_lo = nullptr, uint8_t const *wgt_hi = nullptr,
+                      int row_bytes_lo = 0, int row_bytes_hi = 0) {
+  using Traits =
+    W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown, kWeightBits>;
   using Element = typename Traits::Element;
   using ElementSF = typename Traits::ElementSF;
   using ElementLora = typename Traits::ElementLora;
@@ -1752,7 +1840,7 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   kernel<<<dim3(N / kBN, M / kBM), Traits::kNumThreads + 128, Traits::kSmemBytes, stream>>>(
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
     lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
-    d_atomic, write_dense, rank_down, fuse_silu);
+    d_atomic, write_dense, rank_down, fuse_silu, wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi);
   if constexpr (kFuseOut && kFuseDown && !kF32DLora) {
     // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
     // scattered FP32 scratch is rounded here once, after every CTA has contributed.

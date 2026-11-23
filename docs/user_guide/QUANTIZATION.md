@@ -25,6 +25,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_w4a8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_w{1|2|3}a4_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -873,6 +874,31 @@ The generate CLI accepts the corresponding <span style="color:#c77dff;">--svdq-w
 PTQ uses the type without `_dq`, for example <span style="color:#c77dff;">svdq_w4a8_r64</span>, plus the same <span style="color:#c77dff;">calibrate_fn</span> and activation-derived smoothing described in the SVDQ-FP8 PTQ section. Unobserved layers are skipped.
 
 Both DQ and PTQ support <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span> with checkpoint files, directories, or a matching `QuantizeConfig`. The manifest precision is `w4a8`, which keeps this packed format out of both the W4A4 and W8A8 loaders. W4A8 currently requires sm120+ and BF16 source weights; fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are explicitly rejected.
+
+## SVDQuant packed W1A4 / W2A4 / W3A4
+
+These formats keep E2M1 activations and W4A4 Tensor Core compute, but store the residual weight in a smaller codebook before expanding it for the W4A4 kernel:
+
+| Type | Stored residual codebook | Weight payload excluding LoRA/smooth/padding | Intended use |
+|---|---|---:|---|
+| `svdq_w1a4_r{32|64|128}[_dq]` | Sign-only `{-1.5,+1.5}` | about 0.189 B/weight | Experimental minimum-storage tier; quality is not guaranteed. |
+| `svdq_w2a4_r{32|64|128}[_dq]` | `{-1.5,-0.5,+0.5,+1.5}` | about 0.314 B/weight | Minimum persistent weight memory. |
+| `svdq_w3a4_r{32|64|128}[_dq]` | `{-6,-3,-1.5,-0.5,+0.5,+1.5,+3,+6}` | about 0.439 B/weight | Accuracy/memory trade-off. |
+
+All three retain the NVFP4 scale hierarchy: one FP8 E4M3 micro-scale per 16 input channels and one coarse scale per output channel. W3 uses a two-bit magnitude plane plus a separate sign plane. W1 cannot represent zero inside a nonzero group, so it is expected to have the largest quantization error.
+
+DQ defaults to `identity` smoothing:
+
+```python
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="svdq_w2a4_r64_dq"),
+)
+```
+
+The generate CLI accepts `--svdq-w1a4-r{32|64|128}-dq`, `--svdq-w2a4-r{32|64|128}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. The converter accepts the corresponding hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
+
+The packed persistent tensors are never replaced by a full-model W4A4 copy. Forward expands only the current projection into a transient E2M1 workspace and overlaps that expansion with activation production on a side CUDA stream. This preserves the native W4A4 GEMM path and fullgraph compile, at the cost of one projection-sized workspace. Fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are rejected.
 
 ## SVDQuant (W4A4) DQ
 

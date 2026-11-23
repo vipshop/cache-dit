@@ -9,7 +9,8 @@ from ..logger import init_logger
 
 logger = init_logger(__name__)
 
-_SVDQ_QUANT_TYPE_PATTERN = re.compile(r"^(svdq_(?:int4|nvfp4|fp8|w4a8))_r(\d+)(_dq)?$")
+_SVDQ_QUANT_TYPE_PATTERN = re.compile(
+  r"^(svdq_(?:int4|nvfp4|fp8|w4a8|w1a4|w2a4|w3a4))_r(\d+)(_dq)?$")
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer", "flashinfer+cute-dsl",
                          "flashinfer+cutlass-sm120")
@@ -171,7 +172,8 @@ def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
     raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
                      "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, `svdq_nvfp4_r{rank}_dq`, "
                      "`svdq_fp8_r{rank}`, `svdq_fp8_r{rank}_dq`, `svdq_w4a8_r{rank}`, "
-                     "or `svdq_w4a8_r{rank}_dq`, "
+                     "`svdq_w1a4_r{rank}`, `svdq_w2a4_r{rank}`, `svdq_w3a4_r{rank}`, "
+                     "or their `_dq` forms, "
                      f"got {quant_type!r}.")
   return match.group(1), int(match.group(2)), match.group(3) == "_dq"
 
@@ -621,7 +623,7 @@ class QuantizeConfig:
         raise ValueError("per_tensor_fallback is not supported for SVDQuant PTQ yet.")
       self.svdq_kwargs = _resolve_svdq_kwargs(self.svdq_kwargs)
       precision = _get_svdq_precision(self.quant_type)
-      if precision in ("fp8", "w4a8"):
+      if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
         unsupported = {
           "runtime_kernel": None,
           "lora_layout": None,
@@ -695,7 +697,8 @@ class QuantizeConfig:
             "SVDQuant PTQ currently only supports svdq_kwargs['smooth_strategy'] = 'activation'.")
         if self.calibrate_fn is None:
           raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
-        if self.serialize_to is None and _get_svdq_precision(self.quant_type) != "fp8":
+        if self.serialize_to is None and _get_svdq_precision(
+            self.quant_type) not in ("fp8", "w1a4", "w2a4", "w3a4"):
           raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
       if self.serialize_to is not None:
         normalized_filename = f"{self.quant_type}.safetensors"

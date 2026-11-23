@@ -47,22 +47,9 @@ def quantize(
     module = quantize_ao(module, quantize_config, **kwargs)
   elif quantize_config.backend == QuantizeBackend.CACHE_DIT:
     if quantize_config.is_svdq():
-      from .svdquant.ptq import quantize_svdq_dq
-      from .svdquant.ptq import quantize_svdq_ptq
+      from .svdquant.wNaN import quantize_svdq_wNaN
 
-      if quantize_config.get_svdq_precision() == "fp8":
-        from .svdquant.fp8 import quantize_svdq_fp8
-
-        return quantize_svdq_fp8(module, quantize_config)
-      if quantize_config.get_svdq_precision() == "w4a8":
-        from .svdquant.w4a8 import quantize_svdq_w4a8
-
-        return quantize_svdq_w4a8(module, quantize_config)
-
-      if quantize_config.is_svdq_dq():
-        module = quantize_svdq_dq(module, quantize_config)
-      else:
-        module = quantize_svdq_ptq(module, quantize_config)
+      return quantize_svdq_wNaN(module, quantize_config)
     elif quantize_config.quant_type == "nvfp4":
       from .fp4 import quantize_fp4
 

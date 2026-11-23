@@ -10,7 +10,10 @@ from .mxfp4 import MXFP4Linear
 from .mxfp4 import mxfp4_is_available
 from .mxfp4 import quantize_mxfp4
 from .svdquant import SVDQW4A4Linear
+from .svdquant import SVDQW1A4Linear
+from .svdquant import SVDQW2A4Linear
+from .svdquant import SVDQW3A4Linear
+from .svdquant import SVDQWNA4Linear
 from .svdquant import SVDQW8A8Linear
 from .svdquant import SVDQW4A8Linear
-from .svdquant import quantize_linear_svdq_fp8
-from .svdquant import quantize_linear_svdq_w4a4
+from .svdquant import quantize_svdq_wNaN

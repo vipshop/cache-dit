@@ -298,6 +298,7 @@ def _required_svdquant_sources() -> list[str]:
     "csrc/kernels/svdq/native/gemm_w4a4_int4.cu",
     "csrc/kernels/svdq/native/gemm_w4a4_fp4.cu",
     "csrc/kernels/svdq/cute/fp4/gemm/gemm_w4a4.cu",
+    "csrc/kernels/svdq/cute/fp4/gemm/gemm_wNa4.cu",
     "csrc/kernels/svdq/cute/fp4/gemm/gemm_fused.cu",
     "csrc/kernels/svdq/cute/fp4/gemm/gemm_large_k.cu",
     "csrc/kernels/svdq/cute/fp4/quantize/quantize_uni.cu",

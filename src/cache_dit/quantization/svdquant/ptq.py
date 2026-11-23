@@ -16,12 +16,10 @@ from ...offload import _apply_layerwise_offload
 from ...offload import _find_offload_related_hf_hook
 from ...offload import get_layerwise_offload_handles
 from ...logger import init_logger
-from ...utils import check_quantized
 from ..config import QuantizeConfig
 from ..config import _get_svdq_precision
 from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
-from ..observers import QuantizeObserver
 from .dtensor import SVDQW4A4ShardLinear
 from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
@@ -675,7 +673,7 @@ class SVDQPTQCalibrator:
 
   The calibrator registers forward-pre-hooks on candidate float `nn.Linear`
   layers, reduces each observed activation batch to a per-channel span vector,
-  and exposes the finalized spans to `quantize_svdq_ptq`.
+  and exposes the finalized spans to `wNa4._quantize_svdq_w4a4`.
   """
 
   def __init__(self, context: SVDQPTQContext) -> None:
@@ -1066,13 +1064,17 @@ def _save_quantized_module(
   should_write = True
   expected_linear_type = SVDQW4A4Linear
   if precision == "fp8":
-    from .fp8 import SVDQW8A8Linear
+    from .linear import SVDQW8A8Linear
 
     expected_linear_type = SVDQW8A8Linear
   elif precision == "w4a8":
-    from .w4a8 import SVDQW4A8Linear
+    from .linear import SVDQW4A8Linear
 
     expected_linear_type = SVDQW4A8Linear
+  elif precision in ("w1a4", "w2a4", "w3a4"):
+    from .linear import SVDQWNA4Linear
+
+    expected_linear_type = SVDQWNA4Linear
   for layer_name in quantized_layer_names:
     submodule = _get_named_submodule(module, layer_name)
     if not isinstance(submodule, expected_linear_type):
@@ -1240,7 +1242,7 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   rank = payload.get("rank")
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid integer rank.")
-  if precision in ("fp8", "w4a8") and rank not in (0, 32, 64, 128):
+  if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4") and rank not in (0, 32, 64, 128):
     raise ValueError(f"SVDQ-{precision.upper()} checkpoint at {path} has invalid rank {rank}; "
                      "expected 0, 32, 64 or 128.")
 
@@ -1435,229 +1437,6 @@ def _quantize_context_layers(
   return module, quantized_layer_names
 
 
-def quantize_svdq_ptq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
-  """Run post-training SVDQ quantization over a module in place.
-
-  :param module: Root module containing the float `nn.Linear` layers to quantize.
-  :param quantize_config: SVDQ `QuantizeConfig` describing calibration, scope
-  filters, serialization target, and SVDQ-specific kwargs.
-
-  :returns: The input module with eligible `nn.Linear` submodules replaced by
-  `SVDQW4A4Linear` instances. The return value may be a new module only when
-  the root module itself is quantized.
-  """
-
-  if not isinstance(module, nn.Module):
-    raise TypeError(f"Expected nn.Module, got {type(module)}.")
-  if not quantize_config.is_svdq():
-    raise ValueError(
-      f"quantize_svdq_ptq only supports SVDQ quant types, got {quantize_config.quant_type}.")
-  if check_quantized(module):
-    logger.warning("Module %s is already quantized, skipping SVDQ PTQ.", module.__class__.__name__)
-    return module
-
-  context = SVDQPTQContext.from_config(module, quantize_config)
-  calibrator = SVDQPTQCalibrator(context)
-  quantize_device = _resolve_svdq_quantize_device(module, context.svdq_kwargs)
-  # Per-layer accuracy observers (diagnostics). Completely skipped unless the
-  # caller opted in via QuantizeConfig(observer=QuantizationObserverConfig(
-  # enabled=True)): no module walk, no bf16 snapshot, no hooks.
-  observer = QuantizeObserver(getattr(quantize_config, "observer", None))
-  observer_refs = observer.capture_references(module)
-  calibrator.register(observation_device=quantize_device)
-
-  was_training = module.training
-  module.eval()
-  try:
-    with torch.inference_mode():
-      _call_with_supported_kwargs(
-        quantize_config.calibrate_fn,
-        model=module,
-        quantize_config=quantize_config,
-        calibrator=calibrator,
-        component_name=getattr(module, "_actual_module_name", module.__class__.__name__),
-        svdq_kwargs=context.svdq_kwargs,
-      )
-  finally:
-    calibrator.remove()
-    module.train(was_training)
-
-  module, quantized_layer_names = _quantize_context_layers(
-    module,
-    context,
-    quantize_device=quantize_device,
-    activation_spans=calibrator.activation_spans,
-  )
-  if observer_refs:
-    observer.attach(module, observer_refs)
-  observed_layer_names = sorted(calibrator.activation_spans)
-
-  if not quantized_layer_names:
-    raise RuntimeError("SVDQ PTQ completed calibration but no layers were quantized. "
-                       f"Skipped layers: {context.skipped_reasons}.")
-
-  if context.svdq_kwargs.get("fused_mlp", False):
-    from .passes import apply_passes
-    apply_passes(module)
-
-  _attach_quantization_metadata(
-    module,
-    quant_type=quantize_config.quant_type,
-    quantized_layer_names=quantized_layer_names,
-    exclude_layers=context.exclude_layers,
-    svdq_kwargs=context.svdq_kwargs,
-    checkpoint_path=quantize_config.serialize_to,
-    quantize_config=quantize_config,
-  )
-  writer_rank = _save_quantized_module(
-    module,
-    serialize_to=quantize_config.serialize_to,
-    quant_type=quantize_config.quant_type,
-    rank=context.rank,
-    precision=context.precision,
-    quantized_layer_names=quantized_layer_names,
-    svdq_kwargs=context.svdq_kwargs,
-  )
-  if writer_rank:
-    _save_quant_config_snapshot(
-      _build_quant_config_snapshot(
-        checkpoint_path=quantize_config.serialize_to,
-        quant_type=quantize_config.quant_type,
-        rank=context.rank,
-        exclude_layers=context.exclude_layers,
-        regional_quantize=context.regional_quantize,
-        repeated_blocks=context.repeated_blocks,
-        verbose=context.verbose,
-        svdq_kwargs=context.svdq_kwargs,
-        backend=quantize_config.backend,
-      ),
-      checkpoint_path=quantize_config.serialize_to,
-    )
-  module.train(was_training)
-  _log_quantize_summary(
-    context,
-    quantized_layer_names=quantized_layer_names,
-    serialize_to=quantize_config.serialize_to,
-    observed_layer_names=observed_layer_names,
-  )
-  calibrator.activation_spans.clear()
-  _maybe_collect_svdq_garbage(quantize_device)
-  return module
-
-
-def quantize_svdq_dq(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Module:
-  """Run in-memory SVDQ dynamic quantization over a module in place.
-
-  :param module: Root module containing the float `nn.Linear` layers to quantize.
-  :param quantize_config: SVDQ `QuantizeConfig` describing the dynamic quantization
-    scope and rank.
-
-  :returns: The input module with eligible `nn.Linear` submodules replaced by
-    `SVDQW4A4Linear` instances. The return value may be a new module only when
-    the root module itself is quantized.
-  """
-
-  if not isinstance(module, nn.Module):
-    raise TypeError(f"Expected nn.Module, got {type(module)}.")
-  if not quantize_config.is_svdq_dq():
-    raise ValueError("quantize_svdq_dq only supports SVDQ dynamic quant types ending with '_dq', "
-                     f"got {quantize_config.quant_type}.")
-  if check_quantized(module):
-    logger.warning(
-      "Module %s is already quantized, skipping SVDQ dynamic quantization.",
-      module.__class__.__name__,
-    )
-    return module
-  if getattr(module, "_svdq_pending_quantization", False):
-    logger.warning(
-      "Module %s already has pending SVDQuant few-shot quantization, skipping re-arming.",
-      module.__class__.__name__,
-    )
-    return module
-
-  context = SVDQPTQContext.from_config(module, quantize_config)
-  quantize_device = _resolve_svdq_quantize_device(module, context.svdq_kwargs)
-
-  if quantize_config.is_svdq_dq_few_shot():
-    controller = SVDQFewShotRuntimeController(
-      context=context,
-      quantize_device=quantize_device,
-      serialize_to=quantize_config.serialize_to,
-    )
-    return controller.arm()
-
-  # Per-layer accuracy observers (diagnostics). Completely skipped unless the
-  # caller opted in via QuantizeConfig(observer=QuantizationObserverConfig(
-  # enabled=True)): no module walk, no bf16 snapshot, no hooks.
-  observer = QuantizeObserver(getattr(quantize_config, "observer", None))
-  observer_refs = observer.capture_references(module)
-
-  was_training = module.training
-  module.eval()
-  try:
-    module, quantized_layer_names = _quantize_context_layers(
-      module,
-      context,
-      quantize_device=quantize_device,
-      activation_spans=None,
-    )
-  finally:
-    module.train(was_training)
-  if observer_refs:
-    observer.attach(module, observer_refs)
-
-  if not quantized_layer_names:
-    raise RuntimeError("SVDQ dynamic quantization found no layers to quantize. "
-                       f"Skipped layers: {context.skipped_reasons}.")
-
-  if context.svdq_kwargs.get("fused_mlp", False):
-    from .passes import apply_passes
-    apply_passes(module)
-
-  _attach_quantization_metadata(
-    module,
-    quant_type=quantize_config.quant_type,
-    quantized_layer_names=quantized_layer_names,
-    exclude_layers=context.exclude_layers,
-    svdq_kwargs=context.svdq_kwargs,
-    checkpoint_path=quantize_config.serialize_to,
-    quantize_config=quantize_config,
-  )
-  if quantize_config.serialize_to is not None:
-    writer_rank = _save_quantized_module(
-      module,
-      serialize_to=quantize_config.serialize_to,
-      quant_type=quantize_config.quant_type,
-      rank=context.rank,
-      precision=context.precision,
-      quantized_layer_names=quantized_layer_names,
-      svdq_kwargs=context.svdq_kwargs,
-    )
-    if writer_rank:
-      _save_quant_config_snapshot(
-        _build_quant_config_snapshot(
-          checkpoint_path=quantize_config.serialize_to,
-          quant_type=quantize_config.quant_type,
-          rank=context.rank,
-          exclude_layers=context.exclude_layers,
-          regional_quantize=context.regional_quantize,
-          repeated_blocks=context.repeated_blocks,
-          verbose=context.verbose,
-          svdq_kwargs=context.svdq_kwargs,
-          backend=quantize_config.backend,
-        ),
-        checkpoint_path=quantize_config.serialize_to,
-      )
-  _log_quantize_summary(
-    context,
-    quantized_layer_names=quantized_layer_names,
-    serialize_to=quantize_config.serialize_to,
-    observed_layer_names=None,
-  )
-  _maybe_collect_svdq_garbage(quantize_device)
-  return module
-
-
 def load_svdq(
   module: nn.Module,
   quantize_config_or_path: QuantizeConfig | str,
@@ -1756,15 +1535,25 @@ def load_svdq(
 
     torch_dtype = layer_state_dict["smooth_factor"].dtype
     local_weight, tp_spec = SVDQW4A4ShardLinear.resolve_local(float_module.weight)
-    if precision in ("fp8", "w4a8"):
+    if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
       if precision == "fp8":
-        from .fp8 import SVDQW8A8Linear
+        from .linear import SVDQW8A8Linear
 
         linear_type = SVDQW8A8Linear
-      else:
-        from .w4a8 import SVDQW4A8Linear
+      elif precision == "w4a8":
+        from .linear import SVDQW4A8Linear
 
         linear_type = SVDQW4A8Linear
+      else:
+        from .linear import SVDQW1A4Linear
+        from .linear import SVDQW2A4Linear
+        from .linear import SVDQW3A4Linear
+
+        linear_type = {
+          "w1a4": SVDQW1A4Linear,
+          "w2a4": SVDQW2A4Linear,
+          "w3a4": SVDQW3A4Linear
+        }[precision]
       if tp_spec is not None:
         raise NotImplementedError(f"SVDQ-{precision.upper()} checkpoint loading does not support "
                                   "DTensor/TP layers.")
@@ -1845,4 +1634,4 @@ def load_svdq(
   return module
 
 
-__all__ = ["load_svdq", "quantize_svdq_dq", "quantize_svdq_ptq", "SVDQPTQCalibrator"]
+__all__ = ["load_svdq", "SVDQPTQCalibrator"]

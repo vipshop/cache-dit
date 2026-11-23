@@ -14,19 +14,20 @@ into the same FP32 accumulator. There is no standalone BF16 GEMM and no second p
 output.
 """
 
+import functools
+
 import torch
 from torch import nn
 
+from ...kernels import svdq_gemm_w4a8
 from ...kernels import svdq_gemm_w8a8
+from ...kernels import svdq_quantize_w4a8
 from ...kernels import svdq_quantize_w8a8
-from ...logger import init_logger
-from ...utils import check_quantized
 from .lowrank import decompose_lowrank_residual
+from .packing import fp_quantize
 from .quantizer import _compute_weight_only_smooth_scale
 from .quantizer import _normalize_dtype
 from .quantizer import compute_smooth_scale
-
-logger = init_logger(__name__)
 
 FP8_EPS = 1e-12
 SVDQ_FP8_RANKS = (0, 32, 64, 128)
@@ -208,7 +209,7 @@ class SVDQW8A8Linear(nn.Module):
     return out.reshape(*shape[:-1], self.out_features)
 
 
-def quantize_linear_svdq_fp8(
+def _quantize_svdq_w8a8(
   linear: nn.Linear,
   representative_activations=None,
   *,
@@ -237,6 +238,9 @@ def quantize_linear_svdq_fp8(
     raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
   if type(linear.weight).__name__ == "DTensor":
     raise NotImplementedError("SVDQ-FP8 quantization does not support DTensor/TP weights.")
+  if linear.weight.dtype == torch.int8:
+    raise ValueError(
+      "SVDQ-W8A8 does not support INT8; provide BF16 source weights for FP8 quantization.")
   if linear.weight.dtype != torch.bfloat16:
     raise ValueError(f"SVDQ-FP8 requires BF16 source weights, got {linear.weight.dtype}.")
   device = torch.device(device or linear.weight.device)
@@ -280,141 +284,245 @@ def quantize_linear_svdq_fp8(
                                     calibrate_precision=calibrate_precision)
 
 
-def _quantize_svdq_fp8_family(module: nn.Module, quantize_config, quantize_linear,
-                              precision: str) -> nn.Module:
-  """Share PTQ/DQ, calibration and checkpoint flow across FP8-activation SVDQ formats.
+FP4_EPS = 1e-12
+SVDQ_W4A8_RANKS = (0, 32, 64, 128)
+E2M1_CODEBOOK = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
+                 -6.0)
 
-  :param module: Root module containing the float `nn.Linear` layers to quantize.
-  :param quantize_config: SVDQ config whose precision equals `precision`.
-  :param quantize_linear: Format-specific function that packs one linear layer.
-  :param precision: `fp8` for W8A8 or `w4a8` for packed-E2M1 residual weights.
-  :returns: The module with eligible linears replaced by their packed runtime modules.
-  """
-  if not isinstance(module, nn.Module):
-    raise TypeError(f"Expected nn.Module, got {type(module)}.")
-  if not quantize_config.is_svdq() or quantize_config.get_svdq_precision() != precision:
-    raise ValueError(f"SVDQ {precision} quantization requires an svdq_{precision}_* config, got "
-                     f"{quantize_config.quant_type!r}.")
-  if check_quantized(module):
-    logger.warning("Module %s is already quantized, skipping SVDQ-%s quantization.",
-                   module.__class__.__name__, precision.upper())
-    return module
-  from .ptq import SVDQPTQContext
-  from .ptq import _attach_quantization_metadata
-  from .ptq import _build_quant_config_snapshot
-  from .ptq import _call_with_supported_kwargs
-  from .ptq import _get_named_submodule
-  from .ptq import _get_parent_and_child
-  from .ptq import _log_quantize_summary
-  from .ptq import _maybe_collect_svdq_garbage
-  from .ptq import _resolve_svdq_quantize_device
-  from .ptq import _save_quant_config_snapshot
-  from .ptq import _save_quantized_module
 
-  context = SVDQPTQContext.from_config(module, quantize_config)
-  kwargs = context.svdq_kwargs
-  quantize_device = _resolve_svdq_quantize_device(module, kwargs)
-  is_dq = quantize_config.is_svdq_dq()
-  strategy = "activation" if not is_dq else kwargs.get("smooth_strategy", "identity")
-  if strategy == "few_shot":
-    raise ValueError("SVDQ-FP8 does not support the few_shot smooth strategy.")
-  calibrate_precision = kwargs.get("calibrate_precision", "low")
+def pack_e2m1(codes: torch.Tensor) -> torch.Tensor:
+  """Pack E2M1 code indices, with even-k in the low and odd-k in the high nibble."""
+  if codes.shape[-1] % 2:
+    raise ValueError("E2M1 packing requires an even K extent.")
+  return (codes[..., 0::2] | (codes[..., 1::2] << 4)).to(torch.uint8).contiguous()
 
-  captured: dict[str, torch.Tensor] = {}
-  if not is_dq:
-    if quantize_config.calibrate_fn is None:
-      raise ValueError("SVDQ-FP8 PTQ requires QuantizeConfig.calibrate_fn; use the `_dq` variant "
-                       "for data-free quantization.")
 
-    def make_hook(layer_name: str):
+def unpack_e2m1(packed: torch.Tensor) -> torch.Tensor:
+  """Unpack uint8 nibbles into one E2M1 code index per logical element."""
+  return torch.stack((packed & 0xF, packed >> 4), dim=-1).flatten(-2).contiguous()
 
-      def hook(_layer, args):
-        if args and isinstance(args[0], torch.Tensor):
-          value = args[0].detach()
-          span = value.abs().reshape(-1, value.shape[-1]).amax(dim=0)
-          captured[layer_name] = span if layer_name not in captured else torch.maximum(
-            captured[layer_name], span)
 
-      return hook
+def dequantize_e2m1(packed: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+  """Expand packed E2M1 codes to FP32 and apply the per-row dequantization scale."""
+  codebook = torch.tensor(E2M1_CODEBOOK, dtype=torch.float32, device=packed.device)
+  codes = unpack_e2m1(packed).long()
+  return codebook[codes] * scale.float()[:, None]
 
-    handles = [
-      _get_named_submodule(module, name).register_forward_pre_hook(make_hook(name))
-      for name in context.candidate_layer_names
-    ]
-    try:
-      _call_with_supported_kwargs(quantize_config.calibrate_fn, module=module, model=module)
-    finally:
-      for handle in handles:
-        handle.remove()
 
-  result = module
-  quantized_layer_names: list[str] = []
-  for name in context.candidate_layer_names:
-    if not is_dq and captured.get(name) is None:
-      context._record_skip(name, "not observed during calibration")
-      continue
-    linear = _get_named_submodule(module, name)
-    packed = quantize_linear(linear,
-                             captured.get(name),
-                             rank=context.rank,
-                             smooth_strategy=strategy,
-                             torch_dtype=linear.weight.dtype,
-                             device=quantize_device,
-                             calibrate_precision=calibrate_precision)
-    if name == "":
-      result = packed
+def quantize_residual_fp4_per_row(residual: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+  """Quantize and nibble-pack a residual using one FP32 scale per output channel."""
+  residual = residual.float()
+  rows, channels = residual.shape
+  if channels % 2:
+    raise ValueError("E2M1 residual quantization requires an even K extent.")
+  qweight = torch.empty((rows, channels // 2), dtype=torch.uint8, device=residual.device)
+  wscales = torch.empty(rows, dtype=torch.float32, device=residual.device)
+  # Cap the [rows,K,16] LUT temporary instead of allocating several GiB for a large projection.
+  for begin in range(0, rows, 1024):
+    chunk = residual[begin:begin + 1024]
+    scale = chunk.abs().amax(dim=1, keepdim=True).clamp_min(FP4_EPS) / 6.0
+    qweight[begin:begin + 1024] = pack_e2m1(fp_quantize(chunk / scale))
+    wscales[begin:begin + 1024] = scale.squeeze(1)
+  return qweight, wscales
+
+
+class SVDQW4A8Linear(nn.Module):
+  """Runtime module for SVDQ-W4A8 with packed E2M1 residual weights."""
+
+  def __init__(
+    self,
+    in_features: int,
+    out_features: int,
+    rank: int = 32,
+    bias: bool = True,
+    torch_dtype: torch.dtype = torch.bfloat16,
+    device: str | torch.device | None = None,
+  ) -> None:
+    """Initialize an empty packed W4A8 module."""
+    super().__init__()
+    if rank not in SVDQ_W4A8_RANKS:
+      raise ValueError(f"SVDQ-W4A8 supports rank 0/32/64/128, got {rank}.")
+    if torch_dtype != torch.bfloat16:
+      raise ValueError("SVDQW4A8Linear currently requires torch_dtype=torch.bfloat16.")
+    if device is None:
+      device = torch.device("cpu")
+    self.in_features = in_features
+    self.out_features = out_features
+    self.rank = rank
+    self.quantized_in_features = _pad_to(in_features, 128)
+    self.quantized_out_features = _pad_to(out_features, 128)
+    kp, np_ = self.quantized_in_features, self.quantized_out_features
+    self.register_buffer("qweight", torch.zeros((np_, kp // 2), dtype=torch.uint8, device=device))
+    self.register_buffer("wscales", torch.zeros(np_, dtype=torch.float32, device=device))
+    self.register_buffer("smooth_factor", torch.ones(kp, dtype=torch_dtype, device=device))
+    self.register_buffer("proj_down", torch.zeros((rank, kp), dtype=torch_dtype, device=device))
+    self.register_buffer("proj_up", torch.zeros((np_, rank), dtype=torch_dtype, device=device))
+    self.bias = nn.Parameter(torch.zeros(np_, dtype=torch_dtype, device=device),
+                             requires_grad=False) if bias else None
+
+  @classmethod
+  def from_linear(
+    cls,
+    linear: nn.Linear,
+    *,
+    rank: int = 32,
+    smooth_factor: torch.Tensor | None = None,
+    alpha: float = 0.5,
+    torch_dtype: torch.dtype = torch.bfloat16,
+    device: str | torch.device | None = None,
+    calibrate_precision: str = "low",
+  ) -> "SVDQW4A8Linear":
+    """Quantize a float linear layer into the packed W4A8 format."""
+    device = torch.device(device or linear.weight.device)
+    module = cls(linear.in_features,
+                 linear.out_features,
+                 rank=rank,
+                 bias=linear.bias is not None,
+                 torch_dtype=torch_dtype,
+                 device=device)
+    weight = linear.weight.detach().to(device=device, dtype=torch.float32)
+    n, k = weight.shape
+    if smooth_factor is None:
+      weight_span = weight.abs().amax(dim=0)
+      smooth = _compute_weight_only_smooth_scale(weight_span,
+                                                 alpha=alpha,
+                                                 math_dtype=torch.float32,
+                                                 output_dtype=torch.float32)
     else:
-      parent, child = _get_parent_and_child(module, name)
-      setattr(parent, child, packed)
-    quantized_layer_names.append(name)
+      smooth = smooth_factor.to(device=device, dtype=torch.float32)
+    if smooth.numel() != k:
+      raise ValueError(f"smooth_factor must have {k} entries, got {smooth.numel()}.")
+    smoothed = weight * smooth.unsqueeze(0)
+    down, up, residual = decompose_lowrank_residual(smoothed,
+                                                    rank,
+                                                    output_dtype=torch.float32,
+                                                    svd_precision=calibrate_precision)
+    qweight, wscales = quantize_residual_fp4_per_row(residual)
+    proj_down = (down.to(torch.float64) / smooth.to(torch.float64).unsqueeze(0)).to(torch_dtype)
+    module.qweight.zero_()
+    module.wscales.zero_()
+    module.proj_up.zero_()
+    module.proj_down.zero_()
+    module.smooth_factor.fill_(1.0)
+    module.qweight[:n, :k // 2] = qweight
+    module.wscales[:n] = wscales
+    module.smooth_factor[:k] = smooth.to(torch_dtype)
+    if rank:
+      module.proj_down[:, :k] = proj_down
+      module.proj_up[:n, :] = up.to(torch_dtype)
+    if module.bias is not None:
+      module.bias.zero_()
+      module.bias[:n] = linear.bias.detach().to(device=device, dtype=torch_dtype)
+    return module
 
-  if not quantized_layer_names:
-    raise RuntimeError("SVDQ-FP8 found no observed layers to quantize. "
-                       f"Skipped layers: {context.skipped_reasons}.")
-  _attach_quantization_metadata(
-    result,
-    quant_type=quantize_config.quant_type,
-    quantized_layer_names=quantized_layer_names,
-    exclude_layers=context.exclude_layers,
-    svdq_kwargs=context.svdq_kwargs,
-    checkpoint_path=quantize_config.serialize_to,
-    quantize_config=quantize_config,
-  )
-  if quantize_config.serialize_to is not None:
-    writer_rank = _save_quantized_module(
-      result,
-      serialize_to=quantize_config.serialize_to,
-      quant_type=quantize_config.quant_type,
-      rank=context.rank,
-      precision=context.precision,
-      quantized_layer_names=quantized_layer_names,
-      svdq_kwargs=context.svdq_kwargs,
-    )
-    if writer_rank:
-      _save_quant_config_snapshot(
-        _build_quant_config_snapshot(
-          checkpoint_path=quantize_config.serialize_to,
-          quant_type=quantize_config.quant_type,
-          rank=context.rank,
-          exclude_layers=context.exclude_layers,
-          regional_quantize=context.regional_quantize,
-          repeated_blocks=context.repeated_blocks,
-          verbose=context.verbose,
-          svdq_kwargs=context.svdq_kwargs,
-          backend=quantize_config.backend,
-        ),
-        checkpoint_path=quantize_config.serialize_to,
-      )
-  _log_quantize_summary(
-    context,
-    quantized_layer_names=quantized_layer_names,
-    serialize_to=quantize_config.serialize_to,
-    observed_layer_names=sorted(captured) if not is_dq else None,
-  )
-  _maybe_collect_svdq_garbage(quantize_device)
-  return result
+  def dequantize_weight(self) -> torch.Tensor:
+    """Return the effective FP32 weight sliced to the logical shape, for diagnostics only."""
+    n, k = self.out_features, self.in_features
+    residual = dequantize_e2m1(self.qweight[:n, :(k + 1) // 2], self.wscales[:n])[:, :k]
+    smooth = self.smooth_factor[:k].float()
+    weight = residual / smooth.unsqueeze(0)
+    if self.rank:
+      weight = weight + self.proj_up[:n].float() @ self.proj_down[:, :k].float()
+    return weight
+
+  def forward(self, x: torch.Tensor) -> torch.Tensor:
+    """Run the shared FP8 producer followed by the packed-W4A8 fused GEMM."""
+    shape = x.shape
+    rows = x.numel() // shape[-1]
+    if rows == 0:
+      return x.new_empty((*shape[:-1], self.out_features))
+    flat = x.reshape(rows, shape[-1])
+    if flat.shape[1] != self.quantized_in_features:
+      flat = torch.nn.functional.pad(flat, (0, self.quantized_in_features - flat.shape[1]))
+    flat = flat.contiguous()
+    qact, ascales, lora_act = svdq_quantize_w4a8(flat,
+                                                 self.smooth_factor,
+                                                 self.proj_down if self.rank else None,
+                                                 pad_rows=True)
+    out = svdq_gemm_w4a8(qact,
+                         self.qweight,
+                         ascales,
+                         self.wscales,
+                         lora_act_in=lora_act if self.rank else None,
+                         lora_up=self.proj_up if self.rank else None,
+                         bias=self.bias)
+    return out[:rows, :self.out_features].reshape(*shape[:-1], self.out_features)
 
 
-def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
-  """Quantize a module in place with SVDQ-FP8, including optional checkpoint serialization."""
-  return _quantize_svdq_fp8_family(module, quantize_config, quantize_linear_svdq_fp8, "fp8")
+def _quantize_svdq_w4a8(
+  linear: nn.Linear,
+  representative_activations=None,
+  *,
+  rank: int = 32,
+  alpha: float = 0.5,
+  smooth_strategy: str = "identity",
+  torch_dtype: torch.dtype | None = None,
+  device: str | torch.device | None = None,
+  calibrate_precision: str = "low",
+) -> SVDQW4A8Linear:
+  """Quantize one BF16 linear into W4A8 using DQ or activation-calibrated PTQ."""
+  if not isinstance(linear, nn.Linear):
+    raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+  if type(linear.weight).__name__ == "DTensor":
+    raise NotImplementedError("SVDQ-W4A8 quantization does not support DTensor/TP weights.")
+  if linear.weight.dtype != torch.bfloat16:
+    raise ValueError(f"SVDQ-W4A8 requires BF16 source weights, got {linear.weight.dtype}.")
+  if linear.in_features % 2:
+    raise ValueError("SVDQ-W4A8 requires an even in_features extent for E2M1 packing.")
+  device = torch.device(device or linear.weight.device)
+  torch_dtype = _normalize_dtype(torch_dtype, device)
+  k = linear.in_features
+  if smooth_strategy == "activation":
+    if representative_activations is None:
+      raise ValueError("smooth_strategy='activation' requires representative activations.")
+    acts = representative_activations
+    if isinstance(acts, torch.Tensor):
+      acts = [acts]
+    span = None
+    for tensor in acts:
+      flat = tensor.detach().reshape(-1, tensor.shape[-1]).to(device=device, dtype=torch.float32)
+      current = flat.abs().amax(dim=0)
+      span = current if span is None else torch.maximum(span, current)
+    weight_span = linear.weight.detach().to(device=device, dtype=torch.float32).abs().amax(dim=0)
+    smooth = compute_smooth_scale(span,
+                                  weight_span,
+                                  alpha=alpha,
+                                  math_dtype=torch.float32,
+                                  output_dtype=torch.float32)
+  elif smooth_strategy == "identity":
+    smooth = torch.ones(k, dtype=torch.float32, device=device)
+  elif smooth_strategy in ("weight", "weight_inv"):
+    weight_span = linear.weight.detach().to(device=device, dtype=torch.float32).abs().amax(dim=0)
+    smooth = _compute_weight_only_smooth_scale(weight_span,
+                                               alpha=alpha,
+                                               inverse=smooth_strategy == "weight_inv",
+                                               math_dtype=torch.float32,
+                                               output_dtype=torch.float32)
+  else:
+    raise ValueError(f"Unsupported SVDQ-W4A8 smooth strategy: {smooth_strategy!r}.")
+  return SVDQW4A8Linear.from_linear(linear,
+                                    rank=rank,
+                                    smooth_factor=smooth,
+                                    alpha=alpha,
+                                    torch_dtype=torch_dtype,
+                                    device=device,
+                                    calibrate_precision=calibrate_precision)
+
+
+def _get_svdq_wNa8_quantizer(precision: str):
+  """Return the module-level quantizer for an A8 manifest precision or alias."""
+  from .wNaN import _quantize_svdq_wNaN
+
+  quantizers = {
+    # FP8 is the encoding alias; W8A8 is the weight/activation semantic name.
+    "fp8":
+    functools.partial(_quantize_svdq_wNaN, quantize_linear=_quantize_svdq_w8a8, precision="fp8"),
+    "w8a8":
+    functools.partial(_quantize_svdq_wNaN, quantize_linear=_quantize_svdq_w8a8, precision="w8a8"),
+    "w4a8":
+    functools.partial(_quantize_svdq_wNaN, quantize_linear=_quantize_svdq_w4a8, precision="w4a8"),
+  }
+  try:
+    return quantizers[precision]
+  except KeyError as exc:
+    raise ValueError(f"Unsupported SVDQ A8 precision: {precision!r}.") from exc

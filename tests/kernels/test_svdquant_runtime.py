@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_quantize_w4a4
-from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant import _quantize_svdq_w4a4_layer
 from tests.quantization._svdq_test_utils import RANKS_WITH_BASELINE
 from tests.quantization._svdq_test_utils import assert_rank_metric_trend
 from tests.quantization._svdq_test_utils import compute_accuracy_metrics
@@ -312,13 +312,13 @@ def test_fused_gelu_mlp_matches_the_unfused_two_step(monkeypatch, precision: str
   hidden_ref = F.gelu(fc1_ref(x), approximate="tanh")
 
   with torch.inference_mode():
-    fc1 = quantize_linear_svdq_w4a4(fc1_ref,
+    fc1 = _quantize_svdq_w4a4_layer(fc1_ref,
                                     x,
                                     rank=rank,
                                     precision=precision,
                                     device=device,
                                     torch_dtype=dtype)
-    fc2 = quantize_linear_svdq_w4a4(fc2_ref,
+    fc2 = _quantize_svdq_w4a4_layer(fc2_ref,
                                     hidden_ref,
                                     rank=rank,
                                     precision=precision,
@@ -392,7 +392,7 @@ def test_svdquant_operator_rank_accuracy_improves_with_rank() -> None:
   with torch.inference_mode():
     reference = linear(eval_matrix)
     for rank in RANKS_WITH_BASELINE:
-      state_dict: dict[str, torch.Tensor] = quantize_linear_svdq_w4a4(
+      state_dict: dict[str, torch.Tensor] = _quantize_svdq_w4a4_layer(
         linear,
         calibration_samples,
         rank=rank,

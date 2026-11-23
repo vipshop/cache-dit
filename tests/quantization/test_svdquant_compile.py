@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from cache_dit.kernels import cuda_ext_is_available
-from cache_dit.quantization.svdquant import quantize_linear_svdq_w4a4
+from cache_dit.quantization.svdquant import _quantize_svdq_w4a4_layer
 
 
 def _require_svdquant_compile_runtime() -> None:
@@ -32,7 +32,7 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_smoke() -> None:
 
   linear = nn.Linear(128, 128, bias=True, device=device, dtype=dtype).eval()
   calibration = torch.randn(64, 128, device="cpu", dtype=dtype)
-  quantized = quantize_linear_svdq_w4a4(
+  quantized = _quantize_svdq_w4a4_layer(
     linear,
     calibration,
     rank=16,
@@ -69,7 +69,7 @@ def test_svdquant_w4a4_module_torch_compile_fullgraph_v2_smoke() -> None:
 
   linear = nn.Linear(128, 128, bias=True, device=device, dtype=dtype).eval()
   calibration = torch.randn(64, 128, device="cpu", dtype=dtype)
-  quantized = quantize_linear_svdq_w4a4(
+  quantized = _quantize_svdq_w4a4_layer(
     linear,
     calibration,
     rank=16,

@@ -40,7 +40,7 @@ user-invocable: true
 
 - **TorchAO online quantization**（`quant_type` 直接是 torchao 类型）：`float8_per_row`（推荐）、`float8_per_tensor`、`float8_per_block`、`float8_weight_only`、`int8_per_row`、`int8_per_tensor`、`int8_weight_only`、`int4_weight_only`、`nvfp4`、`nvfp4_weight_only`。
 - **cache-dit native online FP8**（`backend="cache_dit"` + 三种 `float8_*`）：自有 E4M3 量化与 CuTe GEMM；`per_row` = 激活 per-token + 权重 per-output-channel，`per_block` = 激活 `(1,128)` + 权重 `(128,128)` 且逐 K block 重标定。无 torchao runtime 依赖，不支持 TP/DTensor 或 FP8 序列化；`per_tensor_fallback` 对该后端无效。
-- **SVDQuant W4A4 / W8A8 / W4A8**（`svdq_{int4,nvfp4,fp8,w4a8}_r{rank}[_dq]`，FP8-activation 格式 rank 为 32/64/128）：有 `_dq` 后缀是 DQ（无校准），无后缀是 PTQ（需要校准）。四者共用 `{quant_type}.safetensors + quant_config.json` 与 `cache_dit.load`；manifest 的 `precision` 决定运行时模块与解包路径，不能混用。W4A8 是 E4M3 激活 + packed E2M1 残差权重。
+- **SVDQuant W4A4 / W8A8 / W4A8 / W1A4 / W2A4 / W3A4**（`svdq_{int4,nvfp4,fp8,w4a8,w1a4,w2a4,w3a4}_r{rank}[_dq]`，FP8-activation 格式 rank 为 32/64/128）：有 `_dq` 后缀是 DQ（无校准），无后缀是 PTQ（需要校准）。七者共用 `{quant_type}.safetensors + quant_config.json` 与 `cache_dit.load`；manifest 的 `precision` 决定运行时模块与解包路径，不能混用。W4A8 是 E4M3 激活 + packed E2M1 残差权重；W1/2/3A4 是 E2M1 激活 + 1/2/3-bit packed 残差权重，持久 checkpoint 保持低位宽，forward 用单层瞬时 E2M1 workspace 与 producer 双流并行，再走 W4A4。唯一公共模块级量化入口是 `wNaN.py::quantize_svdq_wNaN`，加载入口为 `load_svdq`；A4/A8 共用的 PTQ/DQ/checkpoint 家族实现是 `wNaN.py::_quantize_svdq_wNaN`。单层量化器均为私有语义函数：`wNa4.py` 提供 `_quantize_svdq_w1a4/_w2a4/_w3a4/_wNa4`，`wNa8.py` 提供 `_quantize_svdq_w8a8/_w4a8`；A4/A8 注册表统一返回 `(module, config) -> module` 处理器，INT4/NVFP4 由 `wNa4.py::_quantize_svdq_w4a4` 在同一函数内按 config 选择 DQ/PTQ，通用入口不再特判调用约定，也不包含格式量化逻辑；`partial` 仅存在于各格式注册表，用于把私有单层量化器绑定成模块处理器。`wNa4.py` 含 W4A4/W1A4/W2A4/W3A4，`wNa8.py` 含 W8A8/W4A8，`linear.py` 仅为所有 SVDQ Linear 的公共 facade；W8A8 明确拒绝 INT8 源权重。
 
 门槛与依赖（细节与最新版本要求见 `QUANTIZATION.md` 的 Overview）：
 
@@ -53,7 +53,7 @@ user-invocable: true
 | nvfp4 / nvfp4_weight_only | >=sm100 | torchao（nvfp4 kernel 走 mslk，需另装；Triton 激活量化 + 动态 per-tensor scale） |
 | svdq_int4_* | >=sm89 且排除 sm90（无 INT4 MMA；统一 `_C_ops` 扩展的门槛） | cache-dit CUDA 扩展 |
 | svdq_nvfp4_* | >=sm120 | cache-dit CUDA 扩展 |
-| svdq_fp8_* / svdq_w4a8_* | >=sm120 | cache-dit CUDA 扩展；仅 BF16 源权重，不支持 TP/DTensor |
+| svdq_fp8_* / svdq_w4a8_* / svdq_w{1,2,3}a4_* | >=sm120 | cache-dit CUDA 扩展；仅 BF16 源权重，不支持 TP/DTensor |
 
 分布式（CP/TP）场景优先 float8，避免 int4/nvfp4 的运行时不兼容；float8 内部还要避开 **`float8_per_block`**——文档明确它对 distributed inference 暂不支持。
 
@@ -189,6 +189,7 @@ CLI：`--quantize` / `--quantize-type` / `--quantize-backend torchao|cache_dit`�
 | `test_svdquant_dq.py` | DQ 公共 API、CLI 映射、smooth 策略、layerwise offload 相关 |
 | `test_svdquant_fp8_serialization.py` | FP8 DQ/PTQ checkpoint 往返、三种 load 入参、CPU 格式路径、坏 manifest、compile |
 | `test_svdquant_w4a8.py` / `test_svdquant_w4a8_serialization.py` | packed E2M1 位型、混合 GEMM、producer、compile 与 W4A8 checkpoint 往返 |
+| `test_svdquant_wNa4.py` | W1/W2/W3 pack/unpack 与 packed GEMM 对展开 W4A4 的逐位 oracle |
 | `test_svdquant_quantizer.py` / `test_svdquant_padding.py` | 量化数学、padding 行为 |
 | `test_svdquant_compile.py` | 量化 + `torch.compile` 组合 |
 | `test_svdquant_imports.py` | 扩展缺失时的 import/错误路径 |

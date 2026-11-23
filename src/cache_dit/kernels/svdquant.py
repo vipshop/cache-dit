@@ -1210,6 +1210,76 @@ def svdq_quantize_w4a8(
   return output[:rows], ascales[:rows], (lora_act[:rows] if lora_down is not None else None)
 
 
+def _wNa4_logical_k(wgt_lo: torch.Tensor, bits: int) -> int:
+  return wgt_lo.shape[1] * 4 if bits == 3 else wgt_lo.shape[1] * 8 // bits
+
+
+torch.library.define("cache_dit_cuda_ops::svdq_expand_wna4",
+                     "(Tensor wgt_lo, Tensor? wgt_hi, int bits) -> Tensor")
+
+
+@torch.library.impl("cache_dit_cuda_ops::svdq_expand_wna4", "CUDA")
+def _svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bits: int) -> torch.Tensor:
+  k = _wNa4_logical_k(wgt_lo, bits)
+  out = torch.empty((wgt_lo.shape[0], k // 2), dtype=torch.int8, device=wgt_lo.device)
+  _get_required_ops_module().svdq_expand_wna4(wgt_lo=wgt_lo, wgt_hi=wgt_hi, out=out, bits=bits, K=k)
+  return out
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::svdq_expand_wna4")
+def _fake_svdq_expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None,
+                           bits: int) -> torch.Tensor:
+  del wgt_hi
+  k = _wNa4_logical_k(wgt_lo, bits)
+  return wgt_lo.new_empty((wgt_lo.shape[0], k // 2), dtype=torch.int8)
+
+
+def expand_wna4(wgt_lo: torch.Tensor, wgt_hi: torch.Tensor | None, bits: int) -> torch.Tensor:
+  """Expand packed W1/W2/W3 weights into standard packed E2M1 bytes."""
+  if bits not in (1, 2, 3) or (bits == 3 and wgt_hi is None):
+    raise ValueError("W1/W2 need no high plane; W3 requires its sign plane.")
+  if wgt_lo.dim() != 2 or wgt_lo.dtype != torch.uint8 or not wgt_lo.is_contiguous():
+    raise ValueError("wgt_lo must be a contiguous 2D uint8 tensor.")
+  if wgt_hi is not None and (wgt_hi.dim() != 2 or wgt_hi.dtype != torch.uint8):
+    raise ValueError("wgt_hi must be a 2D uint8 tensor.")
+  k = _wNa4_logical_k(wgt_lo, bits)
+  if k % 8:
+    raise ValueError("Packed W1/W2/W3 requires a multiple-of-8 K extent.")
+  return torch.ops.cache_dit_cuda_ops.svdq_expand_wna4(wgt_lo=wgt_lo, wgt_hi=wgt_hi, bits=bits)
+
+
+def svdq_gemm_wna4(act: torch.Tensor,
+                   wgt_lo: torch.Tensor,
+                   wgt_hi: torch.Tensor | None,
+                   ascales: torch.Tensor,
+                   wscales: torch.Tensor,
+                   lora_act_in: torch.Tensor | None = None,
+                   lora_up: torch.Tensor | None = None,
+                   bias: torch.Tensor | None = None,
+                   wcscales: torch.Tensor | None = None,
+                   *,
+                   alpha: float = 1.0,
+                   bits: int = 2) -> torch.Tensor:
+  """Run the packed W1/W2/W3 FP4 GEMM with on-chip weight expansion."""
+  if bits not in (1, 2, 3):
+    raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
+  out = torch.empty((act.shape[0], wgt_lo.shape[0]), dtype=torch.bfloat16, device=act.device)
+  _get_required_ops_module().svdq_gemm_wna4(act=act,
+                                            wgt_lo=wgt_lo,
+                                            wgt_hi=wgt_hi,
+                                            out=out,
+                                            ascales=ascales,
+                                            wscales=wscales,
+                                            lora_act_in=lora_act_in,
+                                            lora_up=lora_up,
+                                            bias=bias,
+                                            wcscales=wcscales,
+                                            alpha=alpha,
+                                            K=act.shape[1] * 2,
+                                            bits=bits)
+  return out
+
+
 __all__ = [
   "svdq_gemm_w4a4",
   "svdq_quantize_w4a4",
@@ -1217,4 +1287,5 @@ __all__ = [
   "svdq_quantize_w8a8",
   "svdq_gemm_w4a8",
   "svdq_quantize_w4a8",
+  "svdq_gemm_wna4",
 ]

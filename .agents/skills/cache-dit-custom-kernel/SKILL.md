@@ -380,6 +380,8 @@ W4A8 最终实现落在 `cute/fp8/gemm/gemm_w4a8.cu`（单 TU，无 `_sm120` 后
 
 共同验收：packed 随机位型与饱和/零值对拍、PyTorch 解包参考 GEMM、rank 0/32/64/128、LoRA scale 隔离、ragged-M/N/K、fake + fullgraph compile、PTQ/DQ 与 checkpoint 往返、旧格式不回归、无独立 BF16 分支；最后用同一份量化因子比较 FLUX 精度和性能。先用离线 codebook/真实激活探针筛选 W6A6 与 W4A8，避免在收益不成立时投入完整 kernel。
 
+**W1A4/W2A4/W3A4 首版（2026-11-23，本地实现）**：代码在 `cute/fp4/gemm/gemm_wNa4.{h,cu}` 与 `src/cache_dit/quantization/svdquant/wNa4.py`，共享 `gemm_w4a4.cuh` 的 `W4A4CuteTraits`（新增 `kWeightBits=1/2/3`）。W1 为 sign-only `{±1.5}`，W2 为 `{±0.5,±1.5}`，W3 为 low2 magnitude `{0.5,1.5,3,6}` + 独立 sign plane；三者都沿用 per-16 UE4M3 + per-channel coarse scale。B 不再做 1/2/3-bit SW32 atom：消费者线程把 packed B 直接解码进既有 E2M1 B smem 布局，再用原 LDSM；`kTxBytesMain` 在 packed 模式只计 SFB，否则 `full` barrier 会死锁。W1/W2/W3 的 E2M1 展开与“load-time 展开后走未改 W4A4”的 oracle 已做到逐位相等；W3 low plane 是 2-bit，提取步长必须用 `kLoBits`，不能误用总位宽 3。**实测 on-chip 解码路径（消费者每 K tile 从 gmem 解码到 sB）在 M4096/N12288/K3072 约 2.52ms，而 W4A4 0.46ms，已证明不可交付**；生产 forward 改为 `expand_wna4` 轻量 CUDA kernel 生成**单层瞬时 E2M1 workspace**，再调用未改 W4A4，实测约 0.49ms（≈1.06×），持久权重仍是 1/2/3-bit，峰值只多一个投影。后续若要把 workspace 也消掉，需要 TMA staging + 向量化 S2R，当前未完成。当前只支持 DQ，PTQ/checkpoint/CLI 和 fused MLP 尚未接入；FLUX 未跑。
+
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
 `comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。

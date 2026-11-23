@@ -708,6 +708,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "svdq_w4a8_r32_dq",
       "svdq_w4a8_r64_dq",
       "svdq_w4a8_r128_dq",
+      "svdq_w1a4_r32_dq",
+      "svdq_w1a4_r64_dq",
+      "svdq_w1a4_r128_dq",
+      "svdq_w2a4_r32_dq",
+      "svdq_w2a4_r64_dq",
+      "svdq_w2a4_r128_dq",
+      "svdq_w3a4_r32_dq",
+      "svdq_w3a4_r64_dq",
+      "svdq_w3a4_r128_dq",
       "bitsandbytes_4bit",
     ],
   )
@@ -929,6 +938,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Enable SVDQ-W4A8 dynamic quantization with rank 128 for transformer",
   )
+  for bits in (1, 2, 3):
+    for rank in (32, 64, 128):
+      parser.add_argument(
+        f"--svdq-w{bits}a4-r{rank}-dq",
+        action="store_true",
+        default=False,
+        help=f"Enable packed SVDQ-W{bits}A4 dynamic quantization with rank {rank} for transformer",
+      )
   # quantization for extra modules: text encoder, vae, controlnet, etc.
   parser.add_argument(
     "--quantize-text-encoder",
@@ -1707,6 +1724,8 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     ("svdq_w4a8_r32_dq", args.svdq_w4a8_r32_dq),
     ("svdq_w4a8_r64_dq", args.svdq_w4a8_r64_dq),
     ("svdq_w4a8_r128_dq", args.svdq_w4a8_r128_dq),
+    *[(f"svdq_w{bits}a4_r{rank}_dq", getattr(args, f"svdq_w{bits}a4_r{rank}_dq"))
+      for bits in (1, 2, 3) for rank in (32, 64, 128)],
   ]
   selected_shortcuts = [quant_type for quant_type, enabled in quantize_shortcuts if enabled]
   if len(selected_shortcuts) > 1:
