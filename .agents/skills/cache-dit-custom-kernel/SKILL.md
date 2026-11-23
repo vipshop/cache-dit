@@ -332,6 +332,32 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 
 禁止把量化收益算成融合收益：FLUX 上融合本身约 +3.1%、Qwen21 约 +4.4%；e2e PSNR 受 SVDQ 原子顺序噪声影响，不能作为等价性判据。不要重复已证伪的 CuTe D 归约微优化、INT4 fused store 或 MoE 强行融合。
 
+### 8.6 SVDQ-FP8 per-block 预研方案（未实现，2026-11-23）
+
+**结论：中高难度，主要难点在 GEMM 主循环，不在 quantizer。** 当前 W8A8 契约是 A `[M,K]` 每 token 一个 scale、B `[N,K]` 每输出通道一个 scale，二者都不随 K 变化，所以 `gemm_fp8_main` 先对全 K 做原始 FP32 累加，再由 `apply_scales` 乘一次。目标 blockwise 契约应对齐 plain FP8：
+
+```text
+G = K / 128
+qA[M,K], ascales[M,G]          # 激活 1x128
+qB[N,K], wscales[N/128,G]      # 残差权重 128x128
+C = sum_g( (qA_g @ qB_g^T) * ascales[:,g] * wscales[nb,g] ) + D @ L1^T + bias
+```
+
+任意一侧的 scale 随 K 变化，都不能再提到归约外；必须每个 K128 block 做 FP32 promotion 并累加。不能在现有 epilogue 上改 shape 就宣称支持。LoRA-up 仍与主分支共享 FP32 accumulator，但不能被 A/B block scale 乘到。
+
+现有可复用证据：`csrc/kernels/fp8/gemm/gemm.cuh` 的 `Fp8BlockScaleConfig = Sm120BlockwiseScaleConfig<1,128,128,K,K>`、`Fp8BlockMainloop` 和 `tile_atom_to_shape_SFA/SFB` 已实现相同 scale 布局；`csrc/kernels/fp8/quantize.cu` 已有 1x128 activation 和 128x128 weight 量化。不能直接复用整个 `GemmUniversal` 后补 LoRA：CUTLASS block scale 在 mainloop 内，LoRA-up 是另一段 MMA，普通 EVT 做不了；只允许复用 collective/layout，不允许退回独立 BF16 GEMM。
+
+**推荐先做自有 CuTe kernel 的 BN64 原型**：保留当前 TMA/LDSM、LoRA ring 和输出路径，把 K128 tile 的原始 partial 放到 `tCrP`，tile 末执行 `tCrC += tCrP * sa[m,g] * sb[nb,g]`，最后再做 LoRA-up 和 bias。BN128 下两份 C accumulator 预计会把当前约 168 REG 推到 spill 区；BN64 将 C 从 64 减到 32 REG，再加 32 REG partial，理论上接近原预算。`BM128/BN64/BK128/S3` 主流水 72KiB，加 LoRA 两档 24KiB，总计 96KiB，仍低于 sm120 的 99KiB 上限。该数字是设计估算，必须编译后查 ptxas 并实测，不能当作已验证结果。代价是 N/64 CTA 数翻倍、A 的 L2/TMA 流量增加；若原型性能不达标，再评估把 `Fp8BlockMainloop` 接入自定义 kernel，在 collective 归约后运行现有 LoRA MMA。后者可保留 BN128，但 pipeline、SharedStorage、register reconfig 的集成复杂度更高，且不修改 vendored CUTLASS。
+
+实施拆分：
+
+1. **配置与格式（低）**：默认 `per_row` 不变；增加仅 FP8 可用的 `scale_granularity="per_block"`（或等价显式字段），不能靠 scale ndim 静默猜测。`SVDQW8A8Linear`、fake schema、state-dict 与 manifest 都记录该粒度；旧 per-row checkpoint 必须原样可加载，粒度不匹配先报错。
+2. **量化器与 producer（中）**：离线 residual 按 `[N/128,128,G,128]` 求 amax；producer 输出 `ascales[M,G]`，在现有 split-K 量化+D kernel 内按全局 `k/128` 取 scale。D 的全 K BF16 归约和 finalize 不变，不能调用 plain FP8 producer 后再单独补 D。
+3. **GEMM（高）**：先完成 BN64 双 accumulator 原型，再做 rank32/64/128 和 ragged-M 包装；优化时优先查 register/spill、scale 读放大的指令数和 A 流量，不先动 LoRA 微优化。
+4. **精度预期**：收益预计主要来自 A 的 1x128 量化。既有 FLUX 探针显示 FP8 权重的相对重构误差不随 scale 粒度显著变化，因此不能承诺 128x128 B scale 本身带来明显收益；用同一份量化 checkpoint 比较 per-row/per-block，避免随机 SVD 和 split-K 原子噪声污染排序。
+
+验收矩阵：量化/反量化对拍（含零 block 和 padding）、rank 0/32/64/128、LoRA 不被 scale 污染、fake + fullgraph compile、两种粒度 save/load 及旧 checkpoint 兼容、同 runtime unfused 对照、FLUX 精度。性能基线（RTX PRO 5000，M4096/N12288/K3072，2026-11-23）：plain FP8 GEMM per-row 0.698ms、per-block 0.714ms；producer 0.010ms/0.016ms。目标是保留现有 LoRA 融合开销模型，不出现第二遍 dense 输出或独立 BF16 GEMM；若 BN64 明显慢于 CUTLASS per-block，再转向 collective 集成，不接受仅功能正确的慢路径直接落地。
+
 ## 9. 模型专属算子族（`csrc/kernels/models` + `src/cache_dit/kernels/models`）
 
 `comm` / `attn` / `svdq` 是**框架级**能力，`models` 是**模型级**：算子只服务一个 vendored 模型，随模型进仓，不承诺通用性。多出来的一层是「模型侧调用点」，它承担框架级三族没有的义务——**未命中融合时必须数值不变**。
