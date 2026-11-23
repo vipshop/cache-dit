@@ -218,6 +218,37 @@ persistent model larger; W3 r32 remains the better memory/quality trade-off.
 Three-stage is therefore the rescue path for very low W1/W2 storage, not a
 replacement for W3.
 
+Memory accounting versus W4A4
+-----------------------------
+W1/W2 do not move the codebook to the activation side. Activations always use
+the existing A4 path: packed E2M1 values, FP8 per-16 scales, and the BF16
+LoRA-down activation. No per-token codebook index, exponent plane, or lookup
+buffer is added to activations. The decode tables are tiny compile-time
+constants; they do not consume model-sized HBM.
+
+The packed codebook metadata is entirely weight-side: qweight, the per-16 FP8
+group scale, the optional per-4/per-2 exponent, and the per-channel coarse
+scale. For W2 stage 3 this is 2 + 0.5 + 0.5 = 3 bits/weight, versus 4 + 0.5 =
+4.5 bits/weight for W4A4. On an 11.83B residual matrix that saves about
+2.07 GiB of persistent weights at the same rank.
+
+The only extra runtime buffer is the expansion of the *current layer's weight*
+into standard E2M1 bytes. For a projection [N,K] it is N*K/2 bytes; the largest
+FLUX projection is about 18 MiB. Peak memory is therefore:
+
+  peak = persistent_weights + runtime_activations + one_layer_expansion
+
+At the same rank, runtime_activations is identical between W4A4 and W1/W2/W3,
+so it cancels when comparing formats. The transient weight workspace is small
+relative to the GiB-scale saving. If activations dominate at very large batch
+or resolution, the absolute weight saving remains; only its percentage of the
+total becomes smaller.
+
+LoRA rank is a separate variable and can erase the codec saving: rank 512 adds
+about 5.1 GiB of BF16 LoRA on FLUX. That is why W2 r512 consumes more memory
+than W4A4 r32 even though its residual code is narrower. Low-rank W2/W3
+configurations are the memory-saving cases.
+
 Checkpoint and default contract
 -------------------------------
 W1/W2 `QuantizeConfig` defaults `packed_a4_stages` to 3; passing 2 explicitly

@@ -1276,6 +1276,20 @@ Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-
 
 The per-2 option doubles the exponent bytes. W2A4 r32 per-2 uses about 5.15 GiB and produced a valid image in the same FLUX compile check; W1A4 r32/r64 per-2 still did not produce a semantically valid image, so per-2 is not a substitute for switching W1 to W2. The per-4 layout remains the default and the recommended format for W2.
 
+### Memory accounting: what is and is not moved to activations
+
+W1A4/W2A4 do **not** move the codebook to the activation side. Activations always use the existing A4 path: packed E2M1 values, FP8 per-16 activation scales, and the BF16 LoRA-down activation. There is no per-token codebook index, exponent plane, or lookup buffer on activations. The 8/10-entry decode tables are compile-time constants and consume no model-sized HBM.
+
+The codebook metadata is entirely weight-side: packed code, the per-16 FP8 group scale, the optional per-4 (or per-2) exponent, and the per-channel coarse scale. Relative to W4A4's 4 code bits + 0.5 scale bits, W2 three-stage uses 2 + 0.5 + 0.5 = 3 bits/weight, saving 1.5 bits per residual weight. On the 11.83B residual weights of FLUX.1-dev that is about 2.07 GiB less persistent weight than W4A4 at the same rank.
+
+The only new runtime buffer is the expansion of the **current layer's weight** into standard E2M1 bytes. For a projection `[N,K]` that workspace is `N*K/2` bytes; the largest FLUX projection is about 18 MiB. Peak memory is therefore approximately:
+
+```text
+peak = persistent_weights + runtime_activations + one_layer_expansion_workspace
+```
+
+At the same rank, `runtime_activations` is identical between W4A4 and W1/W2/W3, so it cancels in the comparison. W2A4 r32 retains about 2.07 GiB less than W4A4 r32 and adds only the ~19 MiB transient buffer. If activations dominate total memory at very large batch or resolution, the absolute weight saving is unchanged; only its percentage of the total becomes smaller. LoRA rank is a separate variable: rank 512 adds about 5.1 GiB of BF16 LoRA and can outweigh the codec saving, so memory-friendly configurations should stay at rank 32/64.
+
 ### Compile performance
 
 Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded), speedup over BF16 compile, and persistent transformer-weight memory on one RTX PRO 5000 72GB. W2 uses three stages; W3/W4 use the standard two-stage codec. Memory covers the 494 quantized block linears: packed code, FP8/BF16 scales, three-stage exponents, BF16 LoRA and smooth factors with the runtime's padded geometry; it excludes activations, the transient expansion workspace, and biases.
