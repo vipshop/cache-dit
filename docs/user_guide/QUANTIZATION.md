@@ -1267,19 +1267,19 @@ Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-
 
 ### Compile performance
 
-Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded) and speedup over BF16 compile on one RTX PRO 5000 72GB. W1/W2 use three stages; W3/W4 use the standard two-stage codec.
+Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded), speedup over BF16 compile, and persistent transformer-weight memory on one RTX PRO 5000 72GB. W1/W2 use three stages; W3/W4 use the standard two-stage codec. Memory covers the 494 quantized block linears: packed code, FP8/BF16 scales, three-stage exponents, BF16 LoRA and smooth factors with the runtime's padded geometry; it excludes activations, the transient expansion workspace, and biases.
 
-| Configuration | Inference | Speedup vs BF16 compile |
-|---|---:|---:|
-| BF16 | 14.83s | 1.00x |
-| W1A4 r256, three stages | 8.34s | 1.78x |
-| W1A4 r512, three stages | 10.36s | 1.43x |
-| W2A4 r256, three stages | 8.37s | 1.77x |
-| W2A4 r512, three stages | 10.37s | 1.43x |
-| W3A4 r32 | 6.44s | 2.30x |
-| W4A4 (NVFP4) r32 | 6.00s | 2.47x |
+| Configuration | Persistent weight memory | Inference | Speedup vs BF16 compile |
+|---|---:|---:|---:|
+| BF16 | 22.04 GiB | 14.83s | 1.00x |
+| W1A4 r256, three stages | 5.33 GiB | 8.34s | 1.78x |
+| W1A4 r512, three stages | 7.89 GiB | 10.36s | 1.43x |
+| W2A4 r256, three stages | 6.70 GiB | 8.37s | 1.77x |
+| W2A4 r512, three stages | 9.26 GiB | 10.37s | 1.43x |
+| W3A4 r32 | 5.15 GiB | 6.44s | 2.30x |
+| W4A4 (NVFP4) r32 | 6.53 GiB | 6.00s | 2.47x |
 
-The gallery below shows the corresponding compiled outputs for the same prompt and seed. W1/W2 use three stages at rank 256/512; W3/W4 use rank 32. Labels repeat the steady-state compile latency from the table.
+The gallery below shows the valid compiled outputs for the same prompt and seed. W1/W2 use three stages at rank 512/256; W3/W4 use rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 r256 is omitted because its generated image is not semantically valid even though it executes and is included in the performance table.
 
 ![Packed A4 compile comparison](../assets/svdq_packed_a4_compile_gallery.png)
 
