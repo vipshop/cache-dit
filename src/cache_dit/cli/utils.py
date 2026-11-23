@@ -45,6 +45,7 @@ from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
 from ..quantization.backend import QuantizeBackend
 from ..quantization.config import DEFAULT_EXCLUDE_LAYERS
+from ..quantization.config import _SVDQ_PACKED_A4_RANKS
 
 from ..summary import strify as summary_strify
 from ..utils import is_modular_pipeline
@@ -708,15 +709,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "svdq_w4a8_r32_dq",
       "svdq_w4a8_r64_dq",
       "svdq_w4a8_r128_dq",
-      "svdq_w1a4_r32_dq",
-      "svdq_w1a4_r64_dq",
-      "svdq_w1a4_r128_dq",
-      "svdq_w2a4_r32_dq",
-      "svdq_w2a4_r64_dq",
-      "svdq_w2a4_r128_dq",
-      "svdq_w3a4_r32_dq",
-      "svdq_w3a4_r64_dq",
-      "svdq_w3a4_r128_dq",
+      *[
+        f"svdq_w{bits}a4_r{rank}_dq" for bits in (1, 2, 3)
+        for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank
+      ],
       "bitsandbytes_4bit",
     ],
   )
@@ -939,7 +935,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable SVDQ-W4A8 dynamic quantization with rank 128 for transformer",
   )
   for bits in (1, 2, 3):
-    for rank in (32, 64, 128):
+    ranks = _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"]
+    for rank in ranks:
+      if rank == 0:
+        continue
       parser.add_argument(
         f"--svdq-w{bits}a4-r{rank}-dq",
         action="store_true",
@@ -1019,6 +1018,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default="low",
     choices=["low", "medium", "high"],
     help="Calibration / decomposition precision for SVDQ quantization. Default: low.",
+  )
+  parser.add_argument(
+    "--svdq-packed-a4-stages",
+    type=int,
+    default=None,
+    choices=[2, 3],
+    help="Weight scale stages for packed W1A4/W2A4. Default: 3; pass 2 for standard NVFP4.",
   )
   parser.add_argument(
     "--svdq-runtime",
@@ -1725,7 +1731,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     ("svdq_w4a8_r64_dq", args.svdq_w4a8_r64_dq),
     ("svdq_w4a8_r128_dq", args.svdq_w4a8_r128_dq),
     *[(f"svdq_w{bits}a4_r{rank}_dq", getattr(args, f"svdq_w{bits}a4_r{rank}_dq"))
-      for bits in (1, 2, 3) for rank in (32, 64, 128)],
+      for bits in (1, 2, 3) for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank],
   ]
   selected_shortcuts = [quant_type for quant_type, enabled in quantize_shortcuts if enabled]
   if len(selected_shortcuts) > 1:
@@ -2453,27 +2459,51 @@ def maybe_quantize_transformer(
                                           and args.svdq_smooth_strategy == "few_shot"
                                           and offload_quantized_layers_to_cpu)
     return {
-      "smooth_strategy": args.svdq_smooth_strategy,
-      "calibrate_precision": args.svdq_calibrate_precision,
-      "runtime_kernel": args.svdq_runtime,
-      "lora_layout": args.svdq_lora_layout,
-      "quantize_device": args.svdq_quantize_device,
-      "offload_quantized_layers_to_cpu": offload_quantized_layers_to_cpu,
-      "layerwise_offload": args.svdq_layerwise_offload,
-      "async_transfer": args.layerwise_async_transfer,
-      "transfer_buckets": args.layerwise_transfer_buckets,
-      "prefetch_limit": args.layerwise_prefetch_limit,
-      "max_copy_streams": args.layerwise_max_copy_streams,
-      "max_inflight_prefetch_bytes": args.layerwise_max_inflight_prefetch_bytes,
-      "persistent_buckets": args.layerwise_persistent_buckets,
-      "persistent_bins": args.layerwise_persistent_bins,
-      "defer_move_to_execution_device": defer_move_to_execution_device,
-      "few_shot_steps": args.svdq_few_shot_steps,
-      "few_shot_relax_factor": args.svdq_few_shot_relax_factor,
-      "few_shot_relax_top_ratio": args.svdq_few_shot_relax_top_ratio,
-      "few_shot_relax_strategy": args.svdq_few_shot_relax_strategy,
-      "few_shot_auto_compile": few_shot_auto_compile,
-      "fused_mlp": bool(args.svdq_fused_mlp),
+      "smooth_strategy":
+      args.svdq_smooth_strategy,
+      "calibrate_precision":
+      args.svdq_calibrate_precision,
+      "runtime_kernel":
+      args.svdq_runtime,
+      "lora_layout":
+      args.svdq_lora_layout,
+      "quantize_device":
+      args.svdq_quantize_device,
+      "offload_quantized_layers_to_cpu":
+      offload_quantized_layers_to_cpu,
+      "layerwise_offload":
+      args.svdq_layerwise_offload,
+      "async_transfer":
+      args.layerwise_async_transfer,
+      "transfer_buckets":
+      args.layerwise_transfer_buckets,
+      "prefetch_limit":
+      args.layerwise_prefetch_limit,
+      "max_copy_streams":
+      args.layerwise_max_copy_streams,
+      "max_inflight_prefetch_bytes":
+      args.layerwise_max_inflight_prefetch_bytes,
+      "persistent_buckets":
+      args.layerwise_persistent_buckets,
+      "persistent_bins":
+      args.layerwise_persistent_bins,
+      "defer_move_to_execution_device":
+      defer_move_to_execution_device,
+      "few_shot_steps":
+      args.svdq_few_shot_steps,
+      "few_shot_relax_factor":
+      args.svdq_few_shot_relax_factor,
+      "few_shot_relax_top_ratio":
+      args.svdq_few_shot_relax_top_ratio,
+      "few_shot_relax_strategy":
+      args.svdq_few_shot_relax_strategy,
+      "few_shot_auto_compile":
+      few_shot_auto_compile,
+      "fused_mlp":
+      bool(args.svdq_fused_mlp),
+      **({
+        "packed_a4_stages": args.svdq_packed_a4_stages
+      } if args.svdq_packed_a4_stages is not None else {}),
     }
 
   # Quantize transformer by default if quantization is enabled

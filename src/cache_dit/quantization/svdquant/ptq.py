@@ -20,6 +20,7 @@ from ..config import QuantizeConfig
 from ..config import _get_svdq_precision
 from ..config import _parse_svdq_quant_type
 from ..config import _resolve_svdq_kwargs
+from ..config import _SVDQ_PACKED_A4_RANKS
 from .dtensor import SVDQW4A4ShardLinear
 from .linear import SVDQW4A4Linear
 from .quantizer import _ActivationSpanAccumulator
@@ -39,6 +40,15 @@ _SVDQ_QUANT_CONFIG_VERSION = 2
 _SVDQ_QUANT_CONFIG_FILENAME = "quant_config.json"
 _ROOT_LAYER_NAME = "__root__"
 _RUNTIME_LAYERWISE_OFFLOAD_HANDLE_ATTR = "_svdq_runtime_layerwise_offload_handle"
+
+
+def _validate_svdq_manifest_rank(precision: str, rank: Any, path: str) -> None:
+  allowed_ranks = _SVDQ_PACKED_A4_RANKS.get(precision)
+  if allowed_ranks is None:
+    return
+  if rank not in allowed_ranks:
+    raise ValueError(f"SVDQ-{precision.upper()} checkpoint at {path} has invalid rank {rank}; "
+                     f"expected {allowed_ranks}.")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -993,6 +1003,19 @@ class SVDQFewShotRuntimeController:
     )
 
 
+def _filter_serialized_svdq_kwargs(precision: str, svdq_kwargs: dict[str, Any]) -> dict[str, Any]:
+  """Drop the packed-stage field where it is not part of the on-disk format.
+
+  Older cache-dit releases reject unknown svdq_kwargs keys. Non-W1/W2 checkpoints and explicit two-
+  stage W1/W2 checkpoints should therefore look exactly like their legacy manifests; only the new
+  three-stage W1/W2 format needs the key.
+  """
+  filtered = dict(svdq_kwargs)
+  if precision not in ("w1a4", "w2a4") or int(filtered.get("packed_a4_stages", 2)) == 2:
+    filtered.pop("packed_a4_stages", None)
+  return filtered
+
+
 def _build_serialized_metadata(
   *,
   quant_type: str,
@@ -1008,7 +1031,7 @@ def _build_serialized_metadata(
     "rank": rank,
     "precision": precision,
     "quantized_layer_names": [_serialize_layer_name(name) for name in quantized_layer_names],
-    "svdq_kwargs": svdq_kwargs,
+    "svdq_kwargs": _filter_serialized_svdq_kwargs(precision, svdq_kwargs),
   }
   return {_SVDQ_METADATA_KEY: json.dumps(payload, sort_keys=True)}
 
@@ -1125,6 +1148,7 @@ def _validate_quant_config_snapshot(path: str, payload: dict[str, Any]) -> dict[
   rank = payload.get("rank")
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ quant_config at {path} is missing a valid integer rank.")
+  _validate_svdq_manifest_rank(payload["precision"], rank, path)
 
   checkpoint_path = payload.get("checkpoint_path")
   if not isinstance(checkpoint_path, str) or not checkpoint_path:
@@ -1151,6 +1175,10 @@ def _validate_quant_config_snapshot(path: str, payload: dict[str, Any]) -> dict[
 
   svdq_kwargs = payload.get("svdq_kwargs", {})
   payload["svdq_kwargs"] = _resolve_svdq_kwargs(svdq_kwargs)
+  if (payload["svdq_kwargs"]["packed_a4_stages"] == 3
+      and payload["precision"] not in ("w1a4", "w2a4")):
+    raise ValueError(f"SVDQ quant_config at {path} enables three-stage scales for "
+                     f"{payload['precision']!r}; only W1A4/W2A4 support it.")
   payload["exclude_layers"] = exclude_layers
   payload["regional_quantize"] = regional_quantize
   payload["repeated_blocks"] = repeated_blocks
@@ -1242,7 +1270,8 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   rank = payload.get("rank")
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid integer rank.")
-  if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4") and rank not in (0, 32, 64, 128):
+  _validate_svdq_manifest_rank(precision, rank, path)
+  if precision in ("fp8", "w4a8") and rank not in (0, 32, 64, 128):
     raise ValueError(f"SVDQ-{precision.upper()} checkpoint at {path} has invalid rank {rank}; "
                      "expected 0, 32, 64 or 128.")
 
@@ -1253,6 +1282,9 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
 
   svdq_kwargs = payload.get("svdq_kwargs", {})
   payload["svdq_kwargs"] = _resolve_svdq_kwargs(svdq_kwargs)
+  if (payload["svdq_kwargs"]["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4")):
+    raise ValueError(f"SVDQ PTQ checkpoint at {path} enables three-stage scales for "
+                     f"{precision!r}; only W1A4/W2A4 support it.")
   return payload
 
 
@@ -1560,6 +1592,9 @@ def load_svdq(
       if torch_dtype != torch.bfloat16:
         raise ValueError(f"SVDQ-{precision.upper()} checkpoints require BF16 LoRA/smooth tensors, "
                          f"got {torch_dtype}.")
+      constructor_kwargs = {
+        "stages": int(svdq_kwargs.get("packed_a4_stages", 2))
+      } if precision in ("w1a4", "w2a4", "w3a4") else {}
       quantized_module = linear_type(
         in_features=float_module.in_features,
         out_features=float_module.out_features,
@@ -1567,6 +1602,7 @@ def load_svdq(
         bias=float_module.bias is not None,
         torch_dtype=torch_dtype,
         device=load_device,
+        **constructor_kwargs,
       )
       local_layer_state_dict = layer_state_dict
     else:

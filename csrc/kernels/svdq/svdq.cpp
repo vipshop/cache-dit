@@ -2,6 +2,16 @@
 //
 // Definitions of the two public SVDQ dispatchers plus their registrar. The extension itself is
 // defined in `csrc/kernels/ops.cpp`, so this TU must not define a `PYBIND11_MODULE` of its own.
+//
+// Packed W1/W2/W3 quantization follows the standard two-stage NVFP4 contract:
+//   s_c[n] = BF16(max_g A[n,g] / (448 * C_b))
+//   s_g[n,g] = FP8_E4M3(A[n,g] / (s_c[n] * C_b))
+//   q = nearest(Q_b, R / (s_c * s_g)),  R_hat = s_c * s_g * Q_b[q]
+// C_b is 6 for W3 and 1.5 for W1/W2. W1/W2 stages=3 keeps s_c/s_g and adds
+// four 2-bit per-4 exponents that select a table of legal E2M1 magnitudes. The
+// tables are folded into the nibble, so this dispatcher still routes to the
+// same W4A4 block-scaled MMA; see gemm_w4a4.cuh and gemm_wNa4.cu for the
+// complete equations and bit layout.
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -258,10 +268,12 @@ void quantize_w4a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
 }
 
 void expand_wna4(std::optional<torch::Tensor> wgt_lo, std::optional<torch::Tensor> wgt_hi,
-                 std::optional<torch::Tensor> out, int64_t bits, int64_t K) {
+                 std::optional<torch::Tensor> out, int64_t bits, int64_t K,
+                 std::optional<torch::Tensor> wgt_micro) {
   TorchOpContext ctx;
   ::svdq::cute_kernels::expand_wna4(get_tensor(wgt_lo), get_tensor(wgt_hi), get_tensor(out),
-                                    static_cast<int>(bits), static_cast<int>(K));
+                                    static_cast<int>(bits), static_cast<int>(K),
+                                    get_tensor(wgt_micro));
 }
 
 void gemm_wna4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wgt_lo,
@@ -269,24 +281,27 @@ void gemm_wna4(std::optional<torch::Tensor> act, std::optional<torch::Tensor> wg
                std::optional<torch::Tensor> ascales, std::optional<torch::Tensor> wscales,
                std::optional<torch::Tensor> lora_act_in, std::optional<torch::Tensor> lora_up,
                std::optional<torch::Tensor> bias, std::optional<torch::Tensor> wcscales,
-               double alpha, int64_t K, int64_t bits) {
+               double alpha, int64_t K, int64_t bits, std::optional<torch::Tensor> wgt_micro) {
   TorchOpContext ctx;
   const float alpha_f = static_cast<float>(alpha);
   if (bits == 1) {
-    ::svdq::cute_kernels::gemm_w1a4(
-      get_tensor(act), get_tensor(wgt_lo), get_tensor(out), get_tensor(ascales),
-      get_tensor(wscales), get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
-      get_tensor(wcscales), alpha_f, static_cast<int>(K), get_tensor(wgt_hi));
+    ::svdq::cute_kernels::gemm_w1a4(get_tensor(act), get_tensor(wgt_lo), get_tensor(out),
+                                    get_tensor(ascales), get_tensor(wscales),
+                                    get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
+                                    get_tensor(wcscales), alpha_f, static_cast<int>(K),
+                                    get_tensor(wgt_hi), get_tensor(wgt_micro));
   } else if (bits == 2) {
-    ::svdq::cute_kernels::gemm_w2a4(
-      get_tensor(act), get_tensor(wgt_lo), get_tensor(out), get_tensor(ascales),
-      get_tensor(wscales), get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
-      get_tensor(wcscales), alpha_f, static_cast<int>(K), get_tensor(wgt_hi));
+    ::svdq::cute_kernels::gemm_w2a4(get_tensor(act), get_tensor(wgt_lo), get_tensor(out),
+                                    get_tensor(ascales), get_tensor(wscales),
+                                    get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
+                                    get_tensor(wcscales), alpha_f, static_cast<int>(K),
+                                    get_tensor(wgt_hi), get_tensor(wgt_micro));
   } else if (bits == 3) {
-    ::svdq::cute_kernels::gemm_w3a4(
-      get_tensor(act), get_tensor(wgt_lo), get_tensor(out), get_tensor(ascales),
-      get_tensor(wscales), get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
-      get_tensor(wcscales), alpha_f, static_cast<int>(K), get_tensor(wgt_hi));
+    ::svdq::cute_kernels::gemm_w3a4(get_tensor(act), get_tensor(wgt_lo), get_tensor(out),
+                                    get_tensor(ascales), get_tensor(wscales),
+                                    get_tensor(lora_act_in), get_tensor(lora_up), get_tensor(bias),
+                                    get_tensor(wcscales), alpha_f, static_cast<int>(K),
+                                    get_tensor(wgt_hi), get_tensor(wgt_micro));
   } else {
     TORCH_CHECK(false, "svdq_gemm_wna4 supports bits 1, 2 or 3");
   }
@@ -314,11 +329,11 @@ void register_svdq_ops(py::module_ &ops) {
          py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"), py::arg("lora_up"),
          py::arg("bias"))
     .def("svdq_expand_wna4", &expand_wna4, py::arg("wgt_lo"), py::arg("wgt_hi"), py::arg("out"),
-         py::arg("bits"), py::arg("K"))
+         py::arg("bits"), py::arg("K"), py::arg("wgt_micro") = py::none())
     .def("svdq_gemm_wna4", &gemm_wna4, py::arg("act"), py::arg("wgt_lo"), py::arg("wgt_hi"),
          py::arg("out"), py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"),
          py::arg("lora_up"), py::arg("bias"), py::arg("wcscales"), py::arg("alpha"), py::arg("K"),
-         py::arg("bits"))
+         py::arg("bits"), py::arg("wgt_micro") = py::none())
     .def("svdq_quantize_w4a8", &quantize_w4a8, py::arg("input"), py::arg("output"),
          py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
 }

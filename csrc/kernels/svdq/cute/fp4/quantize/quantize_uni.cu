@@ -369,7 +369,8 @@ struct W4A4QuantizeUniversalKernel {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
     // kRankTiles describes the full logical rank (one tile == 16 columns). kRankSplits may split
     // that rank across blockIdx.y CTAs, so the local accumulator only owns kLocalRankTiles.
-    static_assert(kRankSplits == 1 || kRankSplits == 2);
+    static_assert(kRankSplits == 1 || kRankSplits == 2 || kRankSplits == 4);
+    static_assert(kRankTiles % kRankSplits == 0);
     constexpr int kLocalRankTiles = kRankTiles / kRankSplits;
     constexpr int kAccTiles = kLocalRankTiles > 0 ? kLocalRankTiles : 1;
     constexpr int kRank = kRankTiles * 16;
@@ -499,7 +500,7 @@ struct W4A4QuantizeUniversalKernel {
       // LoRA-down MMA. rt selects one locally owned R16 tile, n selects the K16 atom, and mt
       // selects the M16 half. Each B fragment is loaded once and reused for both M16 halves,
       // halving lora_down traffic versus reloading per half.
-      if constexpr (kRankTiles == 8) {
+      if constexpr (kLocalRankTiles == 8) {
 #pragma unroll
         for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
@@ -516,8 +517,9 @@ struct W4A4QuantizeUniversalKernel {
           }
         }
       } else if constexpr (kLocalRankTiles > 0) {
-        // Narrow ranks keep the scalar B path: its request count is not the limiter there, and
-        // avoiding register-transpose setup is faster for rank<=64.
+        // Only narrow *local* ranks use the scalar B path; rank256/512 split into 8 local tiles and
+        // therefore take the same movmatrix route as rank128. The request count is not the limiter
+        // for local ranks below 128, where avoiding register-transpose setup is faster.
 #pragma unroll
         for (int rt = 0; rt < kLocalRankTiles; ++rt) {
 #pragma unroll
@@ -1017,8 +1019,9 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
       ascales.numel() >= static_cast<int64_t>(M) * K / 16,
     "quantize_w4a4 output/ascales storage is smaller than the native activation pack");
   W4A4QuantizeUniversalKernel::require(
-    rank == 0 || (rank % 16 == 0 && rank <= 128),
-    "quantize_w4a4 rank must be 0 or a multiple of 16 up to 128");
+    rank == 0 || rank == 16 || rank == 32 || rank == 48 || rank == 64 || rank == 80 || rank == 96 ||
+      rank == 112 || rank == 128 || rank == 256 || rank == 512,
+    "quantize_w4a4 rank must be one of 0/16/32/48/64/80/96/112/128/256/512");
   W4A4QuantizeUniversalKernel::require(
     static_cast<int>(lora_scales.size()) == std::max(1, rank / 16),
     "lora_scales must have one value per 16-rank tile");
@@ -1136,7 +1139,15 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
     launch_quantize_w4a4<6, 4>(args);
   } else if (rank == 112) {
     launch_quantize_w4a4<7, 4>(args);
-  } else {
+  } else if (rank == 256) {
+    // Two CTAs split the rank, so each owns 128 columns. This is the rank128 two-split
+    // register/shared-memory schedule with twice the grid, avoiding a 16-tile accumulator.
+    launch_quantize_w4a4<16, 8, 2, 2>(args);
+  } else if (rank == 512) {
+    // Four CTAs split the rank, so each owns 128 columns. This reuses the exact register and
+    // shared-memory footprint of the validated rank128 single-split schedule.
+    launch_quantize_w4a4<32, 8, 2, 4>(args);
+  } else if (rank == 128) {
     if (M <= 2048) {
       launch_quantize_w4a4<8, 8, 2, 2>(args);
     } else if (M <= 4096) {
@@ -1146,6 +1157,8 @@ void quantize_uni(svdq::Tensor input, svdq::Tensor output, svdq::Tensor ascales,
     } else {
       launch_quantize_w4a4<8, 8, 2>(args);
     }
+  } else {
+    throw std::runtime_error("quantize_w4a4 supports rank 0/16/32/48/64/80/96/112/128/256/512");
   }
   checkCUDA(cudaGetLastError());
 }

@@ -1,8 +1,48 @@
 """SVDQ A4 runtimes, single-layer quantizers and module quantization flows.
 
-Packed W1/W2/W3 weights use the per-16 FP8 micro-scale and per-output-channel coarse scale of NVFP4.
-Their codes are expanded to E2M1 before the existing W4A4 MMA. Persistent storage remains packed;
-only the current layer uses a transient E2M1 workspace. INT4/NVFP4 module flow also lives here.
+Two-stage NVFP4 weight quantization (the standard W4A4/W3A4 codec)
+-------------------------------------------------------------------
+For a residual matrix R[N,K], every 16 consecutive K elements form one scale
+group g. The encoder writes two multiplicative scales and a code:
+
+  A_g       = max_{k in g} |R[n,k]|
+  s_c[n]    = BF16(max_g A_g / (448 * C_b))                 (coarse, per output channel)
+  s_g[n,g]  = FP8_E4M3(A_g / (s_c[n] * C_b))                (micro, per 16 inputs)
+  q[n,k]    = argmin_{c in Q_b} |R[n,k] / (s_c[n] * s_g[n,g]) - c|
+  R_hat     = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
+
+C_b is the largest legal magnitude of the selected codebook Q_b: 6 for W3, 1.5
+for W1/W2. Keeping 448 = FP8_E4M3 max in the coarse divisor guarantees
+normalized values stay inside that range before the FP8 cast. The coarse scale
+is rounded to BF16 first and the group scale/codes are derived from the value
+the W4A4 kernel actually applies. This is the same two-level contract as
+NVFP4; only Q_b and C_b change for the packed formats. W3 uses a two-bit
+magnitude plane, while W1/W2 store sign plus zero/one magnitude bit.
+
+Three-stage refinement (production default for W1A4/W2A4)
+---------------------------------------------------------
+Two-stage W1/W2 have too few reconstruction levels inside a 16-element group,
+so the optional third stage partitions each group into four 4-element
+subgroups j and stores a 2-bit exponent e[n,j]. The decoder maps
+(e, q) through a table T_b directly to an E2M1 nibble:
+
+  e = 0: W1 {0.5,1.5}                 W2 {0.5,1.5}
+  e = 1: W1 {1.5} (same base)         W2 {1,3}
+  e = 2: W1 {3}                       W2 {2,6}
+  e = 3: W1 {6}                       W2 {2,6} (reserved duplicate)
+
+  R_hat = s_c[n] * s_g[n,g] * T_b[e[n,k/4], q[n,k]]
+
+Every table entry is a legal E2M1 value, so the MMA never sees a fourth scale
+multiply: the exponent is absorbed into the nibble during expansion. Storage
+adds four 2-bit exponents per byte, i.e. 0.5 bit/weight; W1 becomes 2 bit/weight
+and W2 3 bit/weight before the per-16 scales. The outer two scales still follow
+the NVFP4 equations above, which keeps stages=2 checkpoints and the standard
+W4A4 path bit-exact.
+
+Packed runtimes keep only the packed tensors in HBM. Forward expands the
+current projection into a transient E2M1 workspace, overlaps that expansion
+with the activation producer, then invokes the unmodified W4A4 GEMM.
 """
 from __future__ import annotations
 
@@ -18,6 +58,7 @@ from ...kernels import svdq_quantize_w4a4
 from ...logger import init_logger
 from ..config import QuantizeConfig
 from ..config import _FLASHINFER_LORA_RANK_GRANULARITY
+from ..config import _SVDQ_PACKED_A4_RANKS
 from ..config import _SVDQ_RUNTIME_KERNELS
 from .lowrank import decompose_lowrank_residual
 from .packing import fp_quantize
@@ -29,6 +70,16 @@ _CODEBOOKS = {
   3: (0.5, 1.5, 3.0, 6.0, -0.5, -1.5, -3.0, -6.0),
 }
 _CODE_MAX = {1: 1.5, 2: 1.5, 3: 6.0}
+_E2M1_VALUES = (0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0,
+                -6.0)
+# Nibble mapping for the optional per-4 inner scale. W1 stores only a sign, so each inner exponent
+# selects one E2M1 magnitude. W2 stores sign + one magnitude bit, so pidx shifts both base
+# magnitudes by a power of two. The tables are indexed by (pidx, code).
+_PACKED_A4_3STAGE_NIBBLES = {
+  1: ((1, 9), (3, 11), (5, 13), (7, 15)),
+  2: ((1, 3, 9, 11), (2, 5, 10, 13), (4, 7, 12, 15)),
+}
+_PACKED_A4_3STAGE_CODE_MAX = 6.0
 
 logger = init_logger(__name__)
 
@@ -94,6 +145,20 @@ def unpack_codes(packed: torch.Tensor, bits: int, high: torch.Tensor | None = No
   return low + (sign << 2)
 
 
+def _validate_inner_scales(inner: torch.Tensor, bits: int) -> None:
+  """Reject reserved 2-bit exponents before they reach a table lookup.
+
+  W1 defines all four exponent values. W2 currently defines three; the encoder never emits 3, and a
+  corrupted checkpoint must fail loudly instead of silently aliasing to the last table.
+  """
+  allowed = 4 if bits == 1 else 3
+  if inner.numel():
+    for shift in (0, 2, 4, 6):
+      if torch.any(((inner >> shift) & 3) >= allowed).item():
+        raise ValueError(f"W{bits}A4 three-stage inner scale contains a reserved exponent "
+                         f"(allowed 0..{allowed - 1}).")
+
+
 def dequantize_packed(packed: torch.Tensor,
                       scale: torch.Tensor,
                       bits: int,
@@ -109,20 +174,44 @@ def dequantize_packed(packed: torch.Tensor,
 
 
 def quantize_residual(residual: torch.Tensor, bits: int) -> tuple[torch.Tensor, ...]:
-  """Quantize ``[N,K]`` residual with NVFP4-compatible two-level scales."""
+  """Quantize ``[N,K]`` with the standard two-stage NVFP4 scale hierarchy.
+
+  The encoder mirrors the arithmetic of the W4A4 kernel exactly:
+
+  1. Split K into 16-wide groups and measure ``A_g = max(abs(group))``.
+  2. Derive the BF16 coarse scale ``s_c = max_g(A_g) / (448 * C_b)`` and
+     round it to BF16 *before* using it, because that is the value the kernel
+     multiplies after the MMA.
+  3. Derive the per-group FP8 E4M3 scale ``s_g = A_g / (s_c * C_b)``.
+  4. Normalize by both scales and pick the nearest code in ``Q_b``.
+  5. Store ``q`` and the 128x4-swizzled ``s_g``; ``s_c`` stays per channel.
+
+  ``448`` is the largest finite E4M3 value, so the normalized group scale can
+  always be represented. A zero or FP8-underflowed group is forced to zero
+  before the argmin, avoiding ``0/0``; its scale already reconstructs zero.
+
+  :param residual: FP32/FP16/BF16 residual ``[N,K]`` after the low-rank split.
+  :param bits: Packed code width: 1 (W1), 2 (W2) or 3 (W3).
+  :returns: ``(packed, group_scales, channel_scales)``. ``group_scales`` is the
+    FP8 buffer in the kernel's 128x4 swizzle; ``channel_scales`` is BF16 ``[N]``.
+  """
   residual = residual.float()
   rows, channels = residual.shape
   if channels % 16:
     raise ValueError("Packed W1/W2/W3 require K divisible by 16.")
+  # A singleton axis keeps the reductions aligned with the kernel's per-channel x per-16 contract.
   grouped = residual.view(rows, 1, channels // 16, 16)
   group_absmax = grouped.abs().amax(dim=-1, keepdim=True)
   code_max = _CODE_MAX[bits]
+  # Reserve the FP8 dynamic range for s_g and cap every normalized group at code_max.
   channel_scale = (group_absmax.amax(dim=2, keepdim=True) / (448.0 * code_max)).clamp_min(1e-12)
   # Match the coarse scale actually applied by the W4A4 kernel before deriving group scales/codes.
   channel_scale = channel_scale.to(torch.bfloat16).float()
   group_scale = (group_absmax / channel_scale / code_max).clamp_min(1e-12)
   group_scale_fp8 = group_scale.to(torch.float8_e4m3fn)
   codebook = torch.tensor(_CODEBOOKS[bits], dtype=torch.float32, device=residual.device)
+  # The W4A4 epilogue computes s_c * s_g * q. Using those exact FP8/BF16 values here makes the
+  # two-stage codebook a drop-in replacement for NVFP4 instead of an independent approximation.
   normalized = grouped / channel_scale / group_scale_fp8.float()
   # An all-zero or underflowed group has a zero FP8 scale. Its payload is exactly zero regardless
   # of the code; avoid feeding 0/0 = NaN into the codebook argmin.
@@ -132,6 +221,107 @@ def quantize_residual(residual: torch.Tensor, bits: int) -> tuple[torch.Tensor, 
   flat_scales = swizzle_fp4_scales(group_scale_fp8.squeeze(1).squeeze(-1)).view(torch.float8_e4m3fn)
   coarse = channel_scale.reshape(-1).to(torch.bfloat16)
   return packed, flat_scales, coarse
+
+
+def quantize_residual_3stage(residual: torch.Tensor, bits: int) -> tuple[torch.Tensor, ...]:
+  """Quantize a residual with a per-4 inner E2M1 exponent on top of NVFP4 scales.
+
+  The first two stages are identical to :func:`quantize_residual`: BF16
+  per-channel ``s_c`` and FP8_E4M3 per-16 ``s_g`` still normalize the residual,
+  so old stages=2 checkpoints and the W4A4 kernel contract remain valid. The
+  encoder then splits each 16-wide group into four 4-wide subgroups and chooses
+  one exponent ``e`` per subgroup:
+
+  .. code-block:: text
+
+    e=0: W1 {0.5,1.5}              W2 {0.5,1.5}
+    e=1: W1 {1.5}                  W2 {1,3}
+    e=2: W1 {3}                    W2 {2,6}
+    e=3: W1 {6}                    W2 {2,6} (reserved duplicate)
+
+  For each subgroup we test all four tables, pick the table+code with the
+  smallest squared error, and emit a 2-bit exponent. The exponent is stored as
+  four fields per uint8, costing 0.5 bit per weight. Because every table value
+  is already a legal E2M1 nibble, the runtime expansion can write the final
+  nibble directly; no extra multiplication or fourth scale is needed by MMA.
+
+  :param residual: Floating-point residual ``[N,K]`` after the low-rank split.
+  :param bits: ``1`` for sign-only W1 or ``2`` for W2.
+  :returns: ``(packed, group_scales, channel_scales, inner_scales)`` where ``inner_scales`` is
+    ``uint8 [N,K/16]`` and packs four per-4 exponents little-endian.
+  """
+  if bits not in (1, 2):
+    raise ValueError(f"Three-stage quantization supports W1/W2 only, got bits={bits}.")
+  residual = residual.float()
+  rows, channels = residual.shape
+  if channels % 16:
+    raise ValueError("Packed W1/W2 three-stage quantization requires K divisible by 16.")
+  groups = channels // 16
+  grouped = residual.view(rows, groups, 16)
+  # Stage 1/2: use code_max=6 so the largest inner-table value (W1 e=3 -> 6,
+  # W2 e=2/3 -> 6) fits inside the same FP8-normalized group as NVFP4.
+  group_absmax = grouped.abs().amax(dim=-1, keepdim=True)
+  channel_scale = (group_absmax.amax(dim=1, keepdim=True) /
+                   (448.0 * _PACKED_A4_3STAGE_CODE_MAX)).clamp_min(1e-12)
+  channel_scale = channel_scale.to(torch.bfloat16).float()
+  group_scale = (group_absmax / channel_scale / _PACKED_A4_3STAGE_CODE_MAX).clamp_min(1e-12)
+  group_scale_fp8 = group_scale.to(torch.float8_e4m3fn)
+  normalized = grouped / channel_scale / group_scale_fp8.float()
+  normalized = torch.where(group_scale_fp8.float() > 0, normalized, torch.zeros_like(normalized))
+  # Stage 3: pick one power-of-two table per four consecutive K elements. The
+  # outer scales are fixed first, so the inner exponent only refines precision
+  # and cannot perturb the already-validated NVFP4 scale path.
+  sub = normalized.view(rows, groups, 4, 4)
+  best_error = None
+  best_codes = None
+  best_pidx = None
+  for pidx, nibbles in enumerate(_PACKED_A4_3STAGE_NIBBLES[bits]):
+    codebook = torch.tensor([_E2M1_VALUES[index] for index in nibbles],
+                            dtype=sub.dtype,
+                            device=sub.device)
+    codes = fp_quantize(sub, codebook=codebook)
+    error = (sub - codebook[codes]).square().sum(dim=-1)
+    if best_error is None:
+      best_error = error
+      best_codes = codes
+      best_pidx = torch.full_like(error, pidx, dtype=torch.uint8)
+    else:
+      better = error < best_error
+      best_error = torch.where(better, error, best_error)
+      best_codes = torch.where(better.unsqueeze(-1), codes, best_codes)
+      best_pidx = torch.where(better, pidx, best_pidx)
+  packed = pack_codes(best_codes.reshape(rows, channels), bits)
+  # The checkpoint stores 4 x 2-bit exponents in one byte; the C++/CUDA
+  # decoders read the same little-endian fields before every 4-weight decode.
+  micro = torch.zeros((rows, groups), dtype=torch.uint8, device=residual.device)
+  for index in range(4):
+    micro |= best_pidx[..., index].to(torch.uint8) << (2 * index)
+  flat_scales = swizzle_fp4_scales(group_scale_fp8.squeeze(-1).view(torch.float8_e4m3fn))
+  coarse = channel_scale.reshape(-1).to(torch.bfloat16)
+  return packed, flat_scales, coarse, micro
+
+
+def dequantize_packed_3stage(packed: torch.Tensor,
+                             scale: torch.Tensor,
+                             bits: int,
+                             inner: torch.Tensor,
+                             high: torch.Tensor | None = None) -> torch.Tensor:
+  """Diagnostic FP32 reconstruction for a three-stage W1/W2 residual."""
+  if bits not in (1, 2):
+    raise ValueError(f"Three-stage dequantization supports W1/W2 only, got bits={bits}.")
+  _validate_inner_scales(inner, bits)
+  codes = unpack_codes(packed, bits, high).long()
+  pidx = torch.stack([(inner >> (2 * index)) & 3 for index in range(4)], dim=-1).flatten(-2).long()
+  pidx = pidx.repeat_interleave(4, dim=-1)
+  if pidx.shape != codes.shape:
+    raise ValueError(
+      f"inner scale shape implies {pidx.shape[1]} weights, expected {codes.shape[1]}.")
+  table = torch.tensor(_PACKED_A4_3STAGE_NIBBLES[bits], dtype=torch.long, device=packed.device)
+  nibbles = table[pidx, codes]
+  values = torch.tensor(_E2M1_VALUES, dtype=torch.float32, device=packed.device)[nibbles]
+  groups = values.shape[-1] // 16
+  values = values.view(*values.shape[:-1], groups, 16)
+  return (values * scale.float().unsqueeze(-1)).flatten(-2)
 
 
 def _packed_expand_stream(device: torch.device) -> torch.cuda.Stream:
@@ -512,17 +702,24 @@ class SVDQWNA4Linear(nn.Module):
                rank: int = 32,
                bias: bool = True,
                torch_dtype: torch.dtype = torch.bfloat16,
-               device: str | torch.device | None = None) -> None:
+               device: str | torch.device | None = None,
+               stages: int | None = None) -> None:
     super().__init__()
     if bits not in (1, 2, 3):
       raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
-    if rank not in (0, 32, 64, 128):
-      raise ValueError(f"rank must be 0, 32, 64 or 128, got {rank}.")
+    if stages is None:
+      stages = 3 if bits in (1, 2) else 2
+    if stages not in (2, 3) or (bits == 3 and stages != 2):
+      raise ValueError(f"W{bits}A4 stages must be 2, and W1/W2 also accept 3, got {stages}.")
+    allowed_ranks = _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"]
+    if rank not in allowed_ranks:
+      raise ValueError(f"W{bits}A4 rank must be one of {allowed_ranks}, got {rank}.")
     if torch_dtype != torch.bfloat16:
       raise ValueError("Packed SVDQ formats currently require BF16.")
     self.in_features = in_features
     self.out_features = out_features
     self.bits = bits
+    self.stages = stages
     self.rank = rank
     self.quantized_in_features = _pad(in_features, 128)
     self.quantized_out_features = _pad(out_features, 256)
@@ -539,6 +736,11 @@ class SVDQWNA4Linear(nn.Module):
                            torch.zeros((np_, kp // 8), dtype=torch.uint8, device=device))
     else:
       self.register_buffer("qweight_hi", None)
+    if stages == 3:
+      self.register_buffer("wmicroscales",
+                           torch.zeros((np_, kp // 16), dtype=torch.uint8, device=device))
+    else:
+      self.register_buffer("wmicroscales", None)
     # The flat 128x4 SF buffer pads each 4-group atom to 512 B per 128 rows.
     groups = kp // 16
     sf_bytes = (np_ // 128) * ((groups + 3) // 4) * 512
@@ -565,7 +767,10 @@ class SVDQWNA4Linear(nn.Module):
     scales = unswizzle_fp4_scales(flat, self.quantized_out_features,
                                   kp // 16).float().view(self.quantized_out_features, -1)
     high = self.qweight_hi
-    values = dequantize_packed(self.qweight, scales, self.bits, high)
+    if self.stages == 3:
+      values = dequantize_packed_3stage(self.qweight, scales, self.bits, self.wmicroscales)
+    else:
+      values = dequantize_packed(self.qweight, scales, self.bits, high)
     values = values * self.wcscales.float().unsqueeze(1)
     values = values[:n, :k] / self.smooth_factor[:k].float().unsqueeze(0)
     if self.rank:
@@ -591,7 +796,10 @@ class SVDQWNA4Linear(nn.Module):
     expand_stream = _packed_expand_stream(flat.device)
     expand_stream.wait_stream(current)
     with torch.cuda.stream(expand_stream):
-      expanded = expand_wna4(self.qweight, self.qweight_hi, self.bits)
+      expanded = expand_wna4(self.qweight,
+                             self.qweight_hi,
+                             self.bits,
+                             wgt_micro=self.wmicroscales if self.stages == 3 else None)
     qact, ascales, lora_act = svdq_quantize_w4a4(input=flat,
                                                  lora_down=self.proj_down if self.rank else None,
                                                  smooth=self.smooth_factor,
@@ -612,6 +820,11 @@ class SVDQWNA4Linear(nn.Module):
                          runtime="cute")
     return out[:rows, :self.out_features].reshape(*shape[:-1], self.out_features)
 
+  def _load_from_state_dict(self, *args, **kwargs) -> None:
+    super()._load_from_state_dict(*args, **kwargs)
+    if self.stages == 3:
+      _validate_inner_scales(self.wmicroscales, self.bits)
+
 
 def _quantize_linear(linear: nn.Linear,
                      bits: int,
@@ -620,8 +833,11 @@ def _quantize_linear(linear: nn.Linear,
                      alpha: float = 0.5,
                      torch_dtype: torch.dtype = torch.bfloat16,
                      device: str | torch.device | None = None,
-                     calibrate_precision: str = "low") -> SVDQWNA4Linear:
+                     calibrate_precision: str = "low",
+                     stages: int | None = None) -> SVDQWNA4Linear:
   from .quantizer import _compute_weight_only_smooth_scale
+  if stages is None:
+    stages = 3 if bits in (1, 2) else 2
   device = torch.device(device or linear.weight.device)
   module_type = {1: SVDQW1A4Linear, 2: SVDQW2A4Linear, 3: SVDQW3A4Linear}[bits]
   module = module_type(linear.in_features,
@@ -629,7 +845,8 @@ def _quantize_linear(linear: nn.Linear,
                        rank=rank,
                        bias=linear.bias is not None,
                        torch_dtype=torch_dtype,
-                       device=device)
+                       device=device,
+                       stages=stages)
   weight = linear.weight.detach().to(device=device, dtype=torch.float32)
   if smooth_factor is None:
     smooth = _compute_weight_only_smooth_scale(weight.abs().amax(dim=0),
@@ -647,13 +864,18 @@ def _quantize_linear(linear: nn.Linear,
   # Pad before the 128x4 scale swizzle. The SF offset depends on the padded K group count, so a
   # logical-shape swizzle followed by a buffer assignment is incorrect for ragged N/K.
   residual = torch.nn.functional.pad(residual, (0, kp - k, 0, np_ - n))
-  packed, scales, coarse = quantize_residual(residual, bits)
-  if bits == 3:
-    low, high = packed
-    module.qweight.copy_(low)
-    module.qweight_hi.copy_(high)
-  else:
+  if stages == 3:
+    packed, scales, coarse, micro = quantize_residual_3stage(residual, bits)
     module.qweight.copy_(packed)
+    module.wmicroscales.copy_(micro)
+  else:
+    packed, scales, coarse = quantize_residual(residual, bits)
+    if bits == 3:
+      low, high = packed
+      module.qweight.copy_(low)
+      module.qweight_hi.copy_(high)
+    else:
+      module.qweight.copy_(packed)
   module.wscales.copy_(scales.view(torch.uint8))
   module.wcscales.copy_(coarse)
   module.smooth_factor[:k] = smooth.to(torch_dtype)
@@ -700,8 +922,14 @@ def _quantize_svdq_wNa4(
   torch_dtype: torch.dtype | None = None,
   device: str | torch.device | None = None,
   calibrate_precision: str = "low",
+  stages: int | None = None,
 ) -> SVDQWNA4Linear:
-  """Quantize one Linear into packed W1/W2/W3, with DQ or activation-calibrated PTQ."""
+  """Quantize one Linear into packed W1/W2/W3, with DQ or activation-calibrated PTQ.
+
+  :param stages: Weight scale stages. ``None`` selects the production default:
+    three stages for W1/W2 and the standard two-stage NVFP4 codec for W3. Pass
+    ``2`` explicitly to reproduce the legacy packed path.
+  """
   from .quantizer import _compute_weight_only_smooth_scale
   from .quantizer import compute_smooth_scale
   if not isinstance(linear, nn.Linear):
@@ -747,7 +975,8 @@ def _quantize_svdq_wNa4(
                           smooth_factor=smooth,
                           torch_dtype=torch_dtype,
                           device=device,
-                          calibrate_precision=calibrate_precision)
+                          calibrate_precision=calibrate_precision,
+                          stages=stages)
 
 
 def _quantize_svdq_w1a4(linear, representative_activations=None, **kwargs):

@@ -3,6 +3,7 @@ import torch
 from torch import nn
 
 from cache_dit.kernels import cuda_ext_is_available
+from cache_dit.kernels import expand_wna4
 from cache_dit.kernels import svdq_gemm_w4a4
 from cache_dit.kernels import svdq_gemm_wna4
 from cache_dit.kernels import svdq_quantize_w4a4
@@ -49,9 +50,17 @@ def test_wNa4_weight_reconstruction_envelope(bits: int, limit: float) -> None:
 
 
 def _expanded_nibbles(module) -> torch.Tensor:
+  from cache_dit.quantization.svdquant.wNa4 import _PACKED_A4_3STAGE_NIBBLES
+
   codes = unpack_codes(module.qweight, module.bits,
                        module.qweight_hi if module.bits == 3 else None).long()
-  if module.bits == 1:
+  if module.stages == 3:
+    pidx = torch.stack([(module.wmicroscales >> (2 * index)) & 3 for index in range(4)],
+                       dim=-1).flatten(-2).long()
+    pidx = pidx.repeat_interleave(4, dim=-1)
+    table = torch.tensor(_PACKED_A4_3STAGE_NIBBLES[module.bits], device=codes.device)
+    nibbles = table[pidx, codes]
+  elif module.bits == 1:
     nibbles = codes * 8 + 3
   elif module.bits == 2:
     nibbles = (codes >> 1) * 8 + (codes & 1) * 2 + 1
@@ -92,8 +101,159 @@ def test_packed_gemm_is_bit_exact_with_expanded_w4a4(bits: int) -> None:
                           lora_up=module.proj_up,
                           bias=module.bias,
                           wcscales=module.wcscales,
+                          wgt_micro=module.wmicroscales,
                           bits=bits)
   assert torch.equal(actual, reference)
+
+
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_three_stage_reduces_weight_error(bits: int) -> None:
+  torch.manual_seed(0)
+  linear = nn.Linear(128, 256, dtype=torch.bfloat16, device="cuda")
+  two_stage = _quantize_svdq_wNa4(linear, bits, rank=32, stages=2)
+  three_stage = _quantize_svdq_wNa4(linear, bits, rank=32, stages=3)
+  expected = linear.weight.float()
+  two_error = ((two_stage.dequantize_weight() - expected).norm() / expected.norm()).item()
+  three_error = ((three_stage.dequantize_weight() - expected).norm() / expected.norm()).item()
+  assert three_stage.wmicroscales is not None
+  assert two_stage.wmicroscales is None
+  assert three_error < two_error
+
+
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_defaults_to_three_stage(bits: int) -> None:
+  from cache_dit import QuantizeConfig
+
+  config = QuantizeConfig(quant_type=f"svdq_w{bits}a4_r32_dq")
+  assert config.svdq_kwargs["packed_a4_stages"] == 3
+  legacy = QuantizeConfig(quant_type=f"svdq_w{bits}a4_r32_dq", svdq_kwargs={"packed_a4_stages": 2})
+  assert legacy.svdq_kwargs["packed_a4_stages"] == 2
+  module = _quantize_svdq_wNa4(nn.Linear(128, 256, dtype=torch.bfloat16), bits, rank=32)
+  assert module.stages == 3 and module.wmicroscales is not None
+
+
+def test_w2a4_rejects_reserved_inner_exponent() -> None:
+  from cache_dit.quantization.svdquant.wNa4 import SVDQW2A4Linear
+
+  module = SVDQW2A4Linear(128, 256, rank=32, stages=3)
+  module.wmicroscales[0, 0] = 3
+  with pytest.raises(ValueError, match="reserved exponent"):
+    module.dequantize_weight()
+  restored = SVDQW2A4Linear(128, 256, rank=32, stages=3)
+  with pytest.raises(ValueError, match="reserved exponent"):
+    restored.load_state_dict(module.state_dict())
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_three_stage_bit_layout_is_independent(bits: int) -> None:
+  rows, k = 16, 64
+  codes = torch.arange(rows * k, device="cuda").view(rows, k)
+  codes = (codes if bits == 1 else codes % 4).to(torch.uint8)
+  allowed = 4 if bits == 1 else 3
+  sub = (torch.arange(k // 4, device="cuda") % allowed).view(1, -1).expand(rows, -1).long()
+  grouped = sub.view(rows, k // 16, 4)
+  micro = torch.zeros((rows, k // 16), dtype=torch.uint8, device="cuda")
+  for index in range(4):
+    micro |= grouped[..., index].to(torch.uint8) << (2 * index)
+  pidx = sub.repeat_interleave(4, dim=-1)
+  if bits == 1:
+    nibbles = 1 + 2 * pidx + 8 * (codes.long() & 1)
+  else:
+    base = codes.long() & 1
+    pidx0 = torch.where(base == 0, 1, 3)
+    pidx1 = torch.where(base == 0, 2, 5)
+    pidx2 = torch.where(base == 0, 4, 7)
+    magnitude = torch.where(pidx == 0, pidx0, torch.where(pidx == 1, pidx1, pidx2))
+    nibbles = magnitude + 8 * ((codes.long() >> 1) & 1)
+  expected = (nibbles[..., 0::2] | (nibbles[..., 1::2] << 4)).to(torch.uint8).view(torch.int8)
+  packed = pack_codes(codes, bits)
+  actual = expand_wna4(packed, None, bits, micro)
+  assert torch.equal(actual, expected)
+  exponents = torch.stack([(micro >> (2 * index)) & 3 for index in range(4)]).flatten()
+  assert exponents.unique().numel() == allowed
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_three_stage_matches_expanded_w4a4(bits: int) -> None:
+  torch.manual_seed(0)
+  linear = nn.Linear(128, 256, dtype=torch.bfloat16, device="cuda")
+  module = _quantize_svdq_wNa4(linear, bits, rank=32, stages=3)
+  x = torch.randn(256, 128, device="cuda", dtype=torch.bfloat16)
+  qact, ascales, lora_act = svdq_quantize_w4a4(x,
+                                               module.proj_down,
+                                               module.smooth_factor,
+                                               lora_layout="row_major",
+                                               fp4=True,
+                                               pad_size=256)
+  expanded = expand_wna4(module.qweight, module.qweight_hi, bits, module.wmicroscales)
+  assert torch.equal(expanded, _expanded_nibbles(module))
+  reference = svdq_gemm_w4a4(qact,
+                             expanded,
+                             ascales,
+                             module.wscales.view(torch.float8_e4m3fn),
+                             lora_act_in=lora_act,
+                             lora_up=module.proj_up,
+                             bias=module.bias,
+                             wcscales=module.wcscales,
+                             lora_layout="row_major",
+                             runtime="cute")
+  actual = svdq_gemm_wna4(qact,
+                          module.qweight,
+                          module.qweight_hi,
+                          ascales,
+                          module.wscales.view(torch.float8_e4m3fn),
+                          lora_act_in=lora_act,
+                          lora_up=module.proj_up,
+                          bias=module.bias,
+                          wcscales=module.wcscales,
+                          wgt_micro=module.wmicroscales,
+                          bits=bits)
+  assert torch.equal(actual, reference)
+  assert torch.equal(module(x), reference)
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
+@pytest.mark.parametrize("rank", [256, 512])
+def test_w12a4_high_rank_matches_expanded_w4a4(bits: int, rank: int) -> None:
+  torch.manual_seed(0)
+  linear = nn.Linear(rank, rank, dtype=torch.bfloat16, device="cuda")
+  module = _quantize_svdq_wNa4(linear, bits, rank=rank)
+  assert module.stages == 3
+  x = torch.randn(256, rank, device="cuda", dtype=torch.bfloat16)
+  qact, ascales, lora_act = svdq_quantize_w4a4(x,
+                                               module.proj_down,
+                                               module.smooth_factor,
+                                               lora_layout="row_major",
+                                               fp4=True,
+                                               pad_size=256)
+  reference = svdq_gemm_w4a4(qact,
+                             _expanded_nibbles(module).contiguous(),
+                             ascales,
+                             module.wscales.view(torch.float8_e4m3fn),
+                             lora_act_in=lora_act,
+                             lora_up=module.proj_up,
+                             bias=module.bias,
+                             wcscales=module.wcscales,
+                             lora_layout="row_major",
+                             runtime="cute")
+  actual = svdq_gemm_wna4(qact,
+                          module.qweight,
+                          module.qweight_hi,
+                          ascales,
+                          module.wscales.view(torch.float8_e4m3fn),
+                          lora_act_in=lora_act,
+                          lora_up=module.proj_up,
+                          bias=module.bias,
+                          wcscales=module.wcscales,
+                          wgt_micro=module.wmicroscales,
+                          bits=bits)
+  assert module.proj_down.shape == (rank, rank)
+  assert module.proj_up.shape == (rank, rank)
+  assert torch.equal(actual, reference)
+  assert torch.equal(module(x), reference)
 
 
 @pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
@@ -196,6 +356,31 @@ def test_wNa4_fullgraph_compile(bits: int, mode: str | None) -> None:
     assert torch.equal(actual, expected)
 
 
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_three_stage_fullgraph_compile(bits: int) -> None:
+  linear = nn.Linear(128, 256, dtype=torch.bfloat16, device="cuda")
+  module = _quantize_svdq_wNa4(linear, bits, rank=32, stages=3)
+  x = torch.randn(256, 128, device="cuda", dtype=torch.bfloat16)
+  expected = module(x)
+  torch._dynamo.reset()
+  compiled = torch.compile(module, fullgraph=True)
+  assert torch.equal(compiled(x), expected)
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
+@pytest.mark.parametrize("rank", [256, 512])
+def test_w12a4_high_rank_fullgraph_compile(bits: int, rank: int) -> None:
+  linear = nn.Linear(rank, rank, dtype=torch.bfloat16, device="cuda")
+  module = _quantize_svdq_wNa4(linear, bits, rank=rank)
+  x = torch.randn(256, rank, device="cuda", dtype=torch.bfloat16)
+  expected = module(x)
+  torch._dynamo.reset()
+  compiled = torch.compile(module, fullgraph=True)
+  assert torch.equal(compiled(x), expected)
+
+
 @pytest.mark.parametrize("bits", [1, 2, 3])
 def test_wNa4_dq_checkpoint_roundtrip(bits: int, tmp_path) -> None:
   import copy
@@ -216,6 +401,84 @@ def test_wNa4_dq_checkpoint_roundtrip(bits: int, tmp_path) -> None:
   for actual, expected in zip(loaded, quantized):
     for key, value in actual.state_dict().items():
       assert torch.equal(value, expected.state_dict()[key]), key
+
+
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_rank512_dq_checkpoint_roundtrip(bits: int, tmp_path) -> None:
+  import copy
+
+  import cache_dit
+  from cache_dit import QuantizeConfig
+  from cache_dit.quantization.svdquant.wNa4 import SVDQWNA4Linear
+
+  model = nn.Sequential(nn.Linear(512, 512, bias=False, dtype=torch.bfloat16))
+  fresh = copy.deepcopy(model)
+  config = QuantizeConfig(quant_type=f"svdq_w{bits}a4_r512_dq",
+                          serialize_to=str(tmp_path / "checkpoint"),
+                          svdq_kwargs={"quantize_device": "cpu"})
+  quantized = cache_dit.quantize(model, config)
+  loaded = cache_dit.load(fresh, str(tmp_path / "checkpoint"))
+  assert isinstance(loaded[0], SVDQWNA4Linear)
+  assert loaded[0].rank == 512
+  for key, value in loaded[0].state_dict().items():
+    assert torch.equal(value, quantized[0].state_dict()[key]), key
+
+
+def test_w3a4_rejects_rank512() -> None:
+  from cache_dit import QuantizeConfig
+
+  with pytest.raises(ValueError, match="supports rank"):
+    QuantizeConfig(quant_type="svdq_w3a4_r512_dq")
+
+
+@pytest.mark.parametrize("bits", [1, 2])
+def test_w12a4_three_stage_checkpoint_roundtrip(bits: int, tmp_path) -> None:
+  import copy
+
+  import cache_dit
+  from cache_dit import QuantizeConfig
+  from cache_dit.quantization.svdquant.wNa4 import SVDQWNA4Linear
+
+  model = nn.Sequential(nn.Linear(130, 192, bias=False, dtype=torch.bfloat16))
+  fresh = copy.deepcopy(model)
+  config = QuantizeConfig(quant_type=f"svdq_w{bits}a4_r32_dq",
+                          serialize_to=str(tmp_path / "checkpoint"),
+                          svdq_kwargs={
+                            "quantize_device": "cpu",
+                            "packed_a4_stages": 3,
+                          })
+  quantized = cache_dit.quantize(model, config)
+  loaded = cache_dit.load(fresh, str(tmp_path / "checkpoint"))
+  assert isinstance(loaded[0], SVDQWNA4Linear)
+  assert loaded[0].stages == 3
+  assert loaded[0].wmicroscales.shape == quantized[0].wmicroscales.shape
+  for key, value in loaded[0].state_dict().items():
+    assert torch.equal(value, quantized[0].state_dict()[key]), key
+
+
+def test_three_stage_rejects_w3a4() -> None:
+  from cache_dit import QuantizeConfig
+
+  with pytest.raises(ValueError, match="packed_a4_stages"):
+    QuantizeConfig(quant_type="svdq_w3a4_r32_dq", svdq_kwargs={"packed_a4_stages": 3})
+
+
+def test_packed_a4_cli_shortcuts() -> None:
+  from cache_dit.cli.utils import get_args
+
+  parser = get_args(parse=False)
+  args = parser.parse_args(["--svdq-w2a4-r256-dq", "--svdq-packed-a4-stages", "3"])
+  assert args.svdq_w2a4_r256_dq
+  assert args.svdq_packed_a4_stages == 3
+  assert parser.parse_args([]).svdq_packed_a4_stages is None
+
+
+@pytest.mark.parametrize("rank", [144, 512])
+def test_standard_w4a4_rejects_unscheduled_rank(rank: int) -> None:
+  from cache_dit.quantization.svdquant.quantizer import validate_linear_geometry
+
+  with pytest.raises(ValueError, match="runtime requires rank"):
+    validate_linear_geometry(256, 256, rank=rank, precision="nvfp4")
 
 
 @pytest.mark.parametrize("bits", [1, 2, 3])

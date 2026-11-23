@@ -47,6 +47,9 @@ def _quantize_svdq_wNaN(module: nn.Module, quantize_config, quantize_linear,
   if strategy == "few_shot":
     raise ValueError(f"SVDQ-{precision} does not support the few_shot smooth strategy.")
   calibrate_precision = kwargs.get("calibrate_precision", "low")
+  format_kwargs = {}
+  if precision in ("w1a4", "w2a4"):
+    format_kwargs["stages"] = int(kwargs["packed_a4_stages"]) if "packed_a4_stages" in kwargs else 3
 
   captured: dict[str, torch.Tensor] = {}
   if not is_dq:
@@ -88,7 +91,8 @@ def _quantize_svdq_wNaN(module: nn.Module, quantize_config, quantize_linear,
                              smooth_strategy=strategy,
                              torch_dtype=linear.weight.dtype,
                              device=quantize_device,
-                             calibrate_precision=calibrate_precision)
+                             calibrate_precision=calibrate_precision,
+                             **format_kwargs)
     if name == "":
       result = packed
     else:

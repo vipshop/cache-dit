@@ -9,6 +9,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from ..config import _SVDQ_PACKED_A4_RANKS
 from ..config import _SVDQ_RUNTIME_KERNELS
 from .dtensor import SVDQShardSpec
 from .dtensor import SVDQW4A4ShardLinear
@@ -107,10 +108,24 @@ def validate_linear_geometry(
   """
 
   precision = _normalize_svdq_precision(precision)
-  if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
+  if precision in _SVDQ_PACKED_A4_RANKS:
+    allowed_ranks = _SVDQ_PACKED_A4_RANKS[precision]
+    if rank not in allowed_ranks:
+      raise ValueError(f"The SVDQ-{precision.upper()} runtime requires rank "
+                       f"{allowed_ranks}, got {rank}.")
+    return
+  if precision in ("fp8", "w4a8"):
     if rank not in (0, 32, 64, 128):
       raise ValueError(f"The SVDQ-{precision.upper()} runtime requires rank 0, 32, 64 or 128, "
                        f"got {rank}.")
+    return
+  if precision in ("int4", "nvfp4"):
+    # The CuTe W4A4 launcher accepts up to 32 rank groups because packed W1/W2 share it. Keep the
+    # public INT4/NVFP4 surface at the producer's shipped schedule instead of exposing r144..r512.
+    supported = (0, 16, 32, 48, 64, 80, 96, 112, 128, 256)
+    if rank not in supported:
+      raise ValueError(
+        f"The SVDQ-{precision.upper()} runtime requires rank {supported}, got {rank}.")
     return
   group_size = _resolve_svdq_group_size(precision)
   if in_features % group_size != 0:

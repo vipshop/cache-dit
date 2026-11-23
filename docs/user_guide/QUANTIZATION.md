@@ -25,7 +25,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_w4a8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_w{1|2|3}a4_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_w{1|2|3}a4_r{rank}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W1/W2 accept ranks 0/32/64/128/256/512 and default to the three-stage per-4 codec; W3 keeps ranks 0/32/64/128 and the standard two-stage NVFP4 codec. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -875,31 +875,6 @@ PTQ uses the type without `_dq`, for example <span style="color:#c77dff;">svdq_w
 
 Both DQ and PTQ support <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span> with checkpoint files, directories, or a matching `QuantizeConfig`. The manifest precision is `w4a8`, which keeps this packed format out of both the W4A4 and W8A8 loaders. W4A8 currently requires sm120+ and BF16 source weights; fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are explicitly rejected.
 
-## SVDQuant packed W1A4 / W2A4 / W3A4
-
-These formats keep E2M1 activations and W4A4 Tensor Core compute, but store the residual weight in a smaller codebook before expanding it for the W4A4 kernel:
-
-| Type | Stored residual codebook | Weight payload excluding LoRA/smooth/padding | Intended use |
-|---|---|---:|---|
-| `svdq_w1a4_r{32|64|128}[_dq]` | Sign-only `{-1.5,+1.5}` | about 0.189 B/weight | Experimental minimum-storage tier; quality is not guaranteed. |
-| `svdq_w2a4_r{32|64|128}[_dq]` | `{-1.5,-0.5,+0.5,+1.5}` | about 0.314 B/weight | Minimum persistent weight memory. |
-| `svdq_w3a4_r{32|64|128}[_dq]` | `{-6,-3,-1.5,-0.5,+0.5,+1.5,+3,+6}` | about 0.439 B/weight | Accuracy/memory trade-off. |
-
-All three retain the NVFP4 scale hierarchy: one FP8 E4M3 micro-scale per 16 input channels and one coarse scale per output channel. W3 uses a two-bit magnitude plane plus a separate sign plane. W1 cannot represent zero inside a nonzero group, so it is expected to have the largest quantization error.
-
-DQ defaults to `identity` smoothing:
-
-```python
-pipe.transformer = cache_dit.quantize(
-  pipe.transformer,
-  QuantizeConfig(quant_type="svdq_w2a4_r64_dq"),
-)
-```
-
-The generate CLI accepts `--svdq-w1a4-r{32|64|128}-dq`, `--svdq-w2a4-r{32|64|128}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. The converter accepts the corresponding hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
-
-The packed persistent tensors are never replaced by a full-model W4A4 copy. Forward expands only the current projection into a transient E2M1 workspace and overlaps that expansion with activation production on a side CUDA stream. This preserves the native W4A4 GEMM path and fullgraph compile, at the cost of one projection-sized workspace. Fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are rejected.
-
 ## SVDQuant (W4A4) DQ
 
 Cache-DiT also supports <span style="color:#c77dff;">SVDQ dynamic quantization</span> through quant types ending with <span style="color:green;">_dq</span>, such as <span style="color:#c77dff;">svdq_int4_r32_dq</span>, <span style="color:#c77dff;">svdq_int4_r128_dq</span>, <span style="color:#c77dff;">svdq_nvfp4_r32_dq</span>, and <span style="color:#c77dff;">svdq_nvfp4_r128_dq</span>. By default, this workflow keeps the low-rank SVD branch and, by default, fixes the smooth factor to 1, so users do not need to provide a calibration callback or a serialization directory.
@@ -1191,6 +1166,84 @@ Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;"
 At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default, experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics, and the runtime-activated <span style="color:#c77dff;">few_shot</span> mode as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
 
 The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The few-shot CLI also exposes <span style="color:#c77dff;">--svdq-few-shot-steps</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-factor</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-top-ratio</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-strategy</span>, and <span style="color:#c77dff;">--svdq-few-shot-compile</span>. In the shared helper flow, top-level <span style="color:#c77dff;">--compile</span> is treated as a compatibility alias for few-shot runs, while <span style="color:#c77dff;">--svdq-few-shot-compile</span> is the precise switch that means "compile only after runtime quantization completes". The parser also accepts <span style="color:#c77dff;">top_q4</span> as an alias of <span style="color:#c77dff;">top</span>, but <span style="color:#c77dff;">fixed</span>, <span style="color:#c77dff;">top</span>, <span style="color:#c77dff;">auto</span>, <span style="color:#c77dff;">stable_auto</span>, <span style="color:#c77dff;">power</span>, <span style="color:#c77dff;">log</span>, and <span style="color:#c77dff;">rank</span> are the canonical strategy names.
+
+## SVDQuant packed W1A4 / W2A4 / W3A4
+
+These formats keep E2M1 activations and W4A4 Tensor Core compute, but store the residual weight in a smaller codebook before expanding it for the W4A4 kernel:
+
+| Type | Ranks | Stored residual codebook | Weight payload excluding LoRA/smooth/padding |
+|---|---|---|---:|
+| `svdq_w1a4_r{rank}[_dq]` | 0, 32, 64, 128, 256, 512 | Sign-only `{-1.5,+1.5}` | 0.189 B/weight (0.252 with three stages) |
+| `svdq_w2a4_r{rank}[_dq]` | 0, 32, 64, 128, 256, 512 | `{-1.5,-0.5,+0.5,+1.5}` | 0.314 B/weight (0.377 with three stages) |
+| `svdq_w3a4_r{rank}[_dq]` | 0, 32, 64, 128 | `{-6,-3,-1.5,-0.5,+0.5,+1.5,+3,+6}` | 0.439 B/weight |
+
+### Two-stage math (standard NVFP4 compatibility)
+
+For a residual matrix `R[N,K]`, every 16 consecutive K elements form a scale group `g`. The standard NVFP4 two-stage encoder writes one coarse scale per output channel and one FP8_E4M3 micro-scale per group:
+
+```text
+A[n,g]     = max_{k in g} |R[n,k]|
+s_c[n]     = BF16(max_g A[n,g] / (448 * C_b))
+s_g[n,g]   = FP8_E4M3(A[n,g] / (s_c[n] * C_b))
+q[n,k]     = argmin_{c in Q_b} |R[n,k] / (s_c[n] * s_g[n,g]) - c|
+R_hat[n,k] = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
+```
+
+`C_b` is the largest codebook magnitude: `6` for W3 and `1.5` for W1/W2. The factor `448` is the largest finite E4M3 value. `s_c` is rounded to BF16 before `s_g` and the codes are derived, because that is the exact factor the W4A4 epilogue applies. W3 stores a two-bit magnitude plane plus a separate sign plane; W1 stores only a sign bit; W2 stores sign plus one magnitude bit. W1 cannot represent zero inside a nonzero group and is therefore the experimental maximum-compression tier.
+
+### Three-stage math (default for W1/W2)
+
+Two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. The default three-stage codec keeps the two NVFP4 scales and adds four 2-bit exponents per group, one per 4-element subgroup:
+
+```text
+e = 0: W1 {0.5,1.5}       W2 {0.5,1.5}
+e = 1: W1 {1.5}           W2 {1,3}
+e = 2: W1 {3}             W2 {2,6}
+e = 3: W1 {6}             W2 {2,6} (reserved duplicate)
+
+R_hat[n,k] = s_c[n] * s_g[n,g] * T_b[e[n,k/4], q[n,k]]
+```
+
+The encoder tests all exponent tables for each subgroup, picks the table and code with the smallest squared error, and packs four exponents into one `uint8` per 16 K elements (`wmicroscales`, `uint8 [N,ceil(K/16)]`). This costs 0.5 bit/weight. Every table value is already a legal E2M1 magnitude, so the exponent is folded into the B nibble during expansion; the MMA still sees exactly one scale per 16 K elements and there is no fourth runtime multiply. Explicit `svdq_kwargs={"packed_a4_stages": 2}` restores the standard two-stage format for compatibility or controlled comparisons.
+
+```python
+# W1/W2 default to three stages.
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(quant_type="svdq_w2a4_r512_dq"),
+)
+
+# Explicit two-stage NVFP4-compatible storage.
+pipe.transformer = cache_dit.quantize(
+  pipe.transformer,
+  QuantizeConfig(
+    quant_type="svdq_w2a4_r512_dq",
+    svdq_kwargs={"packed_a4_stages": 2},
+  ),
+)
+```
+
+The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
+
+Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-dev, the 494 quantized block linears contain 11.83B weights; rank 512 costs 2.75B LoRA parameters (23.2% of the block weights), rank 128 costs 5.8%, and rank 32 costs 1.45%. Counting packed residual bytes, FP8 scales, three-stage exponents and BF16 LoRA, W2A4 r512 is about 9.27 GiB versus 6.53 GiB for W4A4 r32 and 5.15 GiB for W3A4 r32 on the same padded geometry. Prefer a higher bit width before paying for rank 512 when total memory is the objective.
+
+### Compile performance
+
+Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-state inference time (warmup excluded) and speedup over BF16 compile on one RTX PRO 5000 72GB. W1/W2 use three stages; W3/W4 use the standard two-stage codec.
+
+| Configuration | Inference | Speedup vs BF16 compile |
+|---|---:|---:|
+| BF16 | 14.83s | 1.00x |
+| W1A4 r256, three stages | 8.34s | 1.78x |
+| W1A4 r512, three stages | 10.36s | 1.43x |
+| W2A4 r256, three stages | 8.37s | 1.77x |
+| W2A4 r512, three stages | 10.37s | 1.43x |
+| W3A4 r32 | 6.44s | 2.30x |
+| W4A4 (NVFP4) r32 | 6.00s | 2.47x |
+
+W2A4 r512 with three stages removes the low-bit blur and reaches W3A4 r32-level perceptual quality, but W3A4 r32 is smaller and faster. W1A4 remains an experimental tier even with rank 512 and three stages.
+
+The packed persistent tensors are never replaced by a full-model W4A4 copy. Forward expands only the current projection into a transient E2M1 workspace and overlaps that expansion with activation production on a side CUDA stream. This preserves the W4A4 GEMM path and fullgraph compile, at the cost of one projection-sized workspace. Fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are rejected.
 
 ## SVDQ Converter CLI
 

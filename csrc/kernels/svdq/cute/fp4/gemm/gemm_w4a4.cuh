@@ -83,6 +83,31 @@ using namespace cute;
 // NVFP4 block scaling carries one FP8_E4M3 factor per 16 K elements. E2M1 is the signed 4-bit
 // code type; UE4M3 is the unsigned 8-bit scale type (scales are non-negative). CUTLASS stores
 // these scales in 128-row x 4-factor (512 B) atoms, exactly the box of one BK=64 K step.
+//
+// Packed W1/W2/W3 reuse that contract. For residual R[N,K], group g = K/16, and codebook Q_b:
+//
+//   A[n,g]      = max_{k in g} |R[n,k]|
+//   s_c[n]      = BF16(max_g A[n,g] / (448 * C_b))
+//   s_g[n,g]    = FP8_E4M3(A[n,g] / (s_c[n] * C_b))
+//   q[n,k]      = argmin_{c in Q_b} |R[n,k] / (s_c[n] * s_g[n,g]) - c|
+//   R_hat[n,k]  = s_c[n] * s_g[n,g] * Q_b[q[n,k]]
+//
+// C_b is 6 for W3 and 1.5 for W1/W2. The 448 factor is the largest finite E4M3 value, and s_c is
+// rounded to BF16 before s_g/codes are derived because that is the factor the epilogue applies.
+// This makes the two-stage packed path numerically the same contract as NVFP4; only Q_b and C_b
+// differ. W1 stores sign only, W2 sign + one magnitude bit, W3 a 2-bit magnitude plane + sign.
+//
+// W1/W2 additionally support stages=3: four 2-bit exponents e[n,j] refine each 16-wide group in
+// four-element subgroups. Decode is a direct table lookup T_b(e,q) -> E2M1 nibble:
+//
+//   e=0: W1 {0.5,1.5}              W2 {0.5,1.5}
+//   e=1: W1 {1.5}                  W2 {1,3}
+//   e=2: W1 {3}                    W2 {2,6}
+//   e=3: W1 {6}                    W2 {2,6} (reserved duplicate)
+//
+// Every T_b value is a legal E2M1 magnitude, so stages=3 still feeds the ordinary NVFP4 MMA and
+// there is no fourth scale multiply in the accumulator. The exponent costs 0.5 bit/weight and is
+// consumed only while turning packed gmem into the B fragment.
 constexpr int kSFVec = 16;
 constexpr int kSFVecPerBlk = 4;
 constexpr int kRowBlock = 128;
@@ -301,8 +326,38 @@ CUTE_DEVICE auto convert_layout_acc_rowcol(Layout acc_layout) {
 // the same consumer warps is intentional: separate BF16/NVFP4 warpgroups would need an expensive
 // cross-warpgroup FP32 reduction and would duplicate accumulator storage.
 struct F32DLoraScales {
-  float values[8];
+  // One scale per 16-rank tile. W1/W2 accept rank512, i.e. 32 groups.
+  float values[32];
 };
+
+// Decode a packed W1/W2/W3 code into an E2M1 nibble. `inner` is the optional per-4 exponent; -1
+// selects the standard two-stage NVFP4 codec. Both packed decoders call this helper so the Python
+// table, expand kernel, and direct packed GEMM cannot drift independently.
+__host__ __device__ __forceinline__ int packed_a4_nibble(int bits, int code, int inner) {
+  if (inner < 0) {
+    if (bits == 1) return 3 + 8 * (code & 1);
+    if (bits == 2) return 1 + 2 * (code & 1) + 8 * ((code >> 1) & 1);
+    return 1 + 2 * (code & 3) + 8 * ((code >> 2) & 1);
+  }
+  const int sign = bits == 1 ? (code & 1) : ((code >> 1) & 1);
+  int magnitude;
+  if (bits == 1) {
+    magnitude = 1 + 2 * inner;
+  } else {
+    const int base = code & 1;
+    if (inner == 0) {
+      magnitude = base == 0 ? 1 : 3;
+    } else if (inner == 1) {
+      magnitude = base == 0 ? 2 : 5;
+    } else {
+      // W2 currently defines three tables, so exponent 3 is reserved. It remains a legal E2M1
+      // alias here (the encoder never emits it), while the Python loader/dequant raises on a
+      // corrupted checkpoint instead of silently accepting the alias.
+      magnitude = base == 0 ? 4 : 7;
+    }
+  }
+  return magnitude + 8 * sign;
+}
 
 // Host-only arguments shared by the plain dispatcher and the separately compiled fused TU.
 struct FusedLaunchArgs {
@@ -888,13 +943,23 @@ class W4A4GemmKernel {
    *
    * The packed weight stays compact in gmem. Consumer threads expand eight codes per iteration
    * directly into the swizzled B stage, so the original LDSM/MMA path is unchanged and no full
-   * W4A4 copy is ever materialized in HBM. W3 additionally reads its sign plane.
+   * W4A4 copy is ever materialized in HBM.
+   *
+   * @param wgt_lo          Packed sign/magnitude codes, one byte per 8/4/4 weights for W1/W2/W3.
+   * @param wgt_hi          W3 sign plane; null for W1/W2.
+   * @param wgt_micro       Optional W1/W2 per-4 exponent plane, four 2-bit fields per byte; null
+   * for stages=2 and W3.
+   * @param row_bytes_lo    Packed byte stride of `wgt_lo`.
+   * @param row_bytes_hi    Byte stride of `wgt_hi`; zero when unused.
+   * @param row_bytes_micro Byte stride of `wgt_micro`; zero when unused.
+   * @param n0/kt/stage     Output-row tile, K tile and pipeline ring slot.
+   * @param tid             Consumer thread index.
+   * @param sB              Destination E2M1 B smem stage.
    */
   template <class SmemB>
-  __device__ __forceinline__ static void decode_packed_B(uint8_t const *wgt_lo,
-                                                         uint8_t const *wgt_hi, int row_bytes_lo,
-                                                         int row_bytes_hi, int n0, int kt,
-                                                         int stage, int tid, SmemB &sB) {
+  __device__ __forceinline__ static void decode_packed_B(
+    uint8_t const *wgt_lo, uint8_t const *wgt_hi, uint8_t const *wgt_micro, int row_bytes_lo,
+    int row_bytes_hi, int row_bytes_micro, int n0, int kt, int stage, int tid, SmemB &sB) {
     constexpr int kGroupCodes = 8;
     constexpr int kGroupsPerRow = kBK / kGroupCodes;
     constexpr int kGroups = kBN * kGroupsPerRow;
@@ -924,22 +989,26 @@ class W4A4GemmKernel {
                             static_cast<int64_t>(k0) / 8 + g * kHiGroupBytes;
         sign_bits = __ldg(hi);
       }
+      uint32_t micro = 0;
+      if (wgt_micro != nullptr) {
+        micro =
+          __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro + (k0 + col) / 16);
+      }
 #pragma unroll
       for (int i = 0; i < kGroupCodes; ++i) {
         const int code = (raw >> (i * kLoBits)) & ((1 << kLoBits) - 1);
-        int magnitude = 1;
-        int sign = 0;
-        if constexpr (Traits::kWeightBits == 1) {
-          sign = code & 1;
-        } else if constexpr (Traits::kWeightBits == 2) {
-          magnitude = code & 1;
-          sign = (code >> 1) & 1;
-        } else {
-          magnitude = code & 3;
-          sign = (sign_bits >> i) & 1;
+        int inner = -1;
+        if (wgt_micro != nullptr) {
+          const int shift = (((k0 + col) % 16) / 4 + i / 4) * 2;
+          inner = (micro >> shift) & 3;
         }
-        // Positive E2M1 magnitude codes are 1(0.5), 3(1.5), 5(3), 7(6); sign adds 8.
-        sB(row, col + i, stage) = static_cast<uint4_t>(1 + 2 * magnitude + 8 * sign);
+        if constexpr (Traits::kWeightBits == 3) {
+          // W3 keeps its separate sign plane and has no three-stage variant.
+          sB(row, col + i, stage) = static_cast<uint4_t>(1 + 2 * code + 8 * ((sign_bits >> i) & 1));
+        } else {
+          sB(row, col + i, stage) =
+            static_cast<uint4_t>(packed_a4_nibble(Traits::kWeightBits, code, inner));
+        }
       }
     }
     cutlass::arch::NamedBarrier::sync(Traits::kNumThreads, 1);
@@ -952,7 +1021,8 @@ class W4A4GemmKernel {
     uint32_t const *ascales, int m0, int K, TiledMma const &tiled_mma, CopyB const &s2r_copy_b,
     SrcB const &tCsB, DstB &tCrB_view, SrcSFB const &tCsSFB, DstSFB &tCrSFB_view, FragB &tCrB,
     FragSFB &tCrSFB, FragA &tCrA, FragSFA &tCrSFA, Acc &tCrC, uint8_t const *wgt_lo,
-    uint8_t const *wgt_hi, int row_bytes_lo, int row_bytes_hi, int n0, SmemBFull &sB) {
+    uint8_t const *wgt_hi, uint8_t const *wgt_micro, int row_bytes_lo, int row_bytes_hi,
+    int row_bytes_micro, int n0, SmemBFull &sB) {
     const int g_offset = kLoRAFirst ? nRt : 0;
 #pragma unroll 1
     for (int kt = 0; kt < nKt; ++kt) {
@@ -961,7 +1031,8 @@ class W4A4GemmKernel {
       const int phase = (g / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
       if constexpr (Traits::kPackedWeight) {
-        decode_packed_B(wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, kt, stage, tid, sB);
+        decode_packed_B(wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
+                        kt, stage, tid, sB);
       }
 #pragma unroll
       for (int k_block = 0; k_block < kBK / 64; ++k_block) {
@@ -1399,7 +1470,8 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
                    cutlass::bfloat16_t const *__restrict__ lora_down, float *__restrict__ d_atomic,
                    bool write_dense, int rank_down, bool fuse_silu,
                    uint8_t const *__restrict__ wgt_lo, uint8_t const *__restrict__ wgt_hi,
-                   int row_bytes_lo, int row_bytes_hi) {
+                   uint8_t const *__restrict__ wgt_micro, int row_bytes_lo, int row_bytes_hi,
+                   int row_bytes_micro) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1200
   using cute::tma_store_arrive;
   using cute::tma_store_wait;
@@ -1647,12 +1719,14 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     Gemm::apply_inverse_scale(wcscales, alpha, n0, nRt, tScC_rc, tCrC);
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
                         tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
-                        wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, sB_full);
+                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
+                        sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
   } else {
     Gemm::gemm_fp4_w4a4(full, empty, tid, nKt, nRt, act, ascales, m0, K, tiled_mma, s2r_copy_b,
                         tCsB, tCrB_view, tCsSFB, tCrSFB_view, tCrB, tCrSFB, tCrA, tCrSFA, tCrC,
-                        wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi, n0, sB_full);
+                        wgt_lo, wgt_hi, wgt_micro, row_bytes_lo, row_bytes_hi, row_bytes_micro, n0,
+                        sB_full);
     Gemm::apply_residual_scale(bias, wcscales, alpha, n0, tScC_rc, tCrC);
     if constexpr (kF32DLora) {
       Gemm::gemm_f32d_lora(full, empty, tid, nKt, nRt, gTotal, lora_act_f32, scales, m0, rank,
@@ -1762,7 +1836,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
                       float *d_atomic, cutlass::bfloat16_t *d_final, F32DLoraScales down_scales,
                       int rank_down, bool write_dense, bool fuse_silu, cudaStream_t stream,
                       uint8_t const *wgt_lo = nullptr, uint8_t const *wgt_hi = nullptr,
-                      int row_bytes_lo = 0, int row_bytes_hi = 0) {
+                      int row_bytes_lo = 0, int row_bytes_hi = 0,
+                      uint8_t const *wgt_micro = nullptr, int row_bytes_micro = 0) {
   using Traits =
     W4A4CuteTraits<kBN, kStages, kBK_, kLoRAFirst, kF32DLora, kFuseOut, kFuseDown, kWeightBits>;
   using Element = typename Traits::Element;
@@ -1840,7 +1915,8 @@ void launch_gemm_w4a4(void const *act, void const *wgt, void *out,
   kernel<<<dim3(N / kBN, M / kBM), Traits::kNumThreads + 128, Traits::kSmemBytes, stream>>>(
     it->second, reinterpret_cast<uint4 const *>(act), reinterpret_cast<uint32_t const *>(act_sf),
     lora_act_f32, scales, bias, wcscales, alpha, M, N, K, rank, qout, oscales, smooth, lora_down,
-    d_atomic, write_dense, rank_down, fuse_silu, wgt_lo, wgt_hi, row_bytes_lo, row_bytes_hi);
+    d_atomic, write_dense, rank_down, fuse_silu, wgt_lo, wgt_hi, wgt_micro, row_bytes_lo,
+    row_bytes_hi, row_bytes_micro);
   if constexpr (kFuseOut && kFuseDown && !kF32DLora) {
     // Row-major D is BF16 and therefore cannot take part in the cross-CTA reduction, so the
     // scattered FP32 scratch is rounded here once, after every CTA has contributed.
