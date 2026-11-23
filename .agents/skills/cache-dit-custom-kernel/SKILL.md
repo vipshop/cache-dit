@@ -65,7 +65,7 @@ C++ 入口一律 `void` + out-param；schema 默认函数式，所以 out-param 
 
 1. `csrc/kernels/<族>/<kernel>.cu`：kernel + 入口 `TORCH_CHECK`。
 2. 声明头：`void <op>(at::Tensor ...)`，`namespace cache_dit::<族>`。
-3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("<op>", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。
+3. registrar TU `<族>/<族>.cpp`：`void cache_dit::<族>::register_<族>_ops(pybind11::module_& ops)` 里 `ops.def("{MODULE_NAME}_{OPS_NAME}", ...)`，并在 `csrc/kernels/ops.cpp` 的 `PYBIND11_MODULE` 里加一行调用。**全仓只有一个 `PYBIND11_MODULE`**。pybind 导出名必须带模块/算子族前缀（例如 `svdq_gemm_w4a4`、`svdq_quantize_w8a8`），不要导出裸的 `gemm_*` / `quantize_*`，避免后续扩展与其他算子族冲突；公开 torch.library schema 和 Python 包装沿用同一个带前缀名字。C++ 内部 dispatcher/kernel 是否带前缀不影响这条导出约束。
 4. `setup.py`：加 `_required_<族>_sources()`、并进 `_required_cuda_sources()`、族目录加进 `_get_cuda_extension()` 的 `include_dirs`。没有 per-family extension 了；arch 谓词只有 `_is_supported_cuda_sm_target`（ref §5.1/§5.3）。
 5. `src/cache_dit/kernels/<族>.py` 五段：`from .cuda_ext import _get_required_ops_module` → `_call_<op>` → `torch.library.define` + `impl(CUDA)` + `register_fake` → 公开包装 → `__all__`。**不要再写 per-family loader / availability getter**。
 6. `src/cache_dit/kernels/__init__.py`：re-export 公开包装；可用性只有 `cuda_ext_is_available()` / `cuda_ext_get_load_error()`（定义在 `kernels/cuda_ext.py`）；`__all__` 等于全部非下划线**算子**成员（子模块 `attn` / `comm` / `cuda_ext` / `fp8` / `models` / `svdquant` 是包属性但不进 `__all__`）。
@@ -98,7 +98,7 @@ SVDQW4A4Linear.quantize / forward_quant
   - `zgemm.h`：对外只声明 `gemm_w4a4` 与 `quantize_w4a4`。
 - `csrc/kernels/svdq/cute/fp4/gemm/`：`gemm_w4a4.{cu,cuh,h}`，NVFP4 主 GEMM、BF16 LoRA-up 融合、TMA pipeline，以及**融合 epilogue**（`qout`/`oscales`/`lora_down`/`lora_act_out`/`smooth_factor`/`fuse_silu`；`kFuseOut` 是独立模板维度，非融合实例 SASS 与数值不变）。契约见 `references/svdq-nvfp4-cute.md` §32。
 - `csrc/kernels/svdq/cute/fp4/quantize/`：`quantize_uni.cu` 是通用 producer；`quantize_impl.cuh` 是 rank 特化模板实现；`quantize_r32/64/128.cu` 只实例化各自 rank，便于并行编译；`quantize_glu.cuh` 是两族 producer 共用的 `value * silu(gate)` 成对数学（含 BF16 舍入顺序），改门控语义只改这一处。公共入口声明在 `quantize.h`。
-- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` 与 `svdq_quantize_w4a4` 两个公共入口，没有私有宽 ABI 旁路。
+- cute 侧文件与 C++ kernel/host/launch 名不重复携带 `_cute`。`svdq.h`/`svdq.cpp` 只保留 `gemm_w4a4`、`quantize_w4a4` 两个 dispatcher（**声明在头、定义在 `.cpp`**，头里的非 inline 定义会让 `ops.cpp` 与 `svdq.cpp` 链接期 `multiple definition`），由 `runtime.h` 的 `RuntimeParams`（runtime/fp4/alpha/act_unsigned）与 `LoraLayout` 分派到 native/cute namespace；dispatcher 命名空间是 `cache_dit::svdq`，而 kernel 命名空间仍是全局 `svdq::native_kernels` / `svdq::cute_kernels`（所以 `svdq.cpp` 里必须写 `::svdq::cute_kernels::...`，否则会解析到 `cache_dit::svdq` 自身）。namespace 叶子名也统一为 `gemm_w4a4` / `quantize_w4a4`，native 侧只有这一份 ABI（无 ext 变体）。Python 侧同样只有 `svdq_gemm_w4a4` / `svdq_quantize_w4a4` 与 W8A8 对应入口，没有私有宽 ABI 旁路。pybind 导出也必须使用 `svdq_gemm_*` / `svdq_quantize_*`；`gemm_w4a4` / `quantize_w4a4` 这类裸名只允许作为 C++ 内部 dispatcher/kernel 名。
 - `csrc/kernels/svdq/runtime.h`：`RuntimeKernel` / `RuntimeParams` 与 `LoraLayout` 的**唯一**定义处。原 `runtime_params.h` 已删除；`LoraLayout` 原先定义在 cute 的 `gemm_w4a4.h`，现由 `runtime.h` 提供、cute 头 include 它。只有 host 侧依赖这个头，device kernel 体不依赖。
 - 结构体名区分实现：`W4A4QuantizeUniversalKernel` 只在 `quantize_uni.cu`，`W4A4QuantizeRankKernel` 只在 `quantize_impl.cuh`。
 - `common.h`、`Tensor.h`、`torch.h` 的共享类型仍在全局命名空间；host 侧用 `::Tensor` 避免与 `cute::Tensor` 歧义。
@@ -307,6 +307,8 @@ INT4 侧的同类 A/B 是 op 级脚本另测的（同一台机器，M=4096/n=122
 ### 8.5 Fused MLP 后续路线（2026-11-20）
 
 结论：**主体 kernel 已具备，后续瓶颈在 pass 覆盖率和正确性护栏，不在继续优化 GEMM 微架构。** 完整 pattern 矩阵、目标模型、落点和验收见 `references/svdq-fused-mlp-roadmap.md`。
+
+**SVDQ-FP8 的 fused MLP 尚未支持（2026-11-23）**：`svdq_fp8_*` 在配置层明确拒绝 `fused_mlp=True`，W8A8 GEMM 当前只有 dense BF16 输出，没有 W4A4 的 `qout/oscales/lora_down/lora_act_out/write_dense` 融合 epilogue。这是后续重点之一：先定义 E4M3 qout + per-token scale 的链间 ABI，再让 FP8 GEMM 在融合 epilogue 中完成 activation、下一层量化与 LoRA-down；可以复用 W4A4 pass 的 pattern 检测，但不能复用 4-bit pack 或 scale 布局。验收必须包含同 runtime 的 unfused 对照、rank32/64/128、ragged-M、compile、save/load 和数值对拍，禁止只测 latency。
 
 按三类优先级推进：
 

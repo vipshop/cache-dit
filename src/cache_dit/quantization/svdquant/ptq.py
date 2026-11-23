@@ -1064,11 +1064,16 @@ def _save_quantized_module(
   _, save_file = _import_safetensors()
   tensors: dict[str, torch.Tensor] = {}
   should_write = True
+  expected_linear_type = SVDQW4A4Linear
+  if precision == "fp8":
+    from .fp8 import SVDQW8A8Linear
+
+    expected_linear_type = SVDQW8A8Linear
   for layer_name in quantized_layer_names:
     submodule = _get_named_submodule(module, layer_name)
-    if not isinstance(submodule, SVDQW4A4Linear):
-      raise TypeError(
-        f"Expected SVDQW4A4Linear at {layer_name or _ROOT_LAYER_NAME}, got {type(submodule)}.")
+    if not isinstance(submodule, expected_linear_type):
+      raise TypeError(f"Expected {expected_linear_type.__name__} at "
+                      f"{layer_name or _ROOT_LAYER_NAME}, got {type(submodule)}.")
     serialized_name = _serialize_layer_name(layer_name)
     if isinstance(submodule, SVDQW4A4ShardLinear):
       layer_state_dict, layer_should_write = submodule.gather_for_save()
@@ -1231,6 +1236,9 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
   rank = payload.get("rank")
   if not isinstance(rank, int):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} is missing a valid integer rank.")
+  if precision == "fp8" and rank not in (0, 32, 64, 128):
+    raise ValueError(f"SVDQ-FP8 checkpoint at {path} has invalid rank {rank}; "
+                     "expected 0, 32, 64 or 128.")
 
   quantized_layer_names = payload.get("quantized_layer_names")
   if not isinstance(quantized_layer_names, list) or not quantized_layer_names:
@@ -1657,7 +1665,7 @@ def load_svdq(
   :param quantize_config_or_path: Either a `QuantizeConfig` whose `serialize_to`
   points at an SVDQ checkpoint or a direct checkpoint path.
 
-  :returns: The module with serialized layers replaced by `SVDQW4A4Linear` instances.
+  :returns: The module with serialized layers replaced by the matching SVDQ runtime modules.
   The return value may be a new module if the root layer itself was
   serialized and loaded.
   """
@@ -1680,6 +1688,9 @@ def load_svdq(
   if quant_config_snapshot is not None and quant_config_snapshot["quant_type"] != quant_type:
     raise ValueError("The SVDQ checkpoint quant_type does not match quant_config.json: "
                      f"{quant_type} vs {quant_config_snapshot['quant_type']}.")
+  if quant_config_snapshot is not None and quant_config_snapshot["rank"] != rank:
+    raise ValueError("The SVDQ checkpoint rank does not match quant_config.json: "
+                     f"{rank} vs {quant_config_snapshot['rank']}.")
 
   if isinstance(quantize_config_or_path, QuantizeConfig):
     if not quantize_config_or_path.is_svdq():
@@ -1741,37 +1752,51 @@ def load_svdq(
 
     torch_dtype = layer_state_dict["smooth_factor"].dtype
     local_weight, tp_spec = SVDQW4A4ShardLinear.resolve_local(float_module.weight)
-    local_layer_state_dict = SVDQW4A4ShardLinear.shard_for_load(layer_state_dict, tp_spec)
-    if tp_spec is None:
-      quantized_module = SVDQW4A4Linear.from_linear(
-        float_module,
-        rank=rank,
-        precision=precision,
-        runtime_kernel=svdq_kwargs["runtime_kernel"],
-        lora_layout=svdq_kwargs.get("lora_layout"),
-        torch_dtype=torch_dtype,
-        device=load_device,
-      )
-    else:
-      quantized_module = SVDQW4A4ShardLinear(
-        in_features=int(local_weight.shape[1]),
-        out_features=int(local_weight.shape[0]),
+    if precision == "fp8":
+      from .fp8 import SVDQW8A8Linear
+
+      if tp_spec is not None:
+        raise NotImplementedError("SVDQ-FP8 checkpoint loading does not support DTensor/TP layers.")
+      if torch_dtype != torch.bfloat16:
+        raise ValueError(
+          f"SVDQ-FP8 checkpoints require BF16 LoRA/smooth tensors, got {torch_dtype}.")
+      quantized_module = SVDQW8A8Linear(
+        in_features=float_module.in_features,
+        out_features=float_module.out_features,
         rank=rank,
         bias=float_module.bias is not None,
-        precision=precision,
-        runtime_kernel=svdq_kwargs["runtime_kernel"],
-        lora_layout=svdq_kwargs.get("lora_layout"),
         torch_dtype=torch_dtype,
         device=load_device,
-        tp_spec=tp_spec,
       )
-      if ".norm" in layer_name:
-        quantized_module.mark_replicate()
-    incompatible = quantized_module.load_state_dict(local_layer_state_dict, strict=True)
-    if incompatible.missing_keys or incompatible.unexpected_keys:
-      raise RuntimeError(
-        f"Unexpected SVDQ PTQ state_dict mismatch for {layer_name!r}: "
-        f"missing={incompatible.missing_keys}, unexpected={incompatible.unexpected_keys}.")
+      local_layer_state_dict = layer_state_dict
+    else:
+      local_layer_state_dict = SVDQW4A4ShardLinear.shard_for_load(layer_state_dict, tp_spec)
+      if tp_spec is None:
+        quantized_module = SVDQW4A4Linear.from_linear(
+          float_module,
+          rank=rank,
+          precision=precision,
+          runtime_kernel=svdq_kwargs["runtime_kernel"],
+          lora_layout=svdq_kwargs.get("lora_layout"),
+          torch_dtype=torch_dtype,
+          device=load_device,
+        )
+      else:
+        quantized_module = SVDQW4A4ShardLinear(
+          in_features=int(local_weight.shape[1]),
+          out_features=int(local_weight.shape[0]),
+          rank=rank,
+          bias=float_module.bias is not None,
+          precision=precision,
+          runtime_kernel=svdq_kwargs["runtime_kernel"],
+          lora_layout=svdq_kwargs.get("lora_layout"),
+          torch_dtype=torch_dtype,
+          device=load_device,
+          tp_spec=tp_spec,
+        )
+        if ".norm" in layer_name:
+          quantized_module.mark_replicate()
+    quantized_module.load_state_dict(local_layer_state_dict, strict=True)
 
     if layer_name == "":
       module = quantized_module

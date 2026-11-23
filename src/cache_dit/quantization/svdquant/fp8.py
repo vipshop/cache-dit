@@ -19,10 +19,14 @@ from torch import nn
 
 from ...kernels import svdq_gemm_w8a8
 from ...kernels import svdq_quantize_w8a8
+from ...logger import init_logger
+from ...utils import check_quantized
 from .lowrank import decompose_lowrank_residual
 from .quantizer import _compute_weight_only_smooth_scale
 from .quantizer import _normalize_dtype
 from .quantizer import compute_smooth_scale
+
+logger = init_logger(__name__)
 
 FP8_EPS = 1e-12
 SVDQ_FP8_RANKS = (0, 32, 64, 128)
@@ -231,6 +235,10 @@ def quantize_linear_svdq_fp8(
   """
   if not isinstance(linear, nn.Linear):
     raise TypeError(f"Expected nn.Linear, got {type(linear)}.")
+  if type(linear.weight).__name__ == "DTensor":
+    raise NotImplementedError("SVDQ-FP8 quantization does not support DTensor/TP weights.")
+  if linear.weight.dtype != torch.bfloat16:
+    raise ValueError(f"SVDQ-FP8 requires BF16 source weights, got {linear.weight.dtype}.")
   device = torch.device(device or linear.weight.device)
   torch_dtype = _normalize_dtype(torch_dtype, device)
   k = linear.in_features
@@ -281,15 +289,24 @@ def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
   """
   if not isinstance(module, nn.Module):
     raise TypeError(f"Expected nn.Module, got {type(module)}.")
-  if quantize_config.serialize_to is not None:
-    raise NotImplementedError("SVDQ-FP8 does not support checkpoint serialization yet; leave "
-                              "serialize_to=None. The W4A4 save/load format is not compatible "
-                              "with the E4M3 residual layout.")
+  if not quantize_config.is_svdq() or quantize_config.get_svdq_precision() != "fp8":
+    raise ValueError(f"quantize_svdq_fp8 requires an svdq_fp8_* config, got "
+                     f"{quantize_config.quant_type!r}.")
+  if check_quantized(module):
+    logger.warning("Module %s is already quantized, skipping SVDQ-FP8 quantization.",
+                   module.__class__.__name__)
+    return module
   from .ptq import SVDQPTQContext
+  from .ptq import _attach_quantization_metadata
+  from .ptq import _build_quant_config_snapshot
   from .ptq import _call_with_supported_kwargs
   from .ptq import _get_named_submodule
   from .ptq import _get_parent_and_child
+  from .ptq import _log_quantize_summary
+  from .ptq import _maybe_collect_svdq_garbage
   from .ptq import _resolve_svdq_quantize_device
+  from .ptq import _save_quant_config_snapshot
+  from .ptq import _save_quantized_module
 
   context = SVDQPTQContext.from_config(module, quantize_config)
   kwargs = context.svdq_kwargs
@@ -328,7 +345,11 @@ def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
         handle.remove()
 
   result = module
+  quantized_layer_names: list[str] = []
   for name in context.candidate_layer_names:
+    if not is_dq and captured.get(name) is None:
+      context._record_skip(name, "not observed during calibration")
+      continue
     linear = _get_named_submodule(module, name)
     packed = quantize_linear_svdq_fp8(linear,
                                       captured.get(name),
@@ -342,4 +363,50 @@ def quantize_svdq_fp8(module: nn.Module, quantize_config) -> nn.Module:
     else:
       parent, child = _get_parent_and_child(module, name)
       setattr(parent, child, packed)
+    quantized_layer_names.append(name)
+
+  if not quantized_layer_names:
+    raise RuntimeError("SVDQ-FP8 found no observed layers to quantize. "
+                       f"Skipped layers: {context.skipped_reasons}.")
+  _attach_quantization_metadata(
+    result,
+    quant_type=quantize_config.quant_type,
+    quantized_layer_names=quantized_layer_names,
+    exclude_layers=context.exclude_layers,
+    svdq_kwargs=context.svdq_kwargs,
+    checkpoint_path=quantize_config.serialize_to,
+    quantize_config=quantize_config,
+  )
+  if quantize_config.serialize_to is not None:
+    writer_rank = _save_quantized_module(
+      result,
+      serialize_to=quantize_config.serialize_to,
+      quant_type=quantize_config.quant_type,
+      rank=context.rank,
+      precision=context.precision,
+      quantized_layer_names=quantized_layer_names,
+      svdq_kwargs=context.svdq_kwargs,
+    )
+    if writer_rank:
+      _save_quant_config_snapshot(
+        _build_quant_config_snapshot(
+          checkpoint_path=quantize_config.serialize_to,
+          quant_type=quantize_config.quant_type,
+          rank=context.rank,
+          exclude_layers=context.exclude_layers,
+          regional_quantize=context.regional_quantize,
+          repeated_blocks=context.repeated_blocks,
+          verbose=context.verbose,
+          svdq_kwargs=context.svdq_kwargs,
+          backend=quantize_config.backend,
+        ),
+        checkpoint_path=quantize_config.serialize_to,
+      )
+  _log_quantize_summary(
+    context,
+    quantized_layer_names=quantized_layer_names,
+    serialize_to=quantize_config.serialize_to,
+    observed_layer_names=sorted(captured) if not is_dq else None,
+  )
+  _maybe_collect_svdq_garbage(quantize_device)
   return result

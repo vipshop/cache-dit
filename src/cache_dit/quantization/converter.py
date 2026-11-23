@@ -49,8 +49,8 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     "--quant-type",
     type=str,
     required=True,
-    help="SVDQ quant type, e.g. 'svdq-int4-r128-dq', 'svdq_int4_r128_dq', "
-    "'svdq-nvfp4-r128-dq', or 'svdq_nvfp4_r128_dq'. Currently only DQ types "
+    help="SVDQ quant type, e.g. 'svdq-int4-r128-dq', 'svdq-nvfp4-r128-dq', or "
+    "'svdq-fp8-r128-dq' (underscores are also accepted). Currently only DQ types "
     "(ending with '_dq') are supported.",
   )
   parser.add_argument(
@@ -126,6 +126,9 @@ def entrypoint(argv: list[str] | None = None) -> None:
       "Got %r.",
       args.quant_type,
     )
+    sys.exit(1)
+  if quant_type.startswith("svdq_fp8_") and args.torch_dtype != "bfloat16":
+    logger.error("SVDQ-FP8 requires --torch-dtype bfloat16, got %r.", args.torch_dtype)
     sys.exit(1)
 
   from diffusers import DiffusionPipeline

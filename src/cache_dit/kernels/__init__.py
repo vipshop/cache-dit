@@ -36,8 +36,8 @@ from .models import qwen_image21_qk_norm_rope
 from .models import qwen_image21_silu_mul
 from .svdquant import svdq_gemm_w4a4
 from .svdquant import svdq_quantize_w4a4
-from .svdquant_fp8 import svdq_gemm_w8a8
-from .svdquant_fp8 import svdq_quantize_w8a8
+from .svdquant import svdq_gemm_w8a8
+from .svdquant import svdq_quantize_w8a8
 
 __all__ = [
   "ulysses_fp8_o_permute_quant",

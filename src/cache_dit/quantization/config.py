@@ -695,10 +695,6 @@ class QuantizeConfig:
           raise ValueError("calibrate_fn must be set for SVDQuant PTQ workflow.")
         if self.serialize_to is None and _get_svdq_precision(self.quant_type) != "fp8":
           raise ValueError("serialize_to must be set for SVDQuant PTQ workflow.")
-        if self.serialize_to is not None and _get_svdq_precision(self.quant_type) == "fp8":
-          raise NotImplementedError(
-            "SVDQ-FP8 currently supports in-memory PTQ only; its checkpoint "
-            "serialization format is not implemented yet.")
       if self.serialize_to is not None:
         normalized_filename = f"{self.quant_type}.safetensors"
         if self.serialize_to.endswith(".safetensors"):

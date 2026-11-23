@@ -11,7 +11,6 @@ import cache_dit.kernels.fp4 as fp4_ops
 import cache_dit.kernels.fp8 as fp8_ops
 import cache_dit.kernels.models as models_ops
 import cache_dit.kernels.svdquant as svdq_ops
-import cache_dit.kernels.svdquant_fp8 as svdq_fp8_ops
 
 
 @pytest.mark.parametrize(
@@ -43,8 +42,8 @@ import cache_dit.kernels.svdquant_fp8 as svdq_fp8_ops
     ("flux3_klein_gated_residual_split", models_ops),
     ("svdq_quantize_w4a4", svdq_ops),
     ("svdq_gemm_w4a4", svdq_ops),
-    ("svdq_quantize_w8a8", svdq_fp8_ops),
-    ("svdq_gemm_w8a8", svdq_fp8_ops),
+    ("svdq_quantize_w8a8", svdq_ops),
+    ("svdq_gemm_w8a8", svdq_ops),
   ],
 )
 def test_public_api_is_reexported_from_domain_module(op_name: str, source_module) -> None:
@@ -88,6 +87,16 @@ def test_svdq_has_single_public_gemm() -> None:
   assert not hasattr(kernels, "svdq_gemm_w4a4_ext")
   assert not hasattr(svdq_ops, "_svdq_gemm_w4a4_ext")
   assert not hasattr(svdq_ops, "_call_svdq_gemm_w4a4_native")
+
+
+@pytest.mark.skipif(not kernels.cuda_ext_is_available(),
+                    reason="requires the cache-dit CUDA extension")
+def test_svdq_pybind_exports_are_module_prefixed() -> None:
+  ops = cuda_ext._get_required_ops_module()
+  for name in ("svdq_gemm_w4a4", "svdq_quantize_w4a4", "svdq_gemm_w8a8", "svdq_quantize_w8a8"):
+    assert hasattr(ops, name)
+  for name in ("gemm_w4a4", "quantize_w4a4", "gemm_w8a8", "quantize_w8a8"):
+    assert not hasattr(ops, name)
 
 
 @pytest.mark.parametrize(

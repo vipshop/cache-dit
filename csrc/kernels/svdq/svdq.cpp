@@ -236,22 +236,22 @@ void quantize_w8a8(std::optional<torch::Tensor> input, std::optional<torch::Tens
 
 void register_svdq_ops(py::module_ &ops) {
   ops
-    .def("gemm_w4a4", &gemm_w4a4, py::arg("act"), py::arg("wgt"), py::arg("out"), py::arg("qout"),
-         py::arg("ascales"), py::arg("wscales"), py::arg("oscales"), py::arg("lora_act_in"),
-         py::arg("lora_up"), py::arg("lora_down"), py::arg("lora_act_out"), py::arg("bias"),
-         py::arg("smooth_factor"), py::arg("act_unsigned"), py::arg("lora_scales"),
+    .def("svdq_gemm_w4a4", &gemm_w4a4, py::arg("act"), py::arg("wgt"), py::arg("out"),
+         py::arg("qout"), py::arg("ascales"), py::arg("wscales"), py::arg("oscales"),
+         py::arg("lora_act_in"), py::arg("lora_up"), py::arg("lora_down"), py::arg("lora_act_out"),
+         py::arg("bias"), py::arg("smooth_factor"), py::arg("act_unsigned"), py::arg("lora_scales"),
          py::arg("fuse_silu"), py::arg("fp4"), py::arg("alpha"), py::arg("wcscales"),
          py::arg("runtime"), py::arg("lora_layout") = "native")
-    .def("quantize_w4a4", &quantize_w4a4, py::arg("input"), py::arg("output"), py::arg("ascales"),
-         py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"), py::arg("gate"),
-         py::arg("fuse_glu"), py::arg("fp4"), py::arg("lora_scales"),
+    .def("svdq_quantize_w4a4", &quantize_w4a4, py::arg("input"), py::arg("output"),
+         py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"),
+         py::arg("gate"), py::arg("fuse_glu"), py::arg("fp4"), py::arg("lora_scales"),
          py::arg("lora_layout") = "native", py::arg("gate_act") = "silu",
          py::arg("gate_first") = false)
-    .def("gemm_w8a8", &gemm_w8a8, py::arg("act"), py::arg("wgt"), py::arg("out"),
+    .def("svdq_gemm_w8a8", &gemm_w8a8, py::arg("act"), py::arg("wgt"), py::arg("out"),
          py::arg("ascales"), py::arg("wscales"), py::arg("lora_act_in"), py::arg("lora_up"),
          py::arg("bias"))
-    .def("quantize_w8a8", &quantize_w8a8, py::arg("input"), py::arg("output"), py::arg("ascales"),
-         py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
+    .def("svdq_quantize_w8a8", &quantize_w8a8, py::arg("input"), py::arg("output"),
+         py::arg("ascales"), py::arg("lora_down"), py::arg("lora_act"), py::arg("smooth"));
 }
 
 }  // namespace cache_dit::svdq
