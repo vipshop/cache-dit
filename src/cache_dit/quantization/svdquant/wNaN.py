@@ -43,6 +43,14 @@ def _quantize_svdq_wNaN(module: nn.Module, quantize_config, quantize_linear,
   kwargs = context.svdq_kwargs
   quantize_device = _resolve_svdq_quantize_device(module, kwargs)
   is_dq = quantize_config.is_svdq_dq()
+  if is_dq and quantize_config.is_svdq_dq_few_shot():
+    from .ptq import SVDQFewShotRuntimeController
+    controller = SVDQFewShotRuntimeController(
+      context=context,
+      quantize_device=quantize_device,
+      serialize_to=quantize_config.serialize_to,
+    )
+    return controller.arm()
   strategy = "activation" if not is_dq else kwargs.get("smooth_strategy", "identity")
   if strategy == "few_shot":
     raise ValueError(f"SVDQ-{precision} does not support the few_shot smooth strategy.")

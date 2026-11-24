@@ -1006,12 +1006,11 @@ class SVDQFewShotRuntimeController:
 def _filter_serialized_svdq_kwargs(precision: str, svdq_kwargs: dict[str, Any]) -> dict[str, Any]:
   """Drop the packed-stage field where it is not part of the on-disk format.
 
-  Older cache-dit releases reject unknown svdq_kwargs keys. Non-W1/W2 checkpoints and explicit two-
-  stage W1/W2 checkpoints should therefore look exactly like their legacy manifests; only the new
-  three-stage W1/W2 format needs the key.
+  Older cache-dit releases reject unknown svdq_kwargs keys. Two-stage checkpoints should therefore
+  look exactly like their legacy manifests; only the three-stage W1/W2/W3 formats need the key.
   """
   filtered = dict(svdq_kwargs)
-  if precision not in ("w1a4", "w2a4") or int(filtered.get("packed_a4_stages", 2)) == 2:
+  if precision not in ("w1a4", "w2a4", "w3a4") or int(filtered.get("packed_a4_stages", 2)) == 2:
     filtered.pop("packed_a4_stages", None)
   if (precision not in ("w1a4", "w2a4") or int(filtered.get("packed_a4_inner_group", 4)) == 4):
     filtered.pop("packed_a4_inner_group", None)
@@ -1182,9 +1181,9 @@ def _validate_quant_config_snapshot(path: str, payload: dict[str, Any]) -> dict[
   svdq_kwargs = payload.get("svdq_kwargs", {})
   payload["svdq_kwargs"] = _resolve_svdq_kwargs(svdq_kwargs)
   if (payload["svdq_kwargs"]["packed_a4_stages"] == 3
-      and payload["precision"] not in ("w1a4", "w2a4")):
+      and payload["precision"] not in ("w1a4", "w2a4", "w3a4")):
     raise ValueError(f"SVDQ quant_config at {path} enables three-stage scales for "
-                     f"{payload['precision']!r}; only W1A4/W2A4 support it.")
+                     f"{payload['precision']!r}; only W1A4/W2A4/W3A4 support it.")
   payload["exclude_layers"] = exclude_layers
   payload["regional_quantize"] = regional_quantize
   payload["repeated_blocks"] = repeated_blocks
@@ -1288,9 +1287,10 @@ def _validate_serialized_payload(path: str, payload: dict[str, Any]) -> dict[str
 
   svdq_kwargs = payload.get("svdq_kwargs", {})
   payload["svdq_kwargs"] = _resolve_svdq_kwargs(svdq_kwargs)
-  if (payload["svdq_kwargs"]["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4")):
+  if (payload["svdq_kwargs"]["packed_a4_stages"] == 3
+      and precision not in ("w1a4", "w2a4", "w3a4")):
     raise ValueError(f"SVDQ PTQ checkpoint at {path} enables three-stage scales for "
-                     f"{precision!r}; only W1A4/W2A4 support it.")
+                     f"{precision!r}; only W1A4/W2A4/W3A4 support it.")
   return payload
 
 
@@ -1424,20 +1424,37 @@ def _quantize_context_layers(
 
     if smooth_scales is not None:
       smooth_scale, smooth_scale_orig = smooth_scales
-      quantized_module = _quantize_from_smooth_scale(
-        float_module,
-        smooth_scale,
-        smooth_scale_orig=smooth_scale_orig,
-        quant_type=context.quantize_config.quant_type,
-        rank=context.rank,
-        precision=context.precision,
-        torch_dtype=quantized_torch_dtype,
-        device=quantize_device,
-        calibrate_precision=context.svdq_kwargs["calibrate_precision"],
-        runtime_kernel=context.svdq_kwargs["runtime_kernel"],
-        lora_layout=context.svdq_kwargs["lora_layout"],
-        svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
-      )
+      if context.precision in ("w1a4", "w2a4", "w3a4"):
+        # Packed A4 uses _quantize_linear instead of the W4A4 quantizer. Few-shot has already
+        # resolved the activation-derived smooth vector, so pass it through directly.
+        from .wNa4 import _quantize_linear
+        bits = {"w1a4": 1, "w2a4": 2, "w3a4": 3}[context.precision]
+        quantized_module = _quantize_linear(
+          float_module,
+          bits,
+          rank=context.rank,
+          smooth_factor=smooth_scale,
+          torch_dtype=quantized_torch_dtype,
+          device=quantize_device,
+          calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+          stages=int(context.svdq_kwargs["packed_a4_stages"]),
+          inner_group=int(context.svdq_kwargs["packed_a4_inner_group"]),
+        )
+      else:
+        quantized_module = _quantize_from_smooth_scale(
+          float_module,
+          smooth_scale,
+          smooth_scale_orig=smooth_scale_orig,
+          quant_type=context.quantize_config.quant_type,
+          rank=context.rank,
+          precision=context.precision,
+          torch_dtype=quantized_torch_dtype,
+          device=quantize_device,
+          calibrate_precision=context.svdq_kwargs["calibrate_precision"],
+          runtime_kernel=context.svdq_kwargs["runtime_kernel"],
+          lora_layout=context.svdq_kwargs["lora_layout"],
+          svd_refine_iters=context.svdq_kwargs["svd_refine_iters"],
+        )
     else:
       quantized_module = _quantize_from_activation_span(
         float_module,
