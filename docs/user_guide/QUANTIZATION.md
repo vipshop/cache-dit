@@ -1288,6 +1288,10 @@ W3A4 defaults to the two-stage 3.5-bit codec. Passing `svdq_kwargs={"packed_a4_s
 - Runtime: the selector adds one byte load and one table lookup per 32 weights; the E2M1 workspace and GEMM are unchanged.
 - Measured FLUX e2e: W3 r32 stage 3 is 6.34s versus 6.36s for stage 2. PSNR/SSIM against BF16 are 17.073/0.79439 versus 17.054/0.79424, while W4A4 r32 is 19.301/0.82608. The offline residual NMSE drops by about 34%, but the end-to-end gain is small because the residual codebook is not the only error source.
 
+![W3A4 stage 2 versus stage 3](../assets/svdq_w3_stage3_compare.png)
+
+Top-left is the BF16 reference, top-right is W3 r32 stage 2, bottom-left is W3 r32 stage 3 with the per-8 table selector, and bottom-right is W4A4 r32. The stage-3 result is structurally valid but visually close to stage 2; the small metric gain does not close the gap to W4A4.
+
 W3 stage 3 is therefore an experimental accuracy option, not the default and not a replacement for W4A4.
 
 ### Memory accounting: what is and is not moved to activations
