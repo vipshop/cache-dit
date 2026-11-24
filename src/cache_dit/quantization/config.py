@@ -169,11 +169,10 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # The default value is 0, which disables refinement and keeps the original
   # one-shot SVD behavior.
   "svd_refine_iters": 0,
-  # Number of weight scale stages for packed W1/W2. QuantizeConfig resolves an
-  # omitted value to 3 for W1/W2, because the two-stage codebook alone cannot
-  # produce meaningful images at these bit widths. 3 adds a packed inner E2M1
-  # exponent on top of the standard NVFP4 per-channel + per-16 hierarchy.
-  # W3 and every non-packed format keep 2.
+  # Number of weight scale stages for packed W1/W2/W3. W1/W2 resolve an omitted
+  # value to 3 because their two-stage codebook alone cannot produce meaningful
+  # images. W3 defaults to 2; passing 3 opts into a per-8 one-bit table selector
+  # that adds 0.125 bit/weight while keeping the 3-bit W3 code.
   "packed_a4_stages": 2,
   # Number of consecutive K elements that share one three-stage exponent.
   # 4 is the original layout; 2 doubles the exponent bytes for finer local
@@ -664,8 +663,9 @@ class QuantizeConfig:
       stages_unspecified = raw_svdq_kwargs is None or "packed_a4_stages" not in raw_svdq_kwargs
       if precision in ("w1a4", "w2a4") and stages_unspecified:
         self.svdq_kwargs["packed_a4_stages"] = 3
-      if self.svdq_kwargs["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4"):
-        raise ValueError("svdq_kwargs['packed_a4_stages'] = 3 is only supported for W1A4/W2A4.")
+      if self.svdq_kwargs["packed_a4_stages"] == 3 and precision not in ("w1a4", "w2a4", "w3a4"):
+        raise ValueError("svdq_kwargs['packed_a4_stages'] = 3 is only supported for "
+                         "W1A4/W2A4/W3A4.")
       if self.svdq_kwargs["packed_a4_inner_group"] == 2 and precision not in ("w1a4", "w2a4"):
         raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 is only supported for "
                          "W1A4/W2A4.")
@@ -688,6 +688,10 @@ class QuantizeConfig:
           "activation_buffer_flush_cpu_bytes": None,
         }
         for key, default in unsupported.items():
+          if precision == "w1a4" and key == "few_shot_auto_compile":
+            # Experimental packed few-shot path: defer the compile until the controller has
+            # materialized the W1 layers.
+            continue
           if self.svdq_kwargs[key] != default:
             raise ValueError(f"svdq_kwargs[{key!r}]={self.svdq_kwargs[key]!r} is not supported "
                              f"for SVDQ-{precision.upper()}; leave it at its default value.")

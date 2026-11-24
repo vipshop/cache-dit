@@ -1252,8 +1252,8 @@ def expand_wna4(wgt_lo: torch.Tensor,
     raise ValueError("W1/W2 need no high plane; W3 requires its sign plane.")
   if inner_group not in (2, 4):
     raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
-  if bits == 3 and (wgt_micro is not None or inner_group != 4):
-    raise ValueError("W3 does not support the three-stage inner scale.")
+  if bits == 3 and inner_group != 4:
+    raise ValueError("W3 uses a fixed per-8 table selector; inner_group must be 4.")
   if wgt_lo.dim() != 2 or wgt_lo.dtype != torch.uint8 or not wgt_lo.is_contiguous():
     raise ValueError("wgt_lo must be a contiguous 2D uint8 tensor.")
   if wgt_hi is not None and (wgt_hi.dim() != 2 or wgt_hi.dtype != torch.uint8):
@@ -1263,8 +1263,10 @@ def expand_wna4(wgt_lo: torch.Tensor,
   k = _wNa4_logical_k(wgt_lo, bits)
   if k % 8:
     raise ValueError("Packed W1/W2/W3 requires a multiple-of-8 K extent.")
-  if wgt_micro is not None and wgt_micro.shape[1] * 4 * inner_group < k:
-    raise ValueError(f"wgt_micro row must cover at least {k // (4 * inner_group)} bytes.")
+  if wgt_micro is not None:
+    micro_stride = 64 if bits == 3 else 4 * inner_group
+    if wgt_micro.shape[1] * micro_stride < k:
+      raise ValueError(f"wgt_micro row must cover at least {k // micro_stride} bytes.")
   return torch.ops.cache_dit_cuda_ops.svdq_expand_wna4(wgt_lo=wgt_lo,
                                                        wgt_hi=wgt_hi,
                                                        bits=bits,
@@ -1291,8 +1293,8 @@ def svdq_gemm_wna4(act: torch.Tensor,
     raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
   if inner_group not in (2, 4):
     raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
-  if bits == 3 and (wgt_micro is not None or inner_group != 4):
-    raise ValueError("W3 does not support the three-stage inner scale.")
+  if bits == 3 and inner_group != 4:
+    raise ValueError("W3 uses a fixed per-8 table selector; inner_group must be 4.")
   out = torch.empty((act.shape[0], wgt_lo.shape[0]), dtype=torch.bfloat16, device=act.device)
   _get_required_ops_module().svdq_gemm_wna4(act=act,
                                             wgt_lo=wgt_lo,

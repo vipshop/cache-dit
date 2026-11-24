@@ -1024,7 +1024,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=int,
     default=None,
     choices=[2, 3],
-    help="Weight scale stages for packed W1A4/W2A4. Default: 3; pass 2 for standard NVFP4.",
+    help="Weight scale stages for packed W1A4/W2A4/W3A4. W1/W2 default to 3; W3 defaults to 2. "
+    "W3 stage 3 adds a per-8 one-bit table selector.",
   )
   parser.add_argument(
     "--svdq-packed-a4-inner-group",
