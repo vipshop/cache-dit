@@ -1,10 +1,9 @@
-// Adapted from nunchaku/nunchaku/csrc/ops.h
 #pragma once
 
 // SVDQ source map
 // ----------------
 // Public host surface:
-//   svdq.h                 This file. Declares the public W4A4, W8A8, W4A8 and packed
+//   svdq.h                 This file. Declares the public W4A4, W8A8, W4A8, W6A6 and packed
 //                          W1/W2/W3 A4 dispatchers in `cache_dit::svdq` like the other operator
 //                          families. The kernel namespaces (`svdq::native_kernels`,
 //                          `svdq::cute_kernels`) stay global and are the implementation detail.
@@ -19,6 +18,10 @@
 //                          error/assert utilities shared by native and CuTe kernels.
 //
 // Native runtime:
+//   Adapted from nunchaku/nunchaku/csrc/ops.h. This subtree has since diverged substantially: INT4
+//   and NVFP4 now share one GEMM family, and the fused MLP, quantized-output and smooth-output
+//   epilogues, the packed W1/W2/W3 decoders and the row-major LoRA layout are all cache-dit
+//   extensions rather than upstream code.
 //   native/zgemm.h          Native entry declarations: `gemm_w4a4` is the single W4A4 GEMM shared
 //                          by INT4 and NVFP4, `quantize_w4a4` the activation + LoRA-down producer.
 //   native/dispatch.h       Shared dtype/dispatch helpers for native template configuration.
@@ -61,6 +64,19 @@
 //                          Mixed E4M3 x packed-E2M1 GEMM with fused BF16 LoRA-up.
 //   cute/fp8/quantize/quantize_w4a8.{h,cu}
 //                          W4A8 ABI alias of the W8A8 activation/LoRA-down producer.
+//   cute/fp6/gemm/gemm_w6a6.{h,cuh,cu}
+//                          SM120 MXFP6 (W6A6) GEMM: packed E2M3 operands with one UE8M0 micro-scale
+//                          per 32 K elements on both sides, consumed by the block-scaled
+//                          `mxf8f6f4` MMA, with the fused BF16 LoRA-up and bias epilogue.
+//                          `gemm_w6a6.cuh` also owns the `sf_partition` helpers and the
+//                          tile-blocked scale-factor layout that the producer writes and Python
+//                          packs.
+//   cute/fp6/quantize/quantize_w6a6.{h,cuh,cu}
+//                          Fused producer: packed E2M3 activation, its 32-wide UE8M0 scale row and
+//                          the BF16 LoRA-down term from one activation read. The block amax is
+//                          reduced in-register, so there is no separate scales pass or kernel.
+//   cute/fp6/quantize/quantize_w6a6_r{32,64,128}.cu
+//                          Rank-specialized producer instantiations.
 //
 // Selection summary:
 //   native + native layout -> native gemm_w4a4 (INT4 and NVFP4 share one kernel family)
@@ -68,6 +84,7 @@
 //   native producer -> native quantize_w4a4; row_major producer -> cute quantize_w4a4
 //   W1/W2/W3A4 -> expand_wna4 (packed -> transient E2M1) then cute gemm_w4a4; gemm_wna4 is the
 //                  direct packed-B decode path reserved for numerical tests and benchmarks
+//   W6A6 -> cute gemm_w6a6 + quantize_w6a6 (block-scaled only, there is no native equivalent)
 
 #include <optional>
 #include <string>
