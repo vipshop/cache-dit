@@ -17,6 +17,11 @@ cache_dit.enable_cache(
 )
 ```
 
+For Sol-Attn, use `attention_backend="sol_attn"` only with **pure Ulysses** context parallelism.
+Ulysses CP2/CP4 is supported because every rank sees the full sequence for its local heads. Ring and
+USP with Ring are explicitly rejected: rank-local thresholds and the missing LSE contract would not
+reproduce full-sequence Sol-Attn. Use another backend for Ring workloads.
+
 |L20x1| Ulysses-2 | <span style="color:#c77dff;">Ulysses-4</span> | + compile |
 |:---:|:---:|:---:|:---:|  
 |FLUX, 23.56s| 13.80s | 8.28s | 7.27s |

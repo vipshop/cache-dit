@@ -12,6 +12,7 @@ Cache-DiT supports multiple Attention backends for better performance. The suppo
 |<span style="color:#c77dff;">flash</span>| official FlashAttention-2|✅|✖️| 
 |<span style="color:#c77dff;">_flash_3</span>| official FlashAttention-3|✅|✖️|
 |<span style="color:#c77dff;">sage</span>| FP8 SageAttention|✅|✖️|
+|<span style="color:#c77dff;">sol_attn</span>| NVIDIA Sol-Attn approximate sparse attention (BF16, head_dim=128)|Ulysses only|✖️|
 |<span style="color:#c77dff;">ffpa</span>| FFPA CUDA fp16/bf16 (sm_120 / sm_89)|✅|✅|
 |<span style="color:#c77dff;">ffpa_fp8</span>| FFPA CUDA FP8 (sm_120 / sm_89)|✅|✅|
 |<span style="color:#c77dff;">ffpa_fp8_per_block</span>| FFPA CUDA FP8 per-block quant (sm_120 / sm_89)|✅|✅|
@@ -51,6 +52,35 @@ cache_dit.enable_cache(
   ),
 )
 ```
+
+## Sol-Attn
+
+[Sol-Attn](https://github.com/NVlabs/Sana/tree/sol-engine/techniques/sparse_backends) is a training-free,
+approximate sparse-attention algorithm. It dynamically routes 64-token KV blocks between exact attention
+and pooled-KV compensation in one online-softmax pass. It is not bit-exact with dense attention; always
+compare output quality against your normal backend before enabling it in production.
+
+The current contract is CUDA BF16, equal Q/K/V shapes in NHD layout, head dim 128, non-causal unmasked
+self-attention, dropout 0 and the default softmax scale. Other calls use native SDPA and emit a
+reason-specific fallback warning. `strict=True` turns those fallbacks into errors. Exceptions raised by
+an eligible upstream Sol kernel are never hidden by the dense fallback.
+
+```python
+from cache_dit.attention import set_attn_backend, set_sol_attn_config
+
+set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False)
+set_attn_backend(pipe_or_adapter, attention_backend="sol_attn")
+```
+
+`tau` is the standardized routing threshold: larger values select fewer exact KV blocks and usually
+increase both speed and approximation error. `thresh_type="exact"` uses full-covariance statistics,
+while `diag` uses only per-dimension variance. The initial implementation fixes `kv_splits=1` and
+disables the optional text/KV sink; it does not implement model-specific dense-step/layer recipes or
+special dense handling for text query rows in joint MMDiT attention.
+
+Pure Ulysses CP is supported and does not require LSE. Ring and USP with Ring are explicitly rejected
+because local KV shards change the routing statistics and approximate denominator. See
+[Installation](./INSTALL.md#optional-sol-attn-backend) for the optional dependency.
 
 ## FP8 Attention
 

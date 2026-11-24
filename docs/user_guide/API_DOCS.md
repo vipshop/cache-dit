@@ -133,8 +133,21 @@ This function seamlessly integrates with both standard diffusion pipelines and c
 - **<span style="color:#c77dff;">attention_backend</span>** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
   not None, set the attention backend for the transformer module. Supported backends include: 
-  "native", "_sdpa_cudnn", "sage", "flash", "flash", "_native_npu", etc. Prefer attention_backend
+  "native", "_sdpa_cudnn", "sage", "sol_attn", "flash", "flash", "_native_npu", etc. Prefer attention_backend
   in parallelism_config when both are provided.
+
+  For Sol-Attn, configure its process-wide routing parameters before inference or `torch.compile`:
+
+  ```python
+  from cache_dit.attention import set_sol_attn_config
+
+  set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False)
+  cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="sol_attn")
+  ```
+
+  `tau` controls the exact-KV-block budget (larger means more approximation), `thresh_type` accepts
+  `diag` or `exact`, and `strict=True` rejects ineligible calls instead of using the logged native
+  fallback. Sol-Attn requires BF16, equal Q/K/V shapes, head dim 128, non-causal unmasked self-attention.
 
 - **<span style="color:#c77dff;">quantize_config</span>** (`QuantizeConfig`, *optional*, defaults to None):   
   Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8_per_row, float8_per_tensor, float8_per_block, float8_weight_only, int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc. Please check [config.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/quantization/config.py) for more details.

@@ -486,7 +486,12 @@ options:
                         Enable text encoder parallelism if applicable.
   --parallel-controlnet
                         Enable ControlNet parallelism if applicable.
-  --attn {None,flash,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,_native_npu,_npu_fia}
+  --attn {None,flash,flash_varlen,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,sage3,sol_attn,ffpa,ffpa_fp8,ffpa_fp4,ffpa_fp8_per_block,_native_npu,_npu_fia,_mindiesd_laser}
+  --sol-attn-tau SOL_ATTN_TAU
+                        Sol-Attn routing threshold multiplier; larger values select fewer exact KV blocks.
+  --sol-attn-thresh-type {diag,exact}
+                        Sol-Attn threshold estimator: diagonal or full covariance.
+  --sol-attn-strict     Raise on Sol-Attn-ineligible calls instead of using observable native fallback.
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
   --ulysses-float8, --ufp8

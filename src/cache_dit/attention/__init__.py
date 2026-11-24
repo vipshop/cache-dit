@@ -2,6 +2,7 @@ from ..envs import ENV
 from ..logger import init_logger
 from .backends.register import _AttnBackend, _AttnBackendRegistry, _dispatch_attention_fn
 from .interface import set_attn_backend
+from .backends.sol_attn import set_sol_attn_config
 
 from ..distributed.communicate import (
   _all_to_all_o_async_fn,
@@ -22,6 +23,7 @@ __all__ = [
   "_AttnBackendRegistry",
   "_dispatch_attention_fn",
   "set_attn_backend",
+  "set_sol_attn_config",
   "_maybe_register_custom_attn_backends",
   "AttnBackendSelector",
 ]
@@ -34,7 +36,7 @@ def _maybe_register_custom_attn_backends():
 
   try:
     # Import backend modules to ensure they are registered
-    from .backends import native, cudnn, sage, sage3, flash, flash_varlen, ffpa, npu
+    from .backends import native, cudnn, sage, sage3, sol_attn, flash, flash_varlen, ffpa, npu
 
     registered = _register_cache_dit_attn_backends_to_diffusers()
     ENV.CACHE_DIT_CUSTOM_ATTN_ALREADY_DISPATCH = True
