@@ -25,6 +25,7 @@ logger = init_logger(__name__)
 SOL_ATTN_DEFAULT_TAU = 1.0
 SOL_ATTN_DEFAULT_THRESH_TYPE = "diag"
 SOL_ATTN_DEFAULT_STRICT = False
+SOL_ATTN_DEFAULT_SINK_TOKENS = 1024
 
 _SOL_ATTN_INSTALL = (
   "pip install \"git+https://github.com/NVlabs/Sana.git@"
@@ -37,6 +38,7 @@ _SOL_CONFIG = {
   "tau": SOL_ATTN_DEFAULT_TAU,
   "thresh_type": SOL_ATTN_DEFAULT_THRESH_TYPE,
   "strict": SOL_ATTN_DEFAULT_STRICT,
+  "sink_tokens": SOL_ATTN_DEFAULT_SINK_TOKENS,
 }
 _SOL_STATS = {
   "kernel_calls": 0,
@@ -96,21 +98,32 @@ def set_sol_attn_config(
   tau: float = SOL_ATTN_DEFAULT_TAU,
   thresh_type: str = SOL_ATTN_DEFAULT_THRESH_TYPE,
   strict: bool = SOL_ATTN_DEFAULT_STRICT,
+  sink_tokens: int = SOL_ATTN_DEFAULT_SINK_TOKENS,
 ) -> None:
   """Configure the process-wide Sol-Attn backend before inference or compilation.
 
   :param tau: Routing threshold multiplier; larger values select fewer exact KV blocks.
   :param thresh_type: Threshold estimator, either ``diag`` or ``exact``.
   :param strict: Raise on ineligible calls instead of using observable native fallback.
+  :param sink_tokens: Exact prefix-KV token budget. The default protects the first 1024
+    tokens; zero disables the sink. The effective value is capped at sequence length.
   """
   if not math.isfinite(tau):
     raise ValueError(f"Sol-Attn `tau` must be finite, got {tau}.")
   if thresh_type not in _THRESH_TYPE_TO_INT:
     raise ValueError(f"Sol-Attn `thresh_type` must be 'diag' or 'exact', got {thresh_type!r}.")
+  if isinstance(sink_tokens, bool) or not isinstance(sink_tokens, int) or sink_tokens < 0:
+    raise ValueError(f"Sol-Attn `sink_tokens` must be a non-negative integer, got {sink_tokens!r}.")
   _validate_sol_runtime()
   _ensure_sol_attn_op_defined()
-  _SOL_CONFIG.update(tau=float(tau), thresh_type=thresh_type, strict=bool(strict))
-  logger.info(f"Sol-Attn config: tau={tau}, thresh_type={thresh_type}, strict={bool(strict)}.")
+  _SOL_CONFIG.update(
+    tau=float(tau),
+    thresh_type=thresh_type,
+    strict=bool(strict),
+    sink_tokens=sink_tokens,
+  )
+  logger.info(f"Sol-Attn config: tau={tau}, thresh_type={thresh_type}, strict={bool(strict)}, "
+              f"sink_tokens={sink_tokens}.")
 
 
 def _get_sol_attn_stats() -> dict:
@@ -191,7 +204,7 @@ def _ensure_sol_attn_op_defined() -> None:
 
   torch.library.define(
     _SOL_ATTN_OP_NAME,
-    "(Tensor q, Tensor k, Tensor v, float scale, float tau, int thresh_type) -> Tensor",
+    "(Tensor q, Tensor k, Tensor v, float scale, float tau, int thresh_type, int sink_tokens) -> Tensor",
   )
 
   @torch.library.impl(_SOL_ATTN_OP_NAME, "CUDA")
@@ -202,6 +215,7 @@ def _ensure_sol_attn_op_defined() -> None:
     scale: float,
     tau: float,
     thresh_type: int,
+    sink_tokens: int,
   ) -> torch.Tensor:
     _validate_sol_device(q.device)
     inputs = (q, k, v)
@@ -216,8 +230,8 @@ def _ensure_sol_attn_op_defined() -> None:
       tau=tau,
       thresh_type="exact" if thresh_type else "diag",
       kv_splits=1,
-      sink_tokens=0,
-      sink_start=None,
+      sink_tokens=sink_tokens,
+      sink_start=0 if sink_tokens else None,
     )
     _SOL_STATS["kernel_calls"] += 1
     return output.contiguous()
@@ -230,6 +244,7 @@ def _ensure_sol_attn_op_defined() -> None:
     scale: float,
     tau: float,
     thresh_type: int,
+    sink_tokens: int,
   ) -> torch.Tensor:
     return torch.empty(q.shape, dtype=q.dtype, device=q.device)
 
@@ -243,6 +258,7 @@ def _sol_attention_op(
   scale: float,
 ) -> torch.Tensor:
   _ensure_sol_attn_op_defined()
+  sink_tokens = min(_SOL_CONFIG["sink_tokens"], query.shape[1])
   return torch.ops.cache_dit_sol_attn_ops.forward(
     query,
     key,
@@ -250,6 +266,7 @@ def _sol_attention_op(
     scale,
     _SOL_CONFIG["tau"],
     _THRESH_TYPE_TO_INT[_SOL_CONFIG["thresh_type"]],
+    sink_tokens,
   )
 
 

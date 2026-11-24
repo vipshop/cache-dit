@@ -141,13 +141,15 @@ This function seamlessly integrates with both standard diffusion pipelines and c
   ```python
   from cache_dit.attention import set_sol_attn_config
 
-  set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False)
+  set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False, sink_tokens=1024)
   cache_dit.set_attn_backend(pipe_or_adapter, attention_backend="sol_attn")
   ```
 
   `tau` controls the exact-KV-block budget (larger means more approximation), `thresh_type` accepts
   `diag` or `exact`, and `strict=True` rejects ineligible calls instead of using the logged native
-  fallback. Sol-Attn requires BF16, equal Q/K/V shapes, head dim 128, non-causal unmasked self-attention.
+  fallback. `sink_tokens` defaults to 1024 and protects an exact prefix at token zero; it is capped at
+  sequence length and can be disabled with zero. Sol-Attn requires BF16, equal Q/K/V shapes, head dim
+  128, non-causal unmasked self-attention.
 
 - **<span style="color:#c77dff;">quantize_config</span>** (`QuantizeConfig`, *optional*, defaults to None):   
   Config for quantization. If quantize_config is not None, it means the user wants to quantize the model for better performance. Supported quantization types include: float8_per_row, float8_per_tensor, float8_per_block, float8_weight_only, int8_per_row, int8_per_tensor, int8_weight_only, int4_weight_only, etc. Please check [config.py](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/quantization/config.py) for more details.

@@ -1274,6 +1274,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Raise on Sol-Attn-ineligible calls instead of using observable native fallback.",
   )
   parser.add_argument(
+    "--sol-attn-sink-tokens",
+    type=int,
+    default=None,
+    help="Exact prefix-KV token budget (default: 1024; 0 disables; capped at sequence length).",
+  )
+  parser.add_argument(
     "--ffpa-hybrid",
     dest="ffpa_hybrid",
     action="store_true",
@@ -1842,8 +1848,9 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   sol_attn_tau = getattr(args, "sol_attn_tau", None)
   sol_attn_thresh_type = getattr(args, "sol_attn_thresh_type", None)
   sol_attn_strict = getattr(args, "sol_attn_strict", False)
-  if ((sol_attn_tau is not None or sol_attn_thresh_type is not None or sol_attn_strict)
-      and args.attn != "sol_attn"):
+  sol_attn_sink_tokens = getattr(args, "sol_attn_sink_tokens", None)
+  if ((sol_attn_tau is not None or sol_attn_thresh_type is not None or sol_attn_strict
+       or sol_attn_sink_tokens is not None) and args.attn != "sol_attn"):
     raise ValueError("--sol-attn-* options require --attn sol_attn.")
   if args.attn == "sol_attn":
     from ..attention import set_sol_attn_config
@@ -1854,6 +1861,8 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
       sol_attn_kwargs["thresh_type"] = sol_attn_thresh_type
     if sol_attn_strict:
       sol_attn_kwargs["strict"] = True
+    if sol_attn_sink_tokens is not None:
+      sol_attn_kwargs["sink_tokens"] = sol_attn_sink_tokens
     set_sol_attn_config(**sol_attn_kwargs)
 
   # FFPA hybrid toggle: applied globally so both the direct and the

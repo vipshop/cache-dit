@@ -492,6 +492,8 @@ options:
   --sol-attn-thresh-type {diag,exact}
                         Sol-Attn threshold estimator: diagonal or full covariance.
   --sol-attn-strict     Raise on Sol-Attn-ineligible calls instead of using observable native fallback.
+  --sol-attn-sink-tokens SOL_ATTN_SINK_TOKENS
+                        Exact prefix-KV token budget (default: 1024; 0 disables; capped at sequence length).
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
   --ulysses-float8, --ufp8

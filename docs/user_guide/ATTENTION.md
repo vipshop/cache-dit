@@ -68,15 +68,17 @@ an eligible upstream Sol kernel are never hidden by the dense fallback.
 ```python
 from cache_dit.attention import set_attn_backend, set_sol_attn_config
 
-set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False)
+set_sol_attn_config(tau=1.0, thresh_type="diag", strict=False, sink_tokens=1024)
 set_attn_backend(pipe_or_adapter, attention_backend="sol_attn")
 ```
 
 `tau` is the standardized routing threshold: larger values select fewer exact KV blocks and usually
 increase both speed and approximation error. `thresh_type="exact"` uses full-covariance statistics,
-while `diag` uses only per-dimension variance. The initial implementation fixes `kv_splits=1` and
-disables the optional text/KV sink; it does not implement model-specific dense-step/layer recipes or
-special dense handling for text query rows in joint MMDiT attention.
+while `diag` uses only per-dimension variance. The implementation fixes `kv_splits=1`. By default, the
+first `min(1024, sequence_length)` tokens are protected by an exact prefix-KV sink (`sink_start=0`);
+set `sink_tokens=0` to disable it. This is positional protection, not automatic text-length detection:
+for FLUX it covers the text prefix and part of the image sequence. The backend does not implement
+model-specific dense-step/layer recipes or separate dense handling for text query rows.
 
 Pure Ulysses CP is supported and does not require LSE. Ring and USP with Ring are explicitly rejected
 because local KV shards change the routing statistics and approximate denominator. See

@@ -64,7 +64,7 @@ def _run_ulysses(rank: int, world_size: int, port: int) -> None:
   torch.cuda.set_device(rank)
   dist.init_process_group("nccl", rank=rank, world_size=world_size)
   try:
-    set_sol_attn_config(tau=1.0, thresh_type="diag")
+    set_sol_attn_config(tau=1.0, thresh_type="diag", sink_tokens=0)
     mesh = dist.device_mesh.init_device_mesh(
       "cuda",
       (1, world_size),

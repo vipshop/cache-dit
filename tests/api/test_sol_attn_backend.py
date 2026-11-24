@@ -71,7 +71,13 @@ def _routing_threshold(
   return raw_mean * log2_scale + tau * (variance * log2_scale ** 2 + 1e-6).sqrt()
 
 
-def _route_mask(q: torch.Tensor, k: torch.Tensor, tau: float, thresh_type: str) -> torch.Tensor:
+def _route_mask(
+  q: torch.Tensor,
+  k: torch.Tensor,
+  tau: float,
+  thresh_type: str,
+  sink_tokens: int = 0,
+) -> torch.Tensor:
   q_blocks, _ = _pool_64(q)
   k_blocks, _ = _pool_64(k)
   scores = torch.einsum("bihd,bjhd->bhij", q_blocks.float(), k_blocks.float())
@@ -80,9 +86,10 @@ def _route_mask(q: torch.Tensor, k: torch.Tensor, tau: float, thresh_type: str) 
   exact = scores > threshold[..., None]
   query_blocks = q_blocks.shape[1]
   key_blocks = k_blocks.shape[1]
-  local = (torch.arange(query_blocks, device=q.device)[:, None] -
-           torch.arange(key_blocks, device=q.device)[None, :]).abs() <= 1
-  return exact | local[None, None, :, :]
+  key_block_ids = torch.arange(key_blocks, device=q.device)
+  local = (torch.arange(query_blocks, device=q.device)[:, None] - key_block_ids[None, :]).abs() <= 1
+  sink = key_block_ids * 64 < sink_tokens
+  return exact | local[None, None, :, :] | sink[None, None, None, :]
 
 
 def _sol_reference(
@@ -91,11 +98,12 @@ def _sol_reference(
   v: torch.Tensor,
   tau: float,
   thresh_type: str,
+  sink_tokens: int = 0,
 ) -> torch.Tensor:
   batch, tokens, heads, dim = q.shape
   q_blocks, query_lengths = _pool_64(q)
   k_blocks, key_lengths = _pool_64(k)
-  route = _route_mask(q, k, tau, thresh_type)
+  route = _route_mask(q, k, tau, thresh_type, sink_tokens)
   scale = dim ** -0.5 * math.log2(math.e)
   key_blocks = k_blocks.shape[1]
   v_padded = F.pad(v, (0, 0, 0, 0, 0, key_blocks * 64 - tokens))
@@ -188,6 +196,9 @@ def test_sol_attn_config_validation():
     set_sol_attn_config(tau=float("nan"))
   with pytest.raises(ValueError, match="diag.*exact"):
     set_sol_attn_config(thresh_type="invalid")
+  for invalid_sink in (-1, 1.5, True):
+    with pytest.raises(ValueError, match="non-negative integer"):
+      set_sol_attn_config(sink_tokens=invalid_sink)
 
 
 def test_sol_attn_native_fallback_and_strict_mode():
@@ -233,7 +244,7 @@ def test_sol_attn_rejects_unsupported_semantics_in_strict_mode():
 @pytest.mark.parametrize("thresh_type", ["diag", "exact"])
 def test_sol_attn_matches_independent_reference(tokens: int, thresh_type: str):
   torch.manual_seed(1234 + tokens)
-  set_sol_attn_config(tau=1.0, thresh_type=thresh_type)
+  set_sol_attn_config(tau=1.0, thresh_type=thresh_type, sink_tokens=0)
   q, k, v = (torch.randn(1, tokens, 2, 128, device="cuda", dtype=torch.bfloat16) for _ in range(3))
   output = _dispatch_attention_fn(q, k, v, backend="sol_attn")
   reference = _sol_reference(q, k, v, tau=1.0, thresh_type=thresh_type)
@@ -246,7 +257,7 @@ def test_sol_attn_matches_independent_reference(tokens: int, thresh_type: str):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 def test_sol_attn_all_exact_is_close_to_dense():
   torch.manual_seed(4321)
-  set_sol_attn_config(tau=-1e9, thresh_type="diag")
+  set_sol_attn_config(tau=-1e9, thresh_type="diag", sink_tokens=0)
   q, k, v = (torch.randn(1, 257, 2, 128, device="cuda", dtype=torch.bfloat16) for _ in range(3))
   output = _dispatch_attention_fn(q, k, v, backend="sol_attn")
   reference = F.scaled_dot_product_attention(
@@ -259,6 +270,43 @@ def test_sol_attn_all_exact_is_close_to_dense():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_sol_attn_default_prefix_sink_contract(monkeypatch):
+  set_sol_attn_config()
+  calls = []
+
+  def _fake_sol_attn(q, k, v, **kwargs):
+    calls.append(kwargs)
+    return v
+
+  monkeypatch.setattr(sol_backend._sol_attn, "sol_attn", _fake_sol_attn)
+  q = torch.randn(1, 1100, 1, 128, device="cuda", dtype=torch.bfloat16)
+  _dispatch_attention_fn(q, q, q, backend="sol_attn")
+  assert calls[-1]["sink_start"] == 0
+  assert calls[-1]["sink_tokens"] == 1024
+
+  short = q[:, :64]
+  _dispatch_attention_fn(short, short, short, backend="sol_attn")
+  assert calls[-1]["sink_start"] == 0
+  assert calls[-1]["sink_tokens"] == 64
+
+  set_sol_attn_config(sink_tokens=0)
+  _dispatch_attention_fn(short, short, short, backend="sol_attn")
+  assert calls[-1]["sink_start"] is None
+  assert calls[-1]["sink_tokens"] == 0
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+def test_sol_attn_default_prefix_sink_matches_reference():
+  torch.manual_seed(8765)
+  set_sol_attn_config(tau=1e9)
+  q, k, v = (torch.randn(1, 1100, 1, 128, device="cuda", dtype=torch.bfloat16) for _ in range(3))
+  output = _dispatch_attention_fn(q, k, v, backend="sol_attn")
+  reference = _sol_reference(q, k, v, tau=1e9, thresh_type="diag", sink_tokens=1024)
+  assert _relative_l2(output, reference) <= 4e-3
+  assert _cosine(output, reference) >= 0.999
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 def test_sol_attn_opcheck_and_fullgraph_compile():
   set_sol_attn_config()
   q, k, v = (torch.randn(1, 128, 1, 128, device="cuda", dtype=torch.bfloat16) for _ in range(3))
@@ -266,7 +314,7 @@ def test_sol_attn_opcheck_and_fullgraph_compile():
   scale = q.shape[-1] ** -0.5
   torch.library.opcheck(
     torch.ops.cache_dit_sol_attn_ops.forward,
-    (q, k, v, scale, 1.0, 0),
+    (q, k, v, scale, 1.0, 0, 128),
   )
   eager = _dispatch_attention_fn(q, k, v, backend="sol_attn")
   compiled = torch.compile(lambda a, b, c: _dispatch_attention_fn(a, b, c, backend="sol_attn"),
