@@ -1241,6 +1241,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "_sdpa_cudnn",
       "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
       "sage3",  # SageAttention-3 Blackwell FP4 backend
+      "sol_attn",  # NVIDIA Sol-Attn sparse attention (BF16, head_dim=128)
       # ffpa-attn CUDA backends (fp16/fp8: sm_120 + sm_89; fp4: sm_120 only;
       # forward inference only; attn_mask supported without CP):
       # Need install ffpa-attn: https://github.com/vipshop/ffpa-attn
@@ -1252,6 +1253,31 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "_npu_fia",  # npu fused infer attention
       "_mindiesd_laser",  # MindIE-SD laser attention
     ],
+  )
+  parser.add_argument(
+    "--sol-attn-tau",
+    type=float,
+    default=None,
+    help="Sol-Attn routing threshold multiplier; larger values select fewer exact KV blocks.",
+  )
+  parser.add_argument(
+    "--sol-attn-thresh-type",
+    type=str,
+    default=None,
+    choices=["diag", "exact"],
+    help="Sol-Attn threshold estimator: diagonal or full covariance.",
+  )
+  parser.add_argument(
+    "--sol-attn-strict",
+    action="store_true",
+    default=False,
+    help="Raise on Sol-Attn-ineligible calls instead of using observable native fallback.",
+  )
+  parser.add_argument(
+    "--sol-attn-sink-tokens",
+    type=int,
+    default=None,
+    help="Exact prefix-KV token budget (default: 1024; 0 disables; capped at sequence length).",
   )
   parser.add_argument(
     "--ffpa-hybrid",
@@ -1818,6 +1844,26 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   # Force enable compile if force_compile_dynamic is enabled
   if args.force_compile_dynamic:
     args.compile = True
+
+  sol_attn_tau = getattr(args, "sol_attn_tau", None)
+  sol_attn_thresh_type = getattr(args, "sol_attn_thresh_type", None)
+  sol_attn_strict = getattr(args, "sol_attn_strict", False)
+  sol_attn_sink_tokens = getattr(args, "sol_attn_sink_tokens", None)
+  if ((sol_attn_tau is not None or sol_attn_thresh_type is not None or sol_attn_strict
+       or sol_attn_sink_tokens is not None) and args.attn != "sol_attn"):
+    raise ValueError("--sol-attn-* options require --attn sol_attn.")
+  if args.attn == "sol_attn":
+    from ..attention import set_sol_attn_config
+    sol_attn_kwargs = {}
+    if sol_attn_tau is not None:
+      sol_attn_kwargs["tau"] = sol_attn_tau
+    if sol_attn_thresh_type is not None:
+      sol_attn_kwargs["thresh_type"] = sol_attn_thresh_type
+    if sol_attn_strict:
+      sol_attn_kwargs["strict"] = True
+    if sol_attn_sink_tokens is not None:
+      sol_attn_kwargs["sink_tokens"] = sol_attn_sink_tokens
+    set_sol_attn_config(**sol_attn_kwargs)
 
   # FFPA hybrid toggle: applied globally so both the direct and the
   # context-parallel attention paths pick it up. Off by default.

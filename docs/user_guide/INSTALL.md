@@ -104,6 +104,22 @@ everything from scratch.
 > torch first, from the PyTorch index you normally use, or the resolver may pick a torch
 > that is not the CUDA 13 build.
 
+## Optional Sol-Attn backend
+
+The `sol_attn` attention backend uses NVIDIA's upstream Sol-Attn package and requires BF16,
+`torch>=2.10`, CUDA>=12.8 and Triton>=3.6. Its optimized CuTe path additionally requires
+`nvidia-cutlass-dsl>=4.5` and `cuda-python`. These requirements are declared by the upstream README,
+not enforced by its package metadata, so check them in your environment before running inference.
+
+Install the pinned upstream source used for the current validation:
+
+```bash
+pip install "git+https://github.com/NVlabs/Sana.git@cf67a3acad7511acb85053e56a05e5dd24c82ba0#subdirectory=techniques/sparse_backends"
+```
+
+No Cache-DiT native extension is required for this backend. The default attention backend remains
+`native`; installing Sol-Attn does not change existing inference behavior.
+
 ## Installation with Ascend NPU
 
 Please refer to [Ascend NPU Support](./ASCEND_NPU.md) documentation for more details.

@@ -300,3 +300,13 @@ def test_diffusers_bridge_sage_backend_accepts_attn_mask_keyword(monkeypatch):
       value,
       attn_mask=torch.ones(2, 5, 5),
     )
+
+
+def test_diffusers_bridge_sol_attn_rejects_ring_without_dropping_cp_config():
+  _register_cache_dit_attn_backends_to_diffusers()
+  backend_fn = _AttentionBackendRegistry._backends[AttentionBackendName("sol_attn")]
+  cp_config = _ContextParallelConfig(ring_degree=2, ulysses_degree=1)
+  query = torch.randn(1, 64, 1, 128, dtype=torch.bfloat16)
+
+  with pytest.raises(NotImplementedError, match="pure Ulysses"):
+    backend_fn(query, query, query, _parallel_config=cp_config)
