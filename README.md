@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, BRACE, BeziCast, Sea-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (FP8/FP4/INT4/SVDQ-W{**2,3,4,6,8**}-A{**4,6,8**}, etc), [cpu offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) (layerwise), [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (Ulysses/Ring/TP/USP/TE-P/VAE-P/2D-P/3D-P) and [attention acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/) (FA-2, Sage-2/3, FFPA-FP8/FP4, Sol-Attn, etc) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
+**Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, BRACE, BeziCast, Sea-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (FP8/FP4/INT4/SVDQ-W{**2,3,4,6,8**}-A{**4,6,8**}, etc), [cpu offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) (layerwise), [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (Ulysses/Ring/TP/USP/TE-P/VAE-P/2D-P/3D-P, etc) and [attention acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/) (FA-2, Sage-2/3, FFPA-FP8/FP4, Sol-Attn, etc) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
 
 <div align="center">
   <i>Cache-DiT is fast, easy to use, and flexible for various DiTs.</i>
