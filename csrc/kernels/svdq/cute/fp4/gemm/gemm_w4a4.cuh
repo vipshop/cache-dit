@@ -333,6 +333,12 @@ struct F32DLoraScales {
 // Decode a packed W1/W2/W3 code into an E2M1 nibble. `inner` is the optional per-4 exponent; -1
 // selects the standard two-stage NVFP4 codec. Both packed decoders call this helper so the Python
 // table, expand kernel, and direct packed GEMM cannot drift independently.
+__host__ __device__ __forceinline__ int packed_a4_w3_table_nibble(int table, int code) {
+  // W3 stage 3: table 0 = {0.5,2,4,6}, table 1 = {0.5,1.5,3,6}.
+  if (table == 0) return code == 0 ? 1 : code == 1 ? 4 : code == 2 ? 6 : 7;
+  return code == 0 ? 1 : code == 1 ? 3 : code == 2 ? 5 : 7;
+}
+
 __host__ __device__ __forceinline__ int packed_a4_nibble(int bits, int code, int inner) {
   if (inner < 0) {
     if (bits == 1) return 3 + 8 * (code & 1);
@@ -997,23 +1003,31 @@ class W4A4GemmKernel {
         sign_bits = __ldg(hi);
       }
       uint32_t micro = 0;
+      int w3_table = 0;
       if (wgt_micro != nullptr) {
-        micro = __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro +
-                      (k0 + col) / (4 * inner_group));
+        if constexpr (Traits::kWeightBits == 3) {
+          const uint8_t byte =
+            __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro + (k0 + col) / 64);
+          w3_table = (byte >> (((k0 + col) / 8) % 8)) & 1;
+        } else {
+          micro = __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro +
+                        (k0 + col) / (4 * inner_group));
+        }
       }
       uint32_t packed = 0;
 #pragma unroll
       for (int i = 0; i < kGroupCodes; ++i) {
         const int code = (raw >> (i * kLoBits)) & ((1 << kLoBits) - 1);
         int inner = -1;
-        if (wgt_micro != nullptr) {
+        if (wgt_micro != nullptr && Traits::kWeightBits != 3) {
           const int shift = (((k0 + col) % (4 * inner_group)) / inner_group + i / inner_group) * 2;
           inner = (micro >> shift) & 3;
         }
         int nibble;
         if constexpr (Traits::kWeightBits == 3) {
-          // W3 keeps its separate sign plane and has no three-stage variant.
-          nibble = 1 + 2 * code + 8 * ((sign_bits >> i) & 1);
+          nibble =
+            (wgt_micro != nullptr ? packed_a4_w3_table_nibble(w3_table, code) : 1 + 2 * code) +
+            8 * ((sign_bits >> i) & 1);
         } else {
           nibble = packed_a4_nibble(Traits::kWeightBits, code, inner);
         }

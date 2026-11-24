@@ -23,9 +23,9 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}</span>|post-training <span style="color:green;">SVDQuant (W4A4)</span> with NVFP4 packed weights/activations, calibration, and checkpoint serialization. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_int4_r{32...}_dq</span>|quantize weights and activations to int4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to the native W4A4 GEMM.|<span style="color:#c77dff;">>=sm89</span>, Ada or newer, excluded Hopper (NO INT4 MMA; the unified `_C_ops` floor)|
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_fp8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_w4a8_r{32|64|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
-|<span style="color:#c77dff;">svdq_w{1|2|3}a4_r{rank}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W1/W2 accept ranks 0/32/64/128/256/512 and default to the three-stage per-4 codec; W3 keeps ranks 0/32/64/128 and the standard two-stage NVFP4 codec. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_fp8_r{32\|64\|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_w4a8_r{32\|64\|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_w{1\|2\|3}a4_r{rank}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W1/W2 accept ranks 0/32/64/128/256/512 and default to the three-stage per-4 codec because their two-stage codebooks are not accurate enough; W3's 3-bit codebook is inherently more accurate, so W3 keeps ranks 0/32/64/128 and defaults to the standard two-stage NVFP4 codec, with an optional per-8 one-bit table selector. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
 ## Quantization Backends
@@ -1200,7 +1200,9 @@ $$
 
 ### Three-stage math (default for W1/W2)
 
-Two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. The default three-stage codec keeps the two NVFP4 scales and adds 2-bit exponents, one per subgroup. The subgroup size defaults to 4 and can be set to 2 with `svdq_kwargs={"packed_a4_inner_group": 2}` for finer local refinement. A 4-element subgroup uses four exponents per 16 elements; a 2-element subgroup uses eight:
+**Default policy:** two-stage W1/W2 have too few levels inside a 16-element group to produce meaningful images. For this reason `packed_a4_stages=3` is the default for W1A4/W2A4; it is a precision requirement, not an optional tuning knob. W3 stores a 3-bit codebook with eight signed levels and is accurate enough on its own, so `packed_a4_stages=2` remains its default to save memory; W3 stage 3 is only an optional accuracy experiment.
+
+The three-stage codec keeps the two NVFP4 scales and adds 2-bit exponents, one per subgroup. The subgroup size defaults to 4 and can be set to 2 with `svdq_kwargs={"packed_a4_inner_group": 2}` for finer local refinement. A 4-element subgroup uses four exponents per 16 elements; a 2-element subgroup uses eight:
 
 $$
 \begin{aligned}
@@ -1270,13 +1272,29 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec; `--svdq-packed-a4-inner-group 2` selects the per-2 exponent layout while the default stays per-4. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
+The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec; `--svdq-packed-a4-stages 3` enables W3's optional per-8 selector (W1/W2 already default to 3); `--svdq-packed-a4-inner-group 2` selects the W1/W2 per-2 exponent layout while the default stays per-4. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
 
 Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-dev, the 494 quantized block linears contain 11.83B weights; rank 512 costs 2.75B LoRA parameters (23.2% of the block weights), rank 128 costs 5.8%, rank 64 costs 2.9%, and rank 32 costs 1.45%. With three stages enabled, the tested W2 ranks 32/64 already produce complete structure and readable text while retaining only about 4.46/4.78 GiB of persistent weights; W2 r512 reaches about 9.27 GiB on the same padded geometry. Rank 512 is therefore not the first choice for W2 unless additional prompts show a specific need for it. W3A4 r32 is 5.15 GiB and W4A4 r32 is 6.53 GiB.
 
 W1A4 is currently retained only as an experimental sign-only tier: meaningful generation currently requires **rank >= 256**; lower ranks are not expected to produce a semantically useful image. Even at rank >= 256 quality is not guaranteed: in the sampled FLUX compile check, r256 with the default per-4 codec still showed severe artifacts, while r512 was the first verified meaningful result. Prefer W2A4 unless the goal is specifically to study the sign-only storage limit.
 
+A sampled few-shot check (`smooth_strategy="few_shot"`, `few_shot_steps=2`, stages 3, inner_group 2, compile) changes the boundary slightly but not the recommendation: W1 r32 still produced only color/structure noise (7.21s, 3.77 GiB), while W1 r64 produced a recognizable cat holding a sign (7.49s, 4.09 GiB) with imperfect text. Without few-shot, the same W1 r64 configuration collapsed into a blur. The few-shot path is experimental for packed A4; it defers quantization for two root forwards, resolves activation-derived smooth scales, then materializes the packed layers and compiles the quantized transformer.
+
 The per-2 option doubles the exponent bytes. W2A4 r32 per-2 uses about 5.15 GiB and produced a valid image in the same FLUX compile check; W1A4 r32/r64 per-2 still did not produce a semantically valid image, so per-2 is not a substitute for switching W1 to W2. The per-4 layout remains the default and the recommended format for W2.
+
+### Optional W3 stage 3
+
+W3A4 defaults to the two-stage 3.5-bit codec because its 3-bit codebook already has eight signed levels and is accurate enough. Passing `svdq_kwargs={"packed_a4_stages": 3}` or `--svdq-packed-a4-stages 3` opts into a lighter selector: one bit per eight K elements selects one of two legal-E2M1 magnitude tables, while the 3-bit W3 code still carries sign plus a two-bit magnitude index. The two tables are `{0.5,2,4,6}` and `{0.5,1.5,3,6}`.
+
+- Extra storage: `+0.125 bit/weight`; FLUX W3 r32/r64 go from 5.15/5.47 GiB to about 5.32/5.64 GiB.
+- Runtime: the selector adds one byte load and one table lookup per 32 weights; the E2M1 workspace and GEMM are unchanged.
+- Measured FLUX e2e: W3 r32 stage 3 is 6.34s versus 6.36s for stage 2. PSNR/SSIM against BF16 are 17.073/0.79439 versus 17.054/0.79424, while W4A4 r32 is 19.301/0.82608. The offline residual NMSE drops by about 34%, but the end-to-end gain is small because the residual codebook is not the only error source.
+
+![W3A4 stage 2 versus stage 3](../assets/svdq_w3_stage3_compare.png)
+
+Top-left is the BF16 reference, top-right is W3 r32 stage 2, bottom-left is W3 r32 stage 3 with the per-8 table selector, and bottom-right is W4A4 r32. The stage-3 result is structurally valid but visually close to stage 2; the small metric gain does not close the gap to W4A4.
+
+W3 stage 3 is therefore an experimental accuracy option, not the default and not a replacement for W4A4.
 
 ### Memory accounting: what is and is not moved to activations
 

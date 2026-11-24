@@ -29,6 +29,12 @@
 namespace svdq::cute_kernels {
 namespace {
 
+__device__ __forceinline__ int w3_stage3_nibble(int table, int code) {
+  // table 0: {0.5, 2, 4, 6}; table 1: {0.5, 1.5, 3, 6}; both are legal E2M1 magnitudes.
+  if (table == 0) return code == 0 ? 1 : code == 1 ? 4 : code == 2 ? 6 : 7;
+  return code == 0 ? 1 : code == 1 ? 3 : code == 2 ? 5 : 7;
+}
+
 // Reference path. Keep it for G=2 and non-32-aligned test shapes so the fast G=4 path cannot
 // silently change the packed bit order.
 __global__ void expand_wna4_reference_kernel(uint8_t const *__restrict__ lo,
@@ -58,7 +64,7 @@ __global__ void expand_wna4_reference_kernel(uint8_t const *__restrict__ lo,
   uint32_t sign_bits = 0;
   if (bits == 3) sign_bits = hi[row * row_bytes_hi + k0 / 8];
   uint32_t micro_bits = 0;
-  if (micro != nullptr) {
+  if (micro != nullptr && bits != 3) {
     micro_bits = __ldg(micro + row * row_bytes_micro + k0 / (4 * inner_group));
   }
   uint32_t packed = 0;
@@ -66,7 +72,13 @@ __global__ void expand_wna4_reference_kernel(uint8_t const *__restrict__ lo,
   for (int i = 0; i < 8; ++i) {
     const int code = (raw >> (i * lo_bits)) & ((1 << lo_bits) - 1);
     if (bits == 3) {
-      packed |= static_cast<uint32_t>(1 + 2 * code + 8 * ((sign_bits >> i) & 1)) << (4 * i);
+      int magnitude = 1 + 2 * code;
+      if (micro != nullptr) {
+        const int byte = __ldg(micro + row * row_bytes_micro + k0 / 64);
+        const int table = (byte >> ((k0 / 8) % 8)) & 1;
+        magnitude = w3_stage3_nibble(table, code);
+      }
+      packed |= static_cast<uint32_t>(magnitude + 8 * ((sign_bits >> i) & 1)) << (4 * i);
       continue;
     }
     const int shift = (((k0 % (4 * inner_group)) / inner_group) + i / inner_group) * 2;
@@ -204,6 +216,62 @@ __global__ void __launch_bounds__(256)
     make_uint4(packed[0], packed[1], packed[2], packed[3]);
 }
 
+__global__ void __launch_bounds__(256)
+  expand_wna4_w3_stage3_kernel(uint8_t const *__restrict__ lo, uint8_t const *__restrict__ hi,
+                               uint8_t const *__restrict__ micro, uint8_t *__restrict__ out,
+                               int rows, int K, int row_bytes_lo, int row_bytes_hi,
+                               int row_bytes_micro) {
+  __shared__ uint16_t low_lut[2][256];
+  __shared__ uint16_t sign_lut[16];
+  const int tid = threadIdx.x;
+  for (int i = tid; i < 512; i += blockDim.x) {
+    const int table = i >> 8;
+    const int byte = i & 255;
+    uint16_t v = 0;
+#pragma unroll
+    for (int p = 0; p < 4; ++p) {
+      const int code = (byte >> (2 * p)) & 3;
+      v |= static_cast<uint16_t>(w3_stage3_nibble(table, code)) << (4 * p);
+    }
+    low_lut[table][byte] = v;
+  }
+  if (tid < 16) {
+    uint16_t v = 0;
+#pragma unroll
+    for (int p = 0; p < 4; ++p) {
+      if ((tid >> p) & 1) v |= static_cast<uint16_t>(8) << (4 * p);
+    }
+    sign_lut[tid] = v;
+  }
+  __syncthreads();
+
+  const int chunks_per_row = K / 32;
+  const int chunk = blockIdx.x * blockDim.x + tid;
+  if (chunk >= rows * chunks_per_row) return;
+  const int row = chunk / chunks_per_row;
+  const int seg = chunk - row * chunks_per_row;
+  const int k0 = seg * 32;
+  const uint2 low =
+    *reinterpret_cast<uint2 const *>(lo + static_cast<int64_t>(row) * row_bytes_lo + k0 / 4);
+  const uint32_t signs = __ldg(
+    reinterpret_cast<uint32_t const *>(hi + static_cast<int64_t>(row) * row_bytes_hi + k0 / 8));
+  const uint8_t selector_byte =
+    __ldg(micro + static_cast<int64_t>(row) * row_bytes_micro + k0 / 64);
+  const int selector_bits = (selector_byte >> ((k0 % 64) / 8)) & 0xF;
+
+  uint32_t packed[4] = {0, 0, 0, 0};
+#pragma unroll
+  for (int p = 0; p < 8; ++p) {
+    const uint8_t low_byte =
+      p < 4 ? ((low.x >> (8 * p)) & 0xFF) : ((low.y >> (8 * (p - 4))) & 0xFF);
+    const int table = (selector_bits >> (p >> 1)) & 1;
+    const uint16_t nibbles = low_lut[table][low_byte] | sign_lut[(signs >> (4 * p)) & 0xF];
+    packed[p >> 1] |= static_cast<uint32_t>(nibbles) << (16 * (p & 1));
+  }
+  *reinterpret_cast<uint4 *>(out + static_cast<int64_t>(row) * (K / 2) + k0 / 2) =
+    make_uint4(packed[0], packed[1], packed[2], packed[3]);
+}
+
 template <int kBits, bool kHasMicro>
 void launch_expand_wna4_g4(uint8_t const *lo, uint8_t const *micro, uint8_t *out, int rows, int K,
                            int row_bytes_lo, int row_bytes_micro, cudaStream_t stream) {
@@ -284,10 +352,16 @@ void launch_wna4(svdq::Tensor act, svdq::Tensor wgt_lo, svdq::Tensor out, svdq::
             "W3 packed magnitude/sign rows are too short");
   }
   if (wgt_micro.valid()) {
-    require(kBits != 3, "W3 does not support the three-stage inner scale");
-    require(
-      wgt_micro.ndims() == 2 && wgt_micro.size(0) == N && wgt_micro.size(1) * 4 * inner_group >= K,
-      "micro scales must be uint8 [N,ceil(K/(4*inner_group))]");
+    if constexpr (kBits == 3) {
+      require(inner_group == 4 && K % 64 == 0,
+              "W3 stage 3 uses a fixed per-8 selector and requires K divisible by 64");
+      require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == N && wgt_micro.size(1) * 64 >= K,
+              "W3 table selectors must be uint8 [N,ceil(K/64)]");
+    } else {
+      require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == N &&
+                wgt_micro.size(1) * 4 * inner_group >= K,
+              "micro scales must be uint8 [N,ceil(K/(4*inner_group))]");
+    }
     require(wgt_micro.is_cuda() && wgt_micro.is_contiguous(),
             "micro scales must be a contiguous CUDA tensor");
   }
@@ -346,12 +420,20 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
   const int rows = wgt_lo.size(0);
   require(out.size(0) == rows && out.size(1) * 2 == K, "out must be packed E2M1 [rows,K/2]");
   if (wgt_micro.valid()) {
-    require(bits != 3 && K % (4 * inner_group) == 0,
-            "three-stage expansion requires W1/W2 and K divisible by 4*inner_group");
-    require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == rows &&
-              wgt_micro.size(1) * 4 * inner_group >= K && wgt_micro.is_cuda() &&
-              wgt_micro.is_contiguous(),
-            "micro scales must be uint8 [rows,ceil(K/(4*inner_group))] on CUDA");
+    if (bits == 3) {
+      require(inner_group == 4 && K % 64 == 0,
+              "W3 stage 3 uses a fixed per-8 selector and requires K divisible by 64");
+      require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == rows && wgt_micro.size(1) * 64 >= K &&
+                wgt_micro.is_cuda() && wgt_micro.is_contiguous(),
+              "W3 table selectors must be uint8 [rows,ceil(K/64)] on CUDA");
+    } else {
+      require(K % (4 * inner_group) == 0,
+              "three-stage expansion requires W1/W2 and K divisible by 4*inner_group");
+      require(wgt_micro.ndims() == 2 && wgt_micro.size(0) == rows &&
+                wgt_micro.size(1) * 4 * inner_group >= K && wgt_micro.is_cuda() &&
+                wgt_micro.is_contiguous(),
+              "micro scales must be uint8 [rows,ceil(K/(4*inner_group))] on CUDA");
+    }
   }
   const auto *lo_ptr = static_cast<uint8_t const *>(wgt_lo.data_ptr());
   const auto *hi_ptr = wgt_hi.valid() ? static_cast<uint8_t const *>(wgt_hi.data_ptr()) : nullptr;
@@ -388,8 +470,13 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
   }
   if (fast_aligned && bits == 3) {
     const int total = rows * (K / 32);
-    expand_wna4_w3_kernel<<<(total + 255) / 256, 256, 0, stream>>>(lo_ptr, hi_ptr, out_ptr, rows, K,
-                                                                   row_bytes_lo, row_bytes_hi);
+    if (micro_ptr != nullptr) {
+      expand_wna4_w3_stage3_kernel<<<(total + 255) / 256, 256, 0, stream>>>(
+        lo_ptr, hi_ptr, micro_ptr, out_ptr, rows, K, row_bytes_lo, row_bytes_hi, row_bytes_micro);
+    } else {
+      expand_wna4_w3_kernel<<<(total + 255) / 256, 256, 0, stream>>>(lo_ptr, hi_ptr, out_ptr, rows,
+                                                                     K, row_bytes_lo, row_bytes_hi);
+    }
     checkCUDA(cudaGetLastError());
     return;
   }
