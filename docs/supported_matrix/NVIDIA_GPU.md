@@ -4,15 +4,6 @@
 
 Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examples) for more details. Here are just some of the tested models listed.
 
-## Attention backends
-
-|Backend|Single GPU|Pure Ulysses|Ring / USP with Ring|Verified hardware|
-|:---|:---:|:---:|:---:|:---|
-|Sol-Attn (`sol_attn`)|✅|✅ CP2 / CP4|✖️|RTX PRO 5000 (sm_120, BF16)|
-
-Sol-Attn is an approximate sparse-attention backend. Its current input contract is BF16, equal Q/K/V
-shapes, head dim 128 and non-causal unmasked self-attention. Ring and USP with Ring fail explicitly.
-
 ## Transformers Optimization
 One Model Series may contain many pipelines. cache-dit applies optimizations at the Transformer level; thus,any pipelines that include the supported transformer are already supported by cache-dit. ✅: supported now; ✖️: not supported now; **[🤖Q](https://github.com/nunchaku-tech/nunchaku)**: **[nunchaku](https://github.com/nunchaku-tech/nunchaku)** w/ SVDQ W4A4; 
 
