@@ -25,6 +25,7 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_nvfp4_r{32...}_dq</span>|quantize weights and activations to NVFP4 with <span style="color:green;">SVDQuant dynamic quantization (W4A4)</span> without any calibration. Defaults to <span style="color:#c77dff;">runtime_kernel="native"</span>; <span style="color:#c77dff;">cute</span> is an explicit opt-in validation path.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_fp8_r{32\|64\|128}[_dq]</span>|<span style="color:green;">SVDQuant-FP8 (W8A8)</span>: an E4M3 residual with a fused BF16 low-rank branch for layers that need better accuracy than plain FP8 per-row. Supports DQ/PTQ and checkpoint save/load through <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span>.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_w4a8_r{32\|64\|128}[_dq]</span>|<span style="color:green;">SVDQuant W4A8</span>: E4M3 activations plus packed E2M1 residual weights, with the BF16 low-rank branch fused into the same kernel. Halves residual-weight storage versus W8A8 and supports DQ/PTQ/checkpoint; evaluate accuracy on the target model.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
+|<span style="color:#c77dff;">svdq_fp6_r{32\|64\|128}[_dq]</span>|(alias <span style="color:#c77dff;">svdq_w6a6_*</span>) <span style="color:green;">SVDQuant W6A6</span>: packed E2M3 activations and residual weights with one UE8M0 micro-scale per 32 K elements on both sides, consumed by the MX block-scaled `mxf8f6f4` MMA. Three mantissa bits keep E4M3-level resolution while weights shrink 25% versus W8A8; FLUX.1-dev at 1024x1024 measures 26.58 dB / 0.950 against bf16 versus 21.54 dB / 0.913 for W8A8 (28 steps, RTX PRO 5000). Supports DQ/PTQ/checkpoint and `torch.compile`.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 |<span style="color:#c77dff;">svdq_w{1\|2\|3}a4_r{rank}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W1/W2 accept ranks 0/32/64/128/256/512 and default to the three-stage per-4 codec because their two-stage codebooks are not accurate enough; W3's 3-bit codebook is inherently more accurate, so W3 keeps ranks 0/32/64/128 and defaults to the standard two-stage NVFP4 codec, with an optional per-8 one-bit table selector. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
@@ -874,6 +875,23 @@ The generate CLI accepts the corresponding <span style="color:#c77dff;">--svdq-w
 PTQ uses the type without `_dq`, for example <span style="color:#c77dff;">svdq_w4a8_r64</span>, plus the same <span style="color:#c77dff;">calibrate_fn</span> and activation-derived smoothing described in the SVDQ-FP8 PTQ section. Unobserved layers are skipped.
 
 Both DQ and PTQ support <span style="color:#c77dff;">serialize_to</span> and <span style="color:#c77dff;">cache_dit.load</span> with checkpoint files, directories, or a matching `QuantizeConfig`. The manifest precision is `w4a8`, which keeps this packed format out of both the W4A4 and W8A8 loaders. W4A8 currently requires sm120+ and BF16 source weights; fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are explicitly rejected.
+
+## SVDQuant W6A6 (MXFP6)
+
+<span style="color:#c77dff;">svdq_fp6_r{32|64|128}_dq</span> (alias <span style="color:#c77dff;">svdq_w6a6_*</span>) quantizes both operands to packed E2M3 and lets the tensor core apply one UE8M0 micro-scale per 32 K elements. Nothing is promoted blockwise in the mainloop: the scale rows go straight into `mma.sync.aligned.kind::mxf8f6f4.block_scale.scale_vec::1X`, and the fused BF16 low-rank branch still shares the FP32 accumulator.
+
+```python
+import cache_dit
+
+cache_dit.enable_cache(
+  pipe,
+  quantize_config=cache_dit.QuantizeConfig(quant_type="svdq_fp6_r32_dq"),
+)
+```
+
+The generate CLI accepts <span style="color:#c77dff;">--svdq-fp6-r{32|64|128}-dq</span>; the manifest precision is `fp6`, so the packed layout stays separate from the W4A4/W8A8/W4A8 loaders. Requirements and limits are the same as W4A8: sm120+, BF16 source weights, and no DTensor/TP, fused MLP, or layerwise offload.
+
+Packing is the OCP MXFP6 layout: four codes per three bytes, little-endian within each 24-bit group, so K must be a multiple of 128 (96 bytes per 128 elements). The activation producer derives each block exponent from the group amax of the smoothed activation, which means the quantized activation carries its own `[M, K/32]` scale row instead of a per-token vector.
 
 ## SVDQuant (W4A4) DQ
 

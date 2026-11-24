@@ -10,7 +10,7 @@ from ..logger import init_logger
 logger = init_logger(__name__)
 
 _SVDQ_QUANT_TYPE_PATTERN = re.compile(
-  r"^(svdq_(?:int4|nvfp4|fp8|w4a8|w1a4|w2a4|w3a4))_r(\d+)(_dq)?$")
+  r"^(svdq_(?:int4|nvfp4|fp8|w4a8|w6a6|fp6|w1a4|w2a4|w3a4))_r(\d+)(_dq)?$")
 # W1/W2 spend less on the residual code, so they accept rank512 to recover accuracy. W3 does not.
 _SVDQ_PACKED_A4_RANKS = {
   "w1a4": (0, 32, 64, 128, 256, 512),
@@ -189,6 +189,7 @@ def _parse_svdq_quant_type(quant_type: str) -> tuple[str, int, bool]:
     raise ValueError("SVDQ currently supports quant_type in the form `svdq_int4_r{rank}`, "
                      "`svdq_int4_r{rank}_dq`, `svdq_nvfp4_r{rank}`, `svdq_nvfp4_r{rank}_dq`, "
                      "`svdq_fp8_r{rank}`, `svdq_fp8_r{rank}_dq`, `svdq_w4a8_r{rank}`, "
+                     "`svdq_fp6_r{rank}`, `svdq_w6a6_r{rank}`, "
                      "`svdq_w1a4_r{rank}`, `svdq_w2a4_r{rank}`, `svdq_w3a4_r{rank}`, "
                      "or their `_dq` forms, "
                      f"got {quant_type!r}.")
@@ -675,7 +676,7 @@ class QuantizeConfig:
           "packed_a4_stages"] != 3:
         raise ValueError("svdq_kwargs['packed_a4_inner_group'] = 2 requires "
                          "svdq_kwargs['packed_a4_stages'] = 3.")
-      if precision in ("fp8", "w4a8", "w1a4", "w2a4", "w3a4"):
+      if precision in ("fp8", "w4a8", "w6a6", "fp6", "w1a4", "w2a4", "w3a4"):
         unsupported = {
           "runtime_kernel": None,
           "lora_layout": None,

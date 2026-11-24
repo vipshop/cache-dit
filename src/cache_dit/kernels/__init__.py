@@ -39,9 +39,11 @@ from .svdquant import svdq_quantize_w4a4
 from .svdquant import svdq_gemm_w8a8
 from .svdquant import svdq_quantize_w8a8
 from .svdquant import svdq_gemm_w4a8
+from .svdquant import svdq_gemm_w6a6
 from .svdquant import expand_wna4
 from .svdquant import svdq_gemm_wna4
 from .svdquant import svdq_quantize_w4a8
+from .svdquant import svdq_quantize_w6a6
 
 __all__ = [
   "ulysses_fp8_o_permute_quant",
@@ -83,7 +85,9 @@ __all__ = [
   "svdq_gemm_w8a8",
   "svdq_quantize_w8a8",
   "svdq_gemm_w4a8",
+  "svdq_gemm_w6a6",
   "svdq_gemm_wna4",
   "expand_wna4",
   "svdq_quantize_w4a8",
+  "svdq_quantize_w6a6",
 ]

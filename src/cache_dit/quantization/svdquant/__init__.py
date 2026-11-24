@@ -45,6 +45,7 @@ from .fused import fused_swiglu_mlp
 from .linear import SVDQW4A4Linear
 from .linear import SVDQW8A8Linear
 from .linear import SVDQW4A8Linear
+from .linear import SVDQW6A6Linear
 from .linear import SVDQWNA4Linear
 from .linear import SVDQW1A4Linear
 from .linear import SVDQW2A4Linear
@@ -61,6 +62,7 @@ from .passes import register_pass
 from .quantizer import CalibrationInputs
 from .quantizer import compute_smooth_scale
 from .wNa8 import _quantize_svdq_w8a8
+from .w6a6 import _quantize_svdq_w6a6
 from .wNa8 import _quantize_svdq_w4a8
 from .wNa4 import _quantize_svdq_wNa4
 from .wNaN import quantize_svdq_wNaN
@@ -94,6 +96,7 @@ __all__ = [
   "load_svdq",
   "SVDQW8A8Linear",
   "SVDQW4A8Linear",
+  "SVDQW6A6Linear",
   "standardize_calibration_activations",
   "validate_linear_geometry",
 ]

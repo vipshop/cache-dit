@@ -41,8 +41,8 @@ def _normalize_svdq_precision(precision: str) -> str:
   if not isinstance(precision, str):
     raise TypeError(f"precision must be a str, got {type(precision)}.")
   normalized = precision.lower()
-  if normalized not in {"int4", "nvfp4", "fp8", "w4a8", "w1a4", "w2a4", "w3a4"}:
-    raise ValueError("precision must be 'int4', 'nvfp4', 'fp8', 'w4a8', "
+  if normalized not in {"int4", "nvfp4", "fp8", "w4a8", "w6a6", "fp6", "w1a4", "w2a4", "w3a4"}:
+    raise ValueError("precision must be 'int4', 'nvfp4', 'fp8', 'w4a8', 'w6a6', 'fp6', "
                      f"'w1a4', 'w2a4' or 'w3a4', got {precision!r}.")
   return normalized
 
@@ -54,6 +54,9 @@ def _resolve_svdq_group_size(precision: str) -> int:
   if normalized in ("fp8", "w4a8"):
     # FP8-activation SVDQ formats keep one scale per output channel, not group scales.
     return 1
+  if normalized in ("w6a6", "fp6"):
+    # MXFP6 keeps one UE8M0 factor per 32-element block on both sides.
+    return 32
   if normalized in ("w1a4", "w2a4", "w3a4"):
     return 16
   return 64
@@ -114,7 +117,7 @@ def validate_linear_geometry(
       raise ValueError(f"The SVDQ-{precision.upper()} runtime requires rank "
                        f"{allowed_ranks}, got {rank}.")
     return
-  if precision in ("fp8", "w4a8"):
+  if precision in ("fp8", "w4a8", "w6a6", "fp6"):
     if rank not in (0, 32, 64, 128):
       raise ValueError(f"The SVDQ-{precision.upper()} runtime requires rank 0, 32, 64 or 128, "
                        f"got {rank}.")

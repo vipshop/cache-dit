@@ -171,6 +171,9 @@ def quantize_svdq_wNaN(module: nn.Module, quantize_config) -> nn.Module:
   elif precision in ("fp8", "w8a8", "w4a8"):
     from .wNa8 import _get_svdq_wNa8_quantizer
     quantize_module = _get_svdq_wNa8_quantizer(precision)
+  elif precision in ("w6a6", "fp6"):
+    from .w6a6 import _get_svdq_w6a6_quantizer
+    quantize_module = _get_svdq_w6a6_quantizer(precision)
   else:
     raise ValueError(f"quantize_svdq_wNaN does not accept {quantize_config.quant_type!r}.")
 
