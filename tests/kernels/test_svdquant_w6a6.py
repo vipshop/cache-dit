@@ -11,6 +11,8 @@ from cache_dit.kernels import svdq_quantize_w6a6
 from cache_dit.quantization.svdquant.w6a6 import SVDQW6A6Linear
 from cache_dit.quantization.svdquant.w6a6 import _e2m3_magnitudes
 from cache_dit.quantization.svdquant.w6a6 import _quantize_svdq_w6a6
+from cache_dit.quantization.svdquant.w6a6 import block_sf
+from cache_dit.quantization.svdquant.w6a6 import deblock_sf
 from cache_dit.quantization.svdquant.w6a6 import dequantize_e2m3
 from cache_dit.quantization.svdquant.w6a6 import pack_e2m3
 from cache_dit.quantization.svdquant.w6a6 import quantize_e2m3
@@ -67,8 +69,8 @@ def test_quantize_residual_fp6_error_bounded_by_one_code():
   packed, wsf = quantize_residual_fp6(residual)
   assert packed.shape == (128, 192) and wsf.shape == (128, 8)
   restored = dequantize_e2m3(packed, wsf)
-  assert torch.all(restored.abs().reshape(128, 8, 32).amax(dim=-1) <= 7.5 * ue8m0_scales(wsf) +
-                   1e-5)
+  assert torch.all(restored.abs().reshape(128, 8, 32).amax(
+    dim=-1) <= 7.5 * ue8m0_scales(deblock_sf(wsf)) + 1e-5)
   # The block scale is chosen so that a full-range block spans most of the code book.
   rel = (restored - residual).norm() / residual.norm()
   assert rel < 0.06
@@ -82,8 +84,10 @@ def test_w6a6_gemm_matches_dequantized_reference(m, n, k, rank):
   qb_codes = torch.randint(0, 64, (n, k), device="cuda", dtype=torch.uint8, generator=generator)
   qa = pack_e2m3(qa_codes)
   qb = pack_e2m3(qb_codes)
-  asf = torch.randint(118, 128, (m, k // 32), device="cuda", dtype=torch.uint8, generator=generator)
-  wsf = torch.randint(118, 128, (n, k // 32), device="cuda", dtype=torch.uint8, generator=generator)
+  asf = block_sf(
+    torch.randint(118, 128, (m, k // 32), device="cuda", dtype=torch.uint8, generator=generator))
+  wsf = block_sf(
+    torch.randint(118, 128, (n, k // 32), device="cuda", dtype=torch.uint8, generator=generator))
   ascales = torch.rand(m, device="cuda", generator=generator) + 0.25
   wscales = torch.rand(n, device="cuda", generator=generator) + 0.25
   bias = torch.randn(n, device="cuda", dtype=torch.bfloat16, generator=generator)
@@ -135,7 +139,7 @@ def test_w6a6_producer_matches_torch_reference(rank):
   smoothed = x.float() / smooth.float()
   blocks = smoothed.reshape(m, k // 32, 32)
   codes = ue8m0_codes(blocks.abs().amax(dim=-1))
-  ref_asf = codes
+  ref_asf = block_sf(codes)
   assert torch.equal(asf[:m], ref_asf)
   ref_qact = pack_e2m3(quantize_e2m3(blocks / ue8m0_scales(codes).unsqueeze(-1)).flatten(1))
   # `quantize_e2m3` reproduces the device conversion bit for bit except at ties inside the denormal

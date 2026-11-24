@@ -26,11 +26,159 @@
 
 #include "common.h"
 #include "runtime.h"
-#include "sf_partition.cuh"
 
 namespace svdq::cute_kernels {
 
 using namespace cute;
+
+// Tile-blocked UE8M0 storage: [row/128][K-tile of 128 elements][row%128][group], 512 B per block.
+//
+// One 32-wide scale group is one byte, so one BK=128 tile owns four bytes per row. Blocking them by
+// CTA tile is what makes the stage copy coalesced: a whole tile's scales are 512 contiguous bytes,
+// whereas a plain row-major [rows, K/32] layout scatters them one byte per row across 128 cache
+// lines (the measured L1TEX bottleneck of the first W6A6 kernel).
+constexpr int kTileBlockedSfBytes = 512;
+
+/**
+ * Compute the packed offset of one UE8M0 scale byte.
+ *
+ * :param row: Logical output row (A) or column (B) of the scale.
+ * :param group: Logical K group, one per 32 elements.
+ * :param nKtile: Number of 128-element K tiles in the whole problem.
+ * :return: Byte offset inside the packed scale buffer.
+ */
+CUTE_HOST_DEVICE int tile_blocked_sf_offset(int row, int group, int nKtile) {
+  return (row / 128) * (nKtile * kTileBlockedSfBytes) + (group / 4) * kTileBlockedSfBytes +
+         (row % 128) * 4 + (group % 4);
+}
+
+namespace sf_partition {
+
+// thrfrg_sfa = "thread-fragment view for SFA". It answers: if the activation SF tensor is viewed
+// through this TiledMMA, which logical (M,K) coordinates belong to each thread and each value?
+// The function only composes layouts; it neither allocates registers nor loads any scale.
+//   logical_divide: split the full SF tensor at the TiledMMA's M/K permutation boundaries.
+//   zipped_divide:  separate one MMA atom from the remaining M/K atom repetitions.
+//   compose(SFALayout): apply the hardware atom's special (thread,value)->(M,K) map.
+//   final zipped_divide: expose a hierarchical (thread/value, remaining M/K tiles) view.
+// partition_fragment_sfa later uses this view to select one physical thread's register fragment.
+template <class SFATensor, class Atom, class TiledThr, class TiledPerm>
+CUTE_HOST_DEVICE constexpr auto thrfrg_sfa(SFATensor &&sfatensor,
+                                           TiledMMA<Atom, TiledThr, TiledPerm> &mma) {
+  CUTE_STATIC_ASSERT_V(rank(sfatensor) >= Int<2>{});
+  using AtomShape_MNK = typename Atom::Shape_MNK;
+  using AtomLayoutSFA_TV = typename Atom::Traits::SFALayout;
+  auto permutation_mnk = TiledPerm{};
+  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
+  auto t_tile = make_tile(get<0>(permutation_mnk), get<2>(permutation_mnk));
+  auto t_tensor = logical_divide(sfatensor, t_tile);
+  auto a_tile =
+    make_tile(make_layout(size<0>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tensor = zipped_divide(t_tensor, a_tile);
+  auto tv_tensor = a_tensor.compose(AtomLayoutSFA_TV{}, _);
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<1>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
+  return zipped_divide(tv_tensor, thr_tile);
+}
+
+// B-side counterpart of thrfrg_sfa. The structure is the same, but the logical coordinates are
+// (N,K), the atom tile uses size<1>(AtomShape_MNK), and thread tiling uses the N/K modes of
+// thr_layout_vmnk. SFBLayout is not interchangeable with SFALayout: a block-scaled instruction owns
+// activation and weight scales in different lane patterns, so sharing the A helper would assign
+// weight scales to the wrong output columns.
+template <class SFBTensor, class Atom, class TiledThr, class TiledPerm>
+CUTE_HOST_DEVICE constexpr auto thrfrg_sfb(SFBTensor &&sfbtensor,
+                                           TiledMMA<Atom, TiledThr, TiledPerm> &mma) {
+  CUTE_STATIC_ASSERT_V(rank(sfbtensor) >= Int<2>{});
+  using AtomShape_MNK = typename Atom::Shape_MNK;
+  using AtomLayoutSFB_TV = typename Atom::Traits::SFBLayout;
+  auto permutation_mnk = TiledPerm{};
+  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
+  auto t_tile = make_tile(get<1>(permutation_mnk), get<2>(permutation_mnk));
+  auto t_tensor = logical_divide(sfbtensor, t_tile);
+  auto a_tile =
+    make_tile(make_layout(size<1>(AtomShape_MNK{})), make_layout(size<2>(AtomShape_MNK{})));
+  auto a_tensor = zipped_divide(t_tensor, a_tile);
+  auto tv_tensor = a_tensor.compose(AtomLayoutSFB_TV{}, _);
+  auto thr_tile = make_tile(
+    _, make_tile(make_layout(size<2>(thr_layout_vmnk)), make_layout(size<3>(thr_layout_vmnk))));
+  return zipped_divide(tv_tensor, thr_tile);
+}
+
+// Materialize this thread's SFA register fragment from the abstract thrfrg view.
+// thread_mma.thr_vmnk_ is this lane's position in the TiledMMA. For A we keep its V/M/K position
+// and drop N: activation scales do not change when the same A row is reused across output columns.
+// thr_tensor still points at the original SF storage. Indexing it with thr_vmk selects the source
+// values; make_fragment_like then allocates the register fragment with the atom-required layout.
+// The actual gmem/smem read happens later through a TiledCopy, not inside this function.
+template <class SFATensor, class ThrMma>
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfa(SFATensor &&sfatensor, ThrMma &thread_mma) {
+  using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
+  auto thr_tensor = make_tensor(static_cast<SFATensor &&>(sfatensor).data(),
+                                thrfrg_sfa(sfatensor.layout(), thread_mma));
+  auto thr_vmnk = thread_mma.thr_vmnk_;
+  auto thr_vmk = make_coord(get<0>(thr_vmnk), make_coord(get<1>(thr_vmnk), get<3>(thr_vmnk)));
+  auto part = thr_tensor(thr_vmk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
+  return make_fragment_like<ValTypeSF>(part);
+}
+
+// SFB fragment construction mirrors partition_fragment_sfa, except thr_vnk keeps V/N/K and drops
+// M. Weight scales depend on output column and K group, but are unchanged when the same B tile is
+// reused across output rows. The returned fragment is paired with tCrB by make_zip_tensor in the
+// mainloop; no scale values are fetched until the explicit copy is issued.
+template <class SFBTensor, class ThrMma>
+CUTE_HOST_DEVICE constexpr auto partition_fragment_sfb(SFBTensor &&sfbtensor, ThrMma &thread_mma) {
+  using ValTypeSF = typename ThrMma::Atom::Traits::ValTypeSF;
+  auto thr_tensor = make_tensor(static_cast<SFBTensor &&>(sfbtensor).data(),
+                                thrfrg_sfb(sfbtensor.layout(), thread_mma));
+  auto thr_vmnk = thread_mma.thr_vmnk_;
+  auto thr_vnk = make_coord(get<0>(thr_vmnk), make_coord(get<2>(thr_vmnk), get<3>(thr_vmnk)));
+  auto part = thr_tensor(thr_vnk, make_coord(_, repeat<rank<1, 1>(thr_tensor)>(_)));
+  return make_fragment_like<ValTypeSF>(part);
+}
+
+// layout_sfa_tv builds the TV (Thread-Value) layout used to construct an SFA TiledCopy.
+// It is a compile-time answer to "lane L's value V must read which logical (M,K) scale?".
+// It is not the gmem packed layout, does not allocate a fragment, and performs no copy itself.
+//   ref_A: an identity logical (M,K) reference covering the whole TiledMMA.
+//   atile: adds atom repetition/broadcast information; the zero-stride N mode means the same SFA
+//          values are reused as the TiledMMA moves across output columns.
+//   thrfrg_sfa(ref_A,mma): applies the block-scaled atom's SFA mapping to that reference.
+//   right_inverse(thr_layout_vmnk): converts hierarchical VMNK coordinates back to a linear lane.
+// The two compose calls chain those maps into one TV layout. make_tiled_copy_impl then combines
+// it with UniversalCopy<ValTypeSF> to generate the instructions that fill tCrSFA_view.
+template <class TiledMma>
+CUTE_HOST_DEVICE constexpr auto layout_sfa_tv(TiledMma &mma) {
+  auto tile_shape_mnk = tile_shape(mma);
+  auto ref_A = make_layout(make_shape(size<0>(tile_shape_mnk), size<2>(tile_shape_mnk)));
+  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
+  auto atile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<1>{}, Int<0>{})),
+                 _));
+  auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
+  return thrfrg_sfa(ref_A, mma).compose(atile, _).compose(thridx_2_thrid, _);
+}
+
+// layout_sfb_tv is the B-side TV copy plan: (lane,value)->logical (N,K). ref_B covers output
+// columns rather than rows, and btile's zero stride is on the M mode because a weight scale is
+// reused when the same B tile advances across output rows. The returned layout drives the SFB
+// TiledCopy that loads tCrSFB_view. Keeping this separate from layout_sfa_tv is what preserves the
+// different activation/weight scale ownership rules of the block-scaled MMA atom.
+template <class TiledMma>
+CUTE_HOST_DEVICE constexpr auto layout_sfb_tv(TiledMma &mma) {
+  auto tile_shape_mnk = tile_shape(mma);
+  auto ref_B = make_layout(make_shape(size<1>(tile_shape_mnk), size<2>(tile_shape_mnk)));
+  auto thr_layout_vmnk = mma.get_thr_layout_vmnk();
+  auto btile = make_tile(
+    _, make_tile(make_layout(make_shape(size<1>(thr_layout_vmnk), size<2>(thr_layout_vmnk)),
+                             make_stride(Int<0>{}, Int<1>{})),
+                 _));
+  auto thridx_2_thrid = right_inverse(thr_layout_vmnk);
+  return thrfrg_sfb(ref_B, mma).compose(btile, _).compose(thridx_2_thrid, _);
+}
+
+}  // namespace sf_partition
 
 // Reinterpret the per-thread accumulator fragment as (row, column) coordinates. The atom's C layout
 // interleaves two rows per register pair; this regrouping exposes row and column as separate modes
@@ -136,6 +284,16 @@ struct W6A6CuteTraits {
   using SmemAtomO = GMMA::Layout_K_SW128_Atom<ElementO>;
   using SmemLayoutO = decltype(tile_to_shape(SmemAtomO{}, Shape<Int<kBM>, Int<kBN>>{}));
 
+  // One 512 B tile-blocked scale tile per pipeline stage per side. The layout keeps the logical
+  // (row, (32, group)) coordinates the SF partition helpers expect: a row's four scale bytes are
+  // contiguous, so a consumer's whole-tile copy vectorizes into LDS.32 instead of single bytes.
+  using SmemLayoutSFA = decltype(make_layout(
+    make_shape(Int<kBM>{}, make_shape(Int<kSfVec>{}, Int<kSfPerTile>{}), Int<kStages>{}),
+    make_stride(Int<kSfPerTile>{}, make_stride(_0{}, _1{}), Int<kTileBlockedSfBytes>{})));
+  using SmemLayoutSFB = decltype(make_layout(
+    make_shape(Int<kBN>{}, make_shape(Int<kSfVec>{}, Int<kSfPerTile>{}), Int<kStages>{}),
+    make_stride(Int<kSfPerTile>{}, make_stride(_0{}, _1{}), Int<kTileBlockedSfBytes>{})));
+
   static constexpr int kAStageBytes = kBM * kBK;
   static constexpr int kBStageBytes = kBN * kBK;
   static constexpr int kDStageBytes = kBM * kRankTile * static_cast<int>(sizeof(ElementLora));
@@ -178,28 +336,6 @@ struct W6A6CuteCacheHash {
     return static_cast<size_t>(hash);
   }
 };
-
-/**
- * Logical scale-factor view of one packed UE8M0 row-major tile.
- *
- * The MMA's SF layouts are indexed by logical (M/N, K) coordinates with a zero stride across each
- * 32-element group, so the packed [rows, K/32] tensor is presented as a (rows, (32, K/32)) tile. No
- * data is replicated: only the address arithmetic of the broadcast is expressed in the layout.
- *
- * :param ptr: First byte of the tile (already offset to the CTA row/column and K tile).
- * :param rows: Tile height in output rows/columns (kBM or kBN).
- * :param row_stride: Distance between two consecutive packed scale rows, in bytes.
- * :return: CuTe tensor view usable by sf_partition::partition_fragment_sf* and the SF TiledCopy.
- */
-template <int kRows, int kGroups>
-CUTE_HOST_DEVICE auto make_sf_tile_view(typename W6A6CuteTraits<>::ElementSF const *ptr,
-                                        int row_stride) {
-  return make_tensor(
-    make_gmem_ptr(ptr),
-    make_layout(
-      make_shape(Int<kRows>{}, make_shape(Int<W6A6CuteTraits<>::kSfVec>{}, Int<kGroups>{})),
-      make_stride(row_stride, make_stride(_0{}, _1{}))));
-}
 
 template <class Traits, class TmaParams>
 class W6A6GemmKernel {
@@ -256,62 +392,49 @@ class W6A6GemmKernel {
    * The micro-scales enter through make_zip_tensor, which is why this helper never multiplies any
    * scale into tCrC: the MX instruction applies sfa*sfb per 32-element group itself.
    *
-   * The scale rows are double buffered: while tile kt runs its MMAs, the two byte-wide scale loads
-   * of tile kt+1 are already in flight. Loading them on the critical path instead costs about 15%
-   * of the tensor-pipe utilization, because a CTA issues only 24 of these loads per K extent and
-   * each one would otherwise stall the first MMA of its tile.
+   * Scales come from the pipeline's shared-memory stage rather than from gmem. One CTA tile owns
+   * 512 B per side, but every consumer warp needs (a subset of) them, so fetching through gmem made
+   * each scale byte an individual 32-sector transaction; reading the staged tile is a vectorized
+   * LDS and removes that traffic entirely.
    *
    * @param full/empty Shared barrier rings; warp leaders release the stage after the last MMA.
    * @param tid        Consumer thread index.
    * @param nKt        Number of main K tiles.
-   * @param sfa/sfb    Packed UE8M0 rows for the whole problem.
-   * @param m0/n0      Global row/column offsets of this CTA tile.
    * @param tiled_mma  Block-scaled tiled MMA descriptor.
-   * @param copy_sfa/copy_sfb SF TiledCopies built from sf_partition::layout_sf*_tv.
-   * @param tCrSFA0/tCrSFA1 Double-buffered activation scale fragments.
-   * @param tCrSFB0/tCrSFB1 Double-buffered weight scale fragments.
+   * @param tCsSFA/tCsSFB Partitioned smem scale views of the whole pipeline.
+   * @param tCrSFA/tCrSFB Atom-shaped scale fragments consumed by the MMA.
+   * @param tCrSFA_view/tCrSFB_view Retiled destinations of the same fragments for the copies.
    * @return           void; tCrC holds the scaled product on return.
    */
-  template <class TiledMma, class CopyA, class CopyB, class CopySFA, class CopySFB, class SrcA,
-            class SrcB, class DstA, class DstB, class FragA, class FragB, class FragSFA,
-            class FragSFB, class Acc>
+  template <class TiledMma, class CopyA, class CopyB, class SrcA, class SrcB, class SrcSFA,
+            class SrcSFB, class DstA, class DstB, class DstSFA, class DstSFB, class FragA,
+            class FragB, class FragSFA, class FragSFB, class Acc>
   __device__ __forceinline__ static void gemm_fp6_main(
-    uint64_t *full, uint64_t *empty, int tid, int nKt, uint8_t const *sfa, uint8_t const *sfb,
-    int nSfK, int m0, int n0, TiledMma const &tiled_mma, CopyA const &s2r_copy_a,
-    CopyB const &s2r_copy_b, CopySFA const &copy_sfa, CopySFB const &copy_sfb, SrcA const &tCsA,
-    SrcB const &tCsB, DstA &tCrA_view, DstB &tCrB_view, FragA &tCrA, FragB &tCrB, FragSFA &tCrSFA0,
-    FragSFA &tCrSFA1, FragSFB &tCrSFB0, FragSFB &tCrSFB1, Acc &tCrC) {
-    auto sfa_thr_copy = copy_sfa.get_thread_slice(tid);
-    auto sfb_thr_copy = copy_sfb.get_thread_slice(tid);
-    auto sfa_view0 = sfa_thr_copy.retile_D(tCrSFA0);
-    auto sfa_view1 = sfa_thr_copy.retile_D(tCrSFA1);
-    auto sfb_view0 = sfb_thr_copy.retile_D(tCrSFB0);
-    auto sfb_view1 = sfb_thr_copy.retile_D(tCrSFB1);
-    // One SF load covers the whole BK tile: BK/32 bytes per thread per side.
-    auto load_sf = [&](int kt, int buf) {
-      auto gSFA = make_sf_tile_view<kBM, kSfPerTile>(
-        reinterpret_cast<typename Traits::ElementSF const *>(sfa + static_cast<int64_t>(m0) * nSfK +
-                                                             kt * kSfPerTile),
-        nSfK);
-      auto gSFB = make_sf_tile_view<kBN, kSfPerTile>(
-        reinterpret_cast<typename Traits::ElementSF const *>(sfb + static_cast<int64_t>(n0) * nSfK +
-                                                             kt * kSfPerTile),
-        nSfK);
+    uint64_t *full, uint64_t *empty, int tid, int nKt, TiledMma const &tiled_mma,
+    CopyA const &s2r_copy_a, CopyB const &s2r_copy_b, SrcA const &tCsA, SrcB const &tCsB,
+    SrcSFA const &tCsSFA, SrcSFB const &tCsSFB, DstA &tCrA_view, DstB &tCrB_view,
+    DstSFA &tCrSFA_view0, DstSFA &tCrSFA_view1, DstSFB &tCrSFB_view0, DstSFB &tCrSFB_view1,
+    FragA &tCrA, FragB &tCrB, FragSFA &tCrSFA0, FragSFA &tCrSFA1, FragSFB &tCrSFB0,
+    FragSFB &tCrSFB1, Acc &tCrC) {
+    // The scale tiles are read-only in gmem, so tile kt+1 can be fetched while tile kt is still in
+    // its MMAs. Without this prefetch the first MMA of every tile waits on its own scale loads,
+    // which is what shows up as long_scoreboard in the profile.
+    auto prefetch = [&](int kt, int buf) {
       if (buf == 0) {
-        copy(copy_sfa, sfa_thr_copy.partition_S(gSFA), sfa_view0);
-        copy(copy_sfb, sfb_thr_copy.partition_S(gSFB), sfb_view0);
+        copy(make_tensor(tCsSFA.data() + kt * kTileBlockedSfBytes, tCsSFA.layout()), tCrSFA_view0);
+        copy(make_tensor(tCsSFB.data() + kt * kTileBlockedSfBytes, tCsSFB.layout()), tCrSFB_view0);
       } else {
-        copy(copy_sfa, sfa_thr_copy.partition_S(gSFA), sfa_view1);
-        copy(copy_sfb, sfb_thr_copy.partition_S(gSFB), sfb_view1);
+        copy(make_tensor(tCsSFA.data() + kt * kTileBlockedSfBytes, tCsSFA.layout()), tCrSFA_view1);
+        copy(make_tensor(tCsSFB.data() + kt * kTileBlockedSfBytes, tCsSFB.layout()), tCrSFB_view1);
       }
     };
-    load_sf(0, 0);
+    prefetch(0, 0);
 #pragma unroll 1
     for (int kt = 0; kt < nKt; ++kt) {
       const int stage = kt % kStages;
       const int phase = (kt / kStages) & 1;
       TmaBarrier::wait(&full[stage], phase);
-      if (kt + 1 < nKt) load_sf(kt + 1, (kt + 1) & 1);
+      if (kt + 1 < nKt) prefetch(kt + 1, (kt + 1) & 1);
       // The buffer choice must stay a compile-time constant: binding a reference to a
       // runtime-selected fragment would push both scale buffers into local memory.
       auto run_tile = [&](auto &fSFA, auto &fSFB) {
@@ -532,7 +655,6 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   const int m0 = blockIdx.y * kBM;
   const int n0 = blockIdx.x * kBN;
   const int nKt = K / kBK;
-  const int nSfK = K / Traits::kSfVec;
   const int nRt = rank / Traits::kRankTile;
 
   auto mA = tma.a.get_tma_tensor(make_shape(M, K));
@@ -581,24 +703,33 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   auto tCrA_view = s2r_thr_a.retile_D(tCrA);
   auto tCrB_view = s2r_thr_b.retile_D(tCrB);
 
-  // SF fragments are partitioned from a reference tile whose only data is the packed scale row; the
-  // fragment shapes come from the atom's SF layouts, and the values are filled by the SF copies.
-  auto sf_ref_a = make_sf_tile_view<kBM, kSfPerTile>(
-    reinterpret_cast<ElementSF const *>(sfa + static_cast<int64_t>(m0) * nSfK), nSfK);
-  auto sf_ref_b = make_sf_tile_view<kBN, kSfPerTile>(
-    reinterpret_cast<ElementSF const *>(sfb + static_cast<int64_t>(n0) * nSfK), nSfK);
-  auto tCrSFA = sf_partition::partition_fragment_sfa(sf_ref_a, thr_mma);
-  auto tCrSFB = sf_partition::partition_fragment_sfb(sf_ref_b, thr_mma);
-  // Second scale buffer: same fragment geometry, separate registers, so tile kt+1 can be fetched
-  // while tile kt is still issuing MMAs.
-  auto tCrSFA_alt = tCrSFA;
-  auto tCrSFB_alt = tCrSFB;
+  // Tile-blocked scale tiles live in gmem. One CTA tile owns 512 contiguous bytes per side, so the
+  // whole-tile copy below reads each row's four scales with one vectorized LDS/LDG.32 instead of
+  // issuing a separate single-byte load per group across 128 cache lines.
+  auto gSFA = make_tensor(make_gmem_ptr(reinterpret_cast<ElementSF const *>(
+                            sfa + static_cast<int64_t>(blockIdx.y) * nKt * kTileBlockedSfBytes)),
+                          typename Traits::SmemLayoutSFA{}(_, _, Int<0>{}));
+  auto gSFB = make_tensor(make_gmem_ptr(reinterpret_cast<ElementSF const *>(
+                            sfb + static_cast<int64_t>(blockIdx.x) * nKt * kTileBlockedSfBytes)),
+                          typename Traits::SmemLayoutSFB{}(_, _, Int<0>{}));
+  auto tCrSFA = sf_partition::partition_fragment_sfa(gSFA, thr_mma);
+  auto tCrSFB = sf_partition::partition_fragment_sfb(gSFB, thr_mma);
   auto copy_sfa = make_tiled_copy_impl(
     typename Traits::SmemCopyAtomSF{}, sf_partition::layout_sfa_tv(tiled_mma),
     make_shape(size<0>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
   auto copy_sfb = make_tiled_copy_impl(
     typename Traits::SmemCopyAtomSF{}, sf_partition::layout_sfb_tv(tiled_mma),
     make_shape(size<1>(tile_shape(tiled_mma)), size<2>(tile_shape(tiled_mma))));
+  auto sfa_thr_copy = copy_sfa.get_thread_slice(tid);
+  auto sfb_thr_copy = copy_sfb.get_thread_slice(tid);
+  auto tCsSFA = sfa_thr_copy.partition_S(gSFA);
+  auto tCsSFB = sfb_thr_copy.partition_S(gSFB);
+  auto tCrSFA_view = sfa_thr_copy.retile_D(tCrSFA);
+  auto tCrSFB_view = sfb_thr_copy.retile_D(tCrSFB);
+  auto tCrSFA_alt = tCrSFA;
+  auto tCrSFB_alt = tCrSFB;
+  auto tCrSFA_view_alt = sfa_thr_copy.retile_D(tCrSFA_alt);
+  auto tCrSFB_view_alt = sfb_thr_copy.retile_D(tCrSFB_alt);
 
   auto tCrC = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
   clear(tCrC);
@@ -635,9 +766,9 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     if (nPrefetch > 0) cute::cp_async_fence();
   }
 
-  Gemm::gemm_fp6_main(full, empty, tid, nKt, sfa, sfb, nSfK, m0, n0, tiled_mma, s2r_copy_a,
-                      s2r_copy_b, copy_sfa, copy_sfb, tCsA, tCsB, tCrA_view, tCrB_view, tCrA, tCrB,
-                      tCrSFA, tCrSFA_alt, tCrSFB, tCrSFB_alt, tCrC);
+  Gemm::gemm_fp6_main(full, empty, tid, nKt, tiled_mma, s2r_copy_a, s2r_copy_b, tCsA, tCsB, tCsSFA,
+                      tCsSFB, tCrA_view, tCrB_view, tCrSFA_view, tCrSFA_view_alt, tCrSFB_view,
+                      tCrSFB_view_alt, tCrA, tCrB, tCrSFA, tCrSFA_alt, tCrSFB, tCrSFB_alt, tCrC);
   Gemm::apply_scales(ascales, wscales, bias, m0, n0, tScC_rc, tCrC);
   if (nPrefetch > 0) {
     cute::cp_async_wait<0>();

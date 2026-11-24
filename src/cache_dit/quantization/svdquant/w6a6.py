@@ -121,12 +121,33 @@ def ue8m0_scales(codes: torch.Tensor) -> torch.Tensor:
   return torch.ldexp(torch.ones_like(codes, dtype=torch.float32), codes.to(torch.int32) - 127)
 
 
+def block_sf(wsf: torch.Tensor) -> torch.Tensor:
+  """Store scale codes in the tile-blocked layout the GEMM's producer expects.
+
+  The packed form is ``[row/128][K-tile][row%128][group]`` (512 B per tile), so one CTA tile's scales
+  are contiguous in memory instead of one byte per row across 128 cache lines.
+
+  :param wsf: ``uint8 [N, K/32]`` scale codes in row-major order.
+  :returns: ``uint8`` tensor with the same shape holding tile-blocked codes.
+  """
+  n, k32 = wsf.shape
+  if n % 128 or k32 % 4:
+    raise ValueError("tile-blocked scale layout requires N % 128 == 0 and K % 128 == 0.")
+  return wsf.view(n // 128, 128, k32 // 4, 4).permute(0, 2, 1, 3).contiguous().view(n, k32)
+
+
+def deblock_sf(wsf: torch.Tensor) -> torch.Tensor:
+  """Invert `block_sf`, returning row-major ``[N, K/32]`` scale codes for reference math."""
+  n, k32 = wsf.shape
+  return wsf.view(n // 128, k32 // 4, 128, 4).permute(0, 2, 1, 3).contiguous().view(n, k32)
+
+
 def dequantize_e2m3(packed: torch.Tensor, wsf: torch.Tensor) -> torch.Tensor:
-  """Expand packed E2M3 codes to FP32 and apply the per-32 UE8M0 micro-scales."""
+  """Expand packed E2M3 codes to FP32 and apply the tile-blocked UE8M0 micro-scales."""
   codes = unpack_e2m3(packed).long()
   table = _e2m3_magnitudes(packed.device)
   values = table[codes & 0x1F] * torch.where(codes >= 0x20, -1.0, 1.0)
-  scale = ue8m0_scales(wsf).repeat_interleave(E2M3_SF_VEC, dim=-1)
+  scale = ue8m0_scales(deblock_sf(wsf)).repeat_interleave(E2M3_SF_VEC, dim=-1)
   return values.float() * scale[..., :values.shape[-1]]
 
 
@@ -134,7 +155,7 @@ def quantize_residual_fp6(residual: torch.Tensor) -> tuple[torch.Tensor, torch.T
   """Quantize and pack a residual weight matrix with 32-wide UE8M0 block scales.
 
   :param residual: FP32 residual ``[N,K]`` after the low-rank split; K must be a multiple of 128.
-  :returns: ``(packed[N,K*3/4] uint8, wsf[N,K/32] uint8)``.
+  :returns: ``(packed[N,K*3/4] uint8, wsf[N,K/32] uint8)`` where the scales are tile-blocked.
   """
   residual = residual.float()
   rows, channels = residual.shape
@@ -150,7 +171,7 @@ def quantize_residual_fp6(residual: torch.Tensor) -> tuple[torch.Tensor, torch.T
     scale = ue8m0_scales(codes).unsqueeze(-1)
     qweight[begin:begin + 1024] = pack_e2m3(quantize_e2m3(blocks / scale).flatten(1))
     wsf[begin:begin + 1024] = codes
-  return qweight, wsf
+  return qweight, block_sf(wsf)
 
 
 class SVDQW6A6Linear(nn.Module):

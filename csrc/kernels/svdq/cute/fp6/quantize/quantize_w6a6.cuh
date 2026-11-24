@@ -12,6 +12,7 @@
 #include <cutlass/numeric_types.h>
 
 #include "common.h"
+#include "../gemm/gemm_w6a6.cuh"
 
 namespace svdq::cute_kernels {
 
@@ -28,11 +29,12 @@ using namespace cute;
 // come from the same shared-memory tile. D accumulates in FP32 across the whole K loop and is
 // rounded to BF16 exactly once. There is no standalone down-projection GEMM anywhere.
 //
-// Two kernels share one entry point. The first computes the 32-wide block amax with one CTA per
-// row, the second lets one CTA own 128 rows and a slice of the K extent: it streams 64-wide K
-// tiles, quantizes and packs them, and accumulates the BF16 MMA for D. M must be a multiple of 128
-// and K a multiple of 64. The packed destination keeps four codes per three bytes, so one 8-element
-// chunk of a row is exactly six bytes and never straddles a byte boundary.
+// One CTA owns 128 rows and a slice of the K extent: it streams 64-wide K tiles, computes each
+// 32-wide block's amax with a two-shuffle warp reduction (four consecutive lanes own one block),
+// writes the UE8M0 scale in the tile-blocked layout and packs the codes, all in the same pass, and
+// accumulates the BF16 MMA for D. M must be a multiple of 128 and K a multiple of 128. The packed
+// destination keeps four codes per three bytes, so one 8-element chunk of a row is exactly six
+// bytes and never straddles a byte boundary.
 
 constexpr int kW6A6QuantThreads = 256;
 constexpr int kW6A6QuantBM = 128;
@@ -133,46 +135,14 @@ struct W6A6QuantTraits {
   using SmemCopyAtom = Copy_Atom<SM75_U32x4_LDSM_N, Element>;
 };
 
-// Per-block amax and UE8M0 scale, one CTA per row and eight warps splitting K. Each thread reads
-// eight consecutive channels, so a 32-wide MX group is owned by four consecutive lanes and the
-// group max is a two-step butterfly XOR shuffle. Every thread iterates the same trip count so the
-// shuffles stay warp-synchronous even when K is not a multiple of the CTA stride.
-static __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
-  quantize_w6a6_scales_kernel(cutlass::bfloat16_t const *__restrict__ input,
-                              cutlass::bfloat16_t const *__restrict__ smooth,
-                              uint8_t *__restrict__ asf, int K, int nSfK) {
-  const int tid = threadIdx.x;
-  const auto *row_ptr = input + static_cast<int64_t>(blockIdx.x) * K;
-  const int iterations = (K + kW6A6QuantThreads * 8 - 1) / (kW6A6QuantThreads * 8);
-  for (int i = 0; i < iterations; ++i) {
-    const int col = i * kW6A6QuantThreads * 8 + tid * 8;
-    float amax = 0.0f;
-    if (col < K) {
-      W6A6Vec8BF16 x, s;
-      x.raw = *reinterpret_cast<uint4 const *>(row_ptr + col);
-      s.raw = *reinterpret_cast<uint4 const *>(smooth + col);
-#pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        const float value = static_cast<float>(x.elem[j]) / static_cast<float>(s.elem[j]);
-        amax = fmaxf(amax, fabsf(value));
-      }
-    }
-    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 1));
-    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 2));
-    if ((tid & 3) == 0 && col < K) {
-      asf[static_cast<int64_t>(blockIdx.x) * nSfK + col / kW6A6SfVec] = w6a6_sf_code(amax);
-    }
-  }
-}
-
 template <int kRank>
 __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
   quantize_w6a6_kernel(cutlass::bfloat16_t const *__restrict__ input,
                        cutlass::bfloat16_t const *__restrict__ smooth,
                        cutlass::bfloat16_t const *__restrict__ lora_down,
-                       uint8_t *__restrict__ output, uint8_t const *__restrict__ asf,
+                       uint8_t *__restrict__ output, uint8_t *__restrict__ asf,
                        cutlass::bfloat16_t *__restrict__ lora_act, float *__restrict__ lora_scratch,
-                       int K, int nSfK, int tiles_per_split) {
+                       int K, int tiles_per_split) {
   using Traits = W6A6QuantTraits<kRank>;
   constexpr int kBM = Traits::kBM;
   constexpr int kBK = Traits::kBK;
@@ -191,7 +161,6 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
   auto sL = make_tensor(make_smem_ptr(l_bytes), typename Traits::SmemLayoutL{});
 
   // Row base of the packed scale rows; each chunk below indexes its own 32-wide group.
-  const int64_t sf_row_base = static_cast<int64_t>(m0) * nSfK;
   const int64_t out_row_bytes = static_cast<int64_t>(K) * 3 / 4;
 
   typename Traits::TiledMma mma;
@@ -292,14 +261,24 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
       W6A6Vec8BF16 x, s;
       x.raw = x_regs[buf][i];
       s.raw = *reinterpret_cast<uint4 const *>(smooth + k0 + col);
-      const uint8_t sf =
-        __ldg(asf + sf_row_base + static_cast<int64_t>(row) * nSfK + (k0 + col) / kW6A6SfVec);
-      const float inv_scale = w6a6_sf_inverse(sf);
       float values[8];
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         values[j] = static_cast<float>(x.elem[j]) / static_cast<float>(s.elem[j]);
       }
+      // One 32-wide scale group spans exactly four consecutive lanes of this warp, so the block
+      // amax is a two-shuffle reduction. That removes the separate amax pass over the activation
+      // (and its kernel launch) entirely: no per-token second-level scale exists to reduce for.
+      float amax = 0.0f;
+#pragma unroll
+      for (int j = 0; j < 8; ++j) amax = fmaxf(amax, fabsf(values[j]));
+      amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, 1));
+      amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, 2));
+      const uint8_t sf = w6a6_sf_code(amax);
+      if ((tid & 3) == 0) {
+        asf[tile_blocked_sf_offset(m0 + row, (k0 + col) / kW6A6SfVec, K / 128)] = sf;
+      }
+      const float inv_scale = w6a6_sf_inverse(sf);
       w6a6_store_e2m3x8(output + offset, values, inv_scale);
     }
     __syncthreads();
@@ -372,19 +351,15 @@ void launch_quantize_w6a6(void const *input, void const *smooth, void const *lor
   // when the dispatcher supplied the FP32 scratch that the finalize pass reduces.
   const int splits = kRank > 0 && lora_scratch == nullptr ? 1 : w6a6_quant_k_splits(M, K);
   float *scratch = splits > 1 ? lora_scratch : nullptr;
-  const int nSfK = K / kW6A6SfVec;
   const int nKt = K / kW6A6QuantBK;
   const int tiles_per_split = (nKt + splits - 1) / splits;
-  quantize_w6a6_scales_kernel<<<M, kW6A6QuantThreads, 0, stream>>>(
-    static_cast<cutlass::bfloat16_t const *>(input),
-    static_cast<cutlass::bfloat16_t const *>(smooth), static_cast<uint8_t *>(asf), K, nSfK);
   quantize_w6a6_kernel<kRank>
     <<<dim3(M / kW6A6QuantBM, splits), kW6A6QuantThreads, Traits::kSmemBytes, stream>>>(
       static_cast<cutlass::bfloat16_t const *>(input),
       static_cast<cutlass::bfloat16_t const *>(smooth),
       static_cast<cutlass::bfloat16_t const *>(lora_down), static_cast<uint8_t *>(output),
-      static_cast<uint8_t const *>(asf), static_cast<cutlass::bfloat16_t *>(lora_act), scratch, K,
-      nSfK, tiles_per_split);
+      static_cast<uint8_t *>(asf), static_cast<cutlass::bfloat16_t *>(lora_act), scratch, K,
+      tiles_per_split);
   if (kRank > 0 && splits > 1) {
     const int64_t count = static_cast<int64_t>(M) * kRank;
     const int blocks = static_cast<int>((count + kW6A6QuantThreads - 1) / kW6A6QuantThreads);
