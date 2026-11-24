@@ -29,10 +29,14 @@
 namespace svdq::cute_kernels {
 namespace {
 
-__global__ void expand_wna4_kernel(uint8_t const *__restrict__ lo, uint8_t const *__restrict__ hi,
-                                   uint8_t const *__restrict__ micro, uint8_t *__restrict__ out,
-                                   int rows, int K, int bits, int row_bytes_lo, int row_bytes_hi,
-                                   int row_bytes_micro, int inner_group) {
+// Reference path. Keep it for G=2 and non-32-aligned test shapes so the fast G=4 path cannot
+// silently change the packed bit order.
+__global__ void expand_wna4_reference_kernel(uint8_t const *__restrict__ lo,
+                                             uint8_t const *__restrict__ hi,
+                                             uint8_t const *__restrict__ micro,
+                                             uint8_t *__restrict__ out, int rows, int K, int bits,
+                                             int row_bytes_lo, int row_bytes_hi,
+                                             int row_bytes_micro, int inner_group) {
   const int groups_per_row = K / 8;
   const int group = blockIdx.x * blockDim.x + threadIdx.x;
   if (group >= rows * groups_per_row) return;
@@ -70,6 +74,155 @@ __global__ void expand_wna4_kernel(uint8_t const *__restrict__ lo, uint8_t const
     packed |= static_cast<uint32_t>(packed_a4_nibble(bits, code, inner)) << (4 * i);
   }
   *reinterpret_cast<uint32_t *>(out + static_cast<int64_t>(row) * (K / 2) + g * 4) = packed;
+}
+
+// NCU on the reference kernel: SM 85.9%, DRAM 12.6%, 35.6 instructions/thread, 39 regs, zero
+// spills. The kernel is instruction- and branch-bound, not HBM-bound. The fast path below
+// processes 32 K elements per thread, loads the packed codes as 32/64-bit words, writes one
+// aligned uint4, and replaces the per-weight code/exponent branches with a 4-weight shared LUT.
+// G=4 only: G=2 keeps the reference path, whose exact per-2 exponent order is already covered by
+// tests and is not on the production (default per-4) path.
+template <int kBits, bool kHasMicro>
+__global__ void __launch_bounds__(256)
+  expand_wna4_g4_kernel(uint8_t const *__restrict__ lo, uint8_t const *__restrict__ micro,
+                        uint8_t *__restrict__ out, int rows, int K, int row_bytes_lo,
+                        int row_bytes_micro) {
+  static_assert(kBits == 1 || kBits == 2, "W1/W2 only");
+  __shared__ uint16_t lut[64];
+
+  const int tid = threadIdx.x;
+  if (tid < 64) {
+    const int e = tid >> 4;
+    const int j = tid & 15;
+    uint16_t v = 0;
+    if constexpr (kBits == 1) {
+#pragma unroll
+      for (int i = 0; i < 4; ++i) {
+        const int nibble = packed_a4_nibble(1, (j >> i) & 1, kHasMicro ? e : 1);
+        v |= static_cast<uint16_t>(nibble) << (4 * i);
+      }
+    } else {
+      const int inner = kHasMicro ? e : 0;
+      v = static_cast<uint16_t>(packed_a4_nibble(2, j & 3, inner) |
+                                (packed_a4_nibble(2, (j >> 2) & 3, inner) << 4));
+    }
+    lut[tid] = v;
+  }
+  __syncthreads();
+
+  const int chunks_per_row = K / 32;
+  const int chunk = blockIdx.x * blockDim.x + tid;
+  if (chunk >= rows * chunks_per_row) return;
+  const int row = chunk / chunks_per_row;
+  const int seg = chunk - row * chunks_per_row;
+  const int k0 = seg * 32;
+  const uint8_t *lo_ptr = lo + static_cast<int64_t>(row) * row_bytes_lo + (k0 * kBits) / 8;
+  uint32_t raw0 = 0;
+  uint32_t raw1 = 0;
+  if constexpr (kBits == 1) {
+    raw0 = __ldg(reinterpret_cast<uint32_t const *>(lo_ptr));
+  } else {
+    const uint2 raw = *reinterpret_cast<uint2 const *>(lo_ptr);
+    raw0 = raw.x;
+    raw1 = raw.y;
+  }
+  uint16_t micro_bits = 0;
+  if constexpr (kHasMicro) {
+    micro_bits = __ldg(reinterpret_cast<uint16_t const *>(
+      micro + static_cast<int64_t>(row) * row_bytes_micro + k0 / 16));
+  }
+
+  uint32_t packed[4] = {0, 0, 0, 0};
+  if constexpr (kBits == 1) {
+#pragma unroll
+    for (int p = 0; p < 8; ++p) {
+      const int shift = 2 * (p & 3) + 8 * (p >> 2);
+      const int inner = kHasMicro ? ((micro_bits >> shift) & 3) : 1;
+      const uint16_t nibbles = lut[inner * 16 + ((raw0 >> (4 * p)) & 0xF)];
+      packed[p >> 1] |= static_cast<uint32_t>(nibbles) << (16 * (p & 1));
+    }
+  } else {
+#pragma unroll
+    for (int p = 0; p < 16; ++p) {
+      const int group = p >> 1;
+      const int shift = 2 * (group & 3) + 8 * (group >> 2);
+      const int inner = kHasMicro ? ((micro_bits >> shift) & 3) : 0;
+      const uint32_t nibble = p < 8 ? (raw0 >> (4 * p)) : (raw1 >> (4 * (p - 8)));
+      const uint16_t pair = lut[inner * 16 + (nibble & 0xF)];
+      packed[p >> 2] |= static_cast<uint32_t>(pair) << (8 * (p & 3));
+    }
+  }
+  *reinterpret_cast<uint4 *>(out + static_cast<int64_t>(row) * (K / 2) + k0 / 2) =
+    make_uint4(packed[0], packed[1], packed[2], packed[3]);
+}
+
+__global__ void __launch_bounds__(256)
+  expand_wna4_w3_kernel(uint8_t const *__restrict__ lo, uint8_t const *__restrict__ hi,
+                        uint8_t *__restrict__ out, int rows, int K, int row_bytes_lo,
+                        int row_bytes_hi) {
+  __shared__ uint16_t low_lut[256];
+  __shared__ uint16_t sign_lut[16];
+  const int tid = threadIdx.x;
+  for (int i = tid; i < 256; i += blockDim.x) {
+    uint16_t v = 0;
+#pragma unroll
+    for (int p = 0; p < 4; ++p) {
+      v |= static_cast<uint16_t>(1 + 2 * ((i >> (2 * p)) & 3)) << (4 * p);
+    }
+    low_lut[i] = v;
+  }
+  if (tid < 16) {
+    uint16_t v = 0;
+#pragma unroll
+    for (int p = 0; p < 4; ++p) {
+      if ((tid >> p) & 1) v |= static_cast<uint16_t>(8) << (4 * p);
+    }
+    sign_lut[tid] = v;
+  }
+  __syncthreads();
+
+  const int chunks_per_row = K / 32;
+  const int chunk = blockIdx.x * blockDim.x + tid;
+  if (chunk >= rows * chunks_per_row) return;
+  const int row = chunk / chunks_per_row;
+  const int seg = chunk - row * chunks_per_row;
+  const int k0 = seg * 32;
+  const uint2 low =
+    *reinterpret_cast<uint2 const *>(lo + static_cast<int64_t>(row) * row_bytes_lo + k0 / 4);
+  const uint32_t signs = __ldg(
+    reinterpret_cast<uint32_t const *>(hi + static_cast<int64_t>(row) * row_bytes_hi + k0 / 8));
+
+  uint32_t packed[4] = {0, 0, 0, 0};
+#pragma unroll
+  for (int p = 0; p < 8; ++p) {
+    const uint8_t low_byte =
+      p < 4 ? ((low.x >> (8 * p)) & 0xFF) : ((low.y >> (8 * (p - 4))) & 0xFF);
+    const uint16_t nibbles = low_lut[low_byte] | sign_lut[(signs >> (4 * p)) & 0xF];
+    packed[p >> 1] |= static_cast<uint32_t>(nibbles) << (16 * (p & 1));
+  }
+  *reinterpret_cast<uint4 *>(out + static_cast<int64_t>(row) * (K / 2) + k0 / 2) =
+    make_uint4(packed[0], packed[1], packed[2], packed[3]);
+}
+
+template <int kBits, bool kHasMicro>
+void launch_expand_wna4_g4(uint8_t const *lo, uint8_t const *micro, uint8_t *out, int rows, int K,
+                           int row_bytes_lo, int row_bytes_micro, cudaStream_t stream) {
+  const int total = rows * (K / 32);
+  expand_wna4_g4_kernel<kBits, kHasMicro><<<(total + 255) / 256, 256, 0, stream>>>(
+    lo, micro, out, rows, K, row_bytes_lo, row_bytes_micro);
+}
+
+template <int kBits>
+void launch_expand_wna4_g4_dispatch(uint8_t const *lo, uint8_t const *micro, uint8_t *out, int rows,
+                                    int K, int row_bytes_lo, int row_bytes_micro, bool has_micro,
+                                    cudaStream_t stream) {
+  if (has_micro) {
+    launch_expand_wna4_g4<kBits, true>(lo, micro, out, rows, K, row_bytes_lo, row_bytes_micro,
+                                       stream);
+  } else {
+    launch_expand_wna4_g4<kBits, false>(lo, micro, out, rows, K, row_bytes_lo, row_bytes_micro,
+                                        stream);
+  }
 }
 
 template <int kBits>
@@ -200,15 +353,52 @@ void expand_wna4(svdq::Tensor wgt_lo, svdq::Tensor wgt_hi, svdq::Tensor out, int
               wgt_micro.is_contiguous(),
             "micro scales must be uint8 [rows,ceil(K/(4*inner_group))] on CUDA");
   }
+  const auto *lo_ptr = static_cast<uint8_t const *>(wgt_lo.data_ptr());
+  const auto *hi_ptr = wgt_hi.valid() ? static_cast<uint8_t const *>(wgt_hi.data_ptr()) : nullptr;
+  const auto *micro_ptr =
+    wgt_micro.valid() ? static_cast<uint8_t const *>(wgt_micro.data_ptr()) : nullptr;
+  auto *out_ptr = static_cast<uint8_t *>(out.data_ptr());
+  const int row_bytes_lo = static_cast<int>(wgt_lo.size(1));
+  const int row_bytes_hi = wgt_hi.valid() ? static_cast<int>(wgt_hi.size(1)) : 0;
+  const int row_bytes_micro = wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0;
+  const cudaStream_t stream = getCurrentCUDAStream();
+
+  // The fast path performs 4/8/16-byte vector loads and a 16-byte store. Keep the public op safe
+  // for padded row strides or offset views: unless every participating byte address meets the
+  // vector alignment, fall back to the scalar reference kernel.
+  const int lo_align = bits == 1 ? 4 : 8;
+  const bool fast_aligned =
+    inner_group == 4 && K % 32 == 0 && row_bytes_lo % lo_align == 0 &&
+    (bits != 3 || row_bytes_hi % 4 == 0) && (micro_ptr == nullptr || row_bytes_micro % 2 == 0) &&
+    reinterpret_cast<uintptr_t>(lo_ptr) % lo_align == 0 &&
+    (hi_ptr == nullptr || reinterpret_cast<uintptr_t>(hi_ptr) % 4 == 0) &&
+    (micro_ptr == nullptr || reinterpret_cast<uintptr_t>(micro_ptr) % 2 == 0) &&
+    reinterpret_cast<uintptr_t>(out_ptr) % 16 == 0;
+
+  if (fast_aligned && bits != 3) {
+    if (bits == 1) {
+      launch_expand_wna4_g4_dispatch<1>(lo_ptr, micro_ptr, out_ptr, rows, K, row_bytes_lo,
+                                        row_bytes_micro, micro_ptr != nullptr, stream);
+    } else {
+      launch_expand_wna4_g4_dispatch<2>(lo_ptr, micro_ptr, out_ptr, rows, K, row_bytes_lo,
+                                        row_bytes_micro, micro_ptr != nullptr, stream);
+    }
+    checkCUDA(cudaGetLastError());
+    return;
+  }
+  if (fast_aligned && bits == 3) {
+    const int total = rows * (K / 32);
+    expand_wna4_w3_kernel<<<(total + 255) / 256, 256, 0, stream>>>(lo_ptr, hi_ptr, out_ptr, rows, K,
+                                                                   row_bytes_lo, row_bytes_hi);
+    checkCUDA(cudaGetLastError());
+    return;
+  }
+
   const int groups = rows * (K / 8);
   const int threads = 256;
-  expand_wna4_kernel<<<(groups + threads - 1) / threads, threads, 0, getCurrentCUDAStream()>>>(
-    static_cast<uint8_t const *>(wgt_lo.data_ptr()),
-    wgt_hi.valid() ? static_cast<uint8_t const *>(wgt_hi.data_ptr()) : nullptr,
-    wgt_micro.valid() ? static_cast<uint8_t const *>(wgt_micro.data_ptr()) : nullptr,
-    static_cast<uint8_t *>(out.data_ptr()), rows, K, bits, static_cast<int>(wgt_lo.size(1)),
-    wgt_hi.valid() ? static_cast<int>(wgt_hi.size(1)) : 0,
-    wgt_micro.valid() ? static_cast<int>(wgt_micro.size(1)) : 0, inner_group);
+  expand_wna4_reference_kernel<<<(groups + threads - 1) / threads, threads, 0, stream>>>(
+    lo_ptr, hi_ptr, micro_ptr, out_ptr, rows, K, bits, row_bytes_lo, row_bytes_hi, row_bytes_micro,
+    inner_group);
   checkCUDA(cudaGetLastError());
 }
 
