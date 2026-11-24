@@ -170,9 +170,11 @@ _SVDQ_KWARGS_DEFAULTS: dict[str, Any] = {
   # one-shot SVD behavior.
   "svd_refine_iters": 0,
   # Number of weight scale stages for packed W1/W2/W3. W1/W2 resolve an omitted
-  # value to 3 because their two-stage codebook alone cannot produce meaningful
-  # images. W3 defaults to 2; passing 3 opts into a per-8 one-bit table selector
-  # that adds 0.125 bit/weight while keeping the 3-bit W3 code.
+  # value to 3 because their 2/4-level codebooks require the extra local
+  # exponent to reach usable precision; stage 3 is a precision requirement, not
+  # an optional tuning knob. W3's 3-bit codebook already has eight signed levels
+  # and is accurate enough, so its default remains 2 to save memory. Passing 3
+  # for W3 opts into a per-8 one-bit table selector (+0.125 bit/weight).
   "packed_a4_stages": 2,
   # Number of consecutive K elements that share one three-stage exponent.
   # 4 is the original layout; 2 doubles the exponent bytes for finer local

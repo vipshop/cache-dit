@@ -44,7 +44,10 @@ weights, while `s_c * s_g` is shared by all 16 elements. With one shared scale,
 W2 cannot represent a large chunk near +/-6 and a small chunk near +/-0.5 at
 the same time; many weights collapse to the same code and the generated image
 becomes blurry. W1 is more extreme: every nonzero weight in a group has the
-same magnitude.
+same magnitude. This is why W1/W2 default to stages=3: the third stage is
+required for usable precision, not an optional optimization. W3's 3-bit
+codebook already has eight signed levels and is accurate enough, so W3 keeps
+stages=2 by default to save memory.
 
 Three-stage refinement
 ----------------------
@@ -226,10 +229,11 @@ replacement for W3.
 
 W3 can optionally use a lighter stage 3: one bit per eight K elements selects
 one of two legal-E2M1 magnitude tables, adding only 0.125 bit/weight while
-keeping the 3-bit W3 code. On FLUX this reduced residual NMSE by about 34% in
-an offline ablation, but end-to-end PSNR/SSIM moved only marginally
-(17.073/0.79439 vs 17.054/0.79424), so W3 stage 3 remains opt-in and the default
-stays stage 2.
+keeping the 3-bit W3 code. This is not required for usable precision: W3's
+3-bit codebook already provides eight signed levels, so W3 keeps stage 2 as
+its default to save memory. On FLUX the optional selector reduced residual
+NMSE by about 34% in an offline ablation, but end-to-end PSNR/SSIM moved only
+marginally (17.073/0.79439 vs 17.054/0.79424), so W3 stage 3 remains opt-in.
 
 Memory accounting versus W4A4
 -----------------------------
@@ -1028,7 +1032,12 @@ class SVDQW4A4Linear(nn.Module):
 # Specialized low-bit storage implementation. W1/W2/W3 codes are expanded to E2M1 on chip; the
 # actual computation still uses the standard W4A4 FP4 block-scaled MMA, not an FP1/FP2/FP3 MMA.
 class SVDQWNA4Linear(nn.Module):
-  """Specialized W1/W2/W3 storage runtime whose computation remains W4A4 FP4 block-scaled MMA."""
+  """Specialized W1/W2/W3 storage runtime whose computation remains W4A4 FP4 block-scaled MMA.
+
+  W1/W2 default to three stages because their 2/4-level signed codebooks need the local exponent
+  refinement for usable precision. W3's 3-bit codebook has eight signed levels and is accurate
+  enough on its own, so W3 keeps the two-stage default to avoid the extra selector bits.
+  """
 
   def __init__(self,
                in_features: int,
@@ -1044,6 +1053,8 @@ class SVDQWNA4Linear(nn.Module):
     if bits not in (1, 2, 3):
       raise ValueError(f"bits must be 1, 2 or 3, got {bits}.")
     if stages is None:
+      # W1/W2 need stage 3 for usable precision; W3's 3-bit codebook is already
+      # accurate enough, so it keeps stage 2 to avoid the extra selector bits.
       stages = 3 if bits in (1, 2) else 2
     if stages not in (2, 3):
       raise ValueError(f"Packed A4 stages must be 2 or 3, got {stages}.")
@@ -1187,6 +1198,7 @@ def _quantize_linear(linear: nn.Linear,
                      inner_group: int = 4) -> SVDQWNA4Linear:
   from .quantizer import _compute_weight_only_smooth_scale
   if stages is None:
+    # W1/W2 require the third stage for usable precision; W3 is accurate enough at stage 2.
     stages = 3 if bits in (1, 2) else 2
   if inner_group not in (2, 4):
     raise ValueError(f"inner_group must be 2 or 4, got {inner_group}.")
@@ -1288,7 +1300,9 @@ def _quantize_svdq_wNa4(
   """Quantize one Linear into packed W1/W2/W3, with DQ or activation-calibrated PTQ.
 
   :param stages: Weight scale stages. ``None`` selects the production default:
-    three stages for W1/W2 and the standard two-stage NVFP4 codec for W3. W3
+    three stages for W1/W2, because their 2/4-level codebooks need the extra
+    local exponent for usable precision, and two stages for W3, whose 3-bit
+    codebook already provides eight signed levels and is accurate enough. W3
     also accepts ``3`` to opt into the per-8 one-bit table selector.
   :param inner_group: W1/W2 K elements sharing one three-stage exponent, 2 or
     4. W3 ignores it and uses a fixed per-8 selector.
