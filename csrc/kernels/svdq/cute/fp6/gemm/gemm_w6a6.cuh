@@ -31,12 +31,13 @@ namespace svdq::cute_kernels {
 
 using namespace cute;
 
-// Tile-blocked UE8M0 storage: [row/128][K-tile of 128 elements][row%128][group], 512 B per block.
+// Tile-blocked UE8M0 storage: [row/128][K-tile][row%32][row/32][group], 512 B per block.
 //
-// One 32-wide scale group is one byte, so one BK=128 tile owns four bytes per row. Blocking them by
-// CTA tile is what makes the stage copy coalesced: a whole tile's scales are 512 contiguous bytes,
-// whereas a plain row-major [rows, K/32] layout scatters them one byte per row across 128 cache
-// lines (the measured L1TEX bottleneck of the first W6A6 kernel).
+// One 32-wide scale group is one byte, so one BK=128 tile owns four bytes per row. The interleave
+// 16*(row%32) + 4*((row/32)%4) is CUTLASS's Sm1xxBlockScaledConfig::SfAtom order, and it is chosen
+// for the consumer's access pattern: a thread's B-side scales land in two contiguous 16 B regions,
+// so they can be fetched with two LDG.128 instead of eight LDG.32. Tiles stay 512 B and contiguous,
+// so producer stores and CTA loads remain coalesced.
 constexpr int kTileBlockedSfBytes = 512;
 
 /**
@@ -49,7 +50,7 @@ constexpr int kTileBlockedSfBytes = 512;
  */
 CUTE_HOST_DEVICE int tile_blocked_sf_offset(int row, int group, int nKtile) {
   return (row / 128) * (nKtile * kTileBlockedSfBytes) + (group / 4) * kTileBlockedSfBytes +
-         (row % 128) * 4 + (group % 4);
+         16 * (row % 32) + 4 * ((row / 32) % 4) + (group % 4);
 }
 
 namespace sf_partition {
@@ -406,14 +407,51 @@ class W6A6GemmKernel {
    * @param tCrSFA_view/tCrSFB_view Retiled destinations of the same fragments for the copies.
    * @return           void; tCrC holds the scaled product on return.
    */
-  template <class TiledMma, class CopyA, class CopyB, class SrcA, class SrcB, class SrcSFA,
-            class SrcSFB, class DstA, class DstB, class DstSFA, class DstSFB, class FragA,
-            class FragB, class FragSFA, class FragSFB, class Acc>
+  /**
+   * Load one K tile's scales into a fragment pair with three vector loads.
+   *
+   * In the 512 B interleaved layout, a thread's two A rows sit 8 bytes apart inside one aligned
+   * 16 B block, and its eight B columns form two contiguous 16 B regions 256 bytes apart. The
+   * fragment's register order is (submode, N-repetition, K-group), so the B vectors are scattered
+   * into every other u32 slot. This replaces ten scalar LDG.32 with three LDG.128 plus register
+   * moves.
+   *
+   * @param sfa_g/sfb_g Tile-blocked scale rows for the whole CTA tile.
+   * @param kt          K-tile index.
+   * @param a_base/a_sel Aligned byte offset and u32 selector of this thread's A rows.
+   * @param b_off        Byte offset of this thread's first B region (second is +256).
+   * @param fA/fB        Destination fragments, already shaped by the atom's SF layouts.
+   */
+  template <class FragSFA, class FragSFB>
+  __device__ __forceinline__ static void load_sf_vectors(uint8_t const *sfa_g, uint8_t const *sfb_g,
+                                                         int kt, int a_base, int a_sel, int b_off,
+                                                         FragSFA &fA, FragSFB &fB) {
+    const uint4 va =
+      __ldg(reinterpret_cast<uint4 const *>(sfa_g + kt * kTileBlockedSfBytes + a_base));
+    const uint4 vb0 =
+      __ldg(reinterpret_cast<uint4 const *>(sfb_g + kt * kTileBlockedSfBytes + b_off));
+    const uint4 vb1 =
+      __ldg(reinterpret_cast<uint4 const *>(sfb_g + kt * kTileBlockedSfBytes + b_off + 256));
+    auto *pa = reinterpret_cast<uint32_t *>(fA.data());
+    pa[0] = a_sel == 0 ? va.x : va.y;
+    pa[1] = a_sel == 0 ? va.z : va.w;
+    auto *pb = reinterpret_cast<uint32_t *>(fB.data());
+    pb[0] = vb0.x;
+    pb[2] = vb0.y;
+    pb[4] = vb0.z;
+    pb[6] = vb0.w;
+    pb[1] = vb1.x;
+    pb[3] = vb1.y;
+    pb[5] = vb1.z;
+    pb[7] = vb1.w;
+  }
+
+  template <class TiledMma, class CopyA, class CopyB, class SrcA, class SrcB, class DstA,
+            class DstB, class FragA, class FragB, class FragSFA, class FragSFB, class Acc>
   __device__ __forceinline__ static void gemm_fp6_main(
-    uint64_t *full, uint64_t *empty, int tid, int nKt, TiledMma const &tiled_mma,
-    CopyA const &s2r_copy_a, CopyB const &s2r_copy_b, SrcA const &tCsA, SrcB const &tCsB,
-    SrcSFA const &tCsSFA, SrcSFB const &tCsSFB, DstA &tCrA_view, DstB &tCrB_view,
-    DstSFA &tCrSFA_view0, DstSFA &tCrSFA_view1, DstSFB &tCrSFB_view0, DstSFB &tCrSFB_view1,
+    uint64_t *full, uint64_t *empty, int tid, int nKt, uint8_t const *sfa_g, uint8_t const *sfb_g,
+    int a_base, int a_sel, int b_off, TiledMma const &tiled_mma, CopyA const &s2r_copy_a,
+    CopyB const &s2r_copy_b, SrcA const &tCsA, SrcB const &tCsB, DstA &tCrA_view, DstB &tCrB_view,
     FragA &tCrA, FragB &tCrB, FragSFA &tCrSFA0, FragSFA &tCrSFA1, FragSFB &tCrSFB0,
     FragSFB &tCrSFB1, Acc &tCrC) {
     // The scale tiles are read-only in gmem, so tile kt+1 can be fetched while tile kt is still in
@@ -421,11 +459,9 @@ class W6A6GemmKernel {
     // which is what shows up as long_scoreboard in the profile.
     auto prefetch = [&](int kt, int buf) {
       if (buf == 0) {
-        copy(make_tensor(tCsSFA.data() + kt * kTileBlockedSfBytes, tCsSFA.layout()), tCrSFA_view0);
-        copy(make_tensor(tCsSFB.data() + kt * kTileBlockedSfBytes, tCsSFB.layout()), tCrSFB_view0);
+        load_sf_vectors(sfa_g, sfb_g, kt, a_base, a_sel, b_off, tCrSFA0, tCrSFB0);
       } else {
-        copy(make_tensor(tCsSFA.data() + kt * kTileBlockedSfBytes, tCsSFA.layout()), tCrSFA_view1);
-        copy(make_tensor(tCsSFB.data() + kt * kTileBlockedSfBytes, tCsSFB.layout()), tCrSFB_view1);
+        load_sf_vectors(sfa_g, sfb_g, kt, a_base, a_sel, b_off, tCrSFA1, tCrSFB1);
       }
     };
     prefetch(0, 0);
@@ -730,6 +766,18 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
   auto tCrSFB_alt = tCrSFB;
   auto tCrSFA_view_alt = sfa_thr_copy.retile_D(tCrSFA_alt);
   auto tCrSFB_view_alt = sfb_thr_copy.retile_D(tCrSFB_alt);
+  // Per-thread scale offsets are loop-invariant: the first A row and B column of this thread fully
+  // determine where its scales live in every 512 B tile, so they are computed once here.
+  auto id_sfa = make_identity_tensor(
+    make_shape(Int<kBM>{}, make_shape(Int<Traits::kSfVec>{}, Int<kSfPerTile>{})));
+  auto id_sfb = make_identity_tensor(
+    make_shape(Int<kBN>{}, make_shape(Int<Traits::kSfVec>{}, Int<kSfPerTile>{})));
+  const int sf_row = get<0>(sfa_thr_copy.partition_S(id_sfa)(_0{}));
+  const int sf_col = get<0>(sfb_thr_copy.partition_S(id_sfb)(_0{}));
+  const int a_off = 16 * (sf_row % 32) + 4 * (sf_row / 32);
+  const int a_base = a_off & ~15;
+  const int a_sel = (a_off & 15) >> 2;
+  const int b_off = 16 * sf_col;
 
   auto tCrC = partition_fragment_C(tiled_mma, Shape<Int<kBM>, Int<kBN>>{});
   clear(tCrC);
@@ -766,9 +814,11 @@ __global__ void __launch_bounds__(Traits::kNumThreads + 128, 1)
     if (nPrefetch > 0) cute::cp_async_fence();
   }
 
-  Gemm::gemm_fp6_main(full, empty, tid, nKt, tiled_mma, s2r_copy_a, s2r_copy_b, tCsA, tCsB, tCsSFA,
-                      tCsSFB, tCrA_view, tCrB_view, tCrSFA_view, tCrSFA_view_alt, tCrSFB_view,
-                      tCrSFB_view_alt, tCrA, tCrB, tCrSFA, tCrSFA_alt, tCrSFB, tCrSFB_alt, tCrC);
+  Gemm::gemm_fp6_main(full, empty, tid, nKt,
+                      sfa + static_cast<int64_t>(blockIdx.y) * nKt * kTileBlockedSfBytes,
+                      sfb + static_cast<int64_t>(blockIdx.x) * nKt * kTileBlockedSfBytes, a_base,
+                      a_sel, b_off, tiled_mma, s2r_copy_a, s2r_copy_b, tCsA, tCsB, tCrA_view,
+                      tCrB_view, tCrA, tCrB, tCrSFA, tCrSFA_alt, tCrSFB, tCrSFB_alt, tCrC);
   Gemm::apply_scales(ascales, wscales, bias, m0, n0, tScC_rc, tCrC);
   if (nPrefetch > 0) {
     cute::cp_async_wait<0>();

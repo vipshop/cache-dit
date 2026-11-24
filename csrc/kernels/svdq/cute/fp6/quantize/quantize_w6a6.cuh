@@ -82,37 +82,31 @@ __device__ __forceinline__ float w6a6_sf_inverse(uint8_t code) {
   return __uint_as_float(static_cast<uint32_t>(254 - code) << 23);
 }
 
-// Round eight smoothed FP32 values to E2M3 and pack them as six bytes, four codes per three bytes
-// (OCP MX packing: code j occupies bits [6j, 6j+6) of the little-endian stream).
-__device__ __forceinline__ void w6a6_store_e2m3x8(uint8_t *output, float const *values,
-                                                  float inv_scale) {
+// Round sixteen smoothed FP32 values to E2M3 and pack them as twelve bytes, four codes per three
+// bytes (OCP MX packing: code j occupies bits [6j, 6j+6) of the little-endian stream). Sixteen
+// elements per thread means three aligned 32-bit stores instead of three 16-bit stores per eight
+// elements, which halves the store instruction count of the producer.
+__device__ __forceinline__ void w6a6_store_e2m3x16(uint8_t *output, float const *values,
+                                                   float inv_scale) {
   cutlass::Array<float, 4> source;
-  uint32_t words[2];
+  uint32_t packed[4];
 #pragma unroll
-  for (int half = 0; half < 2; ++half) {
+  for (int quarter = 0; quarter < 4; ++quarter) {
 #pragma unroll
-    for (int i = 0; i < 4; ++i) source[i] = values[half * 4 + i] * inv_scale;
+    for (int i = 0; i < 4; ++i) source[i] = values[quarter * 4 + i] * inv_scale;
     auto codes =
       cutlass::NumericArrayConverter<cutlass::detail::float_e2m3_unpack8bits_t, float, 4,
                                      cutlass::FloatRoundStyle::round_to_nearest>()(source);
-    words[half] = *reinterpret_cast<uint32_t const *>(codes.data());
-  }
-  // One container byte per code; fold four 6-bit codes into 24 bits per word.
-  uint32_t packed[2];
-#pragma unroll
-  for (int half = 0; half < 2; ++half) {
-    const uint32_t w = words[half];
-    packed[half] =
+    const uint32_t w = *reinterpret_cast<uint32_t const *>(codes.data());
+    packed[quarter] =
       (w & 0x3Fu) | ((w >> 8 & 0x3Fu) << 6) | ((w >> 16 & 0x3Fu) << 12) | ((w >> 24 & 0x3Fu) << 18);
   }
-  // Six bytes: the low 24 bits of both words. The caller guarantees an even destination offset, so
-  // three 16-bit stores cover the chunk without straddling another chunk.
-  const uint32_t lo = packed[0];
-  const uint32_t hi = packed[1];
-  *reinterpret_cast<uint16_t *>(output) = static_cast<uint16_t>(lo & 0xFFFFu);
-  *reinterpret_cast<uint16_t *>(output + 2) =
-    static_cast<uint16_t>((lo >> 16) | ((hi & 0xFFu) << 8));
-  *reinterpret_cast<uint16_t *>(output + 4) = static_cast<uint16_t>((hi >> 8) & 0xFFFFu);
+  // Twelve bytes: four 24-bit groups back to back. A 16-element chunk starts at a multiple of 12
+  // bytes within its row, so all three stores are 32-bit aligned.
+  const uint32_t w0 = packed[0], w1 = packed[1], w2 = packed[2], w3 = packed[3];
+  reinterpret_cast<uint32_t *>(output)[0] = w0 | ((w1 & 0xFFu) << 24);
+  reinterpret_cast<uint32_t *>(output)[1] = (w1 >> 8) | ((w2 & 0xFFFFu) << 16);
+  reinterpret_cast<uint32_t *>(output)[2] = (w2 >> 16) | (w3 << 8);
 }
 
 template <int kRank>
@@ -178,7 +172,7 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
   auto tCrX_view = s2r_thr_x.retile_D(tCrX);
   auto tCrL_view = s2r_thr_l.retile_D(tCrL);
 
-  constexpr int kChunksPerRow = kBK / 8;
+  constexpr int kChunksPerRow = kBK / 16;
   constexpr int kXChunks = kBM * kChunksPerRow;
   constexpr int kLChunks = (kRank > 0 ? kRank : 1) * kChunksPerRow;
   constexpr int kXPerThread = (kXChunks + kW6A6QuantThreads - 1) / kW6A6QuantThreads;
@@ -186,8 +180,8 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
 
   // Software pipeline: tile kt+1 is loaded into a second register set right after tile kt reaches
   // shared memory, so its HBM latency overlaps the MMA and the quantization of tile kt.
-  uint4 x_regs[2][kXPerThread];
-  uint4 l_regs[2][kLPerThread];
+  uint4 x_regs[2][kXPerThread][2];
+  uint4 l_regs[2][kLPerThread][2];
   auto load_tile = [&](int kt, auto buf_tag) {
     constexpr int buf = decltype(buf_tag)::value;
     const int k0 = kt * kBK;
@@ -198,9 +192,12 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
         if (chunk >= kXChunks) break;
       }
       const int row = chunk / kChunksPerRow;
-      const int col = (chunk % kChunksPerRow) * 8;
-      x_regs[buf][i] =
-        *reinterpret_cast<uint4 const *>(input + static_cast<int64_t>(m0 + row) * K + k0 + col);
+      const int col = (chunk % kChunksPerRow) * 16;
+#pragma unroll
+      for (int half = 0; half < 2; ++half) {
+        x_regs[buf][i][half] = *reinterpret_cast<uint4 const *>(
+          input + static_cast<int64_t>(m0 + row) * K + k0 + col + half * 8);
+      }
     }
     if constexpr (kRank > 0) {
 #pragma unroll
@@ -210,9 +207,12 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
           if (chunk >= kLChunks) break;
         }
         const int row = chunk / kChunksPerRow;
-        const int col = (chunk % kChunksPerRow) * 8;
-        l_regs[buf][i] =
-          *reinterpret_cast<uint4 const *>(lora_down + static_cast<int64_t>(row) * K + k0 + col);
+        const int col = (chunk % kChunksPerRow) * 16;
+#pragma unroll
+        for (int half = 0; half < 2; ++half) {
+          l_regs[buf][i][half] = *reinterpret_cast<uint4 const *>(
+            lora_down + static_cast<int64_t>(row) * K + k0 + col + half * 8);
+        }
       }
     }
   };
@@ -227,8 +227,11 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
         if (chunk >= kXChunks) break;
       }
       const int row = chunk / kChunksPerRow;
-      const int col = (chunk % kChunksPerRow) * 8;
-      *reinterpret_cast<uint4 *>(&sX(row, col)) = x_regs[buf][i];
+      const int col = (chunk % kChunksPerRow) * 16;
+#pragma unroll
+      for (int half = 0; half < 2; ++half) {
+        *reinterpret_cast<uint4 *>(&sX(row, col + half * 8)) = x_regs[buf][i][half];
+      }
     }
     if constexpr (kRank > 0) {
 #pragma unroll
@@ -238,8 +241,11 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
           if (chunk >= kLChunks) break;
         }
         const int row = chunk / kChunksPerRow;
-        const int col = (chunk % kChunksPerRow) * 8;
-        *reinterpret_cast<uint4 *>(&sL(row, col)) = l_regs[buf][i];
+        const int col = (chunk % kChunksPerRow) * 16;
+#pragma unroll
+        for (int half = 0; half < 2; ++half) {
+          *reinterpret_cast<uint4 *>(&sL(row, col + half * 8)) = l_regs[buf][i][half];
+        }
       }
     }
     if (kt + 1 < kt_end) load_tile(kt + 1, Int<buf ^ 1>{});
@@ -256,30 +262,35 @@ __global__ void __launch_bounds__(kW6A6QuantThreads, 1)
         if (chunk >= kXChunks) break;
       }
       const int row = chunk / kChunksPerRow;
-      const int col = (chunk % kChunksPerRow) * 8;
+      const int col = (chunk % kChunksPerRow) * 16;
       const int64_t offset = static_cast<int64_t>(m0 + row) * out_row_bytes + (k0 + col) * 3 / 4;
-      W6A6Vec8BF16 x, s;
-      x.raw = x_regs[buf][i];
-      s.raw = *reinterpret_cast<uint4 const *>(smooth + k0 + col);
-      float values[8];
+      W6A6Vec8BF16 x[2], s[2];
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        values[j] = static_cast<float>(x.elem[j]) / static_cast<float>(s.elem[j]);
+      for (int half = 0; half < 2; ++half) {
+        x[half].raw = x_regs[buf][i][half];
+        s[half].raw = *reinterpret_cast<uint4 const *>(smooth + k0 + col + half * 8);
       }
-      // One 32-wide scale group spans exactly four consecutive lanes of this warp, so the block
-      // amax is a two-shuffle reduction. That removes the separate amax pass over the activation
-      // (and its kernel launch) entirely: no per-token second-level scale exists to reduce for.
+      float values[16];
+#pragma unroll
+      for (int half = 0; half < 2; ++half) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          values[half * 8 + j] =
+            static_cast<float>(x[half].elem[j]) / static_cast<float>(s[half].elem[j]);
+        }
+      }
+      // A 32-wide scale group now spans two consecutive lanes, so one XOR shuffle is enough. No
+      // per-token second-level scale exists, so this pass needs no separate amax kernel at all.
       float amax = 0.0f;
 #pragma unroll
-      for (int j = 0; j < 8; ++j) amax = fmaxf(amax, fabsf(values[j]));
+      for (int j = 0; j < 16; ++j) amax = fmaxf(amax, fabsf(values[j]));
       amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, 1));
-      amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, 2));
       const uint8_t sf = w6a6_sf_code(amax);
-      if ((tid & 3) == 0) {
+      if ((tid & 1) == 0) {
         asf[tile_blocked_sf_offset(m0 + row, (k0 + col) / kW6A6SfVec, K / 128)] = sf;
       }
       const float inv_scale = w6a6_sf_inverse(sf);
-      w6a6_store_e2m3x8(output + offset, values, inv_scale);
+      w6a6_store_e2m3x16(output + offset, values, inv_scale);
     }
     __syncthreads();
   };

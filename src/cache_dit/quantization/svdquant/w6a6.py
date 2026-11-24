@@ -124,8 +124,8 @@ def ue8m0_scales(codes: torch.Tensor) -> torch.Tensor:
 def block_sf(wsf: torch.Tensor) -> torch.Tensor:
   """Store scale codes in the tile-blocked layout the GEMM's producer expects.
 
-  The packed form is ``[row/128][K-tile][row%128][group]`` (512 B per tile), so one CTA tile's scales
-  are contiguous in memory instead of one byte per row across 128 cache lines.
+  The packed form is ``[row/128][K-tile][row%32][row/32][group]`` (512 B per tile), so one CTA tile's
+  scales are contiguous and a consumer thread's B-side scales form two 16 B regions.
 
   :param wsf: ``uint8 [N, K/32]`` scale codes in row-major order.
   :returns: ``uint8`` tensor with the same shape holding tile-blocked codes.
@@ -133,13 +133,15 @@ def block_sf(wsf: torch.Tensor) -> torch.Tensor:
   n, k32 = wsf.shape
   if n % 128 or k32 % 4:
     raise ValueError("tile-blocked scale layout requires N % 128 == 0 and K % 128 == 0.")
-  return wsf.view(n // 128, 128, k32 // 4, 4).permute(0, 2, 1, 3).contiguous().view(n, k32)
+  # [row-block, row/32, row%32, K-tile, group] -> [row-block, K-tile, row%32, row/32, group], i.e.
+  # the CUTLASS SfAtom interleave 16*(row%32) + 4*(row/32) that vectorizes the GEMM's scale loads.
+  return wsf.view(n // 128, 4, 32, k32 // 4, 4).permute(0, 3, 2, 1, 4).contiguous().view(n, k32)
 
 
 def deblock_sf(wsf: torch.Tensor) -> torch.Tensor:
   """Invert `block_sf`, returning row-major ``[N, K/32]`` scale codes for reference math."""
   n, k32 = wsf.shape
-  return wsf.view(n // 128, k32 // 4, 128, 4).permute(0, 2, 1, 3).contiguous().view(n, k32)
+  return wsf.view(n // 128, k32 // 4, 32, 4, 4).permute(0, 3, 2, 1, 4).contiguous().view(n, k32)
 
 
 def dequantize_e2m3(packed: torch.Tensor, wsf: torch.Tensor) -> torch.Tensor:
