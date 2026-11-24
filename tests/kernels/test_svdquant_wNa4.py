@@ -184,6 +184,45 @@ def test_w12a4_three_stage_bit_layout_is_independent(bits: int, inner_group: int
 
 @pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
 @pytest.mark.parametrize("bits", [1, 2])
+def test_two_stage_expand_non_32_aligned_k_uses_reference(bits: int) -> None:
+  rows, k = 16, 40
+  codes = torch.arange(rows * k, device="cuda").view(rows, k)
+  codes = (codes if bits == 1 else codes % 4).to(torch.uint8)
+  if bits == 1:
+    nibbles = 3 + 8 * (codes.long() & 1)
+  else:
+    nibbles = 1 + 2 * (codes.long() & 1) + 8 * ((codes.long() >> 1) & 1)
+  expected = (nibbles[..., 0::2] | (nibbles[..., 1::2] << 4)).to(torch.uint8).view(torch.int8)
+  actual = expand_wna4(pack_codes(codes, bits), None, bits)
+  assert torch.equal(actual, expected)
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+def test_expand_dispatches_vectorized_kernels() -> None:
+  from torch.profiler import ProfilerActivity, profile
+
+  rows, k = 16, 64
+  codes = torch.arange(rows * k, device="cuda").view(rows, k) % 4
+  cases = [
+    (2, 4, "expand_wna4_g4_kernel"),
+    (2, 2, "expand_wna4_reference_kernel"),
+    (3, 4, "expand_wna4_w3_kernel"),
+  ]
+  for bits, inner_group, kernel in cases:
+    packed = pack_codes(codes.to(torch.uint8), bits)
+    args = (packed[0], packed[1], bits, None, inner_group) if bits == 3 else (packed, None, bits,
+                                                                              None, inner_group)
+    expand_wna4(*args)
+    torch.cuda.synchronize()
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+      expand_wna4(*args)
+      torch.cuda.synchronize()
+    names = " ".join(event.key for event in prof.key_averages())
+    assert kernel in names, f"{kernel} missing; saw {names}"
+
+
+@pytest.mark.skipif(not cuda_ext_is_available(), reason="requires the cache-dit CUDA extension")
+@pytest.mark.parametrize("bits", [1, 2])
 @pytest.mark.parametrize("inner_group", [4, 2])
 def test_w12a4_three_stage_matches_expanded_w4a4(bits: int, inner_group: int) -> None:
   torch.manual_seed(0)

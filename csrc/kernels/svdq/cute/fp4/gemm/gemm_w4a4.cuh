@@ -970,7 +970,10 @@ class W4A4GemmKernel {
     constexpr int kLoBits = Traits::kWeightBits == 3 ? 2 : Traits::kWeightBits;
     constexpr int kLoGroupBytes = kGroupCodes * kLoBits / 8;
     constexpr int kHiGroupBytes = Traits::kWeightBits == 3 ? 1 : 0;
+    static_assert(kGroupCodes == 8 && kBK % 8 == 0,
+                  "the 32-bit recast store needs one 8-code word per 16-byte SW32 chunk");
     const int k0 = kt * kBK;
+    auto sB32 = recast<uint32_t>(sB);
 #pragma unroll 1
     for (int group = tid; group < kGroups; group += Traits::kNumThreads) {
       const int row = group / kGroupsPerRow;
@@ -998,6 +1001,7 @@ class W4A4GemmKernel {
         micro = __ldg(wgt_micro + static_cast<int64_t>(n0 + row) * row_bytes_micro +
                       (k0 + col) / (4 * inner_group));
       }
+      uint32_t packed = 0;
 #pragma unroll
       for (int i = 0; i < kGroupCodes; ++i) {
         const int code = (raw >> (i * kLoBits)) & ((1 << kLoBits) - 1);
@@ -1006,14 +1010,18 @@ class W4A4GemmKernel {
           const int shift = (((k0 + col) % (4 * inner_group)) / inner_group + i / inner_group) * 2;
           inner = (micro >> shift) & 3;
         }
+        int nibble;
         if constexpr (Traits::kWeightBits == 3) {
           // W3 keeps its separate sign plane and has no three-stage variant.
-          sB(row, col + i, stage) = static_cast<uint4_t>(1 + 2 * code + 8 * ((sign_bits >> i) & 1));
+          nibble = 1 + 2 * code + 8 * ((sign_bits >> i) & 1);
         } else {
-          sB(row, col + i, stage) =
-            static_cast<uint4_t>(packed_a4_nibble(Traits::kWeightBits, code, inner));
+          nibble = packed_a4_nibble(Traits::kWeightBits, code, inner);
         }
+        packed |= static_cast<uint32_t>(nibble) << (4 * i);
       }
+      // SW32 keeps every 16-byte K chunk contiguous, so eight adjacent 4-bit values form one
+      // aligned 32-bit word. A single STS.32 replaces eight 4-bit read-modify-write stores.
+      sB32(row, col / 8, stage) = packed;
     }
     cutlass::arch::NamedBarrier::sync(Traits::kNumThreads, 1);
   }

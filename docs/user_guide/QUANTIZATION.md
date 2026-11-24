@@ -1299,17 +1299,37 @@ Same-seed FLUX.1-dev, 1024², 28 steps, `--compile`; the table reports steady-st
 | Configuration | Persistent weight memory | Inference | Speedup vs BF16 compile |
 |---|---:|---:|---:|
 | BF16 | 22.04 GiB | 14.83s | 1.00x |
-| W2A4 r32, three stages | 4.46 GiB | 6.54s | 2.27x |
-| W2A4 r64, three stages | 4.78 GiB | 6.82s | 2.17x |
-| W3A4 r32 | 5.15 GiB | 6.44s | 2.30x |
-| W3A4 r64 | 5.47 GiB | 6.72s | 2.21x |
-| W4A4 (NVFP4) r32 | 6.53 GiB | 6.00s | 2.47x |
+| W2A4 r32, three stages | 4.46 GiB | 6.33s | 2.34x |
+| W2A4 r64, three stages | 4.78 GiB | 6.60s | 2.25x |
+| W3A4 r32 | 5.15 GiB | 6.36s | 2.33x |
+| W3A4 r64 | 5.47 GiB | 6.66s | 2.23x |
+| W4A4 (NVFP4) r32 | 6.53 GiB | 6.01s | 2.47x |
+| W4A4 (NVFP4) r64 | 6.85 GiB | 6.19s | 2.40x |
 
-The table and gallery below contain the same six configurations for the same prompt and seed. W2 uses ranks 32/64 with three stages, W3 uses ranks 32/64 with the standard two-stage codec, and W4 uses rank 32. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 is not included because none of the tested W1 configurations produced a semantically valid image.
+The gallery below contains the six packed configurations for the same prompt and seed. The extra W4A4 r64 row is the same-rank reference for W2/W3 r64 and is not shown in the gallery. W2 uses ranks 32/64 with three stages, W3 uses ranks 32/64 with the standard two-stage codec, and W4 uses rank 32 in the image. Labels repeat the steady-state compile latency and persistent weight memory from the table. W1A4 is not included because none of the tested W1 configurations produced a semantically valid image.
 
 ![Packed A4 compile comparison](../assets/svdq_packed_a4_compile_gallery.png)
 
 W2A4 with three stages removes the low-bit blur at ranks 32/64 and reaches W3A4-level perceptual quality while using less persistent weight memory. W1A4 remains an experimental tier and is not a recommended deployment option.
+
+#### Qwen-Image-2.1-Turbo at 2048²
+
+The same six configurations on Qwen-Image-2.1-Turbo, 2048², fixed 8 steps, seed 0, `--compile`, and `--vae-tiling` (required at this resolution to keep VAE decode within 72 GB):
+
+| Configuration | Persistent weight memory | Inference | Speedup vs BF16 |
+|---|---:|---:|---:|
+| BF16 | 13.00 GiB | 18.24s | 1.00x |
+| W2A4 r32, three stages | 2.60 GiB | 11.75s | 1.55x |
+| W2A4 r64, three stages | 2.75 GiB | 11.84s | 1.54x |
+| W3A4 r32 | 3.00 GiB | 11.76s | 1.55x |
+| W3A4 r64 | 3.16 GiB | 11.88s | 1.54x |
+| W4A4 (NVFP4) r32 | 3.82 GiB | **11.21s** | **1.63x** |
+
+Memory covers the 224 quantized block linears with the same padded geometry, 128x4 SF swizzle, BF16 LoRA/smooth factors and three-stage exponents as the runtime; it excludes non-quantized modules, activations, the transient expansion workspace and biases. W2/W3 remain 4.8–6.0% behind W4A4 at 2048², consistent with the 1024² FLUX result. W2/W3 are within about 1% of each other; rank 64 adds roughly 0.1s.
+
+![Qwen-Image-2.1-Turbo 2048 compile comparison](../assets/svdq_qwen21_2048_compile_gallery.png)
+
+The expand kernel is vectorized: 32 K elements per thread, 32/64-bit packed loads, one aligned `uint4` store, and a four-weight shared decode table instead of per-weight exponent branches. On the largest FLUX projection this reduced the NCU expand duration from about 73 us to 13 us and instructions from 64.3M to 6.2M. The per-call expand is still about 19 us under nsys; side-stream overlap hides part of it, but the residual e2e gap tracks the total expand work. W2/W3 remain about 5-8% behind the same-rank W4A4 compile baseline on FLUX and 4.8-6.0% behind on Qwen 2048². Closing that residual requires cross-layer prefetch, or a producer-warp TMA/cp.async packed decode inside the GEMM; consumer-side on-chip decode was measured at 4.7-4.9ms and is not viable. Both are intentionally deferred here to preserve the single-projection (~18 MiB) workspace contract.
 
 The packed persistent tensors are never replaced by a full-model W4A4 copy. Forward expands only the current projection into a transient E2M1 workspace and overlaps that expansion with activation production on a side CUDA stream. This preserves the W4A4 GEMM path and fullgraph compile, at the cost of one projection-sized workspace. Fused MLP, DTensor/TP, layerwise offload, and alternate runtime selectors are rejected.
 
