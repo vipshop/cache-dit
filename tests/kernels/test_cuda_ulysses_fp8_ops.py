@@ -436,6 +436,22 @@ def test_ulysses_fp8_qkv_group_matches_reference(head_size: int, group_size: int
 
 
 @pytest.mark.parametrize("group_size", [16, 32])
+def test_ulysses_fp8_qkv_group_two_rows_per_warp_matches_reference(group_size: int) -> None:
+  _require_runtime()
+  torch.manual_seed(128 + group_size)
+  x = torch.randn((64, 2, 3, 8, 128), device="cuda", dtype=torch.bfloat16).transpose(0, 1)
+  rows = x.permute(2, 1, 0, 3, 4).reshape(-1, 128)
+  expected = _pack_rows(rows, 1e-6, torch.float32, group_size).reshape(3, 64, 2, 8, -1)
+
+  quantized = ulysses_fp8_qkv_permute_quant(x, group_size=group_size)
+
+  torch.testing.assert_close(quantized.view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
 @pytest.mark.parametrize("head_size", [24, 40, 64, 66, 72, 128, 264])
 def test_ulysses_fp8_o_group_matches_reference_and_ignores_padding(head_size: int,
                                                                    group_size: int) -> None:
@@ -464,6 +480,30 @@ def test_ulysses_fp8_o_group_matches_reference_and_ignores_padding(head_size: in
   expected_dequantized = expected_dequantized.reshape(2, 3, 2, 2, head_size)
   expected_dequantized = expected_dequantized.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
   dequantized = ulysses_fp8_o_permute_dequant(quantized.flatten(0, 1), head_size, group_size)
+  torch.testing.assert_close(dequantized.view(torch.uint16),
+                             expected_dequantized.view(torch.uint16),
+                             rtol=0,
+                             atol=0)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+def test_ulysses_fp8_o_group_two_rows_per_warp_matches_reference(group_size: int) -> None:
+  _require_runtime()
+  torch.manual_seed(512 + group_size)
+  x = torch.randn((1, 256, 8, 128), device="cuda", dtype=torch.bfloat16)
+  rows = x.reshape(1, 4, 64, 8, 128).permute(1, 3, 0, 2, 4).reshape(-1, 128)
+  expected = _pack_rows(rows, 1e-4, torch.bfloat16, group_size)
+
+  quantized = ulysses_fp8_o_permute_quant(x, 4, expected.shape[-1], group_size)
+
+  torch.testing.assert_close(quantized.reshape(-1, expected.shape[-1]).view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+  expected_dequantized = _dequant_rows(expected, 128, torch.bfloat16, group_size)
+  expected_dequantized = expected_dequantized.reshape(4, 8, 1, 64, 128)
+  expected_dequantized = expected_dequantized.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+  dequantized = ulysses_fp8_o_permute_dequant(quantized.flatten(0, 1), 128, group_size)
   torch.testing.assert_close(dequantized.view(torch.uint16),
                              expected_dequantized.view(torch.uint16),
                              rtol=0,

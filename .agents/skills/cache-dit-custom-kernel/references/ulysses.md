@@ -812,3 +812,99 @@ payload traffic.
    an e2e effect above the repeat-noise floor; a byte reduction alone is a compression result.
 5. Only after precision and traffic are proven, apply the Section 11 paired-conversion, lane-mapping,
    and hot-loop optimizations to the new layout.
+
+## 13. Implemented performance optimizations (2026-11-25)
+
+Status: implemented and locally validated on `opt/ulysses-fN-kernel-performance`, cdit-latest,
+torch 2.15.0+cu132, RTX PRO 5000 sm120a, using only GPU 2/3. Public wire formats and the existing 12
+operator schemas are unchanged. The worktree, logs, SASS, NCU/nsys results and FLUX images are under
+`.tmp/ulysses_fN_kernel_opt/`.
+
+### 13.1 Retained local-kernel changes
+
+- D=128 multirow scheduling: FP8 uses two rows/warp and FP6 uses four rows/warp for QKV/O group
+  quant and O group dequant. The fast path requires large full grids and aligned inputs/outputs;
+  small tasks, other D, strides and misaligned cases retain the full-warp fallback.
+- Per-token quantization caches the BF16 row in registers and computes absmax before quantizing the
+  same values. FP6 uses the same 16-element mapping for both stages. Larger or unsupported rows keep
+  the old two-pass path.
+- FP8 fast quant uses `__nv_cvt_halfraw2_to_fp8x2` after `__float22half2_rn`, preserving the
+  clamp -> FP16 -> FP8 double-rounding sequence.
+- Fused mega ops live in `fN_fused_qkv_{quant,dequant}.cu` and are internal only; existing public
+  `__all__` is unchanged. Their comments document the byte layout, tensor_id and multirow invariants.
+
+Representative nsys steady-state medians:
+
+| Kernel | Baseline | Optimized | Change |
+|---|---:|---:|---:|
+| FP6 per-token quant | 2.560 us | 2.336 us | -8.8% |
+| FP8 per-token quant | 1.984 us | 1.856 us | -6.5% |
+| FP6 QKV g32 quant | 10.592 us | 5.248 us | -50.5% |
+| FP8 QKV g32 quant | 11.936 us | 6.656 us | -44.2% |
+| FP6 O g32 dequant | 10.496 us | 5.824 us | -44.5% |
+| FP8 O g32 dequant | 8.832 us | 5.696 us | -35.5% |
+
+The full Event-matrix quant geomean is 0.745x at D=128, 0.971x at D=64 and 0.971x at D=256. Dequant
+is 0.959x at D=128 and approximately unchanged elsewhere. Do not interpret 1-4% Event-only changes
+on untouched dequant paths as regressions without an interleaved repeat.
+
+### 13.2 Measured negative results (do not repeat blindly)
+
+- FP6 paired conversion: QKV g32 quant 5.248 -> 5.376 us (+2.4%) and instructions +1.6%; reverted.
+- FP8 paired dequant conversion: O g32 dequant 5.696 -> 6.432 us (+12.9%), registers 40 -> 64 and
+  instructions +4%; reverted. FP8 paired quant was retained separately (11% fewer instructions and
+  about 2% lower nsys time).
+- D=128/group compile-time folding reduced FP6 QKV instructions 3.05M -> 1.92M and registers 56 ->
+  46, but nsys stayed exactly 5.248 us. It was reverted because NCU-only duration/instruction gains
+  did not produce a steady-state performance win.
+- The first one-row-per-warp fused prototype was 11-25% slower than separate standard QKV and was
+  not accepted. Multirow fixed the device-side bottleneck before the production gate was evaluated.
+
+### 13.3 Fused QKV final contract and performance
+
+The fused buffer is `[P*S_LOCAL, chunk_row_bytes]` of uint8. Every sequence row stores
+`Q[p,s] || K[p,s] || V[p,s]` with independent `[B,H_LOCAL,W]` segments and legacy widths. This
+supports GQA, head padding, and BF16 K without widening quantized Q/V. Standard and UAA split only
+at sequence-row boundaries. Mega dequant restores three contiguous BF16 tensors directly; no host
+`torch.cat` is used.
+
+`tensor_id` is the QKV component tag (0=Q, 1=K, 2=V). Each tensor gets independent
+`ceil(rows/R)` warps so no warp crosses tensor formats. Per-token absmax and group scale broadcasts
+are row/group segmented. `_FusedAll2AllComm` inherits the original O/LSE/GQA methods and enables
+fused QKV only for UAA; `CACHE_DIT_DISABLE_ULYSSES_FUSED_QKV=1` forces the separate fallback.
+
+Fused/separate full QKV communication medians (smaller is better):
+
+| Granularity | Standard FP8 | Standard FP6 | UAA FP8 | UAA FP6 |
+|---|---:|---:|---:|---:|
+| per-token | 0.989x | 0.871x | 0.685x | 0.639x |
+| group-16 | 0.990x | 0.935x | 0.746x | 0.680x |
+| group-32 | 1.001x | 0.913x | 0.745x | 0.660x |
+
+Although standard fused micro performance is non-regressing after multirow, FLUX standard fused is
+consistently slower (FP8 8.05/8.06s vs separate 7.72/7.77s; FP6 7.81s vs 7.57s). Standard retains
+Q-first separate scheduling to preserve producer/communication overlap. UAA e2e is non-regressing:
+FP8 7.90s fused vs 7.92s separate and FP6 7.76s vs 7.76s.
+
+### 13.4 FLUX CP2 baseline -> optimized and correctness
+
+FLUX.1-dev, 1024^2, 28 steps, seed 0, compile, warmup 2 / repeat 5. CP2 BF16 is 8.49s.
+
+| Config | Baseline | Optimized | Speedup | PSNR/SSIM vs baseline |
+|---|---:|---:|---:|---|
+| FP8 per-token | 7.71s | 7.73s | 0.997x | 25.40/0.95424 |
+| FP8 group-16 | 7.90s | 7.83s | 1.009x | 30.29/0.97295 |
+| FP8 group-32 | 7.86s | 7.77s | 1.012x | 26.92/0.96911 |
+| FP6 per-token | 7.66s | 7.65s | 1.001x | 24.36/0.95486 |
+| FP6 group-16 | 7.83s | 7.68s | 1.020x | 34.54/0.98495 |
+| FP6 group-32 | 7.76s | 7.57s | 1.025x | 29.26/0.97855 |
+
+The baseline and optimized images preserve composition and readable `Hello world` text. Same-path
+cross-process repeats are only 26.21 dB (separate) and 26.79 dB (fused), so these image pairs do not
+establish an accuracy ranking. Numerical equivalence comes from packed-byte/dequant and NCCL parity.
+
+Validation: 363 passed plus one deselected optional `sol_attn` environment test, 17 fused mega tests,
+and 8 two-rank standard/UAA fused NCCL tests. No four-rank claim is made. The extra baseline/optimized
+memory comparison was not completed; do not claim a memory improvement. Pre-commit and IDE
+diagnostics pass. Baseline worktrees must reuse existing spdlog/CUTLASS checkouts; do not clone
+submodules during local performance iterations.

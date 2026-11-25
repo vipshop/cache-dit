@@ -356,6 +356,8 @@ def _required_ulysses_sources() -> list[str]:
     "csrc/kernels/ulysses/fp6_qkv_permute_dequant.cu",
     "csrc/kernels/ulysses/fp6_o_permute_quant.cu",
     "csrc/kernels/ulysses/fp6_o_permute_dequant.cu",
+    "csrc/kernels/ulysses/fN_fused_qkv_quant.cu",
+    "csrc/kernels/ulysses/fN_fused_qkv_dequant.cu",
   ]
 
 

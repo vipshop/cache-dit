@@ -14,9 +14,7 @@ __global__ void per_token_fp6_quant_kernel(const __nv_bfloat16* x, uint8_t* y, i
 
   const __nv_bfloat16* input = x + row * head_size;
   uint8_t* output = y + row * packed_head_size;
-  const float absmax = row_absmax(input, head_size, lane);
-  const float scale = fmaxf(__fdiv_rn(absmax, kFp6Max), 1e-4f);
-  quantize_row_fp6<true>(input, output, head_size, packed_head_size, lane, scale);
+  quantize_row_per_token_fp6<true>(input, output, head_size, packed_head_size, lane, 1e-4f);
 }
 
 __global__ void per_token_fp6_group_quant_kernel(const __nv_bfloat16* x, uint8_t* y, int64_t rows,

@@ -178,14 +178,65 @@ __device__ void quantize_row_fp6(const __nv_bfloat16* input, uint8_t* output, in
 }
 
 template <bool kBf16Scale>
+__device__ void quantize_row_per_token_fp6(const __nv_bfloat16* input, uint8_t* output,
+                                           int64_t head_size, int64_t packed_head_size, int lane,
+                                           float epsilon, int lanes_per_row = kWarpSize) {
+  if (head_size > kWarpSize * kFp6FastPack || head_size % kFp6FastPack != 0 ||
+      !is_aligned_16(input)) {
+    const float absmax = row_absmax(input, head_size, lane);
+    const float scale = fmaxf(__fdiv_rn(absmax, kFp6Max), epsilon);
+    quantize_row_fp6<kBf16Scale>(input, output, head_size, packed_head_size, lane, scale);
+    return;
+  }
+
+  const int64_t payload_bytes = fp6_payload_bytes(head_size);
+  const int64_t d = lane * kFp6FastPack;
+  const bool active = d < head_size;
+  __nv_bfloat16 values[kFp6FastPack];
+  float absmax = 0.0f;
+  if (active) {
+    load_bf16_pack(input + d, values);
+    load_bf16_pack(input + d + kPackSize, values + kPackSize);
+#pragma unroll
+    for (int i = 0; i < kFp6FastPack; ++i) {
+      absmax = fmaxf(absmax, fabsf(__bfloat162float(values[i])));
+    }
+  }
+  absmax = segmented_absmax(absmax, lanes_per_row);
+  const float scale = fmaxf(__fdiv_rn(absmax, kFp6Max), epsilon);
+  const float inv_scale = __fdiv_rn(1.0f, scale);
+  if (active) {
+    uint8_t codes[kFp6FastPack];
+#pragma unroll
+    for (int i = 0; i < kFp6FastPack; ++i) {
+      codes[i] = to_fp6(__fmul_rn(__bfloat162float(values[i]), inv_scale));
+    }
+    store_fp6x16(output + (d / 4) * 3, codes);
+  }
+  const int64_t bitstream_bytes = ((head_size + 3) / 4) * 3;
+  for (int64_t padding = bitstream_bytes + lane; padding < payload_bytes;
+       padding += lanes_per_row) {
+    output[padding] = 0;
+  }
+  if (lane == 0) {
+    write_group_scale<kBf16Scale>(output, payload_bytes, 0, scale);
+  }
+  for (int64_t padding = payload_bytes + (kBf16Scale ? 2 : 4) + lane; padding < packed_head_size;
+       padding += lanes_per_row) {
+    output[padding] = 0;
+  }
+}
+
+template <bool kBf16Scale>
 __device__ void quantize_row_groups_fp6(const __nv_bfloat16* input, uint8_t* output,
                                         int64_t head_size, int64_t packed_head_size, int lane,
-                                        int group_size, float epsilon) {
+                                        int group_size, float epsilon,
+                                        int lanes_per_row = kWarpSize) {
   const int64_t payload_bytes = fp6_payload_bytes(head_size);
   const int64_t groups = (head_size + group_size - 1) / group_size;
   if (head_size % kFp6FastPack == 0 && is_aligned_16(input)) {
     const int lanes_per_group = group_size / kFp6FastPack;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -218,7 +269,7 @@ __device__ void quantize_row_groups_fp6(const __nv_bfloat16* input, uint8_t* out
     }
   } else {
     const int lanes_per_group = group_size / kFp6ScalarPack;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -252,21 +303,21 @@ __device__ void quantize_row_groups_fp6(const __nv_bfloat16* input, uint8_t* out
     }
   }
   const int64_t bitstream_bytes = ((head_size + 3) / 4) * 3;
-  for (int64_t d = bitstream_bytes + lane; d < payload_bytes; d += kWarpSize) {
+  for (int64_t d = bitstream_bytes + lane; d < payload_bytes; d += lanes_per_row) {
     output[d] = 0;
   }
   constexpr int scale_bytes = kBf16Scale ? 2 : 4;
   for (int64_t d = payload_bytes + groups * scale_bytes + lane; d < packed_head_size;
-       d += kWarpSize) {
+       d += lanes_per_row) {
     output[d] = 0;
   }
 }
 
 template <bool kBf16Scale>
 __device__ void dequantize_row_fp6(const uint8_t* input, __nv_bfloat16* output, int64_t head_size,
-                                   int lane, float scale) {
+                                   int lane, float scale, int lanes_per_row = kWarpSize) {
   if (head_size % kFp6FastPack == 0 && is_aligned_16(output)) {
-    for (int64_t d = lane * kFp6FastPack; d < head_size; d += kWarpSize * kFp6FastPack) {
+    for (int64_t d = lane * kFp6FastPack; d < head_size; d += lanes_per_row * kFp6FastPack) {
       uint8_t codes[kFp6FastPack];
       __nv_bfloat16 values[kFp6FastPack];
       load_fp6x16(input + (d / 4) * 3, codes);
@@ -278,7 +329,7 @@ __device__ void dequantize_row_fp6(const uint8_t* input, __nv_bfloat16* output, 
       store_bf16_pack(output + d + kPackSize, values + kPackSize);
     }
   } else {
-    for (int64_t d = lane * kFp6ScalarPack; d < head_size; d += kWarpSize * kFp6ScalarPack) {
+    for (int64_t d = lane * kFp6ScalarPack; d < head_size; d += lanes_per_row * kFp6ScalarPack) {
       uint8_t codes[kFp6ScalarPack];
       load_fp6x4(input + (d / 4) * 3, codes);
 #pragma unroll
@@ -293,12 +344,14 @@ __device__ void dequantize_row_fp6(const uint8_t* input, __nv_bfloat16* output, 
 
 template <bool kBf16Scale>
 __device__ void dequantize_row_groups_fp6(const uint8_t* input, __nv_bfloat16* output,
-                                          int64_t head_size, int lane, int group_size) {
+                                          int64_t head_size, int lane, int group_size,
+                                          int lanes_per_row = kWarpSize) {
+  const int shuffle_lane = threadIdx.x % kWarpSize;
   const int64_t payload_bytes = fp6_payload_bytes(head_size);
   const int64_t groups = (head_size + group_size - 1) / group_size;
   if (head_size % kFp6FastPack == 0 && is_aligned_16(output)) {
     const int lanes_per_group = group_size / kFp6FastPack;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -308,7 +361,7 @@ __device__ void dequantize_row_groups_fp6(const uint8_t* input, __nv_bfloat16* o
       if (group < groups && lane_in_group == 0) {
         scale = read_group_scale<kBf16Scale>(input, payload_bytes, group);
       }
-      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      scale = __shfl_sync(0xffffffff, scale, shuffle_lane - lane_in_group);
       if (active) {
         uint8_t codes[kFp6FastPack];
         __nv_bfloat16 values[kFp6FastPack];
@@ -323,7 +376,7 @@ __device__ void dequantize_row_groups_fp6(const uint8_t* input, __nv_bfloat16* o
     }
   } else {
     const int lanes_per_group = group_size / kFp6ScalarPack;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -333,7 +386,7 @@ __device__ void dequantize_row_groups_fp6(const uint8_t* input, __nv_bfloat16* o
       if (group < groups && lane_in_group == 0) {
         scale = read_group_scale<kBf16Scale>(input, payload_bytes, group);
       }
-      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      scale = __shfl_sync(0xffffffff, scale, shuffle_lane - lane_in_group);
       if (active) {
         uint8_t codes[kFp6ScalarPack];
         load_fp6x4(input + (d / 4) * 3, codes);

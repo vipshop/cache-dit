@@ -12,16 +12,7 @@ __global__ void per_token_quant_kernel(const __nv_bfloat16* x, uint8_t* y, int64
 
   const __nv_bfloat16* input = x + row * head_size;
   uint8_t* output = y + row * packed_head_size;
-  const float absmax = row_absmax(input, head_size, lane);
-  const float scale = fmaxf(absmax / kFp8Max, 1e-4f);
-  quantize_row(input, output, head_size, lane, 1.0f / scale);
-  if (lane == 0) {
-    const __nv_bfloat16 stored_scale = __float2bfloat16_rn(scale);
-    std::memcpy(output + head_size, &stored_scale, sizeof(stored_scale));
-  }
-  for (int64_t d = head_size + 2 + lane; d < packed_head_size; d += kWarpSize) {
-    output[d] = 0;
-  }
+  quantize_row_per_token<true>(input, output, head_size, packed_head_size, lane, 1e-4f);
 }
 
 __global__ void per_token_group_quant_kernel(const __nv_bfloat16* x, uint8_t* y, int64_t rows,

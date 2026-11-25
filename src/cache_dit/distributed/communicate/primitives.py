@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Tuple, List, Callable, Optional
 
+import os
 import torch
 import torch.distributed as dist
 import torch.distributed._functional_collectives as fc
@@ -21,6 +22,8 @@ try:
     ulysses_fN_qkv_permute_quant,
     ulysses_fN_qkv_permute_dequant,
   )
+  from ...kernels.ulysses import ulysses_fN_fused_qkv_dequant
+  from ...kernels.ulysses import ulysses_fN_fused_qkv_quant
 except ImportError:
 
   def _ulysses_quant_kernel_unavailable(*args, **kwargs):
@@ -34,6 +37,8 @@ except ImportError:
   ulysses_fN_per_token_dequant = _ulysses_quant_kernel_unavailable
   ulysses_fN_qkv_permute_quant = _ulysses_quant_kernel_unavailable
   ulysses_fN_qkv_permute_dequant = _ulysses_quant_kernel_unavailable
+  ulysses_fN_fused_qkv_quant = _ulysses_quant_kernel_unavailable
+  ulysses_fN_fused_qkv_dequant = _ulysses_quant_kernel_unavailable
 
 # Some helper distributed primitive functions for context parallel attention.
 __all__ = [
@@ -502,6 +507,45 @@ class _All2AllComm:
     return _all_to_all_single_o_custom_heads(out, self._group, q_split_sizes, local_sequence_length)
 
 
+class _FusedAll2AllComm(_All2AllComm):
+  """Ulysses communicator with an optional fused QKV collective and legacy fallbacks."""
+
+  __slots__ = ("_fused_impl", "_quantize_k")
+
+  def __init__(self, _cp_config: "_ContextParallelConfig"):
+    super().__init__(_cp_config)
+    comm = normalize_quant_communicate_kwargs(getattr(_cp_config, "quant_communicate_kwargs", {}))
+    self._quantize_k = comm.get("quantize_k", True)
+    self._fused_impl = None
+    disabled = os.environ.get("CACHE_DIT_DISABLE_ULYSSES_FUSED_QKV",
+                              "0").lower() in ("1", "true", "yes", "on")
+    # Standard Q-first scheduling preserves more producer/communication overlap in FLUX; the fused
+    # standard primitive remains available for benchmarks, but production enables fusion only for
+    # UAA where the full communication layer and e2e are both non-regressing.
+    if self._quant_bits in (6, 8) and _cp_config.ulysses_anything and not disabled:
+      self._fused_impl = _all_to_all_fused_qkv_any_fN_async
+
+  @property
+  def fused_enabled(self) -> bool:
+    """Return whether this communicator can use one fused QKV collective."""
+    return self._fused_impl is not None
+
+  def send_qkv(self, query: torch.Tensor, key: torch.Tensor,
+               value: torch.Tensor) -> _All2AllAsyncHandle:
+    """Launch one fused QKV all-to-all and return a handle yielding three tensors."""
+    if self._fused_impl is None:
+      raise RuntimeError("Fused QKV communication requires FP8 or FP6 communication quantization.")
+    self._resolve_metadata(query, allow_implicit_init=True)
+    wait = self._fused_impl(query,
+                            key,
+                            value,
+                            self._group,
+                            group_size=self._quant_group_size,
+                            bits=self._quant_bits,
+                            quantize_k=self._quantize_k)
+    return _All2AllAsyncHandle(wait)
+
+
 def _all_to_all_single_qkv_async(
   x: torch.Tensor,
   group: dist.ProcessGroup,
@@ -799,6 +843,76 @@ def _all_to_all_single_qkv_fN_async(
     return x
 
   return wait
+
+
+def _launch_fused_qkv_fN(
+    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, group: dist.ProcessGroup,
+    uneven: bool, group_size: int, bits: int,
+    quantize_k: bool) -> Callable[..., tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+  """Launch one fused QKV collective using per-tensor legacy widths and partition-major bytes."""
+  _, world_size = _get_rank_world_size(group)
+  B, S_LOCAL, _, D = query.shape
+  if key.shape[:2] != query.shape[:2] or value.shape[:2] != query.shape[:2]:
+    raise ValueError("Fused QKV requires matching batch and local sequence dimensions.")
+  if key.shape[3] != D or value.shape[3] != D:
+    raise ValueError("Fused QKV requires matching head dimensions.")
+
+  query, q_pad = _maybe_pad_qkv_head(query, query.shape[2], group)
+  key, k_pad = _maybe_pad_qkv_head(key, key.shape[2], group)
+  value, v_pad = _maybe_pad_qkv_head(value, value.shape[2], group)
+  q_heads = query.shape[2] // world_size
+  k_heads = key.shape[2] // world_size
+  v_heads = value.shape[2] // world_size
+  input_split_sizes = [S_LOCAL] * world_size
+  output_split_sizes = _gather_size(S_LOCAL, group) if uneven else input_split_sizes
+
+  # Preserve each tensor's legacy packed width and 16-byte chunk alignment. This matters for GQA
+  # and BF16 K: Q/K/V widths need not match, and fused Q/V rows are never widened to BF16 K rows.
+  min_width = _fN_row_min_width(D, group_size, 4, bits)
+  width_step = 4 if bits == 6 else 1
+  q_width = _fN_packed_row_width(output_split_sizes, B * q_heads, min_width, width_step=width_step)
+  v_width = _fN_packed_row_width(output_split_sizes, B * v_heads, min_width, width_step=width_step)
+  if quantize_k:
+    k_width = _fN_packed_row_width(output_split_sizes,
+                                   B * k_heads,
+                                   min_width,
+                                   width_step=width_step)
+  else:
+    k_width = _padded_last_dim(D, key.element_size()) * key.element_size()
+  chunk_row_bytes = B * (q_heads * q_width + k_heads * k_width + v_heads * v_width)
+  packed = ulysses_fN_fused_qkv_quant(query, key, value, world_size, q_heads, k_heads, v_heads,
+                                      q_width, k_width, v_width, chunk_row_bytes, group_size, bits,
+                                      quantize_k)
+  packed = fc.all_to_all_single(packed, output_split_sizes, input_split_sizes, group)
+
+  def wait() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    nonlocal packed
+    packed = _wait_tensor(packed)
+    query_out, key_out, value_out = ulysses_fN_fused_qkv_dequant(packed, q_heads, k_heads, v_heads,
+                                                                 D, q_width, k_width, v_width,
+                                                                 chunk_row_bytes, group_size, bits,
+                                                                 quantize_k)
+    query_out = _maybe_unpad_qkv_head(query_out, q_pad, group)
+    key_out = _maybe_unpad_qkv_head(key_out, k_pad, group)
+    value_out = _maybe_unpad_qkv_head(value_out, v_pad, group)
+    return query_out, key_out, value_out
+
+  return wait
+
+
+def _all_to_all_fused_qkv_fN_async(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+                                   group: dist.ProcessGroup, **kwargs) -> Callable:
+  """Launch fused QKV communication with evenly split local sequence lengths."""
+  return _launch_fused_qkv_fN(query, key, value, group, False, kwargs.get("group_size", 0),
+                              kwargs["bits"], kwargs.get("quantize_k", True))
+
+
+@torch.compiler.disable
+def _all_to_all_fused_qkv_any_fN_async(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+                                       group: dist.ProcessGroup, **kwargs) -> Callable:
+  """Launch fused QKV communication with uneven local sequence lengths."""
+  return _launch_fused_qkv_fN(query, key, value, group, True, kwargs.get("group_size", 0),
+                              kwargs["bits"], kwargs.get("quantize_k", True))
 
 
 def _padded_last_dim(head_size: int, element_size: int) -> int:
