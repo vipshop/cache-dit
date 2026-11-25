@@ -4,11 +4,7 @@ from .backends.register import _AttnBackend, _AttnBackendRegistry, _dispatch_att
 from .interface import set_attn_backend
 from .backends.sol_attn import set_sol_attn_config
 
-from ..distributed.communicate import (
-  _all_to_all_o_async_fn,
-  _all_to_all_qkv_async_fn,
-  _init_comm_metadata,
-)
+from ..distributed.communicate import _init_comm_metadata
 from ..distributed.parallel import (
   _ContextParallelConfig,
   _enable_context_parallelism,

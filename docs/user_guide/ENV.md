@@ -22,6 +22,6 @@ This document summarizes all core configurable environment variables in cache-di
 
 2. Variables marked "internal use only" or "developer use only" should not be modified by end users.
 
-3. Ulysses variants such as `ulysses_anything`, `ulysses_float8`, and `ulysses_async` are configured through `ParallelismConfig` and internal `_ContextParallelConfig`, not environment variables.
+3. Ulysses variants such as `ulysses_anything`, `quant_communicate_kwargs`, and `ulysses_async` are configured through `ParallelismConfig` and internal `_ContextParallelConfig`, not environment variables.
 
 4. `CACHE_DIT_FUSED_OPS` is the exception to note 1: it is tri-state (`unset` / `1` / `0`) and reads the falsey strings `0`, `false`, `off`, `no`; any other value counts as enabled.

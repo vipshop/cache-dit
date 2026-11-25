@@ -52,6 +52,10 @@ def test_public_api_is_reexported_from_domain_module(op_name: str, source_module
   assert getattr(kernels, op_name) is getattr(source_module, op_name)
 
 
+def test_ulysses_internal_bridges_are_not_public() -> None:
+  assert all(not name.startswith("_call_") for name in ulysses_ops.__all__)
+
+
 def test_public_api_matches_all() -> None:
   # Submodules (attn / comm / cuda_ext / models / svdquant) are public attributes of the
   # package but are not part of the operator API surface, so they are excluded here.

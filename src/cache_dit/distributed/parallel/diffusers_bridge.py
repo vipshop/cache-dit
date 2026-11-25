@@ -41,8 +41,7 @@ def _normalize_context_parallel_config(config) -> _ContextParallelConfig:
     rotate_method=getattr(config, "rotate_method", "p2p"),
     mesh=getattr(config, "mesh", None),
     ulysses_anything=getattr(config, "ulysses_anything", False),
-    ulysses_float8=getattr(config, "ulysses_float8", False),
-    ulysses_float8_k=getattr(config, "ulysses_float8_k", False),
+    quant_communicate_kwargs=dict(getattr(config, "quant_communicate_kwargs", {})),
     ulysses_async=getattr(config, "ulysses_async", False),
     extra_kwargs=getattr(config, "extra_kwargs", None),
   )

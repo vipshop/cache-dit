@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 import torch
 
+from ..quant_utils import normalize_quant_communicate_kwargs
+
 
 @dataclasses.dataclass
 class _ContextParallelConfig:
@@ -16,8 +18,8 @@ class _ContextParallelConfig:
   :param rotate_method: KV rotation strategy for Ring attention. Only "p2p" is supported now.
   :param mesh: Optional user-provided device mesh.
   :param ulysses_anything: Whether uneven sequence/head Ulysses mode is enabled.
-  :param ulysses_float8: Whether Ulysses communication should use fp8 kernels when available.
-  :param ulysses_float8_k: Whether K should also use FP8 communication; requires ulysses_float8.
+  :param quant_communicate_kwargs: Low-precision communication options with bits, quant_type, and
+    quantize_k (default True when enabled); empty disables quantization.
   :param ulysses_async: Whether model-specific async Ulysses attention patches are enabled.
   :param extra_kwargs: Reserved extension storage for cache-dit specific runtime hints.
   """
@@ -28,8 +30,7 @@ class _ContextParallelConfig:
   rotate_method: Literal["allgather", "alltoall", "p2p"] = "p2p"
   mesh: torch.distributed.device_mesh.DeviceMesh | None = None
   ulysses_anything: bool = False
-  ulysses_float8: bool = False
-  ulysses_float8_k: bool = False
+  quant_communicate_kwargs: dict[str, Any] = dataclasses.field(default_factory=dict)
   ulysses_async: bool = False
   extra_kwargs: dict[str, Any] | None = None
 
@@ -58,13 +59,13 @@ class _ContextParallelConfig:
     if self.rotate_method not in {"p2p"}:
       raise NotImplementedError(
         f"Only rotate_method='p2p' is supported now, but got {self.rotate_method}.")
-    if (self.ulysses_anything or self.ulysses_float8
+    self.quant_communicate_kwargs = normalize_quant_communicate_kwargs(
+      self.quant_communicate_kwargs)
+    if (self.ulysses_anything or self.quant_communicate_kwargs
         or self.ulysses_async) and self.ulysses_degree == 1:
       raise ValueError(
-        "ulysses_degree must be greater than 1 when ulysses_anything, ulysses_float8, or ulysses_async is enabled."
+        "ulysses_degree must be greater than 1 when ulysses_anything, quant_communicate_kwargs, or ulysses_async is enabled."
       )
-    if self.ulysses_float8_k and not self.ulysses_float8:
-      raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
     if self.ulysses_anything:
       if self.ring_degree > 1:
         raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")

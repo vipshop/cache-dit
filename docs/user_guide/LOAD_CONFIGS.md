@@ -138,7 +138,9 @@ For device that don't have NVLink support, you can enable Ulysses FP8 Communicat
 parallelism_config:
   ulysses_size: auto
   attention_backend: native
-  ulysses_float8: true
+  quant_communicate_kwargs:
+    bits: 8
+    quant_type: per_token
 ```
 
 - <span style="color:#c77dff;">Async Ulysses CP</span>

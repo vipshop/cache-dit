@@ -125,29 +125,36 @@ cache_dit.enable_cache(
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
 
-## Async FP8 Ulysses Attention
+## Async FP8/FP6 Ulysses Attention
 
 <div id="ulysses-async-fp8"></div>
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit has implemented <span style="color:#c77dff;">Async FP8 Ulysses Attention</span> for **🔥all** supported DiTs. This optimization reduces communication latency while preserving high precision. Users can enable this feature by setting `ulysses_float8=True`. By default, <span style="color:#c77dff;">K</span> remains in <span style="color:#c77dff;">FP16/BF16</span> format to protect the numerically sensitive <span style="color:#c77dff;">Softmax(Q@K^T)</span> computation, so FP8 is applied only to Q, V, and O. Setting `ulysses_float8_k=True` additionally opts K into FP8 communication; this requires `ulysses_float8=True` and should be validated against the target model's output quality. LSE always remains BF16. The fused FP8 O path additionally requires both the global head count and the global sequence length to be divisible by `ulysses_size`; if either is not divisible, disable `ulysses_float8` for that model or shape.
+cache-dit supports <span style="color:#c77dff;">Async FP8/FP6 Ulysses Attention</span> for supported DiTs. Low-precision communication is configured only by `quant_communicate_kwargs`; an empty dictionary keeps the default BF16 path. FP8 defaults to `per_token`, while FP6 E2M3 defaults to `per_group_32`. Both also accept explicit `per_token` and `per_group_16`. When communication quantization is enabled, K uses the same quantized path by default. Set `quantize_k=False` to keep K in BF16 and protect the numerically sensitive `Softmax(Q@K^T)` computation; LSE always remains BF16. The fused O path requires the global head count and global sequence length to be divisible by `ulysses_size`; disable communication quantization for unsupported shapes.
 
 ```python
 from cache_dit import ParallelismConfig
 
 cache_dit.enable_cache(
-  pipe_or_adapter, 
+  pipe_or_adapter,
   cache_config=DBCacheConfig(...),
-  # Set `ulysses_float8` as True to enable Async FP8 Ulysses Attention
   parallelism_config=ParallelismConfig(
     ulysses_size=2,
-    ulysses_float8=True,
-    # Optional: also quantize K. Requires ulysses_float8=True.
-    ulysses_float8_k=False,
+    quant_communicate_kwargs={
+      "bits": 8,                       # 8 for FP8, 6 for packed FP6 E2M3
+      "quant_type": "per_group_16",   # per_token / per_group_16 / per_group_32
+      "quantize_k": False,             # Optional: keep K in BF16 (defaults to True).
+    },
+    # FP6 with its default group-32 granularity can be written simply as:
+    # quant_communicate_kwargs={"bits": 6},
   ),
 )
 ```
+
+The CLI uses the same keys in one comma-separated option, for example `--quant-communicate-params 'bits=8,quant_type=per_group_16'` or `--quant-communicate-params 'bits=6'`. The old `--ulysses-float8*` options are removed. Communication quantization requires Ulysses parallelism with `ulysses_size > 1`.
+
+FP8 rows contain `D` payload bytes followed by `ceil(D/G)` scales. FP6 uses native E2M3 conversion and packs four 6-bit codes into three bytes inside a `uint8` transport tensor; its payload and total row width are aligned to four bytes. Both formats zero all alignment padding, support a final partial group, and choose the smallest row width satisfying the 16-byte alignment rule for every per-rank chunk. QKV retains FP32 scales and epsilon `1e-6`; O and the generic path retain BF16 scales and epsilon `1e-4`. FP6 requires sm100+ native conversion support and has been validated on sm120a. FP6 reduces payload traffic but adds pack/unpack work, so finer granularity and lower bit width should both be evaluated for accuracy and end-to-end latency on the target model.
 
 On PCIe-only multi-socket machines, cache-dit emits a one-time warning when a CP group spans NUMA nodes through `SYS` links and no NVLink is detected. This is a diagnostic only: process groups and rank placement are not changed. Topology discovery is fail-open when `nvidia-smi` is unavailable or its output cannot be parsed.
 
