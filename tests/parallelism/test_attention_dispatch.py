@@ -107,7 +107,7 @@ def test_dispatch_attention_fn_legacy_parallel_config_alias_is_normalized(monkey
     rotate_method="p2p",
     mesh=None,
     ulysses_anything=False,
-    ulysses_float8=False,
+    quant_communicate_kwargs={},
     ulysses_async=False,
     extra_kwargs=None,
   )
@@ -149,7 +149,7 @@ def test_diffusers_bridge_translates_parallel_config_to_cp_config(monkeypatch):
     rotate_method="p2p",
     mesh=None,
     ulysses_anything=False,
-    ulysses_float8=False,
+    quant_communicate_kwargs={},
     ulysses_async=False,
     extra_kwargs=None,
   )
@@ -203,7 +203,7 @@ def test_diffusers_bridge_registers_cache_dit_flash_backend(monkeypatch):
     rotate_method="p2p",
     mesh=None,
     ulysses_anything=False,
-    ulysses_float8=False,
+    quant_communicate_kwargs={},
     ulysses_async=False,
     extra_kwargs=None,
   )

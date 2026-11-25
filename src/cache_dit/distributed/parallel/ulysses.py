@@ -63,7 +63,7 @@ class UlyssesAttention(torch.autograd.Function):
       )
       return comm.send_group_aligned_gqa_o(out, q_split_sizes, local_sequence_length)
 
-    # Keep K/LSE on the non-fp8 path for better numerical stability.
+    # Keep K/LSE on the BF16 path unless quantize_k is enabled; LSE is always BF16 for better numerical stability.
     query_wait = comm.send_q(query)
     query = query_wait.wait()  # type: torch.Tensor
 

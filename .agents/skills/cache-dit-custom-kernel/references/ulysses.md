@@ -468,3 +468,52 @@ its original image, so sampling/compile drift is larger than the granularity ran
 an e2e precision win from a single image pair. Visual comparison preserves composition and readable
 text in all rows. The observed e2e cost is about 1-3%, within single-run noise, while the isolated
 full communication layer is 8-17% slower; group modes remain opt-in.
+
+## 10. FP6 E2M3 and unified communication configuration (2026-11-25)
+
+Status: implemented and validated on `dev` with torch 2.15.0+cu132, sm120a, GPU 4-7. Full evidence:
+`.tmp/ulysses_fp6/report.md` and `results.json`.
+
+### 10.1 Public configuration and naming
+
+- Use only `quant_communicate_kwargs={"bits": 6|8, "quant_type": ..., "quantize_k": ...}`.
+  Empty means BF16. FP8 defaults to `per_token`; FP6 defaults to `per_group_32`. Both accept explicit
+  `per_token`, `per_group_16`, and `per_group_32`. K is opt-in; LSE remains BF16.
+- CLI: `--quant-communicate-params 'bits=6,quant_type=per_group_32,quantize_k=false'`. All old
+  `--ulysses-float8*` options and their config fields are removed.
+- `ulysses_fN_*` dispatches with keyword-only `bits=8`; direct `ulysses_fp6_*` and `ulysses_fp8_*`
+  remain public. `_call_ulysses_*` bridge functions are never in `__all__`.
+- Quantized primitives are `_all_to_all_*_fN_*`; row-width helpers are `_fN_*`. Selectors take
+  `bits=None/0/6/8`: None follows config, zero forces BF16, and 6/8 select fN. The unused
+  `_all_to_all_{qkv,o}_async_fn` wrappers and re-exports were removed.
+
+### 10.2 FP6 packed contract and numerical pitfalls
+
+- Four E2M3 codes occupy three little-endian bytes in a `uint8` transport tensor. Payload and total
+  row width are 4-byte aligned; every rank chunk still uses the minimal 16-byte search. Both payload
+  padding and trailing padding are zeroed.
+- Aligned fast path: 16 elements/lane, 12 output bytes, three aligned u32 stores. Scalar path: four
+  elements/lane with masked tails. QKV keeps FP32 scale/1e-6; O/generic keeps BF16 scale/1e-4.
+- Require native conversion support (host check currently `major >= 10`; validated only on sm120a).
+  Do not silently accept emulation on sm89. The CUDA source has `__has_include(<cuda_fp6.h>)` stubs
+  for older toolkits.
+- Use explicit IEEE `__fdiv_rn`/`__fmul_rn` for FP6 scale/normalization when byte-exact references
+  matter: the extension builds with fast math. Independently, PyTorch CUDA FP32 division can be one
+  ulp away from the correctly rounded scale (`1.640625/7.5`); generate the reference scale with FP64
+  division and cast to FP32 before comparing bits.
+- Round the minimum packed width up to the width step before searching chunk alignment. Starting
+  at `payload+scales=2 mod 4` and incrementing by four can otherwise loop forever for some chunk
+  row counts. Keep the D=72/BF16-scale regression.
+
+### 10.3 Validation and measured outcome
+
+- FP6 operators: 74 passed; FP8 operator regression: 91 passed; export/config/selector/manifest:
+  152 passed; 4-rank FP6/FP8 x three granularities: 6 passed.
+- D=128 QKV widths for per-token/group-16/group-32: FP8 132/160/144, FP6 100/128/112. O widths:
+  FP8 130/144/136, FP6 100/112/104. FP6 quant/dequant is slower despite smaller payloads.
+- FP6 FLUX CP2/CP4 QVO/QKVO times are approximately parity to 2% faster than the FP8 controls.
+  Operator rel-L2 is ordered per-group-16 < per-group-32 < per-token for both bit widths. The CP4
+  FP6 group-32 repeat floor is 37.02 dB / 0.99023 SSIM, so do not claim a stable e2e precision
+  ranking from these image pairs. Visual outputs preserve composition and readable text.
+- Second-level/global scale quantization is not part of this implementation; evaluate it separately
+  from the bit-width/granularity change.

@@ -257,12 +257,12 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 python3 -m cache_dit.generate flux --cache --scm fast --calibrator taylorseer --calibrator-params order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn _sdpa_cudnn --parallel-text --cache --scm fast --calibrator taylorseer \
          --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --ulysses-float8 \
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn sage --parallel-text --cache --scm fast --calibrator taylorseer \
          --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
@@ -277,7 +277,7 @@ torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --
          --parallel-controlnet --cache --rdt 0.6 --scm fast
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses \
          --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
-         --compile-controlnet --ulysses-float8 --attn _sdpa_cudnn \
+         --compile-controlnet --quant-communicate-params bits=8 --attn _sdpa_cudnn \
          --warmup 2 --repeat 4     
 ```
 
@@ -496,12 +496,9 @@ options:
                         Exact prefix-KV token budget (default: 1024; 0 disables; capped at sequence length).
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context parallelism
-  --ulysses-float8, --ufp8
-                        Enable Ulysses Attention/UAA Float8 for context parallelism
-  --ulysses-float8-k, --ufp8k
-                        Also quantize K for Ulysses FP8 communication (requires --ulysses-float8)
-  --ulysses-float8-quant-type {per-token,per-group-16,per-group-32}
-                        Ulysses FP8 communication scale granularity (requires --ulysses-float8)
+  --quant-communicate-params QUANT_COMMUNICATE_PARAMS
+                        Ulysses low-precision communication options as k=v pairs, e.g.
+                        'bits=6,quant_type=per_group_32,quantize_k=false'
   --ulysses-async, --uaqkv
                         Enabled experimental Async QKV Projection with Ulysses for context parallelism
   --ring-rotate-method {allgather,p2p}, --rotate {allgather,p2p}

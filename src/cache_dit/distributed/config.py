@@ -1,8 +1,9 @@
 import torch
 import dataclasses
 import torch.distributed as dist
-from typing import Optional, Dict, Any, List, Literal, Union
+from typing import Optional, Dict, Any, List, Union
 from .backend import ParallelismBackend
+from .quant_communicate import normalize_quant_communicate_kwargs
 from ..logger import init_logger
 
 logger = init_logger(__name__)
@@ -101,18 +102,10 @@ class ParallelismConfig:
   #   Whether to enable the ulysses anything attention (namely, UAA.)
   #   to support arbitrary sequence length and arbitrary number of heads.
   ulysses_anything: Optional[bool] = False
-  # ulysses_float8: (`bool`, *optional*):
-  #   Whether to enable the ulysses float8 attention to use fp8 for
-  #   faster communication.
-  ulysses_float8: Optional[bool] = False
-  # ulysses_float8_k: (`bool`, *optional*):
-  #   Whether to also quantize K for Ulysses FP8 communication. Requires
-  #   ulysses_float8=True. LSE always remains BF16.
-  ulysses_float8_k: Optional[bool] = False
-  # ulysses_float8_quant_type: (`str`, *optional*):
-  #   Scale granularity for Ulysses FP8 communication. Non-default groups require
-  #   ulysses_float8=True.
-  ulysses_float8_quant_type: Literal["per-token", "per-group-16", "per-group-32"] = "per-token"
+  # quant_communicate_kwargs: (`Dict[str, Any]`, *optional*):
+  #   Low-precision Ulysses communication options: bits=6/8,
+  #   quant_type=per_token/per_group_16/per_group_32, and quantize_k. Empty disables it.
+  quant_communicate_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
   # ulysses_async: (`bool`, *optional*):
   #   Whether to enable the ulysses async attention to overlap
   #   communication and computation.
@@ -182,14 +175,11 @@ class ParallelismConfig:
     # For backward compatibility, will be removed in future versions.
     self._maybe_flatten_deprecated_parallel_kwargs()
 
-    if self.ulysses_float8_k and not self.ulysses_float8:
-      raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
-
-    if self.ulysses_float8_quant_type not in ("per-token", "per-group-16", "per-group-32"):
-      raise ValueError(f"Unsupported ulysses_float8_quant_type: {self.ulysses_float8_quant_type}.")
-
-    if self.ulysses_float8_quant_type != "per-token" and not self.ulysses_float8:
-      raise ValueError("Non-per-token ulysses_float8_quant_type requires ulysses_float8=True.")
+    self.quant_communicate_kwargs = normalize_quant_communicate_kwargs(
+      self.quant_communicate_kwargs)
+    if self.quant_communicate_kwargs and (self.ulysses_size is None or self.ulysses_size <= 1):
+      raise ValueError(
+        "quant_communicate_kwargs requires Ulysses parallelism with ulysses_size > 1.")
 
     if isinstance(self.backend, str):
       self.backend = ParallelismBackend.from_str(self.backend)
@@ -266,6 +256,14 @@ class ParallelismConfig:
     if not self.parallel_kwargs:
       return
 
+    legacy_keys = {
+      "ulysses_float8", "ulysses_float8_k", "ulysses_float8_quant_type",
+      "experimental_ulysses_float8"
+    }
+    if legacy_keys.intersection(self.parallel_kwargs):
+      raise ValueError("Legacy Ulysses FP8 fields were removed; use quant_communicate_kwargs with "
+                       "bits/quant_type/quantize_k instead.")
+
     for key, value in self.parallel_kwargs.items():
       if hasattr(self, key):
         setattr(self, key, value)
@@ -274,10 +272,9 @@ class ParallelismConfig:
 
     deprecated_specified_keys = [
       "experimental_ulysses_anything",
-      "experimental_ulysses_float8",
       "experimental_ulysses_async",
     ]
-    new_specified_keys = ["ulysses_anything", "ulysses_float8", "ulysses_async"]
+    new_specified_keys = ["ulysses_anything", "ulysses_async"]
     for deprecated_key, new_key in zip(deprecated_specified_keys, new_specified_keys):
       if deprecated_key in self.parallel_kwargs:
         if hasattr(self, new_key):
@@ -413,12 +410,8 @@ class ParallelismConfig:
         parallel_str += f"ulysses_size={self.ulysses_size}, "
         if self.ulysses_anything:
           parallel_str += f"ulysses_anything={self.ulysses_anything}, "
-        if self.ulysses_float8:
-          parallel_str += f"ulysses_float8={self.ulysses_float8}, "
-        if self.ulysses_float8_k:
-          parallel_str += f"ulysses_float8_k={self.ulysses_float8_k}, "
-        if self.ulysses_float8_quant_type != "per-token":
-          parallel_str += f"ulysses_float8_quant_type={self.ulysses_float8_quant_type}, "
+        if self.quant_communicate_kwargs:
+          parallel_str += f"quant_communicate_kwargs={self.quant_communicate_kwargs}, "
         if self.ulysses_async:
           parallel_str += f"ulysses_async={self.ulysses_async}, "
       if self.ring_size is not None:
@@ -435,18 +428,19 @@ class ParallelismConfig:
         parallel_str += f"Ring{self.ring_size}_"
       if self.ulysses_anything:
         parallel_str += "UAA_"
-        if self.ulysses_float8_k:
-          parallel_str += "F8K_"
-        elif self.ulysses_float8:
-          parallel_str += "F8_"
-      else:
-        if self.ulysses_float8_k:
-          parallel_str += "UF8K_"
-        elif self.ulysses_float8:
-          parallel_str += "UF8_"
-      if self.ulysses_float8 and self.ulysses_float8_quant_type != "per-token":
-        group_suffix = {"per-group-16": "G16_", "per-group-32": "G32_"}
-        parallel_str += group_suffix[self.ulysses_float8_quant_type]
+      comm = self.quant_communicate_kwargs
+      if comm:
+        parallel_str += "F" if self.ulysses_anything else "UF"
+        parallel_str += str(comm["bits"])
+        if comm["quantize_k"]:
+          parallel_str += "K"
+        parallel_str += "_"
+        if comm["bits"] == 6:
+          group_suffix = {"per_token": "PT_", "per_group_16": "G16_", "per_group_32": "G32_"}
+          parallel_str += group_suffix[comm["quant_type"]]
+        elif comm["quant_type"] != "per_token":
+          group_suffix = {"per_group_16": "G16_", "per_group_32": "G32_"}
+          parallel_str += group_suffix[comm["quant_type"]]
       if self.ulysses_async:
         parallel_str += "UAS_"
       if self.tp_size is not None:

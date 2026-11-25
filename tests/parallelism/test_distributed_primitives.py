@@ -48,14 +48,23 @@ def test_ring_p2p_comm_derives_group_and_peer_ranks_from_cp_config(monkeypatch):
   assert comm.recv_rank == 8
 
 
-@pytest.mark.parametrize("quant_type,group_size", [
-  ("per-token", 0),
-  ("per-group-16", 16),
-  ("per-group-32", 32),
+@pytest.mark.parametrize("bits,quant_type,group_size", [
+  (8, "per_token", 0),
+  (8, "per_group_16", 16),
+  (8, "per_group_32", 32),
+  (6, "per_token", 0),
+  (6, "per_group_16", 16),
+  (6, "per_group_32", 32),
 ])
-def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, quant_type, group_size):
+def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, bits, quant_type, group_size):
   group = object()
-  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group), ulysses_float8_quant_type=quant_type)
+  cp_config = SimpleNamespace(
+    _ulysses_mesh=_FakeMesh(group),
+    quant_communicate_kwargs={
+      "bits": bits,
+      "quant_type": quant_type
+    },
+  )
   select_qkv_calls = []
   select_o_calls = []
   launch_calls = []
@@ -73,15 +82,15 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, quant_type, grou
 
     return _impl
 
-  def _select_qkv(_cp_config, fp8=None):
-    select_qkv_calls.append((_cp_config, fp8))
-    if fp8 is False:
+  def _select_qkv(_cp_config, bits=None):
+    select_qkv_calls.append((_cp_config, bits))
+    if bits == 0:
       return _make_impl("k_impl")
     return _make_impl("qv_impl")
 
-  def _select_o(_cp_config, fp8=None):
-    select_o_calls.append((_cp_config, fp8))
-    if fp8 is False:
+  def _select_o(_cp_config, bits=None):
+    select_o_calls.append((_cp_config, bits))
+    if bits == 0:
       return _make_impl("lse_impl")
     return _make_impl("o_impl")
 
@@ -90,13 +99,13 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, quant_type, grou
 
   comm = primitives._All2AllComm(cp_config)
   x = torch.randn(2, 3, 4, 5)
-  metadata = {"NUM_QO_HEAD": 4, "Q_S_LOCAL": 3, "group_size": group_size}
+  metadata = {"NUM_QO_HEAD": 4, "Q_S_LOCAL": 3, "group_size": group_size, "bits": bits}
   returned = comm.init_meta(x)
 
   assert comm.group is group
   assert returned is comm
-  assert select_qkv_calls == [(cp_config, None), (cp_config, False)]
-  assert select_o_calls == [(cp_config, None), (cp_config, False)]
+  assert select_qkv_calls == [(cp_config, None), (cp_config, 0)]
+  assert select_o_calls == [(cp_config, None), (cp_config, 0)]
 
   assert comm.send_q(x).wait() == "qv_impl"
   assert comm.send_v(x)() == "qv_impl"
@@ -138,38 +147,110 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, quant_type, grou
   ]
 
 
-def test_ulysses_float8_k_requires_float8():
-  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
-    _ContextParallelConfig(ulysses_degree=2, ulysses_float8_k=True)
+@pytest.mark.parametrize("selector,bf16_impl,fN_impl,any_bf16_impl,any_fN_impl", [
+  (primitives._select_all_to_all_qkv_async_impl, primitives._all_to_all_single_qkv_async,
+   primitives._all_to_all_single_qkv_fN_async, primitives._all_to_all_single_any_qkv_async,
+   primitives._all_to_all_single_any_qkv_fN_async),
+  (primitives._select_all_to_all_o_async_impl, primitives._all_to_all_single_o_async,
+   primitives._all_to_all_single_o_fN_async, primitives._all_to_all_single_any_o_async,
+   primitives._all_to_all_single_any_o_fN_async),
+])
+@pytest.mark.parametrize("config_bits,override_bits,expect_fN", [
+  (None, None, False),
+  (6, None, True),
+  (8, None, True),
+  (6, 0, False),
+  (None, 6, True),
+  (None, 8, True),
+])
+def test_all_to_all_selectors_use_bits(selector, bf16_impl, fN_impl, any_bf16_impl, any_fN_impl,
+                                       config_bits, override_bits, expect_fN):
+  cp_config = SimpleNamespace(
+    ulysses_anything=False,
+    quant_communicate_kwargs={} if config_bits is None else {"bits": config_bits},
+  )
+  selected = selector(cp_config, bits=override_bits)
+  assert selected is (fN_impl if expect_fN else bf16_impl)
 
-  config = _ContextParallelConfig(ulysses_degree=2, ulysses_float8=True, ulysses_float8_k=True)
-  assert config.ulysses_float8_k
+  cp_config.ulysses_anything = True
+  selected = selector(cp_config, bits=override_bits)
+  assert selected is (any_fN_impl if expect_fN else any_bf16_impl)
+
+  with pytest.raises(ValueError, match="bits must be"):
+    selector(cp_config, bits=7)
 
 
-def test_ulysses_float8_quant_type_validation_and_suffix():
-  with pytest.raises(ValueError, match="Unsupported ulysses_float8_quant_type"):
+def test_unused_all_to_all_async_fn_aliases_removed():
+  import cache_dit.attention as attention
+  import cache_dit.distributed.communicate as communicate
+
+  for name in ("_all_to_all_qkv_async_fn", "_all_to_all_o_async_fn"):
+    assert not hasattr(primitives, name)
+    assert not hasattr(communicate, name)
+    assert not hasattr(attention, name)
+
+
+def test_quantize_k_communication_options():
+  with pytest.raises(ValueError, match="ulysses_degree must be greater than 1"):
+    _ContextParallelConfig(ulysses_degree=1,
+                           quant_communicate_kwargs={
+                             "bits": 8,
+                             "quantize_k": True
+                           })
+
+  config = _ContextParallelConfig(ulysses_degree=2,
+                                  quant_communicate_kwargs={
+                                    "bits": 8,
+                                    "quantize_k": True
+                                  })
+  assert config.quant_communicate_kwargs["quantize_k"]
+
+
+def test_quant_communicate_validation_and_suffix():
+  with pytest.raises(ValueError, match="bits must be 6 or 8"):
+    _ContextParallelConfig(ulysses_degree=2, quant_communicate_kwargs={"bits": 7})
+  with pytest.raises(ValueError, match="Unsupported quant_communicate_kwargs quant_type"):
     _ContextParallelConfig(ulysses_degree=2,
-                           ulysses_float8=True,
-                           ulysses_float8_quant_type="per-group-8")
-  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
-    _ContextParallelConfig(ulysses_degree=2, ulysses_float8_quant_type="per-group-16")
-  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
-    ParallelismConfig(ulysses_size=2, ulysses_float8_quant_type="per-group-32")
+                           quant_communicate_kwargs={
+                             "bits": 8,
+                             "quant_type": "per_group_8"
+                           })
+  with pytest.raises(ValueError, match="Unknown quant_communicate_kwargs keys"):
+    ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"unknown": 1})
+  with pytest.raises(ValueError, match="requires Ulysses parallelism"):
+    ParallelismConfig(quant_communicate_kwargs={"bits": 8})
 
-  default = ParallelismConfig(ulysses_size=2, ulysses_float8=True)
+  default = ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"bits": 8})
   group16 = ParallelismConfig(ulysses_size=2,
-                              ulysses_float8=True,
-                              ulysses_float8_quant_type="per-group-16")
+                              quant_communicate_kwargs={
+                                "bits": 8,
+                                "quant_type": "per_group_16"
+                              })
   group32 = ParallelismConfig(ulysses_size=2,
-                              ulysses_float8=True,
-                              ulysses_float8_quant_type="per-group-32")
+                              quant_communicate_kwargs={
+                                "bits": 8,
+                                "quant_type": "per_group_32"
+                              })
+  fp6_default = ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"bits": 6})
+  fp6_token_k = ParallelismConfig(ulysses_size=2,
+                                  quant_communicate_kwargs={
+                                    "bits": 6,
+                                    "quant_type": "per_token",
+                                    "quantize_k": True
+                                  })
   assert default.strify() == "Ulysses2_UF8"
   assert group16.strify() == "Ulysses2_UF8_G16"
   assert group32.strify() == "Ulysses2_UF8_G32"
+  assert fp6_default.strify() == "Ulysses2_UF6_G32"
+  assert fp6_token_k.strify() == "Ulysses2_UF6K_PT"
 
 
 def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
-  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()), ulysses_float8_k=True)
+  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
+                              quant_communicate_kwargs={
+                                "bits": 8,
+                                "quantize_k": True
+                              })
   qkv_impl = object()
   monkeypatch.setattr(primitives, "_select_all_to_all_qkv_async_impl",
                       lambda *args, **kwargs: qkv_impl)
@@ -183,23 +264,35 @@ def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
   assert comm._v_impl is qkv_impl
 
 
-@pytest.mark.parametrize("rows,head_size,group_size,expected", [
-  (12, 64, 0, 68),
-  (24576, 128, 0, 130),
-  (81900, 128, 0, 132),
-  (12, 64, 16, 72),
-  (12, 64, 32, 68),
-  (24576, 128, 16, 144),
-  (24576, 128, 32, 136),
-  (3, 72, 16, 96),
-  (3, 72, 32, 80),
+@pytest.mark.parametrize("rows,head_size,group_size,bits,expected", [
+  (12, 64, 0, 8, 68),
+  (24576, 128, 0, 8, 130),
+  (81900, 128, 0, 8, 132),
+  (12, 64, 16, 8, 72),
+  (12, 64, 32, 8, 68),
+  (24576, 128, 16, 8, 144),
+  (24576, 128, 32, 8, 136),
+  (3, 72, 16, 8, 96),
+  (3, 72, 32, 8, 80),
+  (12, 64, 0, 6, 52),
+  (12, 64, 16, 6, 56),
+  (12, 64, 32, 6, 52),
+  (24576, 128, 0, 6, 100),
+  (24576, 128, 16, 6, 112),
+  (24576, 128, 32, 6, 104),
+  (3, 72, 0, 6, 64),
+  (3, 72, 16, 6, 80),
+  (3, 72, 32, 6, 64),
 ])
-def test_fp8_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, group_size, expected):
-  packed = primitives._fp8_o_packed_head_size(rows, head_size, group_size)
+def test_fN_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, group_size, bits,
+                                                         expected):
+  packed = primitives._fN_o_packed_head_size(rows, head_size, group_size, bits)
 
   assert packed == expected
-  assert packed >= primitives._fp8_row_min_width(head_size, group_size, 2)
+  assert packed >= primitives._fN_row_min_width(head_size, group_size, 2, bits)
   assert (rows * packed) % 16 == 0
+  if bits == 6:
+    assert packed % 4 == 0
 
 
 @pytest.mark.parametrize("head_size,expected", [
@@ -214,8 +307,8 @@ def test_bf16_padded_last_dim_aligns_every_row(head_size, expected):
   assert (packed * 2) % 16 == 0
 
 
-def test_fp8_packed_row_width_covers_uneven_splits():
-  packed = primitives._fp8_packed_row_width([1, 2, 3, 4], row_elements=2, min_width=68)
+def test_fN_packed_row_width_covers_uneven_splits():
+  packed = primitives._fN_packed_row_width([1, 2, 3, 4], row_elements=2, min_width=68)
 
   assert packed == 72
   assert all((size * 2 * packed) % 16 == 0 for size in [1, 2, 3, 4])
@@ -223,8 +316,10 @@ def test_fp8_packed_row_width_covers_uneven_splits():
 
 def test_all2all_comm_keeps_k_and_lse_off_fp8_by_default(monkeypatch):
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
-                              ulysses_float8=True,
-                              ulysses_float8_k=False)
+                              quant_communicate_kwargs={
+                                "bits": 8,
+                                "quantize_k": False
+                              })
   impls = iter([object(), object(), object(), object(), object()])
   monkeypatch.setattr(primitives, "_select_all_to_all_qkv_async_impl",
                       lambda *args, **kwargs: next(impls))
@@ -255,14 +350,14 @@ def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkey
 
     return _impl
 
-  monkeypatch.setattr(
-    primitives,
-    "_select_all_to_all_qkv_async_impl",
-    lambda *_args, fp8=None, **_kwargs: _make_impl("k_impl" if fp8 is False else "qv_impl"))
+  monkeypatch.setattr(primitives,
+                      "_select_all_to_all_qkv_async_impl",
+                      lambda *_args, bits=None, **_kwargs: _make_impl("k_impl"
+                                                                      if bits == 0 else "qv_impl"))
   monkeypatch.setattr(primitives,
                       "_select_all_to_all_o_async_impl",
-                      lambda *_args, fp8=None, **_kwargs: _make_impl("lse_impl"
-                                                                     if fp8 is False else "o_impl"))
+                      lambda *_args, bits=None, **_kwargs: _make_impl("lse_impl"
+                                                                      if bits == 0 else "o_impl"))
 
   comm = primitives._All2AllComm(cp_config)
   x = torch.randn(2, 3, 4, 5)
@@ -279,6 +374,7 @@ def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkey
         "NUM_QO_HEAD": 4,
         "Q_S_LOCAL": 3,
         "group_size": 0,
+        "bits": 0,
       },
     },
     {
@@ -289,6 +385,7 @@ def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkey
         "NUM_QO_HEAD": 4,
         "Q_S_LOCAL": 3,
         "group_size": 0,
+        "bits": 0,
       },
     },
   ]

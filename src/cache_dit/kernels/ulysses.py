@@ -421,13 +421,507 @@ def ulysses_fp8_o_permute_dequant(quant_x: torch.Tensor,
   return torch.ops.cache_dit_cuda_ops.ulysses_fp8_o_permute_dequant(quant_x, head_size, group_size)
 
 
+def _validate_fp6_group_size(group_size: int) -> None:
+  if group_size not in (0, 16, 32):
+    raise ValueError("group_size must be 0 (per-token), 16, or 32.")
+
+
+def _fp6_packed_min_width(head_size: int, group_size: int, scale_bytes: int) -> int:
+  _validate_fp6_group_size(group_size)
+  bitstream_bytes = ((head_size + 3) // 4) * 3
+  payload_bytes = (bitstream_bytes + 3) // 4 * 4
+  groups = 1 if group_size == 0 else (head_size + group_size - 1) // group_size
+  return (payload_bytes + groups * scale_bytes + 3) // 4 * 4
+
+
+def _resolve_fN_group_size(bits: int, group_size: int | None) -> int:
+  if bits == 8:
+    return 0 if group_size is None else group_size
+  if bits == 6:
+    return 32 if group_size is None else group_size
+  raise ValueError(f"bits must be 6 or 8, got {bits}.")
+
+
+def _call_ulysses_fp6_per_token_quant(x: torch.Tensor, y: torch.Tensor, packed_head_size: int,
+                                      group_size: int) -> None:
+  """Call the packed FP6 quantizer.
+
+  :param x: Contiguous BF16 input.
+  :param y: Contiguous uint8 packed output.
+  :param packed_head_size: Packed row width in bytes.
+  :param group_size: Elements per scale group; zero selects per-token quantization.
+  """
+  _get_required_ops_module().ulysses_fp6_per_token_quant(x, y, packed_head_size, group_size)
+
+
+def _call_ulysses_fp6_per_token_dequant(x: torch.Tensor, y: torch.Tensor, head_size: int,
+                                        group_size: int) -> None:
+  """Call the packed FP6 dequantizer.
+
+  :param x: Contiguous uint8 packed input.
+  :param y: Contiguous BF16 output.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; zero selects per-token dequantization.
+  """
+  _get_required_ops_module().ulysses_fp6_per_token_dequant(x, y, head_size, group_size)
+
+
+def _call_ulysses_fp6_qkv_permute_quant(x: torch.Tensor, y: torch.Tensor, packed_head_size: int,
+                                        group_size: int) -> None:
+  """Call the QKV permuting FP6 quantizer.
+
+  :param x: BF16 QKV activation `[B, S, P, N, D]`.
+  :param y: Contiguous uint8 packed output.
+  :param packed_head_size: Packed row width in bytes.
+  :param group_size: Elements per scale group; zero selects per-token quantization.
+  """
+  _get_required_ops_module().ulysses_fp6_qkv_permute_quant(x, y, packed_head_size, group_size)
+
+
+def _call_ulysses_fp6_qkv_permute_dequant(quant_x: torch.Tensor, x: torch.Tensor, head_size: int,
+                                          group_size: int) -> None:
+  """Call the QKV restoring FP6 dequantizer.
+
+  :param quant_x: Packed QKV activation `[S, B, N, packed_head_size]`.
+  :param x: Contiguous BF16 output `[B, S, N, D]`.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; zero selects per-token dequantization.
+  """
+  _get_required_ops_module().ulysses_fp6_qkv_permute_dequant(quant_x, x, head_size, group_size)
+
+
+def _call_ulysses_fp6_o_permute_quant(x: torch.Tensor, y: torch.Tensor, partitions: int,
+                                      packed_head_size: int, group_size: int) -> None:
+  """Call the O-direction permuting FP6 quantizer.
+
+  :param x: BF16 activation `[B, S_GLOBAL, H_LOCAL, D]`.
+  :param y: Contiguous uint8 packed output.
+  :param partitions: Number of sequence partitions `P`.
+  :param packed_head_size: Packed row width in bytes.
+  :param group_size: Elements per scale group; zero selects per-token quantization.
+  """
+  _get_required_ops_module().ulysses_fp6_o_permute_quant(x, y, partitions, packed_head_size,
+                                                         group_size)
+
+
+def _call_ulysses_fp6_o_permute_dequant(quant_x: torch.Tensor, x: torch.Tensor, head_size: int,
+                                        group_size: int) -> None:
+  """Call the O-direction restoring FP6 dequantizer.
+
+  :param quant_x: Packed O activation `[H_GLOBAL, B, S_LOCAL, packed_head_size]`.
+  :param x: Contiguous BF16 output `[B, S_LOCAL, H_GLOBAL, D]`.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; zero selects per-token dequantization.
+  """
+  _get_required_ops_module().ulysses_fp6_o_permute_dequant(quant_x, x, head_size, group_size)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_per_token_quant",
+  "(Tensor x, int? packed_head_size=None, int group_size=32) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_per_token_quant", "CUDA")
+def _ulysses_fp6_per_token_quant(x: torch.Tensor,
+                                 packed_head_size: int | None = None,
+                                 group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  *shape, head_size = x.shape
+  if packed_head_size is None:
+    packed_head_size = _fp6_packed_min_width(head_size, group_size, 2)
+  x = x.reshape(-1, head_size).contiguous()
+  rows, _ = x.shape
+  quant_x = torch.empty((rows, packed_head_size), dtype=torch.uint8, device=x.device)
+  _call_ulysses_fp6_per_token_quant(x, quant_x, packed_head_size, group_size)
+  return quant_x.reshape(*shape, packed_head_size)
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_per_token_quant")
+def _fake_ulysses_fp6_per_token_quant(x: torch.Tensor,
+                                      packed_head_size: int | None = None,
+                                      group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  *shape, head_size = x.shape
+  if packed_head_size is None:
+    packed_head_size = _fp6_packed_min_width(head_size, group_size, 2)
+  return x.new_empty((*shape, packed_head_size), dtype=torch.uint8)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_per_token_dequant",
+  "(Tensor x, int head_size, int group_size) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_per_token_dequant", "CUDA")
+def _ulysses_fp6_per_token_dequant(x: torch.Tensor, head_size: int,
+                                   group_size: int) -> torch.Tensor:
+  if x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {x.dtype}.")
+  *shape, packed_head_size = x.shape
+  x = x.reshape(-1, packed_head_size).contiguous()
+  rows, _ = x.shape
+  dequant_x = torch.empty((rows, head_size), dtype=torch.bfloat16, device=x.device)
+  _call_ulysses_fp6_per_token_dequant(x, dequant_x, head_size, group_size)
+  return dequant_x.reshape(*shape, head_size)
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_per_token_dequant")
+def _fake_ulysses_fp6_per_token_dequant(x: torch.Tensor, head_size: int,
+                                        group_size: int) -> torch.Tensor:
+  if x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {x.dtype}.")
+  *shape, _ = x.shape
+  return x.new_empty((*shape, head_size), dtype=torch.bfloat16)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_qkv_permute_quant",
+  "(Tensor x, int? packed_head_size=None, int group_size=32) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_qkv_permute_quant", "CUDA")
+def _ulysses_fp6_qkv_permute_quant(x: torch.Tensor,
+                                   packed_head_size: int | None = None,
+                                   group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  batch, seq_len, partitions, num_heads, head_size = x.shape
+  if packed_head_size is None:
+    packed_head_size = _fp6_packed_min_width(head_size, group_size, 4)
+  quant_x = torch.empty((partitions, seq_len, batch, num_heads, packed_head_size),
+                        dtype=torch.uint8,
+                        device=x.device)
+  _call_ulysses_fp6_qkv_permute_quant(x, quant_x, packed_head_size, group_size)
+  return quant_x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_qkv_permute_quant")
+def _fake_ulysses_fp6_qkv_permute_quant(x: torch.Tensor,
+                                        packed_head_size: int | None = None,
+                                        group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  batch, seq_len, partitions, num_heads, head_size = x.shape
+  if packed_head_size is None:
+    packed_head_size = _fp6_packed_min_width(head_size, group_size, 4)
+  return x.new_empty((partitions, seq_len, batch, num_heads, packed_head_size), dtype=torch.uint8)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_qkv_permute_dequant",
+  "(Tensor quant_x, int head_size, int group_size) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_qkv_permute_dequant", "CUDA")
+def _ulysses_fp6_qkv_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                     group_size: int) -> torch.Tensor:
+  if quant_x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {quant_x.dtype}.")
+  seq_len, batch, num_heads, _ = quant_x.shape
+  x = torch.empty((batch, seq_len, num_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=quant_x.device)
+  _call_ulysses_fp6_qkv_permute_dequant(quant_x, x, head_size, group_size)
+  return x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_qkv_permute_dequant")
+def _fake_ulysses_fp6_qkv_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                          group_size: int) -> torch.Tensor:
+  if quant_x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {quant_x.dtype}.")
+  seq_len, batch, num_heads, _ = quant_x.shape
+  return quant_x.new_empty((batch, seq_len, num_heads, head_size), dtype=torch.bfloat16)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_o_permute_quant",
+  "(Tensor x, int partitions, int packed_head_size, int group_size=32) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_o_permute_quant", "CUDA")
+def _ulysses_fp6_o_permute_quant(x: torch.Tensor,
+                                 partitions: int,
+                                 packed_head_size: int,
+                                 group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  _validate_fp6_group_size(group_size)
+  batch, seq_len, num_heads, _ = x.shape
+  quant_x = torch.empty((partitions, num_heads, batch, seq_len // partitions, packed_head_size),
+                        dtype=torch.uint8,
+                        device=x.device)
+  _call_ulysses_fp6_o_permute_quant(x, quant_x, partitions, packed_head_size, group_size)
+  return quant_x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_o_permute_quant")
+def _fake_ulysses_fp6_o_permute_quant(x: torch.Tensor,
+                                      partitions: int,
+                                      packed_head_size: int,
+                                      group_size: int = 32) -> torch.Tensor:
+  if x.dtype != torch.bfloat16:
+    raise ValueError(f"Expected a bfloat16 activation, got {x.dtype}.")
+  _validate_fp6_group_size(group_size)
+  batch, seq_len, num_heads, _ = x.shape
+  return x.new_empty((partitions, num_heads, batch, seq_len // partitions, packed_head_size),
+                     dtype=torch.uint8)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fp6_o_permute_dequant",
+  "(Tensor quant_x, int head_size, int group_size) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fp6_o_permute_dequant", "CUDA")
+def _ulysses_fp6_o_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                   group_size: int) -> torch.Tensor:
+  if quant_x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {quant_x.dtype}.")
+  _validate_fp6_group_size(group_size)
+  num_heads, batch, seq_len, _ = quant_x.shape
+  x = torch.empty((batch, seq_len, num_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=quant_x.device)
+  _call_ulysses_fp6_o_permute_dequant(quant_x, x, head_size, group_size)
+  return x
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fp6_o_permute_dequant")
+def _fake_ulysses_fp6_o_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                        group_size: int) -> torch.Tensor:
+  if quant_x.dtype != torch.uint8:
+    raise ValueError(f"Expected a packed uint8 activation, got {quant_x.dtype}.")
+  _validate_fp6_group_size(group_size)
+  num_heads, batch, seq_len, _ = quant_x.shape
+  return quant_x.new_empty((batch, seq_len, num_heads, head_size), dtype=torch.bfloat16)
+
+
+def ulysses_fp6_per_token_quant(x: torch.Tensor,
+                                packed_head_size: int | None = None,
+                                group_size: int = 32) -> torch.Tensor:
+  """Quantize BF16 into packed E2M3 communication rows.
+
+  :param x: Dense BF16 activation to quantize.
+  :param packed_head_size: Optional packed row width in bytes.
+  :param group_size: Elements per scale group; defaults to 32, zero selects per-token.
+  :returns: Packed uint8 activation with four E2M3 codes per three bytes.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_per_token_quant(x, packed_head_size, group_size)
+
+
+def ulysses_fp6_per_token_dequant(x: torch.Tensor, head_size: int, group_size: int) -> torch.Tensor:
+  """Dequantize packed E2M3 communication rows to BF16.
+
+  :param x: Packed uint8 activation.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; required to prevent scale-layout mismatches.
+  :returns: Dequantized BF16 activation.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_per_token_dequant(x, head_size, group_size)
+
+
+def ulysses_fp6_qkv_permute_quant(x: torch.Tensor,
+                                  packed_head_size: int | None = None,
+                                  group_size: int = 32) -> torch.Tensor:
+  """Quantize and permute QKV into packed E2M3 communication rows.
+
+  :param x: BF16 QKV activation `[B, S, P, N, D]`.
+  :param packed_head_size: Optional packed row width in bytes.
+  :param group_size: Elements per scale group; defaults to 32, zero selects per-token.
+  :returns: Packed uint8 activation `[P, S, B, N, packed_head_size]`.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_qkv_permute_quant(x, packed_head_size, group_size)
+
+
+def ulysses_fp6_qkv_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                    group_size: int) -> torch.Tensor:
+  """Dequantize packed QKV E2M3 rows and restore `[B, S, N, D]`.
+
+  :param quant_x: Packed QKV activation `[S, B, N, packed_head_size]`.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; required to prevent scale-layout mismatches.
+  :returns: Contiguous BF16 QKV activation.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_qkv_permute_dequant(quant_x, head_size,
+                                                                      group_size)
+
+
+def ulysses_fp6_o_permute_quant(x: torch.Tensor,
+                                partitions: int,
+                                packed_head_size: int,
+                                group_size: int = 32) -> torch.Tensor:
+  """Quantize and permute attention output into packed E2M3 rows.
+
+  :param x: BF16 activation `[B, S_GLOBAL, H_LOCAL, D]`.
+  :param partitions: Number of sequence partitions `P`.
+  :param packed_head_size: Packed row width in bytes.
+  :param group_size: Elements per scale group; defaults to 32, zero selects per-token.
+  :returns: Packed uint8 activation `[P, H_LOCAL, B, S_LOCAL, packed_head_size]`.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_o_permute_quant(x, partitions, packed_head_size,
+                                                                  group_size)
+
+
+def ulysses_fp6_o_permute_dequant(quant_x: torch.Tensor, head_size: int,
+                                  group_size: int) -> torch.Tensor:
+  """Dequantize packed O E2M3 rows and restore the attention layout.
+
+  :param quant_x: Packed O activation `[H_GLOBAL, B, S_LOCAL, packed_head_size]`.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Elements per scale group; required to prevent scale-layout mismatches.
+  :returns: Contiguous BF16 activation `[B, S_LOCAL, H_GLOBAL, D]`.
+  """
+  _validate_fp6_group_size(group_size)
+  return torch.ops.cache_dit_cuda_ops.ulysses_fp6_o_permute_dequant(quant_x, head_size, group_size)
+
+
+def ulysses_fN_per_token_quant(x: torch.Tensor,
+                               packed_head_size: int | None = None,
+                               group_size: int | None = None,
+                               *,
+                               bits: int = 8) -> torch.Tensor:
+  """Dispatch FP8/FP6 generic per-token or per-group quantization.
+
+  :param x: Dense BF16 activation to quantize.
+  :param packed_head_size: Optional packed row width in bytes.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: FP8 or packed uint8 FP6 communication activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_per_token_quant(x, packed_head_size, resolved_group)
+  return ulysses_fp6_per_token_quant(x, packed_head_size, resolved_group)
+
+
+def ulysses_fN_per_token_dequant(x: torch.Tensor,
+                                 head_size: int | None = None,
+                                 group_size: int | None = None,
+                                 *,
+                                 bits: int = 8) -> torch.Tensor:
+  """Dispatch generic FP8/FP6 dequantization.
+
+  :param x: FP8 or packed uint8 FP6 activation.
+  :param head_size: Original head dimension `D`; required for FP6 and grouped FP8.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: Dequantized BF16 activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_per_token_dequant(x, head_size, resolved_group)
+  if head_size is None:
+    raise ValueError("head_size is required for FP6 dequantization.")
+  return ulysses_fp6_per_token_dequant(x, head_size, resolved_group)
+
+
+def ulysses_fN_qkv_permute_quant(x: torch.Tensor,
+                                 packed_head_size: int | None = None,
+                                 group_size: int | None = None,
+                                 *,
+                                 bits: int = 8) -> torch.Tensor:
+  """Dispatch generic QKV FP8/FP6 permute and quantization.
+
+  :param x: BF16 QKV activation `[B, S, P, N, D]`.
+  :param packed_head_size: Optional packed row width in bytes.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: FP8 or packed uint8 FP6 QKV activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_qkv_permute_quant(x, packed_head_size, resolved_group)
+  return ulysses_fp6_qkv_permute_quant(x, packed_head_size, resolved_group)
+
+
+def ulysses_fN_qkv_permute_dequant(quant_x: torch.Tensor,
+                                   head_size: int | None = None,
+                                   group_size: int | None = None,
+                                   *,
+                                   bits: int = 8) -> torch.Tensor:
+  """Dispatch generic QKV FP8/FP6 dequantization and layout restoration.
+
+  :param quant_x: FP8 or packed uint8 FP6 QKV activation.
+  :param head_size: Original head dimension `D`; required for FP6 and grouped FP8.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: Contiguous BF16 QKV activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_qkv_permute_dequant(quant_x, head_size, resolved_group)
+  if head_size is None:
+    raise ValueError("head_size is required for FP6 dequantization.")
+  return ulysses_fp6_qkv_permute_dequant(quant_x, head_size, resolved_group)
+
+
+def ulysses_fN_o_permute_quant(x: torch.Tensor,
+                               partitions: int,
+                               packed_head_size: int,
+                               group_size: int | None = None,
+                               *,
+                               bits: int = 8) -> torch.Tensor:
+  """Dispatch generic O-direction FP8/FP6 permute and quantization.
+
+  :param x: BF16 activation `[B, S_GLOBAL, H_LOCAL, D]`.
+  :param partitions: Number of sequence partitions `P`.
+  :param packed_head_size: Packed row width in bytes.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: FP8 or packed uint8 FP6 O activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_o_permute_quant(x, partitions, packed_head_size, resolved_group)
+  return ulysses_fp6_o_permute_quant(x, partitions, packed_head_size, resolved_group)
+
+
+def ulysses_fN_o_permute_dequant(quant_x: torch.Tensor,
+                                 head_size: int,
+                                 group_size: int | None = None,
+                                 *,
+                                 bits: int = 8) -> torch.Tensor:
+  """Dispatch generic O-direction FP8/FP6 dequantization.
+
+  :param quant_x: FP8 or packed uint8 FP6 O activation.
+  :param head_size: Original head dimension `D`.
+  :param group_size: Optional granularity; defaults to per-token for FP8 and group-32 for FP6.
+  :param bits: Quantized payload width, 6 or 8.
+  :returns: Contiguous BF16 activation.
+  """
+  resolved_group = _resolve_fN_group_size(bits, group_size)
+  if bits == 8:
+    return ulysses_fp8_o_permute_dequant(quant_x, head_size, resolved_group)
+  return ulysses_fp6_o_permute_dequant(quant_x, head_size, resolved_group)
+
+
 __all__ = [
-  "_call_ulysses_fp8_o_permute_dequant",
-  "_call_ulysses_fp8_o_permute_quant",
-  "_call_ulysses_fp8_per_token_dequant",
-  "_call_ulysses_fp8_per_token_quant",
-  "_call_ulysses_fp8_qkv_permute_dequant",
-  "_call_ulysses_fp8_qkv_permute_quant",
+  "ulysses_fN_o_permute_dequant",
+  "ulysses_fN_o_permute_quant",
+  "ulysses_fN_per_token_dequant",
+  "ulysses_fN_per_token_quant",
+  "ulysses_fN_qkv_permute_dequant",
+  "ulysses_fN_qkv_permute_quant",
+  "ulysses_fp6_o_permute_dequant",
+  "ulysses_fp6_o_permute_quant",
+  "ulysses_fp6_per_token_dequant",
+  "ulysses_fp6_per_token_quant",
+  "ulysses_fp6_qkv_permute_dequant",
+  "ulysses_fp6_qkv_permute_quant",
   "ulysses_fp8_o_permute_dequant",
   "ulysses_fp8_o_permute_quant",
   "ulysses_fp8_per_token_quant",

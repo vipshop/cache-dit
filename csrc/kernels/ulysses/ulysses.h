@@ -21,6 +21,19 @@ void ulysses_fp8_o_permute_quant(at::Tensor x, at::Tensor y, int64_t partitions,
 void ulysses_fp8_o_permute_dequant(at::Tensor quant_x, at::Tensor x, int64_t head_size,
                                    int64_t group_size = 0);
 
+void ulysses_fp6_per_token_quant(at::Tensor x, at::Tensor y, int64_t packed_head_size,
+                                 int64_t group_size = 32);
+void ulysses_fp6_per_token_dequant(at::Tensor x, at::Tensor y, int64_t head_size,
+                                   int64_t group_size);
+void ulysses_fp6_qkv_permute_quant(at::Tensor x, at::Tensor y, int64_t packed_head_size,
+                                   int64_t group_size = 32);
+void ulysses_fp6_qkv_permute_dequant(at::Tensor quant_x, at::Tensor x, int64_t head_size,
+                                     int64_t group_size);
+void ulysses_fp6_o_permute_quant(at::Tensor x, at::Tensor y, int64_t partitions,
+                                 int64_t packed_head_size, int64_t group_size = 32);
+void ulysses_fp6_o_permute_dequant(at::Tensor quant_x, at::Tensor x, int64_t head_size,
+                                   int64_t group_size);
+
 // Hooks the communication operators onto the extension's `ops` submodule.
 void register_ulysses_ops(pybind11::module_& ops);
 

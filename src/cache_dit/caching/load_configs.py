@@ -506,7 +506,9 @@ def load_configs(
       ulysses_size: 4
       attention_backend: native
       ulysses_anything: true
-      ulysses_float8: true
+      quant_communicate_kwargs:
+        bits: 8
+        quant_type: per_token
       extra_parallel_modules: ["text_encoder", "vae"]
 
   :param path_or_dict: The file path to the YAML configuration file or a dictionary containing the

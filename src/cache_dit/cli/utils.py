@@ -245,6 +245,28 @@ def parse_calibrator_params(value: str) -> Optional[Dict[str, str]]:
   return params
 
 
+def parse_quant_communicate_params(value: str) -> Optional[Dict[str, str]]:
+  """Parse `--quant-communicate-params "k=v,k=v"` into raw options.
+
+  :param value: Raw argument value.
+  :returns: Raw string options, or None for an empty value.
+  """
+  if value is None or value.strip() == "":
+    return None
+  params: Dict[str, str] = {}
+  for item in value.split(","):
+    item = item.strip()
+    if not item:
+      continue
+    key, sep, raw = item.partition("=")
+    if sep == "" or key.strip() == "":
+      raise argparse.ArgumentTypeError(
+        f"Invalid --quant-communicate-params entry '{item}'. Expected 'key=value' pairs, "
+        "e.g. 'bits=6,quant_type=per_group_32'.")
+    params[key.strip().lower()] = raw.strip()
+  return params
+
+
 def _coerce_calibrator_param(field: str, caster: Any, text: str) -> Any:
   """Coerce one `--calibrator-params` value into the type its config field expects.
 
@@ -1359,25 +1381,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable Ulysses Anything Attention for context parallelism",
   )
   parser.add_argument(
-    "--ulysses-float8",
-    "--ufp8",
-    action="store_true",
-    default=False,
-    help="Enable Ulysses Attention/UAA Float8 for context parallelism",
-  )
-  parser.add_argument(
-    "--ulysses-float8-k",
-    "--ufp8k",
-    action="store_true",
-    default=False,
-    help="Also quantize K for Ulysses FP8 communication (requires --ulysses-float8)",
-  )
-  parser.add_argument(
-    "--ulysses-float8-quant-type",
-    type=str,
-    default="per-token",
-    choices=["per-token", "per-group-16", "per-group-32"],
-    help="Ulysses FP8 communication scale granularity (requires --ulysses-float8)",
+    "--quant-communicate-params",
+    type=parse_quant_communicate_params,
+    default=None,
+    help="Ulysses low-precision communication options as k=v pairs, e.g. "
+    "'bits=6,quant_type=per_group_32,quantize_k=false'",
   )
   parser.add_argument(
     "--ulysses-async",
@@ -3559,9 +3567,7 @@ def maybe_apply_optimization(
           attention_backend=("native" if not args.attn else args.attn),
           extra_parallel_modules=extra_parallel_modules,
           ulysses_anything=args.ulysses_anything,
-          ulysses_float8=args.ulysses_float8,
-          ulysses_float8_k=args.ulysses_float8_k,
-          ulysses_float8_quant_type=args.ulysses_float8_quant_type,
+          quant_communicate_kwargs=args.quant_communicate_params or {},
           ulysses_async=args.ulysses_async,
           ring_rotate_method=args.ring_rotate_method,
           ring_convert_to_fp32=not args.ring_no_convert_to_fp32,

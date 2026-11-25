@@ -90,7 +90,7 @@ def test_unified_templated_usp_uses_all2all_comm(monkeypatch):
   monkeypatch.setattr(usp, "_All2AllComm", _FakeComm)
   monkeypatch.setattr(usp.RingAttention, "apply", _fake_ring_apply)
 
-  cp_config = SimpleNamespace(ulysses_float8=False)
+  cp_config = SimpleNamespace(quant_communicate_kwargs={})
   query = torch.randn(2, 3, 4, 5)
   key = torch.randn(2, 3, 4, 5)
   value = torch.randn(2, 3, 4, 5)
@@ -138,7 +138,7 @@ def test_unified_templated_usp_float8_entrypoint_uses_same_impl(monkeypatch):
     lambda query, key, value, *args, **kwargs: query + key + value,
   )
 
-  cp_config = SimpleNamespace(ulysses_float8=True)
+  cp_config = SimpleNamespace(quant_communicate_kwargs={"bits": 8})
   query = torch.randn(2, 3, 4, 5)
   key = torch.randn(2, 3, 4, 5)
   value = torch.randn(2, 3, 4, 5)

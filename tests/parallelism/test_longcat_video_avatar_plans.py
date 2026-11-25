@@ -105,7 +105,7 @@ def test_cp_plan_uses_the_cp_mesh_for_a_hybrid_run():
     ring_size=None,
     tp_size=2,
     ulysses_anything=False,
-    ulysses_float8=False,
+    quant_communicate_kwargs={},
     ulysses_async=False,
   )
   plan = planner._apply(transformer=_transformer(depth=3), parallelism_config=hybrid)
