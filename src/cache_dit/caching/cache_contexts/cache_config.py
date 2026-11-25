@@ -113,6 +113,19 @@ class BasicCacheConfig:
   seacache_power_exp: float = 2.0
   seacache_ab_schedule: Optional[tuple] = None  # Explicit sequence of (a,b), bypasses scheduler
 
+  # SoftCache (arXiv 2610.22369): the official SeaCache refresh rule (accumulate the step-to-step
+  # change of the SEA-filtered, modulated first-block input; compute in full once it reaches
+  # `softcache_tau`) plus headroom jumps: on a cached step the sampler step is enlarged by a factor
+  # that grows with the unspent budget, and the rest of the FlowMatch Euler schedule is re-spaced in
+  # place. Removed steps become dt=0 padding and run no compute. When enabled, SoftCache makes the
+  # cache decision and `residual_diff_threshold` is not used; DBCache's warmup and cached-step caps
+  # still apply.
+  enable_softcache: bool = False
+  softcache_tau: float = 0.5  # Staleness budget; ~0.3-0.5 for ~3-4x, ~1.1 for ~6.5x on FLUX.1-dev
+  softcache_jf_max: float = 8.0  # Cap on the jump factor
+  softcache_sigma_hi: float = 0.90  # No jump in the volatile early sigmas above this
+  softcache_raw_rel_l1_max: float = 0.18  # No jump when the probe changed sharply since last step
+
   def update(self, **kwargs) -> "BasicCacheConfig":
     """Update non-`None` fields in place.
 
@@ -193,6 +206,11 @@ class BasicCacheConfig:
         base_str += "_G" + "x".join(str(dim) for dim in self.seacache_feature_shape)
       if self.seacache_ab_schedule is not None:
         base_str += "_ABS"
+
+    if self.enable_softcache:
+      base_str += (f"_SOFT_T{self.softcache_tau:g}_J{self.softcache_jf_max:g}"
+                   f"_S{self.softcache_sigma_hi:g}"
+                   f"_R{self.softcache_raw_rel_l1_max:g}")
 
     return base_str
 
