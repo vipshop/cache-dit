@@ -516,4 +516,298 @@ Status: implemented and validated on `dev` with torch 2.15.0+cu132, sm120a, GPU 
   FP6 group-32 repeat floor is 37.02 dB / 0.99023 SSIM, so do not claim a stable e2e precision
   ranking from these image pairs. Visual outputs preserve composition and readable text.
 - Second-level/global scale quantization is not part of this implementation; evaluate it separately
-  from the bit-width/granularity change.
+  from the bit-width/granularity change. See the design-only roadmaps in Sections 11 and 12.
+
+## 11. Quant/dequant kernel optimization roadmap (design only, 2026-11-25)
+
+Status: analysis and proposed experiments only; none of these optimizations is implemented yet. The
+first goal is to reduce device-side quant/dequant cost without changing the FP8/FP6 wire format or
+its numerical contract. Do not start with larger loads, more unrolling, or approximate arithmetic
+before profiling the current kernels.
+
+### 11.1 Current bottlenecks visible from the source
+
+- **One warp per row underuses lanes.** FP8 uses eight elements per lane (`kPackSize=8`), so D=128
+  activates only 16 of 32 lanes in the per-token path. FP6 uses 16 elements per lane
+  (`kFp6FastPack=16`), so D=128 activates only 8 lanes in quant and dequant. D=64 is worse. Group
+  kernels inherit this row-level underutilization even when their intra-group reduction is balanced.
+- **Per-token quantization reads BF16 twice.** `fp8_per_token_quant.cu:15-17` calls `row_absmax`
+  and then reloads the row in `quantize_row`. FP6 has the same two-pass structure and, worse,
+  `row_absmax` uses eight elements/lane while `quantize_row_fp6` uses 16 elements/lane
+  (`fp6_common.cuh:138-178`). The different mappings prevent simple register reuse.
+- **Scalar conversion and packing work is substantial.** FP8 currently performs clamp -> FP16 ->
+  FP8 per element. FP6 performs scalar float -> E2M3 conversion, unpacks codes to byte arrays, then
+  spends shifts/masks assembling 12 bytes. Dequantization reverses those steps. Pair intrinsics are
+  available in the installed CUDA headers and should be evaluated before hand-written LUTs.
+- **Hot loops still contain runtime-only work.** Group count, lanes/group, payload width, integer
+  division/modulo, alignment branches, scale broadcasts, and zero-padding loops are repeated per
+  row. Fully unrolled local arrays are expected to stay in registers, but this must be proven from
+  SASS rather than assumed.
+- **The current measurements support this priority.** FP6 reduces packed bytes but is slower than
+  FP8 in isolated quant/dequant. Optimizing the communication width again before reducing these
+  device costs is unlikely to address the main bottleneck.
+
+### 11.2 Mandatory profiling baseline
+
+Run NCU before every optimization and again after it. Keep CUDA Event timings for the full public
+op, but use NCU device duration to separate kernel work from `torch.empty`, torch.library, and
+launch overhead.
+
+Minimum matrix: generic/QKV/O; quant/dequant; D=64/128/256; group=0/16/32; aligned, tail, and
+misaligned inputs; small and large row counts. Include the FLUX D=128 shapes and a small-grid case
+so a lane-mapping change cannot win on large inputs while starving the GPU on small inputs.
+
+Record at least:
+
+- Kernel duration, SASS instruction count, registers/thread, occupancy and eligible/active warps.
+- Local loads/stores or spills, global bytes, L2 hit rate, and warp stall breakdown.
+- Shuffle, conversion, integer division, and packing instruction counts from PTX/SASS inspection.
+- Host wall time versus device time. Do not attribute allocation or wrapper overhead to the CUDA
+  kernel. Buffer reuse is a separate optimization track with async lifetime requirements.
+
+Suggested first candidates are `fp6_per_token_{quant,dequant}` and
+`fp8_qkv_permute_{quant,dequant}` at D=128. Save baseline logs and SASS before editing.
+
+### 11.3 Priority 0: fix row-to-lane mapping and remove the second read
+
+1. **Map multiple rows to one warp.** For D=128, FP8 can assign two rows/warp (16 lanes/row), and
+   FP6 can assign four rows/warp (8 lanes/row). D=64 permits four and eight rows/warp respectively.
+   Use a row-local segment:
+
+   ```text
+   lanes_per_row = D / elements_per_lane
+   row_in_warp   = lane / lanes_per_row
+   lane_in_row   = lane % lanes_per_row
+   ```
+
+   Per-token absmax must become a segmented reduction over `lanes_per_row`; group reductions must
+   remain inside both the row segment and the quantization group. Do not use a full-warp reduction
+   after this change. Add a small-row-count fallback so fewer blocks do not reduce occupancy.
+   Increasing to one CTA per row is not a useful alternative for D=64/128.
+
+2. **Fuse absmax and quantization with cached values.** For common D=64/128 specializations, load
+   each BF16 value once, keep it in registers through absmax/shuffle, and quantize the cached value.
+   FP6 must use the same 16-element mapping for both stages. Larger D should keep a bounded tile or
+   the existing two-pass fallback instead of spilling an entire row to local memory. Group kernels
+   already reuse values within an iteration; the per-token path is the first target.
+
+These two changes address inactive lanes and duplicate global reads before micro-tuning arithmetic.
+Validate them independently so their effects are not conflated.
+
+### 11.4 Priority 1: paired conversion and register-native bit packing
+
+- Evaluate `__nv_cvt_float2_to_fp6x2` and `__nv_cvt_fp6x2_to_halfraw2` for FP6. Consume the packed
+  FP6x2 bytes directly when assembling the three u32 stores; avoid expanding every code into a
+  separate byte array and then re-masking it. `PRMT` or funnel shifts are optional follow-ups, not
+  assumptions of a win.
+- Evaluate `__nv_cvt_halfraw2_to_fp8x2` after `__float22half2_rn` for FP8. This preserves the
+  current clamp -> FP16 -> FP8 double-rounding sequence. Replacing it with direct float -> FP8 is a
+  numerical-contract change and must not be presented as a drop-in optimization.
+- Use paired conversion for dequantization and keep BF16x2/float2 values in native registers.
+  `__bfloat1622float2`, `__habs2`, and `__hmax2` are candidates only after NaN, zero, subnormal,
+  rounding, and SASS checks. A 64/256-entry lookup table is not the default: indexed constant loads
+  can replay and shared-memory lookups add traffic and possible bank conflicts.
+- Check SASS for local-memory traffic. Use bounded `uint4`/`uint2` register objects and fully
+  unrolled small packs; if FP6 arrays spill, reduce values per lane or split the kernel rather than
+  increasing unrolling blindly.
+
+### 11.5 Priority 2: fold constants and simplify hot loops
+
+- Start with `GroupSize` and scale-dtype templates. Add D=64/128 specializations only if profiling
+  shows meaningful loop/index overhead; retain a generic D fallback to control binary size.
+- With compile-time D/group, fold group count, lanes/group, payload bytes, scale offset, tail size,
+  and padding length. Power-of-two lane counts should become masks/shifts rather than integer
+  div/mod. Avoid a large template explosion across all shapes.
+- Hoist alignment decisions out of `load_fp8_pack`/`store_fp8_pack` and FP6 pack helpers. Aligned
+  hot paths should not repeat per-tile pointer branches; keep separate misaligned fallbacks.
+- Eliminate zero-length padding loops at compile time and use vector stores for real padding.
+  Vector-load scale arrays once per row when profitable, then broadcast from registers/shuffles.
+- For QKV/O permute kernels, profile int64 index division. Consider 32-bit indexing and grid-axis
+  coordinate mapping for partition/head/sequence before adding approximate index arithmetic.
+
+Constant-folding arithmetic must preserve bits. In particular, do not replace `x / C` with
+`x * (1.0f / C)`, or change `__fdiv_rn`/`__fmul_rn`, without an exhaustive check over all possible
+BF16 absmax inputs and the subsequent scale/inv-scale results. Otherwise keep the current division.
+
+### 11.6 Priority 3: occupancy, memory policy, and host-side overhead
+
+- Tune 128/256/512-thread blocks and rows/block only after register and occupancy measurements.
+  `__launch_bounds__` is acceptable only when it does not introduce spills. Multi-row mapping must
+  retain enough blocks for small inputs.
+- Non-temporal loads/stores are a later experiment for a proven memory-bound kernel; they can also
+  change NCCL/cache interaction. Do not add shared-memory staging or extra barriers by default.
+- Output allocation and wrapper overhead need a separate benchmark. A workspace pool may help, but
+  quant/dequant output cannot be reused until the corresponding all-to-all and consumer have
+  finished. Correct async lifetime is more important than allocation savings.
+- Longer term, fusing quantization into the producer or dequantization into the consumer can remove
+  an entire BF16 round trip. This is a larger architectural change and comes after the local kernel
+  wins are established.
+
+### 11.7 Experiment order and acceptance gates
+
+Land and measure one change at a time: multi-row mapping -> per-token one-pass reuse -> paired
+conversion/bit packing -> constant/hot-loop cleanup -> block and memory tuning.
+
+Every candidate must report before/after device time, SASS instructions, registers, occupancy,
+local/global bytes, public-op latency, and full communication-layer latency. Required correctness
+includes all current byte-exact FP8/FP6 tests, tails, zero rows, padding poison, misaligned views,
+fake/fullgraph, and four-rank NCCL tests. Reject a candidate that improves NCU duration but causes
+register spills, small-grid regression, accuracy drift, or material FLUX e2e regression.
+
+### 11.8 Fused QKV mega quant/dequant and one all-to-all (design only)
+
+The current Q, K, and V paths each perform quantize/permute, all-to-all, and dequantize/restore.
+A complementary optimization is to execute **one BF16/FP8/FP6 fused all-to-all** and one mega
+quant/dequant launch over the union of QKV rows. This targets collective launch latency, host work,
+allocations, and small-message overhead rather than arithmetic instructions, so it can be evaluated
+in parallel with the lane-mapping work above.
+
+The structural entry points can stay small:
+
+```text
+_FusedAll2AllComm
+_all_to_all_fused_qkv_{bf16,fN}_async          # standard/even splits
+_all_to_all_fused_qkv_any_{bf16,fN}_async      # UAA/uneven splits
+```
+
+`_FusedAll2AllComm` should cache metadata, offsets, and the selected implementation once, expose a
+`send_qkv(q, k, v)` operation, and return one async handle whose wait yields `(q, k, v)`. Keep the
+existing separate communicator as a fallback. No new public quantization option is required for the
+experiment.
+
+**The fused chunk layout is the correctness-critical contract.** For every source/destination
+partition, the bytes sent in one fused chunk must be exactly:
+
+```text
+fused_chunk(partition) = q_chunk(partition) || k_chunk(partition) || v_chunk(partition)
+```
+
+Do not flatten as `[all Q partitions][all K partitions][all V partitions]`: all-to-all would split
+that buffer across ranks and assign the wrong tensor/sequence ownership. For even splits, use a
+partition-major layout with QKV inside each partition. For UAA, derive every split and byte offset
+from the three old per-tensor splits so each fused send/receive chunk is the concatenation of the
+legacy chunks. Each legacy chunk is already 16-byte aligned, so their sums remain aligned without
+inventing new padding.
+
+Mixed formats must be supported from the first design:
+
+- Q and V use the configured FP8/FP6 mode. K uses that same mode only when `quantize_k=True`;
+  otherwise K remains BF16. LSE is outside this fusion and remains BF16.
+- Q/K/V segment widths and scale offsets may therefore differ. Store explicit per-partition,
+  per-tensor byte offsets rather than assuming one packed row width.
+- GQA can have different Q and K/V head counts. Require matching B/S/D for the first implementation
+  and fall back to the separate path otherwise; do not silently flatten incompatible shapes.
+
+The mega quant kernel should read all three inputs and write the fused output directly, with no
+intermediate packed Q/K/V tensors and no host `torch.cat`. The mega dequant kernel performs the
+inverse operation into three outputs. A grid over the union of logical tensor rows is sufficient;
+initially keep a warp within one tensor/format to avoid mixed-format intra-warp divergence. BF16
+uses the same fused copy/permute structure without quantization. After the layout is proven, apply
+the multi-row lane mapping and paired conversions from Sections 11.3-11.4.
+
+A low-risk implementation sequence is:
+
+1. Build a reference fused buffer from legacy packed chunks and verify it byte-for-byte before
+   enabling the collective. This is a correctness oracle, not the production fast path.
+2. Add the fused primitive and communicator with one all-to-all, then add direct mega
+   quant/dequant kernels to remove temporary buffers and extra launches.
+3. Benchmark separate `3 * (quant + a2a + dequant)` against fused `1 * (mega quant + a2a + mega
+   dequant)` at CP2/CP4, BF16 and every FP8/FP6 granularity. Measure host calls, NCCL duration,
+   whole-attention-layer time, and FLUX e2e, not just the mega kernels.
+
+Required tests include byte equality with the three legacy paths, `quantize_k` on/off, GQA head
+counts, uneven sequence splits, aligned/tail/misaligned inputs, sync/async, fake/fullgraph, and
+four-rank NCCL. A single larger collective may change overlap or perform differently across PCIe
+and NVLink; keep size/shape-based fallback and reject fusion if the collective regression exceeds
+the launch and kernel savings.
+
+## 12. Global-scale / second-level quantization design (design only, 2026-11-25)
+
+Status: precision research plan only; no public API or kernel implementation yet. A global scale is
+not automatically an accuracy improvement. It can also be merely a way to compress group scales,
+and FP6 payload rounding may dominate all scale-rounding errors.
+
+### 12.1 Decompose the error before choosing a format
+
+For group `g`, let `A_g = max(abs(x_g))` and `F = 7.5` for FP6 or `448` for FP8. The current scale is
+approximately `s_g = max(A_g / F, epsilon)`. Quantization uses `Q(x_i / s_g)`; dequantization uses
+the stored scale. O/generic currently store BF16 scales, while QKV stores FP32 scales.
+
+Run a PyTorch-only ablation first:
+
+1. Current payload + current stored scale.
+2. Current payload + oracle FP32 scale on every path (scale-rounding upper bound).
+3. Current payload + proposed normalized local scale.
+4. BF16/FP16/FP8 local-scale variants with the same global-scale computation.
+
+Report rel-L2, RMSE, max absolute error, and error per group. Include random normal data, one large
+outlier per group, high dynamic-range rows, zero rows, tiny values, and tails. If oracle FP32 scales
+do not materially improve over the current format, second-level scales are the wrong target; stop
+and work on payload rounding or group granularity instead. Do not infer precision from one FLUX
+image because sampling/compile drift is larger than the granularity effect.
+
+### 12.2 Freeze the meaning of "global" first
+
+- **Row-global (recommended first experiment): one global scale per row/token.** It needs no
+  cross-row reduction and fits the existing warp-per-row model. The overhead is 2-4 bytes per row,
+  negligible relative to the payload.
+- **Tensor-global: one scale for an entire Q/K/V/O tensor.** This needs an extra global amax pass or
+  a block-reduction plus synchronization before quantization. It also allows a single outlier to
+  affect every row. Its extra kernel/synchronization cost can exceed the scale savings, so it is a
+  separate experiment, not the default design.
+
+### 12.3 Candidate normalized-scale contract
+
+For a row with `M = max(abs(x))`, define for `M > 0`:
+
+```text
+S   = 2^ceil(log2(M / F))          # exact power-of-two global scale
+l_g = A_g / (F * S)                # normalized group scale, in (0, 1]
+s_g = S * l_g                      # effective scale used by quantization
+```
+
+For `M == 0`, use `S = 1` and zero payload with the existing epsilon-safe scale rule. To preserve
+the current epsilon semantics, use `l_g = max(A_g / (F * S), epsilon / S)` before local-scale
+storage. Quantization still uses the full effective `s_g`; dequantization uses `S * stored(l_g)`.
+An independent reference must reproduce that asymmetry and the exact rounding order. A second
+variant that quantizes using the already-rounded effective scale is a different numerical contract
+and must be evaluated separately.
+
+The packed layout becomes:
+
+```text
+[payload][global S][stored local scales][zero padding]
+```
+
+Use FP32 `S` initially for a simple reference implementation. Because `S` is a power of two,
+multiplying or dividing by it is exact except at overflow/underflow boundaries. Tail groups still
+use only valid elements, and padding remains zero.
+
+Candidates to compare:
+
+- **FP32 global + FP16 local scales (precision candidate for O/generic).** FP16 has 10 mantissa bits
+  versus BF16's 7 at the same two bytes/group, plus four bytes/row for `S`. This can improve scale
+  precision without a significant traffic increase. It does not change the FP6/FP8 payload codebook.
+- **FP32 global + FP8 local scales (primarily a compression candidate).** This may reduce scale
+  bytes, including QKV's current FP32 scales, but must not be marketed as an accuracy improvement
+  unless the measurements show one.
+- **FP32 local oracle.** A measurement upper bound, not necessarily a production format.
+
+Reject rows whose normalized local scales underflow FP16; keep a direct-scale fallback for extreme
+dynamic range. Preserve zero rows and the existing NaN/Inf behavior. Second-payload residual
+quantization is out of scope for this near-zero-traffic design because it approximately doubles
+payload traffic.
+
+### 12.4 Implementation and acceptance sequence
+
+1. Implement only a scalar/reference path after the oracle ablation supports the idea. Compare
+   current direct scales, FP16 local scales, and FP8 local scales on identical inputs.
+2. Keep the experiment internal; do not add public config keys until a winning format and scope are
+   frozen. If adopted, `quant_communicate_kwargs` is the correct future extension point.
+3. Add byte-exact packed-layout tests, scale/dequant reference tests, tails, zero/tiny/outlier rows,
+   padding poison, fake/fullgraph, and four-rank NCCL coverage before vectorizing the new path.
+4. Measure packed bytes, scale bytes, quant/dequant latency, full all-to-all latency, and FLUX
+   PSNR/SSIM over multiple seeds. A precision claim requires a consistent operator-level gain and
+   an e2e effect above the repeat-noise floor; a byte reduction alone is a compression result.
+5. Only after precision and traffic are proven, apply the Section 11 paired-conversion, lane-mapping,
+   and hot-loop optimizations to the new layout.
