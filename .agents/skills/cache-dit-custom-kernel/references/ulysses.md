@@ -478,7 +478,8 @@ Status: implemented and validated on `dev` with torch 2.15.0+cu132, sm120a, GPU 
 
 - Use only `quant_communicate_kwargs={"bits": 6|8, "quant_type": ..., "quantize_k": ...}`.
   Empty means BF16. FP8 defaults to `per_token`; FP6 defaults to `per_group_32`. Both accept explicit
-  `per_token`, `per_group_16`, and `per_group_32`. K is opt-in; LSE remains BF16.
+  `per_token`, `per_group_16`, and `per_group_32`. K is quantized by default when communication
+  quantization is enabled; set `quantize_k=False` to keep K in BF16. LSE remains BF16.
 - CLI: `--quant-communicate-params 'bits=6,quant_type=per_group_32,quantize_k=false'`. All old
   `--ulysses-float8*` options and their config fields are removed.
 - `ulysses_fN_*` dispatches with keyword-only `bits=8`; direct `ulysses_fp6_*` and `ulysses_fp8_*`

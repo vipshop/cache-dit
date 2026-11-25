@@ -104,7 +104,8 @@ class ParallelismConfig:
   ulysses_anything: Optional[bool] = False
   # quant_communicate_kwargs: (`Dict[str, Any]`, *optional*):
   #   Low-precision Ulysses communication options: bits=6/8,
-  #   quant_type=per_token/per_group_16/per_group_32, and quantize_k. Empty disables it.
+  #   quant_type=per_token/per_group_16/per_group_32, and quantize_k (default True when enabled).
+  #   Empty disables communication quantization.
   quant_communicate_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
   # ulysses_async: (`bool`, *optional*):
   #   Whether to enable the ulysses async attention to overlap

@@ -19,7 +19,7 @@ class _ContextParallelConfig:
   :param mesh: Optional user-provided device mesh.
   :param ulysses_anything: Whether uneven sequence/head Ulysses mode is enabled.
   :param quant_communicate_kwargs: Low-precision communication options with bits, quant_type, and
-    quantize_k; empty disables quantization.
+    quantize_k (default True when enabled); empty disables quantization.
   :param ulysses_async: Whether model-specific async Ulysses attention patches are enabled.
   :param extra_kwargs: Reserved extension storage for cache-dit specific runtime hints.
   """

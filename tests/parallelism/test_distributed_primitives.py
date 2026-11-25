@@ -104,12 +104,12 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, bits, quant_type
 
   assert comm.group is group
   assert returned is comm
-  assert select_qkv_calls == [(cp_config, None), (cp_config, 0)]
+  assert select_qkv_calls == [(cp_config, None)]
   assert select_o_calls == [(cp_config, None), (cp_config, 0)]
 
   assert comm.send_q(x).wait() == "qv_impl"
   assert comm.send_v(x)() == "qv_impl"
-  assert comm.send_k(x).wait() == "k_impl"
+  assert comm.send_k(x).wait() == "qv_impl"
   assert comm.send_o(x).wait() == "o_impl"
   assert comm.send_lse(x).wait() == "lse_impl"
 
@@ -127,7 +127,7 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, bits, quant_type
       "metadata": metadata,
     },
     {
-      "kind": "k_impl",
+      "kind": "qv_impl",
       "shape": (2, 3, 4, 5),
       "group": group,
       "metadata": metadata,
@@ -205,6 +205,16 @@ def test_quantize_k_communication_options():
                                   })
   assert config.quant_communicate_kwargs["quantize_k"]
 
+  default_config = _ContextParallelConfig(ulysses_degree=2, quant_communicate_kwargs={"bits": 8})
+  assert default_config.quant_communicate_kwargs["quantize_k"] is True
+
+  disabled_config = _ContextParallelConfig(ulysses_degree=2,
+                                           quant_communicate_kwargs={
+                                             "bits": 8,
+                                             "quantize_k": False
+                                           })
+  assert disabled_config.quant_communicate_kwargs["quantize_k"] is False
+
 
 def test_quant_communicate_validation_and_suffix():
   with pytest.raises(ValueError, match="bits must be 6 or 8"):
@@ -221,6 +231,11 @@ def test_quant_communicate_validation_and_suffix():
     ParallelismConfig(quant_communicate_kwargs={"bits": 8})
 
   default = ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"bits": 8})
+  default_without_k = ParallelismConfig(ulysses_size=2,
+                                        quant_communicate_kwargs={
+                                          "bits": 8,
+                                          "quantize_k": False
+                                        })
   group16 = ParallelismConfig(ulysses_size=2,
                               quant_communicate_kwargs={
                                 "bits": 8,
@@ -238,19 +253,26 @@ def test_quant_communicate_validation_and_suffix():
                                     "quant_type": "per_token",
                                     "quantize_k": True
                                   })
-  assert default.strify() == "Ulysses2_UF8"
-  assert group16.strify() == "Ulysses2_UF8_G16"
-  assert group32.strify() == "Ulysses2_UF8_G32"
-  assert fp6_default.strify() == "Ulysses2_UF6_G32"
+  assert default.strify() == "Ulysses2_UF8K"
+  assert default_without_k.strify() == "Ulysses2_UF8"
+  assert group16.strify() == "Ulysses2_UF8K_G16"
+  assert group32.strify() == "Ulysses2_UF8K_G32"
+  assert fp6_default.strify() == "Ulysses2_UF6K_G32"
   assert fp6_token_k.strify() == "Ulysses2_UF6K_PT"
 
 
-def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
+@pytest.mark.parametrize("comm_kwargs", [
+  {
+    "bits": 8
+  },
+  {
+    "bits": 8,
+    "quantize_k": True
+  },
+])
+def test_all2all_comm_uses_fp8_for_k_when_enabled(monkeypatch, comm_kwargs):
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
-                              quant_communicate_kwargs={
-                                "bits": 8,
-                                "quantize_k": True
-                              })
+                              quant_communicate_kwargs=comm_kwargs)
   qkv_impl = object()
   monkeypatch.setattr(primitives, "_select_all_to_all_qkv_async_impl",
                       lambda *args, **kwargs: qkv_impl)
@@ -314,7 +336,7 @@ def test_fN_packed_row_width_covers_uneven_splits():
   assert all((size * 2 * packed) % 16 == 0 for size in [1, 2, 3, 4])
 
 
-def test_all2all_comm_keeps_k_and_lse_off_fp8_by_default(monkeypatch):
+def test_all2all_comm_keeps_k_and_lse_off_fp8_when_k_quantization_is_disabled(monkeypatch):
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
                               quant_communicate_kwargs={
                                 "bits": 8,

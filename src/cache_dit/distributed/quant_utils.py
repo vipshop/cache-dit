@@ -18,7 +18,7 @@ def normalize_quant_communicate_kwargs(kwargs: Dict[str, Any] | None) -> Dict[st
   """Validate and populate defaults for low-precision Ulysses communication.
 
   :param kwargs: User options with `bits`, `quant_type`, and `quantize_k`; empty disables it.
-  :returns: Normalized options with all three keys populated when enabled.
+  :returns: Normalized options with all keys populated and K quantization enabled by default.
   """
   if not kwargs:
     return {}
@@ -35,7 +35,7 @@ def normalize_quant_communicate_kwargs(kwargs: Dict[str, Any] | None) -> Dict[st
   return {
     "bits": bits,
     "quant_type": quant_type,
-    "quantize_k": _as_bool(kwargs.get("quantize_k", False)),
+    "quantize_k": _as_bool(kwargs.get("quantize_k", True)),
   }
 
 
