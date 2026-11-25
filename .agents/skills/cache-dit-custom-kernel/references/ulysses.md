@@ -476,16 +476,17 @@ Status: implemented and validated on `dev` with torch 2.15.0+cu132, sm120a, GPU 
 
 ### 10.1 Public configuration and naming
 
-- Use only `quant_communicate_kwargs={"bits": 6|8, "quant_type": ..., "quantize_k": ...}`.
-  Empty means BF16. FP8 defaults to `per_token`; FP6 defaults to `per_group_32`. Both accept explicit
-  `per_token`, `per_group_16`, and `per_group_32`. K is quantized by default when communication
-  quantization is enabled; set `quantize_k=False` to keep K in BF16. LSE remains BF16.
+- Use only `quant_communicate_kwargs={"bits": 4|6|8, "quant_type": ..., "quantize_k": ...}`.
+  Empty means BF16. FP8 defaults to `per_token`; FP6 defaults to `per_group_32` and both accept
+  explicit `per_token`, `per_group_16`, and `per_group_32`. FP4 E2M1 defaults to and only accepts
+  `per_group_16`. K is quantized by default when communication quantization is enabled; set
+  `quantize_k=False` to keep K in BF16. LSE remains BF16.
 - CLI: `--quant-communicate-params 'bits=6,quant_type=per_group_32,quantize_k=false'`. All old
   `--ulysses-float8*` options and their config fields are removed.
-- `ulysses_fN_*` dispatches with keyword-only `bits=8`; direct `ulysses_fp6_*` and `ulysses_fp8_*`
-  remain public. `_call_ulysses_*` bridge functions are never in `__all__`.
+- `ulysses_fN_*` dispatches with keyword-only `bits=8`; direct `ulysses_fp4_*`, `ulysses_fp6_*` and
+  `ulysses_fp8_*` remain public. `_call_ulysses_*` bridge functions are never in `__all__`.
 - Quantized primitives are `_all_to_all_*_fN_*`; row-width helpers are `_fN_*`. Selectors take
-  `bits=None/0/6/8`: None follows config, zero forces BF16, and 6/8 select fN. The unused
+  `bits=None/0/4/6/8`: None follows config, zero forces BF16, and 4/6/8 select fN. The unused
   `_all_to_all_{qkv,o}_async_fn` wrappers and re-exports were removed.
 
 ### 10.2 FP6 packed contract and numerical pitfalls
@@ -908,3 +909,67 @@ and 8 two-rank standard/UAA fused NCCL tests. No four-rank claim is made. The ex
 memory comparison was not completed; do not claim a memory improvement. Pre-commit and IDE
 diagnostics pass. Baseline worktrees must reuse existing spdlog/CUTLASS checkouts; do not clone
 submodules during local performance iterations.
+
+## 14. FP4 E2M1 group-16 communication (2026-11-25)
+
+Status: implemented and locally validated on `feat/ulysses-fp4-communication`, cdit-latest,
+torch 2.15.0+cu132, RTX PRO 5000 sm120a, using only GPU 2/3. Evidence is under
+`.tmp/ulysses_fN_kernel_opt/` (`fp4_ops_event.jsonl`, `fp4_e2e_summary.json`, NCU/nsys and logs).
+
+### 14.1 Wire format and optimized kernels
+
+- `bits=4` defaults to and only accepts `per_group_16`. Every row is
+  `[ceil(D/2) E2M1 payload][ceil(D/16) scales][zero alignment padding]`; even elements occupy the
+  low nibble. QKV uses FP32 scales/epsilon 1e-6; generic/O uses BF16 scales/epsilon 1e-4. Width step
+  is one byte, while every rank chunk retains the minimal 16-byte alignment search.
+- Six `fp4_{per_token,qkv_permute,o_permute}_{quant,dequant}.cu` operators use `uint8` transport.
+  They require sm100+ native conversion support and have been validated on sm120a. FP4 GEMM's
+  swizzled UE4M3 scale layout is unrelated and must not be reused here.
+- The aligned fast path assigns one complete group-16 to each lane: 16 BF16 values are loaded once,
+  absmax is computed locally, and paired E2M1 conversion writes eight bytes plus the group's scale.
+  There is no intra-group shuffle on this path. D=128 uses eight lanes/row and four rows/warp for
+  QKV/O quant and O dequant; generic/tail/small-grid cases keep the segmented scalar fallback.
+- `fN_fused_qkv_{quant,dequant}.cu` explicitly handles bits=4 without changing its schema. UAA
+  production keeps the existing fused enable/disable policy, mixed BF16 K and GQA/uneven splits.
+
+Representative D=128 Event medians (quant/dequant, microseconds):
+
+| Path | FP4 G16 | FP6 G16 | FP8 G16 |
+|---|---:|---:|---:|
+| QKV | 11.149/8.583 | 7.701/8.656 | 7.472/8.689 |
+| O | 9.423/8.434 | 7.758/8.432 | 7.723/8.165 |
+| generic | 9.523/9.394 | 9.564/9.340 | 9.191/9.383 |
+
+FP4 packed widths are smaller, but its QKV/O quant conversion is slower than FP6/FP8 on this shape;
+do not claim a kernel speedup from payload size alone. FP4 QKV quant nsys is 10.752 us (40 registers)
+and O dequant is 6.304 us (48 registers); both achieve 32/32 threads per instruction and zero local
+store sectors, confirming active multirow execution without spills.
+
+### 14.2 Communication and FLUX CP2 acceptance
+
+Two-rank fused/separate QKV medians: standard 0.376936 -> 0.322603 ms (0.856x), UAA uneven
+0.630778 -> 0.373326 ms (0.592x). The standard fused primitive remains benchmark/internal support;
+production still follows Section 13.3 and enables fused QKV only for UAA.
+
+FLUX.1-dev, 1024^2, 28 steps, seed 0, compile, warmup 2 / repeat 5, UAA CP2:
+
+| Config | Time | PSNR/SSIM vs UAA BF16 |
+|---|---:|---|
+| BF16 | 8.74s | reference |
+| FP4 fused, QKVO | 7.78s | 20.884/0.90612 |
+| FP4 separate, QKVO | 7.92s | 22.417/0.92221 |
+| FP4 fused, QVO (K=BF16) | 8.06s | 24.303/0.93490 |
+| FP4 fused repeat | 7.78s | 21.834/0.91577 |
+| FP6 fused G32 (previous run) | 7.76s | 26.185/0.96580 |
+| FP8 fused G32 (previous run) | 7.90s | 22.960/0.94120 |
+
+Fused vs separate images are 24.888 dB/0.95192 SSIM, while the same-fused cross-process repeat is
+24.472 dB/0.94889; these differences are in the run-noise band and are not numerical-equivalence
+evidence. Byte equality comes from operator and NCCL parity tests. FP4 has visibly preserved
+composition/readable text but lower PSNR than FP6/FP8; BF16 K improves the measured image metrics.
+Peak memory for the FP4 fused repeat was 38,027/37,969 MiB on GPU2/3; no BF16 memory A/B was run.
+
+Validation: 397 tests across FP4/FP6/FP8/fused operators and config/selector/export/manifest,
+including 29 direct FP4 and 25 total fused mega tests; plus 12 two-rank fused parity cases and one
+CP2 standard/UAA QKV/O case. Review-added cases cover odd-width mixed-K at D=66 and undersized fused
+rows. The original four-rank suite was not run under the GPU2/3-only constraint.

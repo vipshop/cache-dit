@@ -284,7 +284,7 @@ def test_ulysses_fp6_defaults_empty_and_invalid() -> None:
   assert ulysses_fp6_per_token_dequant(default[:0], 128, 32).shape == (0, 128)
   with pytest.raises(ValueError, match="group_size"):
     ulysses_fp6_per_token_quant(x, group_size=8)
-  with pytest.raises(ValueError, match="bits must be 6 or 8"):
+  with pytest.raises(ValueError, match="bits must be 4, 6, or 8"):
     ulysses_fN_per_token_quant(x, bits=5)
   with pytest.raises(ValueError, match="head_size is required"):
     ulysses_fN_per_token_dequant(default, bits=6)

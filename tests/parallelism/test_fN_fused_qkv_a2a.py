@@ -77,6 +77,8 @@ def _worker(rank: int, world_size: int, port: int, bits: int, group_size: int, q
                     reason="two CUDA devices are required")
 @pytest.mark.parametrize("uneven", [False, True])
 @pytest.mark.parametrize("bits,group_size,quantize_k", [
+  (4, 16, False),
+  (4, 16, True),
   (8, 0, True),
   (8, 32, False),
   (6, 16, False),
@@ -84,8 +86,8 @@ def _worker(rank: int, world_size: int, port: int, bits: int, group_size: int, q
 ])
 def test_fused_qkv_a2a_matches_separate_paths(bits: int, group_size: int, quantize_k: bool,
                                               uneven: bool) -> None:
-  if bits == 6 and torch.cuda.get_device_capability(0)[0] < 10:
-    pytest.skip("FP6 E2M3 communication requires native sm100+ conversion support.")
+  if bits in (4, 6) and torch.cuda.get_device_capability(0)[0] < 10:
+    pytest.skip("FP4/FP6 communication requires native sm100+ conversion support.")
   mp.spawn(_worker,
            args=(2, _free_port(), bits, group_size, quantize_k, uneven),
            nprocs=2,

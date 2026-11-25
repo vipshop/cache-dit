@@ -105,7 +105,7 @@ class ParallelismConfig:
   #   to support arbitrary sequence length and arbitrary number of heads.
   ulysses_anything: Optional[bool] = False
   # quant_communicate_kwargs: (`Dict[str, Any]`, *optional*):
-  #   Low-precision Ulysses communication options: bits=6/8,
+  #   Low-precision Ulysses communication options: bits=4/6/8 (FP4 only per_group_16),
   #   quant_type=per_token/per_group_16/per_group_32, and quantize_k (default True when enabled).
   #   Empty disables communication quantization.
   quant_communicate_kwargs: Dict[str, Any] = dataclasses.field(default_factory=dict)
