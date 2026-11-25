@@ -1,0 +1,19 @@
+cache_config:
+  cache_type: DBCache
+  Fn_compute_blocks: 1  # SoftCache probes the first block, so it must run every step.
+  Bn_compute_blocks: 0
+  max_warmup_steps: 1
+  max_cached_steps: -1
+  max_continuous_cached_steps: -1  # Caps add refreshes the SoftCache rule did not ask for.
+  # SoftCache filters its probe with the SeaCache filter, so SeaCache must be on (flow mode).
+  enable_seacache: true
+  seacache_mode: flow
+  seacache_feature_shape: [64, 64]  # 64x64 image-token grid (FLUX.1-dev at 1024x1024).
+  seacache_power_exp: 2.0
+  # SeaCache's own refresh rule + headroom sampler jumps (FlowMatch Euler schedulers).
+  enable_softcache: true
+  softcache_tau: 0.5  # ~0.3-0.5 for ~3-4x, ~1.1 for ~6.5x on FLUX.1-dev (50 steps).
+  softcache_jf_max: 8.0
+  # Any calibrator predicts the cached steps. Residual Motion is SoftCache's own predictor.
+  enable_residual_motion: true
+  residual_motion_beta: 1.0  # The paper uses 1.0 up to tau 0.5 and 0.5 above.

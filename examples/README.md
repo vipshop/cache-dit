@@ -132,6 +132,7 @@ python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
 python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64
+python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator taylorseer --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
 python3 -m cache_dit.generate flux --cache --calibrator taylorseer
 python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
 python3 -m cache_dit.generate flux --cache --calibrator brace --calibrator-params "capacity=3,gamma=0.7"
@@ -437,6 +438,12 @@ options:
                         Global packed-token geometry: H W for images or F H W for video.
   --seacache-power-exp SEACACHE_POWER_EXP
                         SeaCache clean-signal power-spectrum exponent (2 for images, commonly 3 for video).
+  --softcache           Enable SoftCache on top of --seacache: SeaCache's own refresh rule plus headroom
+                        sampler jumps (FlowMatch Euler schedulers).
+  --softcache-tau SOFTCACHE_TAU
+                        SoftCache staleness budget; ~0.3-0.5 for ~3-4x and ~1.1 for ~6.5x on FLUX.1-dev.
+  --softcache-jf-max SOFTCACHE_JF_MAX
+                        Cap on the SoftCache jump factor.
   --calibrator CALIBRATOR
                         DBCache calibrator to enable: taylorseer, dmd, foca,
                         svd (SVD-Cache), hicache (damped-Hermite), brace

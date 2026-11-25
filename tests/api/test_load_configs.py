@@ -32,6 +32,23 @@ def test_load_seacache_yaml_keeps_dbcache():
   assert config.seacache_power_exp == 2.0
 
 
+def test_load_softcache_yaml():
+  """The SoftCache YAML enables SoftCache on DBCache + SeaCache with Residual Motion."""
+
+  path = Path(__file__).resolve().parents[2] / "examples" / "configs" / "cache_softcache.yaml"
+  configs = cache_dit.load_configs(str(path))
+  config = configs["cache_config"]
+  assert str(config.cache_type) == str(cache_dit.CacheType.DBCache)
+  assert config.enable_seacache is True and config.seacache_mode == "flow"
+  assert config.enable_softcache is True
+  assert config.softcache_tau == 0.5 and config.softcache_jf_max == 8.0
+  assert config.max_continuous_cached_steps == -1
+  calibrator = configs["calibrator_config"]
+  assert calibrator is not None and calibrator.enable_calibrator is True
+  assert isinstance(calibrator, cache_dit.ResidualMotionCalibratorConfig)
+  assert calibrator.residual_motion_beta == 1.0
+
+
 def test_seacache_fields_survive_refresh_reset():
   """The refresh/reset loader retains explicit SeaCache fields without a new config branch."""
 
