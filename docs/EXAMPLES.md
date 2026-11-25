@@ -498,6 +498,10 @@ options:
                         Enable Ulysses Anything Attention for context parallelism
   --ulysses-float8, --ufp8
                         Enable Ulysses Attention/UAA Float8 for context parallelism
+  --ulysses-float8-k, --ufp8k
+                        Also quantize K for Ulysses FP8 communication (requires --ulysses-float8)
+  --ulysses-float8-quant-type {per-token,per-group-16,per-group-32}
+                        Ulysses FP8 communication scale granularity (requires --ulysses-float8)
   --ulysses-async, --uaqkv
                         Enabled experimental Async QKV Projection with Ulysses for context parallelism
   --ring-rotate-method {allgather,p2p}, --rotate {allgather,p2p}

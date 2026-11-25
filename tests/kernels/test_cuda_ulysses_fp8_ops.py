@@ -17,12 +17,24 @@ def _require_runtime() -> None:
     pytest.skip("CUDA and the cache-dit CUDA extension are required.")
 
 
-def _pack_rows(rows: torch.Tensor, eps: float, scale_dtype: torch.dtype) -> torch.Tensor:
+def _pack_rows(rows: torch.Tensor,
+               eps: float,
+               scale_dtype: torch.dtype,
+               group_size: int = 0) -> torch.Tensor:
   rows_fp32 = rows.float()
   head_size = rows.shape[-1]
-  scale = (rows_fp32.abs().amax(dim=-1, keepdim=True) / 448.0).clamp_min(eps)
-  quantized = (rows_fp32 * scale.reciprocal()).clamp(-448.0, 448.0).half()
-  quantized = quantized.to(torch.float8_e4m3fn).view(torch.uint8)
+  bounds = ([(0, head_size)] if group_size == 0 else [(start, min(start + group_size, head_size))
+                                                      for start in range(0, head_size, group_size)])
+  scales = []
+  quantized_groups = []
+  for start, end in bounds:
+    group = rows_fp32[:, start:end]
+    scale = (group.abs().amax(dim=-1, keepdim=True) / 448.0).clamp_min(eps)
+    quantized = (group * scale.reciprocal()).clamp(-448.0, 448.0).half()
+    quantized_groups.append(quantized.to(torch.float8_e4m3fn).view(torch.uint8))
+    scales.append(scale)
+  scale = torch.cat(scales, dim=1)
+  quantized = torch.cat(quantized_groups, dim=1)
   scale_bytes = scale.to(scale_dtype).contiguous().view(torch.uint8).reshape(rows.shape[0], -1)
   packed = torch.empty((rows.shape[0], head_size + scale_bytes.shape[1]),
                        device=rows.device,
@@ -30,6 +42,21 @@ def _pack_rows(rows: torch.Tensor, eps: float, scale_dtype: torch.dtype) -> torc
   packed[:, :head_size] = quantized
   packed[:, head_size:] = scale_bytes
   return packed.view(torch.float8_e4m3fn)
+
+
+def _dequant_rows(packed: torch.Tensor,
+                  head_size: int,
+                  scale_dtype: torch.dtype,
+                  group_size: int = 0) -> torch.Tensor:
+  groups = 1 if group_size == 0 else (head_size + group_size - 1) // group_size
+  scales = packed[:, head_size:].contiguous().view(scale_dtype)
+  outputs = []
+  for group in range(groups):
+    start = group * (head_size if group_size == 0 else group_size)
+    end = head_size if group_size == 0 else min(start + group_size, head_size)
+    values = packed[:, start:end].float() * scales[:, group:group + 1].float()
+    outputs.append(values.to(torch.bfloat16))
+  return torch.cat(outputs, dim=1)
 
 
 def _reference_per_token_quant(x: torch.Tensor) -> torch.Tensor:
@@ -291,3 +318,203 @@ def test_ulysses_fp8_compile_smoke() -> None:
   assert unpacked.shape == x.shape
   assert packed_qkv.shape == (3, 4, 2, 5, 72)
   assert unpacked_qkv.shape == qkv[:, :, 0].shape
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+def test_ulysses_fp8_group_fake_registration_shapes(group_size: int) -> None:
+  groups = (72 + group_size - 1) // group_size
+  packed = 72 + groups * 2
+  qkv_packed = 64 + (64 // group_size) * 4
+  o_packed = 64 + (64 // group_size) * 2
+  with FakeTensorMode():
+    x = torch.empty((2, 3, 72), device="cuda", dtype=torch.bfloat16)
+    quantized = ulysses_fp8_per_token_quant(x, group_size=group_size)
+    dequantized = ulysses_fp8_per_token_dequant(quantized, 72, group_size)
+    qkv = torch.empty((2, 4, 3, 5, 64), device="cuda", dtype=torch.bfloat16)
+    quantized_qkv = ulysses_fp8_qkv_permute_quant(qkv, group_size=group_size)
+    dequantized_qkv = ulysses_fp8_qkv_permute_dequant(quantized_qkv[0], 64, group_size)
+    o = torch.empty((2, 8, 3, 64), device="cuda", dtype=torch.bfloat16)
+    quantized_o = ulysses_fp8_o_permute_quant(o, 4, o_packed, group_size)
+    dequantized_o = ulysses_fp8_o_permute_dequant(quantized_o.flatten(0, 1), 64, group_size)
+
+  assert isinstance(quantized, FakeTensor)
+  assert quantized.shape == (2, 3, packed)
+  assert dequantized.shape == x.shape
+  assert quantized_qkv.shape == (3, 4, 2, 5, qkv_packed)
+  assert dequantized_qkv.shape == (2, 4, 5, 64)
+  assert quantized_o.shape == (4, 3, 2, 2, o_packed)
+  assert dequantized_o.shape == (2, 2, 12, 64)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+@pytest.mark.parametrize("head_size", [24, 40, 64, 66, 68, 72, 128, 192, 256, 264, 384, 512])
+def test_ulysses_fp8_group_matches_reference_and_misaligned_path(head_size: int,
+                                                                 group_size: int) -> None:
+  _require_runtime()
+  torch.manual_seed(head_size + group_size)
+  x = torch.randn((2, 3, head_size), device="cuda", dtype=torch.bfloat16)
+  x[0, 0].zero_()
+  x[0, 1, :min(head_size, 16)].uniform_(-0.01, 0.01)
+  x[0, 2, -1] = 448.0
+  rows = x.reshape(-1, head_size)
+  expected = _pack_rows(rows, 1e-4, torch.bfloat16, group_size)
+  quantized = ulysses_fp8_per_token_quant(x, group_size=group_size)
+  torch.testing.assert_close(quantized.reshape(-1, expected.shape[-1]).view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+
+  expected_dequantized = _dequant_rows(expected, head_size, torch.bfloat16, group_size)
+  dequantized = ulysses_fp8_per_token_dequant(quantized, head_size, group_size)
+  torch.testing.assert_close(dequantized.reshape(-1, head_size).view(torch.uint16),
+                             expected_dequantized.view(torch.uint16),
+                             rtol=0,
+                             atol=0)
+
+  storage = torch.empty(2 * 3 * head_size + 1, device="cuda", dtype=torch.bfloat16)
+  misaligned = storage[1:].view(2, 3, head_size)
+  misaligned.copy_(x)
+  assert misaligned.is_contiguous() and misaligned.storage_offset() == 1
+  misaligned_quantized = ulysses_fp8_per_token_quant(misaligned, group_size=group_size)
+  torch.testing.assert_close(misaligned_quantized.reshape(-1, expected.shape[-1]).view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+
+  packed_head_size = expected.shape[-1] + 7
+  padded = ulysses_fp8_per_token_quant(x, packed_head_size, group_size)
+  torch.testing.assert_close(padded.reshape(-1, packed_head_size)[..., :expected.shape[-1]].view(
+    torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+  assert torch.count_nonzero(padded[..., expected.shape[-1]:].view(torch.uint8)) == 0
+  padded[..., expected.shape[-1]:].fill_(255)
+  padded_dequantized = ulysses_fp8_per_token_dequant(padded, head_size, group_size)
+  torch.testing.assert_close(padded_dequantized.view(torch.uint16),
+                             dequantized.view(torch.uint16),
+                             rtol=0,
+                             atol=0)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+@pytest.mark.parametrize("head_size", [24, 40, 64, 68, 72, 128, 192, 256, 264, 384, 512])
+def test_ulysses_fp8_qkv_group_matches_reference(head_size: int, group_size: int) -> None:
+  _require_runtime()
+  torch.manual_seed(head_size + group_size)
+  x_storage = torch.randn((4, 2, 3, 5, head_size), device="cuda", dtype=torch.bfloat16)
+  x = x_storage.transpose(0, 1)
+  x[0, 0, 0, 0].zero_()
+  x[0, 0, 0, 1, :min(head_size, 16)].uniform_(-0.01, 0.01)
+  rows = x.permute(2, 1, 0, 3, 4).reshape(-1, head_size)
+  expected = _pack_rows(rows, 1e-6, torch.float32, group_size).reshape(3, 4, 2, 5, -1)
+  quantized = ulysses_fp8_qkv_permute_quant(x, group_size=group_size)
+  torch.testing.assert_close(quantized.view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+
+  for partition in range(3):
+    expected_rows = expected[partition].permute(1, 0, 2, 3).reshape(-1, expected.shape[-1])
+    expected_dequantized = _dequant_rows(expected_rows, head_size, torch.float32, group_size)
+    dequantized = ulysses_fp8_qkv_permute_dequant(quantized[partition], head_size, group_size)
+    torch.testing.assert_close(dequantized.reshape(-1, head_size).view(torch.uint16),
+                               expected_dequantized.view(torch.uint16),
+                               rtol=0,
+                               atol=0)
+
+  if head_size == 128 and group_size == 32:
+    strided = quantized[1, ::2]
+    expected_rows = expected[1, ::2].permute(1, 0, 2, 3).reshape(-1, expected.shape[-1])
+    expected_strided = _dequant_rows(expected_rows, head_size, torch.float32,
+                                     group_size).reshape(2, 2, 5, head_size)
+    dequantized = ulysses_fp8_qkv_permute_dequant(strided, head_size, group_size)
+    torch.testing.assert_close(dequantized.view(torch.uint16),
+                               expected_strided.view(torch.uint16),
+                               rtol=0,
+                               atol=0)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+@pytest.mark.parametrize("head_size", [24, 40, 64, 66, 72, 128, 264])
+def test_ulysses_fp8_o_group_matches_reference_and_ignores_padding(head_size: int,
+                                                                   group_size: int) -> None:
+  _require_runtime()
+  torch.manual_seed(head_size + group_size)
+  x = torch.randn((2, 4, 3, head_size), device="cuda", dtype=torch.bfloat16)
+  x[0, 0, 0].zero_()
+  rows = x.reshape(2, 2, 2, 3, head_size).permute(1, 3, 0, 2, 4).reshape(-1, head_size)
+  expected = _pack_rows(rows, 1e-4, torch.bfloat16, group_size)
+  min_width = expected.shape[-1]
+  packed_head_size = min_width
+  while (3 * 2 * 2 * packed_head_size) % 16 != 0:
+    packed_head_size += 1
+  expected = expected.reshape(2, 3, 2, 2, min_width)
+
+  quantized = ulysses_fp8_o_permute_quant(x, 2, packed_head_size, group_size)
+  torch.testing.assert_close(quantized[..., :min_width].view(torch.uint8),
+                             expected.view(torch.uint8),
+                             rtol=0,
+                             atol=0)
+  assert torch.count_nonzero(quantized[..., min_width:].view(torch.uint8)) == 0
+  quantized[..., min_width:].fill_(255)
+
+  expected_dequantized = _dequant_rows(expected.reshape(-1, min_width), head_size, torch.bfloat16,
+                                       group_size)
+  expected_dequantized = expected_dequantized.reshape(2, 3, 2, 2, head_size)
+  expected_dequantized = expected_dequantized.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
+  dequantized = ulysses_fp8_o_permute_dequant(quantized.flatten(0, 1), head_size, group_size)
+  torch.testing.assert_close(dequantized.view(torch.uint16),
+                             expected_dequantized.view(torch.uint16),
+                             rtol=0,
+                             atol=0)
+
+
+@pytest.mark.parametrize("group_size", [16, 32])
+def test_ulysses_fp8_group_empty_compile_and_invalid(group_size: int) -> None:
+  _require_runtime()
+  empty = torch.empty((0, 72), device="cuda", dtype=torch.bfloat16)
+  quantized_empty = ulysses_fp8_per_token_quant(empty, group_size=group_size)
+  assert quantized_empty.shape == (0, 72 + ((72 + group_size - 1) // group_size) * 2)
+  assert ulysses_fp8_per_token_dequant(quantized_empty, 72, group_size).shape == empty.shape
+
+  x = torch.randn((2, 3, 72), device="cuda", dtype=torch.bfloat16)
+  quantized = torch.compile(ulysses_fp8_per_token_quant, fullgraph=True)(x, None, group_size)
+  dequantized = torch.compile(ulysses_fp8_per_token_dequant, fullgraph=True)(quantized, 72,
+                                                                             group_size)
+  qkv = torch.randn((2, 4, 3, 5, 64), device="cuda", dtype=torch.bfloat16)
+  quantized_qkv = torch.compile(ulysses_fp8_qkv_permute_quant, fullgraph=True)(qkv, None,
+                                                                               group_size)
+  dequantized_qkv = torch.compile(ulysses_fp8_qkv_permute_dequant, fullgraph=True)(quantized_qkv[0],
+                                                                                   64, group_size)
+  o = torch.randn((2, 8, 3, 64), device="cuda", dtype=torch.bfloat16)
+  o_packed = 64 + (64 // group_size) * 2
+  quantized_o = torch.compile(ulysses_fp8_o_permute_quant, fullgraph=True)(o, 4, o_packed,
+                                                                           group_size)
+  dequantized_o = torch.compile(ulysses_fp8_o_permute_dequant,
+                                fullgraph=True)(quantized_o.flatten(0, 1), 64, group_size)
+  assert dequantized.shape == x.shape
+  assert dequantized_qkv.shape == (2, 4, 5, 64)
+  assert dequantized_o.shape == (2, 2, 12, 64)
+
+  with pytest.raises(ValueError, match="group_size"):
+    ulysses_fp8_per_token_quant(x, group_size=8)
+  with pytest.raises(ValueError, match="head_size must be explicit"):
+    ulysses_fp8_per_token_dequant(quantized, group_size=group_size)
+
+
+def test_ulysses_fp8_group_improves_outlier_reconstruction() -> None:
+  _require_runtime()
+  x = torch.zeros((1, 128), device="cuda", dtype=torch.bfloat16)
+  x[:, :16] = torch.randn((1, 16), device="cuda", dtype=torch.bfloat16) * 0.01
+  x[:, -1] = 448.0
+
+  def _round_trip(group_size: int) -> torch.Tensor:
+    quantized = ulysses_fp8_per_token_quant(x, group_size=group_size)
+    return ulysses_fp8_per_token_dequant(quantized, 128, group_size)
+
+  per_token_error = (_round_trip(0).float() - x.float()).square().mean()
+  group16_error = (_round_trip(16).float() - x.float()).square().mean()
+  group32_error = (_round_trip(32).float() - x.float()).square().mean()
+  assert group16_error <= group32_error <= per_token_error
+  assert group16_error < per_token_error

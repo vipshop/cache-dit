@@ -18,6 +18,8 @@ class _ContextParallelConfig:
   :param ulysses_anything: Whether uneven sequence/head Ulysses mode is enabled.
   :param ulysses_float8: Whether Ulysses communication should use fp8 kernels when available.
   :param ulysses_float8_k: Whether K should also use FP8 communication; requires ulysses_float8.
+  :param ulysses_float8_quant_type: FP8 communication scale granularity: per-token, per-group-16, or
+    per-group-32.
   :param ulysses_async: Whether model-specific async Ulysses attention patches are enabled.
   :param extra_kwargs: Reserved extension storage for cache-dit specific runtime hints.
   """
@@ -30,6 +32,7 @@ class _ContextParallelConfig:
   ulysses_anything: bool = False
   ulysses_float8: bool = False
   ulysses_float8_k: bool = False
+  ulysses_float8_quant_type: Literal["per-token", "per-group-16", "per-group-32"] = "per-token"
   ulysses_async: bool = False
   extra_kwargs: dict[str, Any] | None = None
 
@@ -65,6 +68,10 @@ class _ContextParallelConfig:
       )
     if self.ulysses_float8_k and not self.ulysses_float8:
       raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
+    if self.ulysses_float8_quant_type not in ("per-token", "per-group-16", "per-group-32"):
+      raise ValueError(f"Unsupported ulysses_float8_quant_type: {self.ulysses_float8_quant_type}.")
+    if self.ulysses_float8_quant_type != "per-token" and not self.ulysses_float8:
+      raise ValueError("Non-per-token ulysses_float8_quant_type requires ulysses_float8=True.")
     if self.ulysses_anything:
       if self.ring_degree > 1:
         raise ValueError("ulysses_anything cannot be enabled when ring_degree > 1.")

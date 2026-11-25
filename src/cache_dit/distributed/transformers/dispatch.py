@@ -70,6 +70,7 @@ def _parallelize_transformer_context(
       ulysses_anything=parallelism_config.ulysses_anything,
       ulysses_float8=parallelism_config.ulysses_float8,
       ulysses_float8_k=parallelism_config.ulysses_float8_k,
+      ulysses_float8_quant_type=parallelism_config.ulysses_float8_quant_type,
       ulysses_async=parallelism_config.ulysses_async,
       extra_kwargs=dict(parallelism_config.extra_parallel_kwargs),
     )

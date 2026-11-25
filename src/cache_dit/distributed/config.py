@@ -1,7 +1,7 @@
 import torch
 import dataclasses
 import torch.distributed as dist
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Literal, Union
 from .backend import ParallelismBackend
 from ..logger import init_logger
 
@@ -109,6 +109,10 @@ class ParallelismConfig:
   #   Whether to also quantize K for Ulysses FP8 communication. Requires
   #   ulysses_float8=True. LSE always remains BF16.
   ulysses_float8_k: Optional[bool] = False
+  # ulysses_float8_quant_type: (`str`, *optional*):
+  #   Scale granularity for Ulysses FP8 communication. Non-default groups require
+  #   ulysses_float8=True.
+  ulysses_float8_quant_type: Literal["per-token", "per-group-16", "per-group-32"] = "per-token"
   # ulysses_async: (`bool`, *optional*):
   #   Whether to enable the ulysses async attention to overlap
   #   communication and computation.
@@ -180,6 +184,12 @@ class ParallelismConfig:
 
     if self.ulysses_float8_k and not self.ulysses_float8:
       raise ValueError("ulysses_float8_k requires ulysses_float8=True.")
+
+    if self.ulysses_float8_quant_type not in ("per-token", "per-group-16", "per-group-32"):
+      raise ValueError(f"Unsupported ulysses_float8_quant_type: {self.ulysses_float8_quant_type}.")
+
+    if self.ulysses_float8_quant_type != "per-token" and not self.ulysses_float8:
+      raise ValueError("Non-per-token ulysses_float8_quant_type requires ulysses_float8=True.")
 
     if isinstance(self.backend, str):
       self.backend = ParallelismBackend.from_str(self.backend)
@@ -407,6 +417,8 @@ class ParallelismConfig:
           parallel_str += f"ulysses_float8={self.ulysses_float8}, "
         if self.ulysses_float8_k:
           parallel_str += f"ulysses_float8_k={self.ulysses_float8_k}, "
+        if self.ulysses_float8_quant_type != "per-token":
+          parallel_str += f"ulysses_float8_quant_type={self.ulysses_float8_quant_type}, "
         if self.ulysses_async:
           parallel_str += f"ulysses_async={self.ulysses_async}, "
       if self.ring_size is not None:
@@ -432,6 +444,9 @@ class ParallelismConfig:
           parallel_str += "UF8K_"
         elif self.ulysses_float8:
           parallel_str += "UF8_"
+      if self.ulysses_float8 and self.ulysses_float8_quant_type != "per-token":
+        group_suffix = {"per-group-16": "G16_", "per-group-32": "G32_"}
+        parallel_str += group_suffix[self.ulysses_float8_quant_type]
       if self.ulysses_async:
         parallel_str += "UAS_"
       if self.tp_size is not None:

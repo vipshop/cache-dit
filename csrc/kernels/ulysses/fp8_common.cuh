@@ -166,6 +166,164 @@ __device__ void dequantize_row(const uint8_t* input, __nv_bfloat16* output, int6
   }
 }
 
+int64_t fp8_group_count(int64_t head_size, int64_t group_size) {
+  return group_size == 0 ? 1 : (head_size + group_size - 1) / group_size;
+}
+
+int64_t fp8_packed_min_width(int64_t head_size, int64_t group_size, int64_t scale_bytes) {
+  return head_size + fp8_group_count(head_size, group_size) * scale_bytes;
+}
+
+void check_fp8_group_size(int64_t group_size) {
+  TORCH_CHECK(group_size == 0 || group_size == 16 || group_size == 32,
+              "ulysses FP8 communication supports group_size 0 (per-token), 16, or 32");
+}
+
+__device__ float segmented_absmax(float value, int lanes_per_group) {
+  for (int offset = 1; offset < lanes_per_group; offset *= 2) {
+    value = fmaxf(value, __shfl_xor_sync(0xffffffff, value, offset));
+  }
+  return value;
+}
+
+template <bool kBf16Scale>
+__device__ void write_group_scale(uint8_t* input, int64_t head_size, int64_t group, float scale) {
+  uint8_t* output = input + head_size + group * (kBf16Scale ? 2 : 4);
+  if constexpr (kBf16Scale) {
+    const __nv_bfloat16 stored_scale = __float2bfloat16_rn(scale);
+    std::memcpy(output, &stored_scale, sizeof(stored_scale));
+  } else {
+    std::memcpy(output, &scale, sizeof(scale));
+  }
+}
+
+template <bool kBf16Scale>
+__device__ float read_group_scale(const uint8_t* input, int64_t head_size, int64_t group) {
+  const uint8_t* scale_ptr = input + head_size + group * (kBf16Scale ? 2 : 4);
+  if constexpr (kBf16Scale) {
+    __nv_bfloat16 scale;
+    std::memcpy(&scale, scale_ptr, sizeof(scale));
+    return __bfloat162float(scale);
+  } else {
+    float scale;
+    std::memcpy(&scale, scale_ptr, sizeof(scale));
+    return scale;
+  }
+}
+
+template <bool kBf16Scale>
+__device__ void quantize_row_groups(const __nv_bfloat16* input, uint8_t* output, int64_t head_size,
+                                    int64_t packed_head_size, int lane, int group_size,
+                                    float epsilon) {
+  const int64_t groups = (head_size + group_size - 1) / group_size;
+  if (head_size % kPackSize == 0 && is_aligned_16(input)) {
+    // A warp handles 256 elements per iteration. Since 256 % group_size == 0 for 16/32,
+    // no group crosses an iteration boundary and 2/4 lanes can reduce it independently.
+    const int lanes_per_group = group_size / kPackSize;
+    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
+      const int lane_in_group = lane % lanes_per_group;
+      const int64_t group = first_group + lane / lanes_per_group;
+      const int64_t d = group * group_size + lane_in_group * kPackSize;
+      const bool active = group < groups && d < head_size;
+      __nv_bfloat16 values[kPackSize];
+      float absmax = 0.0f;
+      if (active) {
+        load_bf16_pack(input + d, values);
+#pragma unroll
+        for (int i = 0; i < kPackSize; ++i) {
+          absmax = fmaxf(absmax, fabsf(__bfloat162float(values[i])));
+        }
+      }
+      absmax = segmented_absmax(absmax, lanes_per_group);
+      const float scale = fmaxf(absmax / kFp8Max, epsilon);
+      const float inv_scale = 1.0f / scale;
+      if (active) {
+        uint8_t quantized[kPackSize];
+#pragma unroll
+        for (int i = 0; i < kPackSize; ++i) {
+          quantized[i] = to_fp8(__bfloat162float(values[i]) * inv_scale);
+        }
+        store_fp8_pack(output + d, quantized);
+      }
+      if (group < groups && lane_in_group == 0) {
+        write_group_scale<kBf16Scale>(output, head_size, group, scale);
+      }
+    }
+  } else {
+    const int groups_per_iteration = kWarpSize / group_size;
+    for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
+      const int lane_in_group = lane % group_size;
+      const int64_t group = first_group + lane / group_size;
+      const int64_t d = group * group_size + lane_in_group;
+      const bool active = group < groups && d < head_size;
+      float value = 0.0f;
+      if (active) {
+        value = __bfloat162float(input[d]);
+      }
+      const float absmax = segmented_absmax(active ? fabsf(value) : 0.0f, group_size);
+      const float scale = fmaxf(absmax / kFp8Max, epsilon);
+      if (active) {
+        output[d] = to_fp8(value * (1.0f / scale));
+      }
+      if (group < groups && lane_in_group == 0) {
+        write_group_scale<kBf16Scale>(output, head_size, group, scale);
+      }
+    }
+  }
+  constexpr int scale_bytes = kBf16Scale ? 2 : 4;
+  for (int64_t d = head_size + groups * scale_bytes + lane; d < packed_head_size; d += kWarpSize) {
+    output[d] = 0;
+  }
+}
+
+template <bool kBf16Scale>
+__device__ void dequantize_row_groups(const uint8_t* input, __nv_bfloat16* output,
+                                      int64_t head_size, int lane, int group_size) {
+  const int64_t groups = (head_size + group_size - 1) / group_size;
+  if (head_size % kPackSize == 0 && is_aligned_16(output)) {
+    const int lanes_per_group = group_size / kPackSize;
+    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
+      const int lane_in_group = lane % lanes_per_group;
+      const int64_t group = first_group + lane / lanes_per_group;
+      const int64_t d = group * group_size + lane_in_group * kPackSize;
+      const bool active = group < groups && d < head_size;
+      float scale = 0.0f;
+      if (group < groups && lane_in_group == 0) {
+        scale = read_group_scale<kBf16Scale>(input, head_size, group);
+      }
+      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      if (active) {
+        uint8_t quantized[kPackSize];
+        __nv_bfloat16 values[kPackSize];
+        load_fp8_pack(input + d, quantized);
+#pragma unroll
+        for (int i = 0; i < kPackSize; ++i) {
+          values[i] = __float2bfloat16_rn(from_fp8(quantized[i]) * scale);
+        }
+        store_bf16_pack(output + d, values);
+      }
+    }
+  } else {
+    const int groups_per_iteration = kWarpSize / group_size;
+    for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
+      const int lane_in_group = lane % group_size;
+      const int64_t group = first_group + lane / group_size;
+      const int64_t d = group * group_size + lane_in_group;
+      const bool active = group < groups && d < head_size;
+      float scale = 0.0f;
+      if (group < groups && lane_in_group == 0) {
+        scale = read_group_scale<kBf16Scale>(input, head_size, group);
+      }
+      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      if (active) {
+        output[d] = __float2bfloat16_rn(from_fp8(input[d]) * scale);
+      }
+    }
+  }
+}
+
 void check_fp8_pair(const at::Tensor& x, const at::Tensor& y) {
   TORCH_CHECK(x.is_cuda() && y.is_cuda(), "communication operators require CUDA tensors");
   TORCH_CHECK(x.device() == y.device(), "input and output must be on the same CUDA device");

@@ -391,3 +391,80 @@ Artifacts:
 - `.tmp/comm_opt_dev/logs/compile_async_compile.log`
 - `.tmp/comm_opt_dev/bench/probe_qkv_pack_compile.py`
 - `.tmp/comm_opt_dev/logs/bench_qkv_pack_compile.log`
+
+## 9. Per-group FP8 scales (2026-11-25)
+
+Status: implemented and validated on `dev` with torch 2.15.0+cu132, RTX PRO 5000 sm120a,
+GPU 4-7. The public config is `ulysses_float8_quant_type`; the CLI is
+`--ulysses-float8-quant-type {per-token,per-group-16,per-group-32}`. The default remains
+`per-token`, including the original output suffix and bit-exact kernel path.
+
+### 9.1 Contract
+
+- The six existing operators accept a trailing `group_size=0/16/32`; zero launches the unchanged
+  legacy kernels. The Python bridge omits the new argument for zero so the default path also works
+  with an older extension. Group dequant requires an explicit `head_size`.
+- Packed rows are `[D FP8 payload][ceil(D/G) scales][zero padding]`. QKV keeps FP32 scales and
+  epsilon `1e-6`; O and the generic/UAA path keep BF16 scales and epsilon `1e-4`. A final partial
+  group is supported.
+- `min_width = D + ceil(D/G) * scale_bytes`, followed by the existing chunk-minimal 16-byte search
+  over every send/receive split. Do not replace this with row-width-only alignment.
+- Quantization uses FP32 `inv_scale = 1 / scale` and the existing clamp -> FP16 -> FP8 rounding
+  sequence. Group scales are read and written with `memcpy`; do not assume scale or row alignment.
+- Group kernels use 2/4 lanes per 16/32-element group on the aligned vector path. D=24/40/72/264
+  and D=66/68 cover fast-path tails and the scalar path. D=384/512 covers multiple warp iterations.
+
+### 9.2 Validation
+
+- `tests/kernels/test_cuda_ulysses_fp8_ops.py`: 91 passed, including byte-exact payload/scales and
+  BF16 dequant reference, aligned vs misaligned views, padding poison, fake/fullgraph, empty,
+  strided sequence, and an outlier reconstruction gate.
+- Related dispatch/manifest/config/NCCL/BF16/Ring regression: 141 passed. The 4-rank FP8 test
+  covers standard and UAA QKV/O for all three granularities and spies the actual `group_size`
+  passed to all six operators.
+- Full evidence and scripts are under `.tmp/ulysses_fp8_per_group/`; see `report.md`,
+  `results.json`, `logs/`, `images/`, `comparison_cp4_qvo.png`, and `diff_cp4_qvo.png`.
+
+### 9.3 Measured performance and precision
+
+Operator CUDA Event medians, D=128. Times are milliseconds; values in parentheses are relative to
+per-token.
+
+| Op | per-token | group-16 | group-32 |
+|---|---:|---:|---:|
+| QKV quant | 0.010739 | 0.012228 (1.139x) | 0.012345 (1.149x) |
+| QKV dequant | 0.007765 | 0.009950 (1.281x) | 0.009967 (1.284x) |
+| O quant | 0.010765 | 0.012151 (1.129x) | 0.012322 (1.145x) |
+| O dequant | 0.007554 | 0.009521 (1.260x) | 0.009517 (1.260x) |
+
+Production QKV+O all-to-all, seq=4096, heads=24, D=128. `layer = 3*QKV + O`; packed widths are
+QKV/O and every chunk is 16-byte aligned. FLUX shapes have zero padding in all three modes, so the
+new scales increase traffic instead of fitting into existing padding.
+
+| CP | Mode | Layer ms | vs per-token | Speedup vs BF16 | Packed widths | rel-L2 QKV/O |
+|---|---|---:|---:|---:|---|---|
+| 2 | per-token | 0.647601 | 1.000x | 1.583x | 132/130 | 0.025775/0.025825 |
+| 2 | group-16 | 0.759348 | 1.173x | 1.350x | 160/144 | 0.022349/0.022412 |
+| 2 | group-32 | 0.715284 | 1.105x | 1.433x | 144/136 | 0.024033/0.024104 |
+| 4 | per-token | 0.469728 | 1.000x | 1.593x | 132/130 | 0.025767/0.025818 |
+| 4 | group-16 | 0.545375 | 1.161x | 1.372x | 160/144 | 0.022348/0.022401 |
+| 4 | group-32 | 0.508686 | 1.083x | 1.471x | 144/136 | 0.024031/0.024085 |
+
+FLUX.1-dev, 1024^2, 28 steps, seed 0, `_sdpa_cudnn`, compile, warmup 2 / repeat 5, no cache or
+weight quantization:
+
+| CP | Mode | QVO s | QKVO s |
+|---|---|---:|---:|
+| 2 | per-token | 7.91 | 7.75 |
+| 2 | group-16 | 8.02 | 7.92 |
+| 2 | group-32 | 7.99 | 7.87 |
+| 4 | per-token | 4.72 | 4.59 |
+| 4 | group-16 | 4.80 | 4.74 |
+| 4 | group-32 | 4.79 | 4.67 |
+
+The group-16 operator-level reconstruction error is lower, but e2e PSNR does not improve
+monotonically. CP4 group-32 QVO repeated in a fresh process is only 26.42 dB / 0.96434 SSIM from
+its original image, so sampling/compile drift is larger than the granularity ranking. Do not claim
+an e2e precision win from a single image pair. Visual comparison preserves composition and readable
+text in all rows. The observed e2e cost is about 1-3%, within single-run noise, while the isolated
+full communication layer is 8-17% slower; group modes remain opt-in.

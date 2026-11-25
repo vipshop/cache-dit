@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import cache_dit.distributed.communicate.primitives as primitives
+from cache_dit.distributed.config import ParallelismConfig
 from cache_dit.distributed.parallel.config import _ContextParallelConfig
 
 
@@ -47,9 +48,14 @@ def test_ring_p2p_comm_derives_group_and_peer_ranks_from_cp_config(monkeypatch):
   assert comm.recv_rank == 8
 
 
-def test_all2all_comm_selects_impls_once_and_waits(monkeypatch):
+@pytest.mark.parametrize("quant_type,group_size", [
+  ("per-token", 0),
+  ("per-group-16", 16),
+  ("per-group-32", 32),
+])
+def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, quant_type, group_size):
   group = object()
-  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group))
+  cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group), ulysses_float8_quant_type=quant_type)
   select_qkv_calls = []
   select_o_calls = []
   launch_calls = []
@@ -84,7 +90,7 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch):
 
   comm = primitives._All2AllComm(cp_config)
   x = torch.randn(2, 3, 4, 5)
-  metadata = {"NUM_QO_HEAD": 4, "Q_S_LOCAL": 3}
+  metadata = {"NUM_QO_HEAD": 4, "Q_S_LOCAL": 3, "group_size": group_size}
   returned = comm.init_meta(x)
 
   assert comm.group is group
@@ -140,6 +146,28 @@ def test_ulysses_float8_k_requires_float8():
   assert config.ulysses_float8_k
 
 
+def test_ulysses_float8_quant_type_validation_and_suffix():
+  with pytest.raises(ValueError, match="Unsupported ulysses_float8_quant_type"):
+    _ContextParallelConfig(ulysses_degree=2,
+                           ulysses_float8=True,
+                           ulysses_float8_quant_type="per-group-8")
+  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
+    _ContextParallelConfig(ulysses_degree=2, ulysses_float8_quant_type="per-group-16")
+  with pytest.raises(ValueError, match="requires ulysses_float8=True"):
+    ParallelismConfig(ulysses_size=2, ulysses_float8_quant_type="per-group-32")
+
+  default = ParallelismConfig(ulysses_size=2, ulysses_float8=True)
+  group16 = ParallelismConfig(ulysses_size=2,
+                              ulysses_float8=True,
+                              ulysses_float8_quant_type="per-group-16")
+  group32 = ParallelismConfig(ulysses_size=2,
+                              ulysses_float8=True,
+                              ulysses_float8_quant_type="per-group-32")
+  assert default.strify() == "Ulysses2_UF8"
+  assert group16.strify() == "Ulysses2_UF8_G16"
+  assert group32.strify() == "Ulysses2_UF8_G32"
+
+
 def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()), ulysses_float8_k=True)
   qkv_impl = object()
@@ -155,16 +183,22 @@ def test_all2all_comm_uses_fp8_for_k_only_when_opted_in(monkeypatch):
   assert comm._v_impl is qkv_impl
 
 
-@pytest.mark.parametrize("rows,head_size,expected", [
-  (12, 64, 68),
-  (24576, 128, 130),
-  (81900, 128, 132),
+@pytest.mark.parametrize("rows,head_size,group_size,expected", [
+  (12, 64, 0, 68),
+  (24576, 128, 0, 130),
+  (81900, 128, 0, 132),
+  (12, 64, 16, 72),
+  (12, 64, 32, 68),
+  (24576, 128, 16, 144),
+  (24576, 128, 32, 136),
+  (3, 72, 16, 96),
+  (3, 72, 32, 80),
 ])
-def test_fp8_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, expected):
-  packed = primitives._fp8_o_packed_head_size(rows, head_size)
+def test_fp8_o_packed_head_size_keeps_rank_chunks_aligned(rows, head_size, group_size, expected):
+  packed = primitives._fp8_o_packed_head_size(rows, head_size, group_size)
 
   assert packed == expected
-  assert packed >= head_size + 2
+  assert packed >= primitives._fp8_row_min_width(head_size, group_size, 2)
   assert (rows * packed) % 16 == 0
 
 
@@ -244,6 +278,7 @@ def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkey
       "metadata": {
         "NUM_QO_HEAD": 4,
         "Q_S_LOCAL": 3,
+        "group_size": 0,
       },
     },
     {
@@ -253,6 +288,7 @@ def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkey
       "metadata": {
         "NUM_QO_HEAD": 4,
         "Q_S_LOCAL": 3,
+        "group_size": 0,
       },
     },
   ]

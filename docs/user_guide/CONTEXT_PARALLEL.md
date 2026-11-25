@@ -145,9 +145,13 @@ cache_dit.enable_cache(
     ulysses_float8=True,
     # Optional: also quantize K. Requires ulysses_float8=True.
     ulysses_float8_k=False,
+    # Optional: per-token (default), per-group-16, or per-group-32 scales.
+    ulysses_float8_quant_type="per-token",
   ),
 )
 ```
+
+The CLI equivalent is `--ulysses-float8-quant-type {per-token,per-group-16,per-group-32}`. Group modes apply to Q, V, O, and to K when `ulysses_float8_k=True`; LSE remains BF16. Each row stores the FP8 payload, `ceil(D/G)` consecutive scales, then zero alignment padding. QKV uses FP32 scales and O uses BF16 scales, matching the per-token path. A final partial group is supported. The minimum row width is `D + ceil(D/G) * scale_bytes`, which is then minimized under the 16-byte per-rank-chunk alignment rule. Scales occupy existing padding only when a larger packed width was already required; otherwise they increase the row width and communication bytes. Finer groups can reduce reconstruction error but may increase latency, so evaluate both output quality and performance on the target model.
 
 On PCIe-only multi-socket machines, cache-dit emits a one-time warning when a CP group spans NUMA nodes through `SYS` links and no NVLink is detected. This is a diagnostic only: process groups and rank placement are not changed. Topology discovery is fail-open when `nvidia-smi` is unavailable or its output cannot be parsed.
 
