@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import torch
 
-from ..quant_communicate import normalize_quant_communicate_kwargs
+from ..quant_utils import normalize_quant_communicate_kwargs
 
 
 @dataclasses.dataclass

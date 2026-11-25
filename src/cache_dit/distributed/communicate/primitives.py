@@ -6,8 +6,8 @@ import torch.distributed._functional_collectives as fc
 import torch.nn.functional as F
 
 from ...platforms import current_platform
-from ..quant_communicate import normalize_quant_communicate_kwargs
-from ..quant_communicate import quant_communicate_group_size
+from ..quant_utils import normalize_quant_communicate_kwargs
+from ..quant_utils import quant_communicate_group_size
 
 if TYPE_CHECKING:
   from ..parallel.config import _ContextParallelConfig

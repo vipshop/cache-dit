@@ -3,7 +3,7 @@ import dataclasses
 import torch.distributed as dist
 from typing import Optional, Dict, Any, List, Union
 from .backend import ParallelismBackend
-from .quant_communicate import normalize_quant_communicate_kwargs
+from .quant_utils import normalize_quant_communicate_kwargs
 from ..logger import init_logger
 
 logger = init_logger(__name__)
