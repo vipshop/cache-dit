@@ -39,6 +39,7 @@ class CachedContextManager:
     self._seacache_scheduler = None
     self._seacache_parallelism_config = None
     self._seacache_transformers = []
+    self._residual_motion_scheduler = None
 
   def configure_seacache(self, scheduler=None, parallelism_config=None, transformers=()):
     """Bind generic runtime providers used only when SeaCache is explicitly enabled."""
@@ -46,6 +47,22 @@ class CachedContextManager:
     self._seacache_scheduler = scheduler
     self._seacache_parallelism_config = parallelism_config
     self._seacache_transformers = [weakref.ref(transformer) for transformer in transformers]
+
+  def configure_residual_motion(self, scheduler):
+    """Bind the scheduler whose flow-matching sigmas sigma-aware calibrators (Residual Motion)
+    extrapolate in. Used only when such a calibrator is explicitly enabled."""
+
+    self._residual_motion_scheduler = scheduler
+
+  def calibrator_sigma(self) -> float:
+    """Sigma of the step about to run, at the same step index SeaCache uses."""
+
+    scheduler = self._residual_motion_scheduler
+    index = self.get_accumulated_executed_steps() - 1
+    sigmas = getattr(scheduler, "sigmas", None)
+    if sigmas is None or not 0 <= index < len(sigmas):
+      raise ValueError(f"Residual Motion requires scheduler.sigmas covering step {index}.")
+    return float(sigmas[index])
 
   def _get_seacache_parallelism_config(self):
     """Resolve CP/TP metadata lazily because cache enablement precedes parallel dispatch."""
@@ -323,6 +340,7 @@ class CachedContextManager:
     self._seacache_scheduler = None
     self._seacache_parallelism_config = None
     self._seacache_transformers.clear()
+    self._residual_motion_scheduler = None
 
   @contextlib.contextmanager
   def enter_context(self, cached_context: CachedContext | str):
@@ -365,6 +383,12 @@ class CachedContextManager:
     cached_context = self.get_context()
     assert cached_context is not None, "cached_context must be set before"
     cached_context.mark_step_begin()
+    if self._residual_motion_scheduler is not None and cached_context.has_calibrators():
+      # Sigma-aware calibrators (Residual Motion) extrapolate in sigma, not in step count.
+      sigma = self.calibrator_sigma()
+      for calibrator in (*cached_context.get_calibrators(), *cached_context.get_cfg_calibrators()):
+        if calibrator is not None and hasattr(calibrator, "set_sigma"):
+          calibrator.set_sigma(sigma)
 
   @torch.compiler.disable
   def get_current_step(self) -> int:

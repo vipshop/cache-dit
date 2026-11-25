@@ -49,6 +49,7 @@ from .caching import SVDCalibratorConfig
 from .caching import HiCacheCalibratorConfig
 from .caching import BRACECalibratorConfig
 from .caching import BeziCastCalibratorConfig
+from .caching import ResidualMotionCalibratorConfig
 from .caching import supported_pipelines
 from .caching import get_adapter
 from .caching import BlockAdapterRegister

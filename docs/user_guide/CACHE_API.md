@@ -672,6 +672,56 @@ Same-config repeat PSNR/SSIM was 39.60/0.9932 with guardrail off and 32.58/0.987
 
 </details>
 
+## Residual Motion Calibrator: Sigma-Secant Extrapolation
+
+<div id="residual-motion"></div>
+
+**<span style="color:#c77dff;">Residual Motion</span>** ([SoftCache: Adaptive Step Size Caching for Diffusion Transformers](https://arxiv.org/abs/2610.22369), [code](https://github.com/ShimonMalnick/softcache)) is the predictor of SoftCache. It moves the cached residual along the secant of the last two real anchors, measured in the flow-matching sigma rather than the step count:
+
+$$r(\sigma)=r_a+\beta\,\lambda\,(r_a-r_{a-1}),\qquad \lambda=\frac{\sigma-\sigma_a}{\sigma_a-\sigma_{a-1}}$$
+
+With one real anchor it reuses that residual as is. Sigma coordinates keep the extrapolation right when the sigma grid is non-uniform, which is what SoftCache's jumps produce. It is not a better general calibrator. On plain DBCache it measured 0.5–1 dB PSNR below TaylorSeer order 1 at the same Cache Steps (table below), so for plain DBCache TaylorSeer remains the default pick. It needs a scheduler with flow-matching `sigmas`, read at the same step index SeaCache uses. With a pipeline this is `pipe.scheduler`. For transformer-only caching pass `residual_motion_scheduler=` to `enable_cache` along with `num_inference_steps`.
+
+```python
+from cache_dit import DBCacheConfig, ResidualMotionCalibratorConfig
+
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=4,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=ResidualMotionCalibratorConfig(),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator residual_motion --calibrator-params beta=1.0
+```
+
+FLUX.1-dev, 1024², 50 steps, guidance 3.5, 8 DPG prompts, A100-40GB, bf16, no compile, DBCache F1B0 with the default warmup. PSNR / SSIM / LPIPS are against the uncached 50-step image.
+
+| `residual_diff_threshold` | Speedup | Cache Steps | TaylorSeer(1) | Residual Motion (β=1) |
+|:--|--:|--:|:--|:--|
+| 0.24 | 3.38x | 36.5 | 20.44 / 0.782 / 0.191 | 19.92 / 0.763 / 0.213 |
+| 0.6 | 4.39x | 40 | 15.17 / 0.593 / 0.470 | 14.13 / 0.530 / 0.573 |
+
+With `max_cached_steps=0` it is bit-identical to no cache (8/8).
+
+<details markdown="1">
+<summary>📖 Residual Motion Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `residual_motion_beta` | `float` | 1.0 | Fraction of the anchor secant to apply, in [0, 1]. |
+| `enable_calibrator` | `bool` | True | Enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Enable the calibrator for encoder hidden states. |
+
+</details>
+
 ## DMD Calibrator: Dynamic Mode Decomposition
 
 <div id="dmd"></div>

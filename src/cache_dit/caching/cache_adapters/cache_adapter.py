@@ -225,6 +225,8 @@ class CachedAdapter:
         parallelism_config,
         transformers=BlockAdapter.flatten(block_adapter.transformer),
       )
+    cls._maybe_configure_residual_motion(block_adapter, context_manager, cache_config,
+                                         context_kwargs)
     flatten_contexts, contexts_kwargs = cls.modify_context_params(block_adapter, **context_kwargs)
 
     block_adapter.pipe._context_manager = context_manager  # instance level
@@ -264,6 +266,34 @@ class CachedAdapter:
     cls.apply_params_hooks(block_adapter, contexts_kwargs)
 
     return flatten_contexts, contexts_kwargs
+
+  @classmethod
+  def _maybe_configure_residual_motion(
+    cls,
+    block_adapter: BlockAdapter,
+    context_manager,
+    cache_config: BasicCacheConfig,
+    context_kwargs: Dict[str, Any],
+  ):
+    """Bind the scheduler whose sigmas Residual Motion reads, mirroring SeaCache's binding."""
+
+    from ..cache_contexts.calibrators import normalize_calibrator_type
+
+    scheduler = context_kwargs.pop("residual_motion_scheduler", None)
+    calibrator_config = context_kwargs.get("calibrator_config", None)
+    if (calibrator_config is None
+        or not (calibrator_config.enable_calibrator or calibrator_config.enable_encoder_calibrator)
+        or normalize_calibrator_type(calibrator_config.calibrator_type) != "residual_motion"):
+      return
+    if scheduler is None:
+      scheduler = getattr(block_adapter.pipe, "scheduler", None)
+    if scheduler is None:
+      raise ValueError("Residual Motion requires a pipeline scheduler with flow-matching sigmas, "
+                       "or `residual_motion_scheduler` for transformer-only caching.")
+    if context_manager.persistent_context and cache_config.num_inference_steps is None:
+      raise ValueError("Transformer-only Residual Motion requires num_inference_steps so later "
+                       "requests cannot run past the schedule.")
+    context_manager.configure_residual_motion(scheduler)
 
   @classmethod
   def modify_context_params(

@@ -27,6 +27,7 @@ from ..caching import (
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
   BeziCastCalibratorConfig,
+  ResidualMotionCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -174,6 +175,9 @@ _CALIBRATOR_PARAM_SPECS: Dict[str, Dict[str, Tuple[str, Any]]] = {
     "rho": ("bezicast_rho", _optional_float),
     "gamma": ("bezicast_gamma", float),
   },
+  "residual_motion": {
+    "beta": ("residual_motion_beta", float),
+  },
 }
 
 # Keys every calibrator accepts; they live on `CalibratorConfig` itself.
@@ -200,6 +204,7 @@ _CALIBRATOR_CONFIG_CLASSES = {
   "hicache": HiCacheCalibratorConfig,
   "brace": BRACECalibratorConfig,
   "bezicast": BeziCastCalibratorConfig,
+  "residual_motion": ResidualMotionCalibratorConfig,
 }
 
 
@@ -644,8 +649,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     type=_parse_calibrator_arg,
     default=None,
     help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), "
-    "hicache (damped-Hermite), brace (barycentric rational), or bezicast "
-    "(Bernstein/Bezier). Long forms such as 'svd-calibrator' are accepted. Requires --cache.",
+    "hicache (damped-Hermite), brace (barycentric rational), bezicast "
+    "(Bernstein/Bezier), or residual_motion (sigma secant, SoftCache). Long forms such as 'svd-calibrator' are accepted. Requires --cache.",
   )
   parser.add_argument(
     "--calibrator-params",
@@ -655,6 +660,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
     "'order=2,sigma=0.5' for hicache, 'capacity=3,gamma=0.7' for brace, "
     "'history=6,control_points=4,ridge=0.5,guardrail=false' for bezicast, "
+    "'beta=0.5' for residual_motion, "
     "'history=6,svd_precision=low' for dmd, "
     "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
   )

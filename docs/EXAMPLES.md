@@ -104,6 +104,7 @@ python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params 
 python3 -m cache_dit.generate flux --cache --calibrator hicache --calibrator-params "order=2,sigma=0.5"
 python3 -m cache_dit.generate flux --cache --calibrator brace --calibrator-params "capacity=3,gamma=0.7"
 python3 -m cache_dit.generate flux --cache --calibrator bezicast --calibrator-params "history=6,control_points=4,ridge=0.5,guardrail=false"
+python3 -m cache_dit.generate flux --cache --calibrator residual_motion --calibrator-params "beta=1.0"
 python3 -m cache_dit.generate flux_nunchaku --cache
 python3 -m cache_dit.generate qwen_image --cache
 python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast
@@ -433,7 +434,8 @@ options:
   --calibrator CALIBRATOR
                         DBCache calibrator to enable: taylorseer, dmd, foca,
                         svd (SVD-Cache), hicache (damped-Hermite), brace
-                        (barycentric rational), or bezicast (Bernstein/Bezier).
+                        (barycentric rational), bezicast (Bernstein/Bezier),
+                        or residual_motion (sigma secant, SoftCache).
                         Long forms such as 'svd-calibrator' are accepted.
                         Requires --cache.
   --calibrator-params CALIBRATOR_PARAMS
@@ -443,7 +445,8 @@ options:
                         'order=2,sigma=0.5' for hicache,
                         'capacity=3,gamma=0.7' for brace,
                         'history=6,control_points=4,ridge=0.5,guardrail=false'
-                        for bezicast, 'history=6,svd_precision=low' for dmd, or
+                        for bezicast, 'beta=0.5' for residual_motion,
+                        'history=6,svd_precision=low' for dmd, or
                         'calibrator_cache_type=hidden_states,encoder=false'
                         for any calibrator.
   --steps-mask          Enable steps mask for CacheDiT
