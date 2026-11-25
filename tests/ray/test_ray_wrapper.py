@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import call, patch
 
 import pytest
 import torch
@@ -195,6 +196,28 @@ def test_ray_wrapper_pipeline_init_fn_none_pipe_rejected_without_fn() -> None:
   # ray_transfer_fn is NOT set — pipe=None should be rejected.
   with pytest.raises(ValueError, match="pipe_or_adapter can only be None"):
     cache_dit.enable_cache(None, parallelism_config=config)
+
+
+@pytest.mark.parametrize("preserve", [False, True])
+def test_factory_worker_layerwise_placement(preserve: bool) -> None:
+  from cache_dit.offload import layerwise_cpu_offload
+  from cache_dit.ray.worker import RayPipelineWorker
+
+  pipe = ToyPipeline(torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 4)))
+  hidden_states = torch.ones(4)
+  expected = pipe(hidden_states)
+  layerwise_cpu_offload(pipe.transformer, module_names=["0"], onload_device="cpu")
+
+  worker = object.__new__(RayPipelineWorker)
+  worker.rank = 0
+  worker.device = torch.device("cpu")
+  worker.parallelism_config = _toy_parallel_config()
+  worker.parallelism_config.ray_preserve_factory_offload = preserve
+  worker.cache_context_kwargs = worker.quantize_config = None
+  with patch.object(pipe.transformer, "to", wraps=pipe.transformer.to) as bulk_move:
+    worker.load_pipeline_with_init_fn(lambda: pipe, None, None)
+  assert bulk_move.call_args_list == ([] if preserve else [call(worker.device)])
+  torch.testing.assert_close(worker.call((hidden_states, ), {}), expected)
 
 
 def test_ray_wrapper_transformer_init_fn_rejected() -> None:

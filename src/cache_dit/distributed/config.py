@@ -88,6 +88,8 @@ class ParallelismConfig:
   #   serializable by cloudpickle — avoid capturing large objects in closures.
   #   Only supported for pipeline-level Ray wrapper (``enable_cache(pipe, ...)``).
   ray_transfer_fn: Optional[Any] = None
+  # The factory must place the non-offloaded state of each preserved component.
+  ray_preserve_factory_offload: bool = dataclasses.field(default=False, kw_only=True)
   # Internal test hook: skip cache-dit native parallel planner inside Ray workers.
   _ray_skip_native_parallelism: bool = False
 
