@@ -132,6 +132,13 @@ Key points:
 - `ray_transfer_fn` must be **serializable by cloudpickle**. Define it at module level (not inside `main()`) and avoid capturing large objects in closures.
 - When `pipe_or_adapter` is omitted (or `None`), `enable_cache` returns a **callable `RayPipelineEngine`**. Call it directly — no monkey-patched pipeline needed.
 - Cache hooks, parallelism, and quantization are still applied inside the workers after the function returns.
+- By default the worker moves each module component in the returned pipeline to its device. Set
+  `ray_preserve_factory_offload=True` in `ParallelismConfig` to skip this initial `.to()` for
+  components with a Cache-DiT layerwise offload handle on their root. Before returning the pipeline,
+  the factory must place all remaining parameters and buffers of those components on the worker's
+  execution device. For partial text encoder offload, the factory can move the encoder to the
+  worker's GPU first, then call `layerwise_cpu_offload` on its root with `module_names` to eagerly
+  offload the selected layers to CPU. The worker moves the other module components as usual.
 
 ## How to use LoRAs 
 

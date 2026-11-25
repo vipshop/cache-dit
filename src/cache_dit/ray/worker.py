@@ -4,7 +4,7 @@ import copy
 import importlib
 import json
 import os
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from diffusers import DiffusionPipeline
@@ -12,6 +12,7 @@ from diffusers.models.modeling_utils import ModelMixin
 
 from ..distributed import ParallelismConfig
 from ..logger import init_logger
+from ..offload import get_layerwise_offload_handles
 from ..patches import maybe_patch_nucleus_moe_grouped_mm_offsets
 from ..quantization import QuantizeConfig
 from ..utils import assign_transformer, resolve_transformer
@@ -440,7 +441,7 @@ class RayPipelineWorker:
 
   def load_pipeline_with_init_fn(
     self,
-    fn,
+    fn: Callable[[], DiffusionPipeline],
     cache_context_kwargs: dict[str, Any] | None,
     quantize_config: QuantizeConfig | None,
   ) -> dict[str, Any]:
@@ -458,8 +459,12 @@ class RayPipelineWorker:
       raise TypeError(
         f"ray_transfer_fn must return a DiffusionPipeline, got {type(pipe).__name__}.")
     for component in pipe.components.values():
-      if isinstance(component, torch.nn.Module):
-        component.to(self.device)
+      if not isinstance(component, torch.nn.Module):
+        continue
+      if self.parallelism_config.ray_preserve_factory_offload and get_layerwise_offload_handles(
+          component):
+        continue
+      component.to(self.device)
     self.pipe = pipe
     self.pipe.set_progress_bar_config(disable=True)
     transformer_name, transformer = resolve_transformer(self.pipe)
