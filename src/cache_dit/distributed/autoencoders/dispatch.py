@@ -9,6 +9,25 @@ from .register import AutoEncoderDataParallelismPlannerRegister
 
 logger = init_logger(__name__)
 
+# TODO: Extend batch-local tile decoding to other VAE models.
+def set_minimax_h3_vae_batch_local_tiles(vae: torch.nn.Module, enabled: bool = True) -> None:
+  """Set the tile batching preference on an installed MiniMax-H3 video VAE planner.
+
+  Call on every rank before inference. The preference applies during multi-rank tiled decoding.
+
+  :param vae: Video VAE instance parallelized by cache-dit.
+  :param enabled: Decode each temporal window's local tiles in one batch.
+  """
+  from diffusers import AutoencoderKLMiniMaxH3
+
+  if not isinstance(enabled, bool):
+    raise TypeError("enabled must be a boolean.")
+  if not isinstance(vae, AutoencoderKLMiniMaxH3):
+    raise TypeError("Expected an AutoencoderKLMiniMaxH3 video VAE.")
+  if "_h3_vae_batch_local_tiles" not in vars(vae):
+    raise RuntimeError("Install the MiniMax-H3 video VAE planner before configuring tile batching.")
+  vae._h3_vae_batch_local_tiles = enabled
+
 
 def _ensure_auto_encoder_dp_planners_activated() -> None:
   if AutoEncoderDataParallelismPlannerRegister.supported_planners()[0] == 0:
