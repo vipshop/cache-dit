@@ -522,7 +522,7 @@ class _FusedAll2AllComm(_All2AllComm):
     # Standard Q-first scheduling preserves more producer/communication overlap in FLUX; the fused
     # standard primitive remains available for benchmarks, but production enables fusion only for
     # UAA where the full communication layer and e2e are both non-regressing.
-    if self._quant_bits in (6, 8) and _cp_config.ulysses_anything and not disabled:
+    if self._quant_bits in (4, 6, 8) and _cp_config.ulysses_anything and not disabled:
       self._fused_impl = _all_to_all_fused_qkv_any_fN_async
 
   @property
@@ -534,7 +534,8 @@ class _FusedAll2AllComm(_All2AllComm):
                value: torch.Tensor) -> _All2AllAsyncHandle:
     """Launch one fused QKV all-to-all and return a handle yielding three tensors."""
     if self._fused_impl is None:
-      raise RuntimeError("Fused QKV communication requires FP8 or FP6 communication quantization.")
+      raise RuntimeError(
+        "Fused QKV communication requires FP4, FP6, or FP8 communication quantization.")
     self._resolve_metadata(query, allow_implicit_init=True)
     wait = self._fused_impl(query,
                             key,
@@ -810,7 +811,7 @@ def _all_to_all_single_qkv_fN_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  """Launch async FP8/FP6 all-to-all for QKV tensors with evenly split heads.
+  """Launch async FP4/FP6/FP8 all-to-all for QKV tensors with evenly split heads.
 
   :param x: Input tensor for the operation.
   :param group: Process group used for communication.
@@ -942,23 +943,20 @@ def _unpad_last_dim(x: torch.Tensor, head_size: int) -> torch.Tensor:
 
 
 def _fN_row_min_width(head_size: int, group_size: int, scale_bytes: int, bits: int = 8) -> int:
-  """Return the payload plus scale bytes for one packed FP8/FP6 row.
-
-  :param head_size: Original attention head dimension `D`.
-  :param group_size: Elements per scale group; zero means one scale per row.
-  :param scale_bytes: Bytes per stored scale, two for BF16 and four for FP32.
-  :param bits: Quantized payload width, 6 or 8.
-  :returns: Minimum packed row width before collective alignment padding.
-  """
+  """Return payload plus scale bytes for one packed FP4/FP6/FP8 row."""
   if group_size not in (0, 16, 32):
     raise ValueError("group_size must be 0 (per-token), 16, or 32.")
+  if bits == 4 and group_size != 16:
+    raise ValueError("FP4 communication supports only group_size=16.")
   if bits == 8:
     payload_bytes = head_size
   elif bits == 6:
     bitstream_bytes = ((head_size + 3) // 4) * 3
     payload_bytes = (bitstream_bytes + 3) // 4 * 4
+  elif bits == 4:
+    payload_bytes = (head_size + 1) // 2
   else:
-    raise ValueError(f"bits must be 6 or 8, got {bits}.")
+    raise ValueError(f"bits must be 4, 6, or 8, got {bits}.")
   groups = 1 if group_size == 0 else (head_size + group_size - 1) // group_size
   return payload_bytes + groups * scale_bytes
 
@@ -967,7 +965,7 @@ def _fN_packed_row_width(split_sizes: List[int],
                          row_elements: int,
                          min_width: int,
                          width_step: int = 1) -> int:
-  """Return the smallest FP8/FP6 row width that aligns every all-to-all chunk to 16 bytes.
+  """Return the smallest FP4/FP6/FP8 row width that aligns every all-to-all chunk to 16 bytes.
 
   Rows include scale bytes, so a row-width-aligned rule would over-pad them. Keep the chunk-based
   search to minimize transmitted bytes.
@@ -988,7 +986,7 @@ def _fN_o_packed_head_size(rows_per_rank: int,
                            head_size: int,
                            group_size: int = 0,
                            bits: int = 8) -> int:
-  """Return the smallest FP8/FP6 O row width that keeps each rank chunk 16-byte aligned.
+  """Return the smallest FP4/FP6/FP8 O row width that keeps each rank chunk 16-byte aligned.
 
   :param rows_per_rank: Number of rows contributed to every peer, `B * S_LOCAL * H_LOCAL`.
   :param head_size: Original attention head dimension `D`.
@@ -1005,7 +1003,7 @@ def _all_to_all_single_o_fN_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  """Launch async FP8/FP6 all-to-all for output tensors with evenly split heads.
+  """Launch async FP4/FP6/FP8 all-to-all for output tensors with evenly split heads.
 
   :param x: Input tensor shaped `(B, S_GLOBAL, H_LOCAL, D)` whose last dimension has stride 1.
   :param group: Process group used for communication.
@@ -1020,11 +1018,13 @@ def _all_to_all_single_o_fN_async(
   _, world_size = _get_rank_world_size(group)
   B, S_GLOBAL, H_LOCAL, D = x.shape
   if S_GLOBAL % world_size != 0:
-    raise ValueError("The fused FP8/FP6 O path requires S_GLOBAL to be divisible by ulysses_size; "
-                     "disable quant_communicate_kwargs for this shape.")
+    raise ValueError(
+      "The fused FP4/FP6/FP8 O path requires S_GLOBAL to be divisible by ulysses_size; "
+      "disable quant_communicate_kwargs for this shape.")
   if H is not None and H % world_size != 0:
-    raise ValueError("The fused FP8/FP6 O path requires the global head count to be divisible by "
-                     "ulysses_size; disable quant_communicate_kwargs for this model.")
+    raise ValueError(
+      "The fused FP4/FP6/FP8 O path requires the global head count to be divisible by "
+      "ulysses_size; disable quant_communicate_kwargs for this model.")
   x, H_PAD = _maybe_pad_o_head(x, H, group)
   S_LOCAL = S_GLOBAL // world_size
   packed_head_size = _fN_o_packed_head_size(B * S_LOCAL * H_LOCAL, D, group_size, bits)
@@ -1162,7 +1162,7 @@ def _all_to_all_single_any_qkv_fN_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  """Launch async FP8/FP6 all-to-all for QKV tensors with uneven local sequence lengths.
+  """Launch async FP4/FP6/FP8 all-to-all for QKV tensors with uneven local sequence lengths.
 
   :param x: Input tensor for the operation.
   :param group: Process group used for communication.
@@ -1216,7 +1216,7 @@ def _all_to_all_single_any_o_fN_async(
   group: dist.ProcessGroup,
   **kwargs,
 ) -> Callable[..., torch.Tensor]:
-  """Launch async FP8/FP6 all-to-all for output tensors with uneven local sequence lengths.
+  """Launch async FP4/FP6/FP8 all-to-all for output tensors with uneven local sequence lengths.
 
   :param x: Input tensor for the operation.
   :param group: Process group used for communication.
@@ -1270,13 +1270,13 @@ def _all_to_all_single_any_o_fN_async(
 
 
 # Unified functions to select proper all to all implementations according to
-# Ulysses FP8/FP6 or other settings. Mainly used in Async Ulysses Attention.
+# Ulysses FP4/FP6/FP8 or other settings. Mainly used in Async Ulysses Attention.
 
 
 def _resolve_fN_bits(_cp_config: Optional["_ContextParallelConfig"], bits: Optional[int]) -> int:
   """Resolve quantization bits, with zero selecting BF16 and None following the config."""
-  if bits not in (None, 0, 6, 8):
-    raise ValueError(f"bits must be None, 0 (BF16), 6, or 8, got {bits}.")
+  if bits not in (None, 0, 4, 6, 8):
+    raise ValueError(f"bits must be None, 0 (BF16), 4, 6, or 8, got {bits}.")
   if bits is not None:
     return bits
   comm = normalize_quant_communicate_kwargs(
@@ -1292,11 +1292,11 @@ def _select_all_to_all_qkv_async_impl(
   ulysses_anything = bool(_cp_config is not None and _cp_config.ulysses_anything)
 
   if ulysses_anything:
-    if bits in (6, 8):
+    if bits in (4, 6, 8):
       return _all_to_all_single_any_qkv_fN_async
     return _all_to_all_single_any_qkv_async
 
-  if bits in (6, 8):
+  if bits in (4, 6, 8):
     return _all_to_all_single_qkv_fN_async
   return _all_to_all_single_qkv_async
 
@@ -1309,11 +1309,11 @@ def _select_all_to_all_o_async_impl(
   ulysses_anything = bool(_cp_config is not None and _cp_config.ulysses_anything)
 
   if ulysses_anything:
-    if bits in (6, 8):
+    if bits in (4, 6, 8):
       return _all_to_all_single_any_o_fN_async
     return _all_to_all_single_any_o_async
 
-  if bits in (6, 8):
+  if bits in (4, 6, 8):
     return _all_to_all_single_o_fN_async
   return _all_to_all_single_o_async
 

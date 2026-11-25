@@ -7,6 +7,12 @@ from .ulysses import ulysses_fN_per_token_dequant
 from .ulysses import ulysses_fN_per_token_quant
 from .ulysses import ulysses_fN_qkv_permute_dequant
 from .ulysses import ulysses_fN_qkv_permute_quant
+from .ulysses import ulysses_fp4_o_permute_dequant
+from .ulysses import ulysses_fp4_o_permute_quant
+from .ulysses import ulysses_fp4_per_token_dequant
+from .ulysses import ulysses_fp4_per_token_quant
+from .ulysses import ulysses_fp4_qkv_permute_dequant
+from .ulysses import ulysses_fp4_qkv_permute_quant
 from .ulysses import ulysses_fp6_o_permute_dequant
 from .ulysses import ulysses_fp6_o_permute_quant
 from .ulysses import ulysses_fp6_per_token_dequant
@@ -64,6 +70,12 @@ __all__ = [
   "ulysses_fN_per_token_dequant",
   "ulysses_fN_qkv_permute_quant",
   "ulysses_fN_qkv_permute_dequant",
+  "ulysses_fp4_o_permute_quant",
+  "ulysses_fp4_o_permute_dequant",
+  "ulysses_fp4_per_token_quant",
+  "ulysses_fp4_per_token_dequant",
+  "ulysses_fp4_qkv_permute_quant",
+  "ulysses_fp4_qkv_permute_dequant",
   "ulysses_fp6_o_permute_quant",
   "ulysses_fp6_o_permute_dequant",
   "ulysses_fp6_per_token_quant",

@@ -1,5 +1,6 @@
 #include <type_traits>
 
+#include "fp4_common.cuh"
 #include "fp6_common.cuh"
 
 // Inverse of fN_fused_qkv_quant.cu. After all-to-all, `packed` has S_GLOBAL sequence rows and the
@@ -41,7 +42,7 @@ __global__ void fused_qkv_dequant_kernel(const uint8_t* packed, __nv_bfloat16* q
 
   // tensor_id identifies which output component is being restored: 0=Q, 1=K, 2=V. It selects the
   // output pointer, local head count, packed width and segment base. In particular, tensor_id==1
-  // means K, so quantize_k==false must read raw BF16 bytes instead of an FP8/FP6 payload+scale.
+  // means K, so quantize_k==false must read raw BF16 bytes instead of an FP4/FP6/FP8 payload+scale.
   int tensor_id = 0;
   int64_t tensor_row = global_warp * kRowsPerWarp + row_in_warp;
   if (global_warp >= q_warps + k_warps) {
@@ -83,12 +84,13 @@ __global__ void fused_qkv_dequant_kernel(const uint8_t* packed, __nv_bfloat16* q
   output += (b * seq_len + s) * heads * head_size + n * head_size;
 
   // Quantized Q/K/V rows use FP32 scales: FP8 per-token scales follow the D-byte payload, FP6
-  // scales follow its 4-byte-aligned 6-bit payload, and grouped scales start at the same payload
-  // boundary. BF16 K skips all scale handling and copies only D values, dropping packed_D padding.
+  // scales follow its 4-byte-aligned 6-bit payload, and FP4 scales follow its nibble payload.
+  // Grouped scales start at the same payload boundary. BF16 K skips scales and drops packed_D
+  // padding.
   if (tensor_id == 1 && !quantize_k) {
-    const __nv_bfloat16* input_bf16 = reinterpret_cast<const __nv_bfloat16*>(input);
     for (int64_t d = row_lane; d < head_size; d += kLanesPerRow) {
-      output[d] = input_bf16[d];
+      // The packed K segment may start at an odd byte address after an odd-width FP4 Q segment.
+      std::memcpy(output + d, input + d * sizeof(__nv_bfloat16), sizeof(__nv_bfloat16));
     }
   } else if (bits == 8) {
     if (group_size == 0) {
@@ -98,7 +100,7 @@ __global__ void fused_qkv_dequant_kernel(const uint8_t* packed, __nv_bfloat16* q
     } else {
       dequantize_row_groups<false>(input, output, head_size, row_lane, group_size, kLanesPerRow);
     }
-  } else {
+  } else if (bits == 6) {
 #if CACHE_DIT_ULYSSES_HAS_FP6
     if (group_size == 0) {
       float scale;
@@ -108,6 +110,10 @@ __global__ void fused_qkv_dequant_kernel(const uint8_t* packed, __nv_bfloat16* q
       dequantize_row_groups_fp6<false>(input, output, head_size, row_lane, group_size,
                                        kLanesPerRow);
     }
+#endif
+  } else {
+#if CACHE_DIT_ULYSSES_HAS_FP4
+    dequantize_row_groups_fp4<false>(input, output, head_size, row_lane, group_size, kLanesPerRow);
 #endif
   }
 }
@@ -142,12 +148,37 @@ void ulysses_fN_fused_qkv_dequant(at::Tensor packed, at::Tensor q, at::Tensor k,
   TORCH_CHECK(
     chunk_row_bytes == batches * (q_heads * q_width + k_heads * k_width + v_heads * v_width),
     "invalid fused QKV chunk row width");
-  TORCH_CHECK(bits == 6 || bits == 8, "fused QKV bits must be 6 or 8");
+  TORCH_CHECK(bits == 4 || bits == 6 || bits == 8, "fused QKV bits must be 4, 6, or 8");
   check_fp8_group_size(group_size);
+  if (bits == 4) {
+#if CACHE_DIT_ULYSSES_HAS_FP4
+    check_fp4_device(packed);
+    check_fp4_group_size(group_size);
+#else
+    TORCH_CHECK(false, "FP4 fused QKV requires CUDA >= 12.8 with cuda_fp4.h");
+#endif
+  }
   if (bits == 6) {
     check_fp6_device(packed);
     TORCH_CHECK(q_width % 4 == 0 && k_width % 4 == 0 && v_width % 4 == 0,
                 "FP6 fused QKV row widths must be multiples of 4");
+  }
+  int64_t min_width = 0;
+  if (bits == 8) {
+    min_width = fp8_packed_min_width(head_size, group_size, 4);
+  } else if (bits == 6) {
+    min_width = fp6_packed_min_width(head_size, group_size, 4);
+  }
+#if CACHE_DIT_ULYSSES_HAS_FP4
+  else if (bits == 4) {
+    min_width = fp4_packed_min_width(head_size, group_size, 4);
+  }
+#endif
+  TORCH_CHECK(q_width >= min_width && v_width >= min_width && (!quantize_k || k_width >= min_width),
+              "fused QKV row widths leave no room for payload and scales");
+  if (!quantize_k) {
+    TORCH_CHECK(k_width == ((head_size * 2 + 15) / 16) * 16,
+                "BF16 K width must be the legacy 16-byte-aligned row width");
   }
   const int64_t q_rows = seq_len * batches * q_heads;
   const int64_t k_rows = seq_len * batches * k_heads;

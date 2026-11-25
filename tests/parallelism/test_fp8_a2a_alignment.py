@@ -96,7 +96,7 @@ def _worker(rank: int, world_size: int, port: int, bits: int, group_size: int) -
                                                      bits=bits)()
     _assert_quant_close(actual_uaa_o, expected_uaa_o, bits)
 
-    invalid_o = torch.randn((1, 6, 2, 72), device="cuda", dtype=torch.bfloat16)
+    invalid_o = torch.randn((1, 5, 2, 72), device="cuda", dtype=torch.bfloat16)
     try:
       _all_to_all_single_o_fN_async(invalid_o,
                                     group,
@@ -126,3 +126,11 @@ def test_fN_a2a_auto_padding_matches_bf16_layout(bits, group_size):
   if bits == 6 and torch.cuda.get_device_capability(0)[0] < 10:
     pytest.skip("FP6 E2M3 communication requires native sm100+ conversion support.")
   mp.spawn(_worker, args=(4, _free_port(), bits, group_size), nprocs=4, join=True)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available() or torch.cuda.device_count() < 2,
+                    reason="two CUDA devices are required")
+def test_fp4_a2a_auto_padding_matches_bf16_layout_cp2():
+  if torch.cuda.get_device_capability(0)[0] < 10:
+    pytest.skip("FP4 E2M1 communication requires native sm100+ conversion support.")
+  mp.spawn(_worker, args=(2, _free_port(), 4, 16), nprocs=2, join=True)

@@ -29,6 +29,18 @@ void register_ulysses_ops(pybind11::module_& ops) {
           py::arg("partitions"), py::arg("packed_head_size"), py::arg("group_size") = 32);
   ops.def("ulysses_fp6_o_permute_dequant", &ulysses_fp6_o_permute_dequant, py::arg("quant_x"),
           py::arg("x"), py::arg("head_size"), py::arg("group_size"));
+  ops.def("ulysses_fp4_per_token_quant", &ulysses_fp4_per_token_quant, py::arg("x"), py::arg("y"),
+          py::arg("packed_head_size"), py::arg("group_size") = 16);
+  ops.def("ulysses_fp4_per_token_dequant", &ulysses_fp4_per_token_dequant, py::arg("x"),
+          py::arg("y"), py::arg("head_size"), py::arg("group_size"));
+  ops.def("ulysses_fp4_qkv_permute_quant", &ulysses_fp4_qkv_permute_quant, py::arg("x"),
+          py::arg("y"), py::arg("packed_head_size"), py::arg("group_size") = 16);
+  ops.def("ulysses_fp4_qkv_permute_dequant", &ulysses_fp4_qkv_permute_dequant, py::arg("quant_x"),
+          py::arg("x"), py::arg("head_size"), py::arg("group_size"));
+  ops.def("ulysses_fp4_o_permute_quant", &ulysses_fp4_o_permute_quant, py::arg("x"), py::arg("y"),
+          py::arg("partitions"), py::arg("packed_head_size"), py::arg("group_size") = 16);
+  ops.def("ulysses_fp4_o_permute_dequant", &ulysses_fp4_o_permute_dequant, py::arg("quant_x"),
+          py::arg("x"), py::arg("head_size"), py::arg("group_size"));
   ops.def("ulysses_fN_fused_qkv_quant", &ulysses_fN_fused_qkv_quant, py::arg("q"), py::arg("k"),
           py::arg("v"), py::arg("y"), py::arg("partitions"), py::arg("q_heads"), py::arg("k_heads"),
           py::arg("v_heads"), py::arg("q_width"), py::arg("k_width"), py::arg("v_width"),

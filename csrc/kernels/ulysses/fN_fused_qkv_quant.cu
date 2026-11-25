@@ -1,5 +1,6 @@
 #include <type_traits>
 
+#include "fp4_common.cuh"
 #include "fp6_common.cuh"
 
 // Fused QKV wire format (all offsets and widths are in bytes).
@@ -12,10 +13,10 @@
 //   | [B, Hq_LOCAL, Wq]           | [B, Hk_LOCAL, Wk]             | [B, Hv_LOCAL, Wv]             |
 //   +-------------------------------+-------------------------------+-------------------------------+
 //
-// Q/K/V widths may differ (GQA, or BF16 K mixed with FP8/FP6 Q/V). Keeping the three legacy chunks
-// inside each sequence row is what makes one all-to-all equivalent to the three old collectives.
-// The collective splits the first dimension in sequence rows, never in the middle of this Q||K||V
-// row. Every individual chunk is 16-byte aligned, so their sum is aligned as well.
+// Q/K/V widths may differ (GQA, or BF16 K mixed with FP4/FP6/FP8 Q/V). Keeping the three legacy
+// chunks inside each sequence row is what makes one all-to-all equivalent to the three old
+// collectives. The collective splits the first dimension in sequence rows, never in the middle of
+// this Q||K||V row. Every individual chunk is 16-byte aligned, so their sum is aligned as well.
 
 // Multirow execution principle (independent of the wire format above).
 //
@@ -73,7 +74,7 @@ __global__ void fused_qkv_quant_kernel(const __nv_bfloat16* q, const __nv_bfloat
   // tensor_id identifies the QKV component: 0=Q, 1=K, 2=V. It is not a partition/head index.
   // Each component has its own local rows, input pointer/strides, head count, packed width and
   // byte-segment offset. tensor_id==1 is needed below to apply the optional BF16-K bypass only
-  // to K; Q and V always use the selected FP8/FP6 format.
+  // to K; Q and V always use the selected FP4/FP6/FP8 format.
   int tensor_id = 0;
   int64_t tensor_row = global_warp * kRowsPerWarp + row_in_warp;
   if (global_warp >= q_warps + k_warps) {
@@ -129,12 +130,16 @@ __global__ void fused_qkv_quant_kernel(const __nv_bfloat16* q, const __nv_bfloat
   // row_lane is relative to the current row, not the physical warp. Per-token absmax and group
   // reductions are segmented by kLanesPerRow, and each row's lane 0 writes its own scale(s).
   // BF16 K is the only bypass: it uses the legacy 16-byte-aligned packed_D and zeroes its D tail.
-  // QKV scales are FP32 for both FP8 and FP6; BF16 scales belong to the separate O/generic path.
+  // QKV scales are FP32 for FP4, FP6, and FP8; BF16 scales belong to separate O/generic paths.
   if (tensor_id == 1 && !quantize_k) {
-    __nv_bfloat16* output_bf16 = reinterpret_cast<__nv_bfloat16*>(output);
     const int64_t packed_head_size = width / 2;
     for (int64_t d = row_lane; d < packed_head_size; d += kLanesPerRow) {
-      output_bf16[d] = d < head_size ? input[d] : __float2bfloat16_rn(0.0f);
+      // FP4 permits odd packed widths, so a preceding Q segment can leave K on an odd byte address.
+      if (d < head_size) {
+        std::memcpy(output + d * sizeof(__nv_bfloat16), input + d, sizeof(__nv_bfloat16));
+      } else {
+        std::memset(output + d * sizeof(__nv_bfloat16), 0, sizeof(__nv_bfloat16));
+      }
     }
   } else if (bits == 8) {
     if (group_size == 0) {
@@ -143,7 +148,7 @@ __global__ void fused_qkv_quant_kernel(const __nv_bfloat16* q, const __nv_bfloat
       quantize_row_groups<false>(input, output, head_size, width, row_lane, group_size, 1e-6f,
                                  kLanesPerRow);
     }
-  } else {
+  } else if (bits == 6) {
 #if CACHE_DIT_ULYSSES_HAS_FP6
     if (group_size == 0) {
       quantize_row_per_token_fp6<false>(input, output, head_size, width, row_lane, 1e-6f,
@@ -152,6 +157,11 @@ __global__ void fused_qkv_quant_kernel(const __nv_bfloat16* q, const __nv_bfloat
       quantize_row_groups_fp6<false>(input, output, head_size, width, row_lane, group_size, 1e-6f,
                                      kLanesPerRow);
     }
+#endif
+  } else {
+#if CACHE_DIT_ULYSSES_HAS_FP4
+    quantize_row_groups_fp4<false>(input, output, head_size, width, row_lane, group_size, 1e-6f,
+                                   kLanesPerRow);
 #endif
   }
 }
@@ -179,8 +189,16 @@ void ulysses_fN_fused_qkv_quant(at::Tensor q, at::Tensor k, at::Tensor v, at::Te
               "fused QKV head dimensions must be contiguous");
   TORCH_CHECK(partitions > 0 && q_heads > 0 && k_heads > 0 && v_heads > 0,
               "fused QKV partitions and local heads must be positive");
-  TORCH_CHECK(bits == 6 || bits == 8, "fused QKV bits must be 6 or 8");
+  TORCH_CHECK(bits == 4 || bits == 6 || bits == 8, "fused QKV bits must be 4, 6, or 8");
   check_fp8_group_size(group_size);
+  if (bits == 4) {
+#if CACHE_DIT_ULYSSES_HAS_FP4
+    check_fp4_device(q);
+    check_fp4_group_size(group_size);
+#else
+    TORCH_CHECK(false, "FP4 fused QKV requires CUDA >= 12.8 with cuda_fp4.h");
+#endif
+  }
   if (bits == 6) {
     check_fp6_device(q);
     TORCH_CHECK(q_width % 4 == 0 && k_width % 4 == 0 && v_width % 4 == 0,
@@ -189,6 +207,19 @@ void ulysses_fN_fused_qkv_quant(at::Tensor q, at::Tensor k, at::Tensor v, at::Te
   const int64_t batches = q.size(0);
   const int64_t seq_len = q.size(1);
   const int64_t head_size = q.size(3);
+  int64_t min_width = 0;
+  if (bits == 8) {
+    min_width = fp8_packed_min_width(head_size, group_size, 4);
+  } else if (bits == 6) {
+    min_width = fp6_packed_min_width(head_size, group_size, 4);
+  }
+#if CACHE_DIT_ULYSSES_HAS_FP4
+  else if (bits == 4) {
+    min_width = fp4_packed_min_width(head_size, group_size, 4);
+  }
+#endif
+  TORCH_CHECK(q_width >= min_width && v_width >= min_width && (!quantize_k || k_width >= min_width),
+              "fused QKV row widths leave no room for payload and scales");
   const int64_t q_rows = partitions * seq_len * batches * q_heads;
   const int64_t k_rows = partitions * seq_len * batches * k_heads;
   const int64_t v_rows = partitions * seq_len * batches * v_heads;

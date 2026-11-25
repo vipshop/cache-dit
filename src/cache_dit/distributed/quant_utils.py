@@ -26,12 +26,18 @@ def normalize_quant_communicate_kwargs(kwargs: Dict[str, Any] | None) -> Dict[st
   if unknown:
     raise ValueError(f"Unknown quant_communicate_kwargs keys: {sorted(unknown)}.")
   bits = int(kwargs.get("bits", 8))
-  if bits not in (6, 8):
-    raise ValueError(f"quant_communicate_kwargs bits must be 6 or 8, got {bits}.")
-  default_quant_type = "per_group_32" if bits == 6 else "per_token"
+  if bits not in (4, 6, 8):
+    raise ValueError(f"quant_communicate_kwargs bits must be 4, 6, or 8, got {bits}.")
+  default_quant_type = {
+    4: "per_group_16",
+    6: "per_group_32",
+    8: "per_token",
+  }[bits]
   quant_type = str(kwargs.get("quant_type", default_quant_type)).replace("-", "_")
   if quant_type not in ("per_token", "per_group_16", "per_group_32"):
     raise ValueError(f"Unsupported quant_communicate_kwargs quant_type: {quant_type}.")
+  if bits == 4 and quant_type != "per_group_16":
+    raise ValueError("FP4 communication supports only quant_type='per_group_16'.")
   return {
     "bits": bits,
     "quant_type": quant_type,

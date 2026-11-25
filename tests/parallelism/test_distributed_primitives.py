@@ -49,6 +49,7 @@ def test_ring_p2p_comm_derives_group_and_peer_ranks_from_cp_config(monkeypatch):
 
 
 @pytest.mark.parametrize("bits,quant_type,group_size", [
+  (4, "per_group_16", 16),
   (8, "per_token", 0),
   (8, "per_group_16", 16),
   (8, "per_group_32", 32),
@@ -157,9 +158,12 @@ def test_all2all_comm_selects_impls_once_and_waits(monkeypatch, bits, quant_type
 ])
 @pytest.mark.parametrize("config_bits,override_bits,expect_fN", [
   (None, None, False),
+  (4, None, True),
   (6, None, True),
   (8, None, True),
+  (4, 0, False),
   (6, 0, False),
+  (None, 4, True),
   (None, 6, True),
   (None, 8, True),
 ])
@@ -217,7 +221,7 @@ def test_quantize_k_communication_options():
 
 
 def test_quant_communicate_validation_and_suffix():
-  with pytest.raises(ValueError, match="bits must be 6 or 8"):
+  with pytest.raises(ValueError, match="bits must be 4, 6, or 8"):
     _ContextParallelConfig(ulysses_degree=2, quant_communicate_kwargs={"bits": 7})
   with pytest.raises(ValueError, match="Unsupported quant_communicate_kwargs quant_type"):
     _ContextParallelConfig(ulysses_degree=2,
@@ -246,6 +250,14 @@ def test_quant_communicate_validation_and_suffix():
                                 "bits": 8,
                                 "quant_type": "per_group_32"
                               })
+  for quant_type in ("per_token", "per_group_32"):
+    with pytest.raises(ValueError, match="FP4 communication supports only"):
+      ParallelismConfig(ulysses_size=2,
+                        quant_communicate_kwargs={
+                          "bits": 4,
+                          "quant_type": quant_type
+                        })
+
   fp6_default = ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"bits": 6})
   fp6_token_k = ParallelismConfig(ulysses_size=2,
                                   quant_communicate_kwargs={
@@ -253,12 +265,24 @@ def test_quant_communicate_validation_and_suffix():
                                     "quant_type": "per_token",
                                     "quantize_k": True
                                   })
+  fp4_default = ParallelismConfig(ulysses_size=2, quant_communicate_kwargs={"bits": 4})
+  fp4_without_k = ParallelismConfig(ulysses_size=2,
+                                    quant_communicate_kwargs={
+                                      "bits": 4,
+                                      "quantize_k": False
+                                    })
+  fp4_uaa = ParallelismConfig(ulysses_size=2,
+                              ulysses_anything=True,
+                              quant_communicate_kwargs={"bits": 4})
   assert default.strify() == "Ulysses2_UF8K"
   assert default_without_k.strify() == "Ulysses2_UF8"
   assert group16.strify() == "Ulysses2_UF8K_G16"
   assert group32.strify() == "Ulysses2_UF8K_G32"
   assert fp6_default.strify() == "Ulysses2_UF6K_G32"
   assert fp6_token_k.strify() == "Ulysses2_UF6K_PT"
+  assert fp4_default.strify() == "Ulysses2_UF4K_G16"
+  assert fp4_without_k.strify() == "Ulysses2_UF4_G16"
+  assert fp4_uaa.strify() == "Ulysses2_UAA_F4K_G16"
 
 
 @pytest.mark.parametrize("comm_kwargs", [
@@ -287,6 +311,9 @@ def test_all2all_comm_uses_fp8_for_k_when_enabled(monkeypatch, comm_kwargs):
 
 
 @pytest.mark.parametrize("rows,head_size,group_size,bits,expected", [
+  (12, 64, 16, 4, 40),
+  (24576, 128, 16, 4, 80),
+  (3, 72, 16, 4, 48),
   (12, 64, 0, 8, 68),
   (24576, 128, 0, 8, 130),
   (81900, 128, 0, 8, 132),
@@ -360,7 +387,7 @@ def test_fused_all2all_comm_is_enabled_only_for_uaa_and_can_be_disabled(monkeypa
                                     quant_communicate_kwargs={"bits": 8},
                                     ulysses_anything=False)
   uaa_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
-                               quant_communicate_kwargs={"bits": 8},
+                               quant_communicate_kwargs={"bits": 4},
                                ulysses_anything=True)
 
   assert not primitives._FusedAll2AllComm(standard_config).fused_enabled

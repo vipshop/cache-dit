@@ -125,13 +125,13 @@ cache_dit.enable_cache(
 |FLUX.1, 13.87s|**🎉13.20s**|12.21s|**🎉11.97s**|
 |<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C0_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2.png" width=222px>|<img src="https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/flux.1024x1024.C1_Q0_NONE_Ulysses2_ulysses_async_qkv_proj.png" width=222px>
 
-## Async FP8/FP6 Ulysses Attention
+## Async FP4/FP6/FP8 Ulysses Attention
 
 <div id="ulysses-async-fp8"></div>
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit supports <span style="color:#c77dff;">Async FP8/FP6 Ulysses Attention</span> for supported DiTs. Low-precision communication is configured only by `quant_communicate_kwargs`; an empty dictionary keeps the default BF16 path. FP8 defaults to `per_token`, while FP6 E2M3 defaults to `per_group_32`. Both also accept explicit `per_token` and `per_group_16`. When communication quantization is enabled, K uses the same quantized path by default. Set `quantize_k=False` to keep K in BF16 and protect the numerically sensitive `Softmax(Q@K^T)` computation; LSE always remains BF16. The fused O path requires the global head count and global sequence length to be divisible by `ulysses_size`; disable communication quantization for unsupported shapes.
+cache-dit supports <span style="color:#c77dff;">Async FP4/FP6/FP8 Ulysses Attention</span> for supported DiTs. Low-precision communication is configured only by `quant_communicate_kwargs`; an empty dictionary keeps the default BF16 path. FP8 defaults to `per_token`, FP6 E2M3 defaults to `per_group_32`, and both accept explicit `per_token` and `per_group_16`. FP4 E2M1 defaults to and only accepts `per_group_16`. When communication quantization is enabled, K uses the same quantized path by default. Set `quantize_k=False` to keep K in BF16 and protect the numerically sensitive `Softmax(Q@K^T)` computation; LSE always remains BF16. The fused O path requires the global head count and global sequence length to be divisible by `ulysses_size`; disable communication quantization for unsupported shapes.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -142,19 +142,21 @@ cache_dit.enable_cache(
   parallelism_config=ParallelismConfig(
     ulysses_size=2,
     quant_communicate_kwargs={
-      "bits": 8,                       # 8 for FP8, 6 for packed FP6 E2M3
-      "quant_type": "per_group_16",   # per_token / per_group_16 / per_group_32
+      "bits": 8,                       # 8=FP8, 6=packed FP6 E2M3, 4=packed FP4 E2M1
+      "quant_type": "per_group_16",   # per_token / per_group_16 / per_group_32 (FP4: G16 only)
       "quantize_k": False,             # Optional: keep K in BF16 (defaults to True).
     },
     # FP6 with its default group-32 granularity can be written simply as:
     # quant_communicate_kwargs={"bits": 6},
+    # FP4 with its default (and only) group-16 granularity:
+    # quant_communicate_kwargs={"bits": 4},
   ),
 )
 ```
 
-The CLI uses the same keys in one comma-separated option, for example `--quant-communicate-params 'bits=8,quant_type=per_group_16'` or `--quant-communicate-params 'bits=6'`. The old `--ulysses-float8*` options are removed. Communication quantization requires Ulysses parallelism with `ulysses_size > 1`.
+The CLI uses the same keys in one comma-separated option, for example `--quant-communicate-params 'bits=8,quant_type=per_group_16'`, `--quant-communicate-params 'bits=6'`, or `--quant-communicate-params 'bits=4'`. The old `--ulysses-float8*` options are removed. Communication quantization requires Ulysses parallelism with `ulysses_size > 1`.
 
-FP8 rows contain `D` payload bytes followed by `ceil(D/G)` scales. FP6 uses native E2M3 conversion and packs four 6-bit codes into three bytes inside a `uint8` transport tensor; its payload and total row width are aligned to four bytes. Both formats zero all alignment padding, support a final partial group, and choose the smallest row width satisfying the 16-byte alignment rule for every per-rank chunk. QKV retains FP32 scales and epsilon `1e-6`; O and the generic path retain BF16 scales and epsilon `1e-4`. FP6 requires sm100+ native conversion support and has been validated on sm120a. FP6 reduces payload traffic but adds pack/unpack work, so finer granularity and lower bit width should both be evaluated for accuracy and end-to-end latency on the target model.
+FP8 rows contain `D` payload bytes followed by `ceil(D/G)` scales. FP6 uses native E2M3 conversion and packs four 6-bit codes into three bytes inside a `uint8` transport tensor; its payload and total row width are aligned to four bytes. FP4 uses native E2M1 conversion and packs two 4-bit codes per byte (even element in the low nibble), with `ceil(D/2)` payload bytes and one scale per 16 elements. All formats zero alignment padding, support a final partial group, and choose the smallest row width satisfying the 16-byte alignment rule for every per-rank chunk. QKV retains FP32 scales and epsilon `1e-6`; O and the generic path retain BF16 scales and epsilon `1e-4`. FP4/FP6 require sm100+ native conversion support and have been validated on sm120a. Lower bit widths reduce payload traffic but add pack/unpack work and quantization error, so evaluate both end-to-end latency and accuracy on the target model.
 
 On PCIe-only multi-socket machines, cache-dit emits a one-time warning when a CP group spans NUMA nodes through `SYS` links and no NVLink is detected. This is a diagnostic only: process groups and rank placement are not changed. Topology discovery is fail-open when `nvidia-smi` is unavailable or its output cannot be parsed.
 

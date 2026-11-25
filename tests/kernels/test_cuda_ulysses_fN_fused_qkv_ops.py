@@ -14,8 +14,8 @@ from cache_dit.kernels.ulysses import ulysses_fN_qkv_permute_quant
 def _require_runtime(bits: int) -> None:
   if not torch.cuda.is_available() or not cuda_ext_is_available():
     pytest.skip("CUDA and the cache-dit CUDA extension are required.")
-  if bits == 6 and torch.cuda.get_device_capability(0)[0] < 10:
-    pytest.skip("FP6 E2M3 communication requires native sm100+ conversion support.")
+  if bits in (4, 6) and torch.cuda.get_device_capability(0)[0] < 10:
+    pytest.skip("FP4/FP6 communication requires native sm100+ conversion support.")
 
 
 def _width(head_size: int, rows: int, group_size: int, bits: int) -> int:
@@ -118,8 +118,15 @@ def _run_case(bits: int, group_size: int, quantize_k: bool, large: bool = False)
                              atol=0)
 
 
-@pytest.mark.parametrize("bits", [6, 8])
-@pytest.mark.parametrize("group_size", [0, 16, 32])
+@pytest.mark.parametrize("bits,group_size", [
+  (4, 16),
+  (6, 0),
+  (6, 16),
+  (6, 32),
+  (8, 0),
+  (8, 16),
+  (8, 32),
+])
 @pytest.mark.parametrize("quantize_k", [False, True])
 def test_fused_qkv_matches_legacy_bytes_and_dequant(bits: int, group_size: int,
                                                     quantize_k: bool) -> None:
@@ -127,6 +134,8 @@ def test_fused_qkv_matches_legacy_bytes_and_dequant(bits: int, group_size: int,
 
 
 @pytest.mark.parametrize("bits,group_size,quantize_k", [
+  (4, 16, False),
+  (4, 16, True),
   (8, 0, True),
   (8, 32, False),
   (6, 0, True),
@@ -159,3 +168,68 @@ def test_fused_qkv_fake_and_compile() -> None:
     lambda x: ulysses_fN_fused_qkv_dequant(x, 4, 2, 2, 128, *widths, chunk, 32, 8, True),
     fullgraph=True)(packed)
   assert [x.shape for x in outputs] == [(2, 6, 4, 128), (2, 6, 2, 128), (2, 6, 2, 128)]
+
+
+def test_fused_qkv_fp4_fake_and_compile() -> None:
+  widths = (96, 96, 96)
+  chunk = 2 * (4 * widths[0] + 2 * widths[1] + 2 * widths[2])
+  with FakeTensorMode():
+    q = torch.empty((2, 3, 8, 128), device="cuda", dtype=torch.bfloat16)
+    k = torch.empty((2, 3, 4, 128), device="cuda", dtype=torch.bfloat16)
+    v = torch.empty((2, 3, 4, 128), device="cuda", dtype=torch.bfloat16)
+    packed = ulysses_fN_fused_qkv_quant(q, k, v, 2, 4, 2, 2, *widths, chunk, 16, 4, True)
+    outputs = ulysses_fN_fused_qkv_dequant(packed, 4, 2, 2, 128, *widths, chunk, 16, 4, True)
+  assert packed.shape == (6, chunk)
+  assert [x.shape for x in outputs] == [(2, 6, 4, 128), (2, 6, 2, 128), (2, 6, 2, 128)]
+
+  _require_runtime(4)
+  q = torch.randn((2, 3, 8, 128), device="cuda", dtype=torch.bfloat16)
+  k = torch.randn((2, 3, 4, 128), device="cuda", dtype=torch.bfloat16)
+  v = torch.randn((2, 3, 4, 128), device="cuda", dtype=torch.bfloat16)
+  packed = torch.compile(
+    lambda a, b, c: ulysses_fN_fused_qkv_quant(a, b, c, 2, 4, 2, 2, *widths, chunk, 16, 4, True),
+    fullgraph=True)(q, k, v)
+  outputs = torch.compile(
+    lambda x: ulysses_fN_fused_qkv_dequant(x, 4, 2, 2, 128, *widths, chunk, 16, 4, True),
+    fullgraph=True)(packed)
+  assert [x.shape for x in outputs] == [(2, 6, 4, 128), (2, 6, 2, 128), (2, 6, 2, 128)]
+
+
+def test_fused_qkv_fp4_mixed_k_with_odd_preceding_width() -> None:
+  _require_runtime(4)
+  torch.manual_seed(466)
+  q = torch.randn((1, 16, 2, 66), device="cuda", dtype=torch.bfloat16)
+  k = torch.randn((1, 16, 2, 66), device="cuda", dtype=torch.bfloat16)
+  v = torch.randn((1, 16, 2, 66), device="cuda", dtype=torch.bfloat16)
+  widths = (53, 144, 53)
+  chunk = sum(widths)
+  expected, legacy = _reference_buffer(q, k, v, (1, 1, 1), widths, 16, 4, False)
+  actual = ulysses_fN_fused_qkv_quant(q, k, v, 2, 1, 1, 1, *widths, chunk, 16, 4, False)
+  torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+  actual_q, actual_k, actual_v = ulysses_fN_fused_qkv_dequant(actual, 1, 1, 1, 66, *widths, chunk,
+                                                              16, 4, False)
+  expected_q = _legacy_dequant(legacy[0].flatten(0, 1), 66, 16, 4)
+  expected_k = legacy[1].flatten(0, 1).view(torch.bfloat16).permute(1, 0, 2, 3)[..., :66]
+  expected_v = _legacy_dequant(legacy[2].flatten(0, 1), 66, 16, 4)
+  for actual_tensor, expected_tensor in ((actual_q, expected_q), (actual_k, expected_k),
+                                         (actual_v, expected_v)):
+    torch.testing.assert_close(actual_tensor.view(torch.uint16),
+                               expected_tensor.view(torch.uint16),
+                               rtol=0,
+                               atol=0)
+
+
+@pytest.mark.parametrize("bits,min_width", [(4, 96), (8, 136)])
+def test_fused_qkv_rejects_undersized_width(bits: int, min_width: int) -> None:
+  _require_runtime(bits)
+  q = torch.empty((1, 16, 2, 128), device="cuda", dtype=torch.bfloat16)
+  k = torch.empty((1, 16, 2, 128), device="cuda", dtype=torch.bfloat16)
+  v = torch.empty((1, 16, 2, 128), device="cuda", dtype=torch.bfloat16)
+  widths = (min_width - 1, min_width, min_width)
+  chunk = sum(widths)
+  with pytest.raises(RuntimeError, match="row widths leave no room"):
+    ulysses_fN_fused_qkv_quant(q, k, v, 2, 1, 1, 1, *widths, chunk, 16, bits, True)
+  packed = torch.empty((32, chunk), dtype=torch.uint8, device="cuda")
+  with pytest.raises(RuntimeError, match="row widths leave no room"):
+    ulysses_fN_fused_qkv_dequant(packed, 1, 1, 1, 128, *widths, chunk, 16, bits, True)
