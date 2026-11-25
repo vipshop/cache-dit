@@ -909,6 +909,124 @@ def ulysses_fN_o_permute_dequant(quant_x: torch.Tensor,
   return ulysses_fp6_o_permute_dequant(quant_x, head_size, resolved_group)
 
 
+def _call_ulysses_fN_fused_qkv_quant(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+                                     y: torch.Tensor, partitions: int, q_heads: int, k_heads: int,
+                                     v_heads: int, q_width: int, k_width: int, v_width: int,
+                                     chunk_row_bytes: int, group_size: int, bits: int,
+                                     quantize_k: bool) -> None:
+  """Call the fused QKV out-param quantizer without exposing a new public export."""
+  _get_required_ops_module().ulysses_fN_fused_qkv_quant(q, k, v, y, partitions, q_heads, k_heads,
+                                                        v_heads, q_width, k_width, v_width,
+                                                        chunk_row_bytes, group_size, bits,
+                                                        quantize_k)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fN_fused_qkv_quant",
+  "(Tensor q, Tensor k, Tensor v, int partitions, int q_heads, int k_heads, int v_heads, "
+  "int q_width, int k_width, int v_width, int chunk_row_bytes, int group_size, int bits, "
+  "bool quantize_k) -> Tensor",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fN_fused_qkv_quant", "CUDA")
+def _ulysses_fN_fused_qkv_quant(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, partitions: int,
+                                q_heads: int, k_heads: int, v_heads: int, q_width: int,
+                                k_width: int, v_width: int, chunk_row_bytes: int, group_size: int,
+                                bits: int, quantize_k: bool) -> torch.Tensor:
+  batch, seq_len, _, _ = q.shape
+  y = torch.empty((partitions * seq_len, chunk_row_bytes), dtype=torch.uint8, device=q.device)
+  _call_ulysses_fN_fused_qkv_quant(q, k, v, y, partitions, q_heads, k_heads, v_heads, q_width,
+                                   k_width, v_width, chunk_row_bytes, group_size, bits, quantize_k)
+  return y
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fN_fused_qkv_quant")
+def _fake_ulysses_fN_fused_qkv_quant(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+                                     partitions: int, q_heads: int, k_heads: int, v_heads: int,
+                                     q_width: int, k_width: int, v_width: int, chunk_row_bytes: int,
+                                     group_size: int, bits: int, quantize_k: bool) -> torch.Tensor:
+  _, seq_len, _, _ = q.shape
+  return q.new_empty((partitions * seq_len, chunk_row_bytes), dtype=torch.uint8)
+
+
+def ulysses_fN_fused_qkv_quant(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, partitions: int,
+                               q_heads: int, k_heads: int, v_heads: int, q_width: int, k_width: int,
+                               v_width: int, chunk_row_bytes: int, group_size: int, bits: int,
+                               quantize_k: bool) -> torch.Tensor:
+  """Quantize three QKV tensors into one partition-major uint8 communication buffer."""
+  return torch.ops.cache_dit_cuda_ops.ulysses_fN_fused_qkv_quant(q, k, v, partitions, q_heads,
+                                                                 k_heads, v_heads, q_width, k_width,
+                                                                 v_width, chunk_row_bytes,
+                                                                 group_size, bits, quantize_k)
+
+
+def _call_ulysses_fN_fused_qkv_dequant(packed: torch.Tensor, q: torch.Tensor, k: torch.Tensor,
+                                       v: torch.Tensor, q_heads: int, k_heads: int, v_heads: int,
+                                       head_size: int, q_width: int, k_width: int, v_width: int,
+                                       chunk_row_bytes: int, group_size: int, bits: int,
+                                       quantize_k: bool) -> None:
+  """Call the fused QKV out-param dequantizer."""
+  _get_required_ops_module().ulysses_fN_fused_qkv_dequant(packed, q, k, v, q_heads, k_heads,
+                                                          v_heads, head_size, q_width, k_width,
+                                                          v_width, chunk_row_bytes, group_size,
+                                                          bits, quantize_k)
+
+
+torch.library.define(
+  "cache_dit_cuda_ops::ulysses_fN_fused_qkv_dequant",
+  "(Tensor packed, int q_heads, int k_heads, int v_heads, int head_size, int q_width, "
+  "int k_width, int v_width, int chunk_row_bytes, int group_size, int bits, bool quantize_k) "
+  "-> (Tensor, Tensor, Tensor)",
+)
+
+
+@torch.library.impl("cache_dit_cuda_ops::ulysses_fN_fused_qkv_dequant", "CUDA")
+def _ulysses_fN_fused_qkv_dequant(
+    packed: torch.Tensor, q_heads: int, k_heads: int, v_heads: int, head_size: int, q_width: int,
+    k_width: int, v_width: int, chunk_row_bytes: int, group_size: int, bits: int,
+    quantize_k: bool) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  seq_len = packed.shape[0]
+  batches = chunk_row_bytes // (q_heads * q_width + k_heads * k_width + v_heads * v_width)
+  q = torch.empty((batches, seq_len, q_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=packed.device)
+  k = torch.empty((batches, seq_len, k_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=packed.device)
+  v = torch.empty((batches, seq_len, v_heads, head_size),
+                  dtype=torch.bfloat16,
+                  device=packed.device)
+  _call_ulysses_fN_fused_qkv_dequant(packed, q, k, v, q_heads, k_heads, v_heads, head_size, q_width,
+                                     k_width, v_width, chunk_row_bytes, group_size, bits,
+                                     quantize_k)
+  return q, k, v
+
+
+@torch.library.register_fake("cache_dit_cuda_ops::ulysses_fN_fused_qkv_dequant")
+def _fake_ulysses_fN_fused_qkv_dequant(
+    packed: torch.Tensor, q_heads: int, k_heads: int, v_heads: int, head_size: int, q_width: int,
+    k_width: int, v_width: int, chunk_row_bytes: int, group_size: int, bits: int,
+    quantize_k: bool) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  seq_len = packed.shape[0]
+  batches = chunk_row_bytes // (q_heads * q_width + k_heads * k_width + v_heads * v_width)
+  return (packed.new_empty((batches, seq_len, q_heads, head_size), dtype=torch.bfloat16),
+          packed.new_empty((batches, seq_len, k_heads, head_size), dtype=torch.bfloat16),
+          packed.new_empty((batches, seq_len, v_heads, head_size), dtype=torch.bfloat16))
+
+
+def ulysses_fN_fused_qkv_dequant(
+    packed: torch.Tensor, q_heads: int, k_heads: int, v_heads: int, head_size: int, q_width: int,
+    k_width: int, v_width: int, chunk_row_bytes: int, group_size: int, bits: int,
+    quantize_k: bool) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Restore three BF16 tensors from one fused QKV communication buffer."""
+  return torch.ops.cache_dit_cuda_ops.ulysses_fN_fused_qkv_dequant(packed, q_heads, k_heads,
+                                                                   v_heads, head_size, q_width,
+                                                                   k_width, v_width,
+                                                                   chunk_row_bytes, group_size,
+                                                                   bits, quantize_k)
+
+
 __all__ = [
   "ulysses_fN_o_permute_dequant",
   "ulysses_fN_o_permute_quant",

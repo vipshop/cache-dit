@@ -354,6 +354,22 @@ def test_all2all_comm_keeps_k_and_lse_off_fp8_when_k_quantization_is_disabled(mo
   assert comm._lse_impl is not comm._q_impl
 
 
+def test_fused_all2all_comm_is_enabled_only_for_uaa_and_can_be_disabled(monkeypatch):
+  monkeypatch.delenv("CACHE_DIT_DISABLE_ULYSSES_FUSED_QKV", raising=False)
+  standard_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
+                                    quant_communicate_kwargs={"bits": 8},
+                                    ulysses_anything=False)
+  uaa_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(object()),
+                               quant_communicate_kwargs={"bits": 8},
+                               ulysses_anything=True)
+
+  assert not primitives._FusedAll2AllComm(standard_config).fused_enabled
+  assert primitives._FusedAll2AllComm(uaa_config).fused_enabled
+
+  monkeypatch.setenv("CACHE_DIT_DISABLE_ULYSSES_FUSED_QKV", "1")
+  assert not primitives._FusedAll2AllComm(uaa_config).fused_enabled
+
+
 def test_all2all_comm_implicitly_initializes_metadata_from_first_qkv_send(monkeypatch):
   group = object()
   cp_config = SimpleNamespace(_ulysses_mesh=_FakeMesh(group))

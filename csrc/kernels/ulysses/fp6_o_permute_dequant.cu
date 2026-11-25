@@ -26,14 +26,20 @@ __global__ void o_permute_fp6_dequant_kernel(const uint8_t* quant_x, __nv_bfloat
   dequantize_row_fp6<true>(input, output, head_size, lane, __bfloat162float(stored_scale));
 }
 
+template <int kLanesPerRow = kWarpSize>
 __global__ void o_permute_fp6_group_dequant_kernel(const uint8_t* quant_x, __nv_bfloat16* x,
                                                    int64_t batches, int64_t seq_len,
                                                    int64_t num_heads, int64_t head_size,
                                                    int64_t stride_h, int64_t stride_b,
                                                    int64_t stride_s, int64_t rows, int group_size) {
+  static_assert(kLanesPerRow == kWarpSize || kLanesPerRow == 8);
+  constexpr int kRowsPerWarp = kWarpSize / kLanesPerRow;
   const int warp = threadIdx.x / kWarpSize;
   const int lane = threadIdx.x % kWarpSize;
-  const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp;
+  const int row_in_warp = lane / kLanesPerRow;
+  const int row_lane = lane % kLanesPerRow;
+  const int64_t row =
+    (static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp) * kRowsPerWarp + row_in_warp;
   if (row >= rows) return;
 
   const int64_t n = row % num_heads;
@@ -42,7 +48,7 @@ __global__ void o_permute_fp6_group_dequant_kernel(const uint8_t* quant_x, __nv_
   const int64_t b = index / seq_len;
   const uint8_t* input = quant_x + n * stride_h + b * stride_b + s * stride_s;
   __nv_bfloat16* output = x + row * head_size;
-  dequantize_row_groups_fp6<true>(input, output, head_size, lane, group_size);
+  dequantize_row_groups_fp6<true>(input, output, head_size, row_lane, group_size, kLanesPerRow);
 }
 
 }  // namespace
@@ -84,10 +90,21 @@ void ulysses_fp6_o_permute_dequant(at::Tensor quant_x, at::Tensor x, int64_t hea
       reinterpret_cast<__nv_bfloat16*>(x.data_ptr()), batches, seq_len, num_heads, head_size,
       quant_x.stride(0), quant_x.stride(1), quant_x.stride(2), rows);
   } else {
-    o_permute_fp6_group_dequant_kernel<<<grid, kThreads, 0, stream>>>(
-      reinterpret_cast<const uint8_t*>(quant_x.data_ptr()),
-      reinterpret_cast<__nv_bfloat16*>(x.data_ptr()), batches, seq_len, num_heads, head_size,
-      quant_x.stride(0), quant_x.stride(1), quant_x.stride(2), rows, group_size);
+    const bool use_four_rows_per_warp = head_size == 128 && rows >= 2048 &&
+                                        rows % (4 * kWarpsPerBlock) == 0 &&
+                                        reinterpret_cast<uintptr_t>(x.data_ptr()) % 16 == 0;
+    if (use_four_rows_per_warp) {
+      const dim3 multirow_grid(rows / (4 * kWarpsPerBlock));
+      o_permute_fp6_group_dequant_kernel<8><<<multirow_grid, kThreads, 0, stream>>>(
+        reinterpret_cast<const uint8_t*>(quant_x.data_ptr()),
+        reinterpret_cast<__nv_bfloat16*>(x.data_ptr()), batches, seq_len, num_heads, head_size,
+        quant_x.stride(0), quant_x.stride(1), quant_x.stride(2), rows, group_size);
+    } else {
+      o_permute_fp6_group_dequant_kernel<<<grid, kThreads, 0, stream>>>(
+        reinterpret_cast<const uint8_t*>(quant_x.data_ptr()),
+        reinterpret_cast<__nv_bfloat16*>(x.data_ptr()), batches, seq_len, num_heads, head_size,
+        quant_x.stride(0), quant_x.stride(1), quant_x.stride(2), rows, group_size);
+    }
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 #else

@@ -41,6 +41,15 @@ __device__ float from_fp8(uint8_t value) {
   return __half2float(static_cast<__half>(raw));
 }
 
+__device__ void to_fp8x2(float first, float second, uint8_t* output) {
+  const float2 clipped = {fminf(fmaxf(first, -kFp8Max), kFp8Max),
+                          fminf(fmaxf(second, -kFp8Max), kFp8Max)};
+  const __half2_raw halves = __float22half2_rn(clipped);
+  const __nv_fp8x2_storage_t packed = __nv_cvt_halfraw2_to_fp8x2(halves, __NV_SATFINITE, __NV_E4M3);
+  output[0] = packed & 0xff;
+  output[1] = packed >> 8;
+}
+
 __device__ bool is_aligned_16(const void* pointer) {
   return reinterpret_cast<uintptr_t>(pointer) % 16 == 0;
 }
@@ -134,8 +143,9 @@ __device__ void quantize_row(const __nv_bfloat16* input, uint8_t* output, int64_
       uint8_t quantized[kPackSize];
       load_bf16_pack(input + d, values);
 #pragma unroll
-      for (int i = 0; i < kPackSize; ++i) {
-        quantized[i] = to_fp8(__bfloat162float(values[i]) * inv_scale);
+      for (int i = 0; i < kPackSize; i += 2) {
+        to_fp8x2(__bfloat162float(values[i]) * inv_scale,
+                 __bfloat162float(values[i + 1]) * inv_scale, quantized + i);
       }
       store_fp8_pack(output + d, quantized);
     }
@@ -147,9 +157,9 @@ __device__ void quantize_row(const __nv_bfloat16* input, uint8_t* output, int64_
 }
 
 __device__ void dequantize_row(const uint8_t* input, __nv_bfloat16* output, int64_t head_size,
-                               int lane, float scale) {
+                               int lane, float scale, int lanes_per_row = kWarpSize) {
   if (head_size % kPackSize == 0 && is_aligned_16(output)) {
-    for (int64_t d = lane * kPackSize; d < head_size; d += kWarpSize * kPackSize) {
+    for (int64_t d = lane * kPackSize; d < head_size; d += lanes_per_row * kPackSize) {
       uint8_t quantized[kPackSize];
       __nv_bfloat16 values[kPackSize];
       load_fp8_pack(input + d, quantized);
@@ -160,7 +170,7 @@ __device__ void dequantize_row(const uint8_t* input, __nv_bfloat16* output, int6
       store_bf16_pack(output + d, values);
     }
   } else {
-    for (int64_t d = lane; d < head_size; d += kWarpSize) {
+    for (int64_t d = lane; d < head_size; d += lanes_per_row) {
       output[d] = __float2bfloat16_rn(from_fp8(input[d]) * scale);
     }
   }
@@ -212,15 +222,58 @@ __device__ float read_group_scale(const uint8_t* input, int64_t head_size, int64
 }
 
 template <bool kBf16Scale>
+__device__ void quantize_row_per_token(const __nv_bfloat16* input, uint8_t* output,
+                                       int64_t head_size, int64_t packed_head_size, int lane,
+                                       float epsilon, int lanes_per_row = kWarpSize) {
+  float scale = 0.0f;
+  if (head_size <= kWarpSize * kPackSize && head_size % kPackSize == 0 && is_aligned_16(input)) {
+    const int64_t d = lane * kPackSize;
+    const bool active = d < head_size;
+    __nv_bfloat16 values[kPackSize];
+    float absmax = 0.0f;
+    if (active) {
+      load_bf16_pack(input + d, values);
+#pragma unroll
+      for (int i = 0; i < kPackSize; ++i) {
+        absmax = fmaxf(absmax, fabsf(__bfloat162float(values[i])));
+      }
+    }
+    absmax = segmented_absmax(absmax, lanes_per_row);
+    scale = fmaxf(absmax / kFp8Max, epsilon);
+    const float inv_scale = 1.0f / scale;
+    if (active) {
+      uint8_t quantized[kPackSize];
+#pragma unroll
+      for (int i = 0; i < kPackSize; i += 2) {
+        to_fp8x2(__bfloat162float(values[i]) * inv_scale,
+                 __bfloat162float(values[i + 1]) * inv_scale, quantized + i);
+      }
+      store_fp8_pack(output + d, quantized);
+    }
+  } else {
+    const float absmax = row_absmax(input, head_size, lane);
+    scale = fmaxf(absmax / kFp8Max, epsilon);
+    quantize_row(input, output, head_size, lane, 1.0f / scale);
+  }
+  if (lane == 0) {
+    write_group_scale<kBf16Scale>(output, head_size, 0, scale);
+  }
+  constexpr int scale_bytes = kBf16Scale ? 2 : 4;
+  for (int64_t d = head_size + scale_bytes + lane; d < packed_head_size; d += lanes_per_row) {
+    output[d] = 0;
+  }
+}
+
+template <bool kBf16Scale>
 __device__ void quantize_row_groups(const __nv_bfloat16* input, uint8_t* output, int64_t head_size,
                                     int64_t packed_head_size, int lane, int group_size,
-                                    float epsilon) {
+                                    float epsilon, int lanes_per_row = kWarpSize) {
   const int64_t groups = (head_size + group_size - 1) / group_size;
   if (head_size % kPackSize == 0 && is_aligned_16(input)) {
-    // A warp handles 256 elements per iteration. Since 256 % group_size == 0 for 16/32,
-    // no group crosses an iteration boundary and 2/4 lanes can reduce it independently.
+    // Each row segment handles lanes_per_row * kPackSize elements per iteration. Group reductions
+    // stay within that segment; the XOR shuffle never crosses the independent rows in a warp.
     const int lanes_per_group = group_size / kPackSize;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -241,8 +294,9 @@ __device__ void quantize_row_groups(const __nv_bfloat16* input, uint8_t* output,
       if (active) {
         uint8_t quantized[kPackSize];
 #pragma unroll
-        for (int i = 0; i < kPackSize; ++i) {
-          quantized[i] = to_fp8(__bfloat162float(values[i]) * inv_scale);
+        for (int i = 0; i < kPackSize; i += 2) {
+          to_fp8x2(__bfloat162float(values[i]) * inv_scale,
+                   __bfloat162float(values[i + 1]) * inv_scale, quantized + i);
         }
         store_fp8_pack(output + d, quantized);
       }
@@ -251,7 +305,7 @@ __device__ void quantize_row_groups(const __nv_bfloat16* input, uint8_t* output,
       }
     }
   } else {
-    const int groups_per_iteration = kWarpSize / group_size;
+    const int groups_per_iteration = lanes_per_row / group_size;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % group_size;
       const int64_t group = first_group + lane / group_size;
@@ -272,18 +326,21 @@ __device__ void quantize_row_groups(const __nv_bfloat16* input, uint8_t* output,
     }
   }
   constexpr int scale_bytes = kBf16Scale ? 2 : 4;
-  for (int64_t d = head_size + groups * scale_bytes + lane; d < packed_head_size; d += kWarpSize) {
+  for (int64_t d = head_size + groups * scale_bytes + lane; d < packed_head_size;
+       d += lanes_per_row) {
     output[d] = 0;
   }
 }
 
 template <bool kBf16Scale>
 __device__ void dequantize_row_groups(const uint8_t* input, __nv_bfloat16* output,
-                                      int64_t head_size, int lane, int group_size) {
+                                      int64_t head_size, int lane, int group_size,
+                                      int lanes_per_row = kWarpSize) {
+  const int shuffle_lane = threadIdx.x % kWarpSize;
   const int64_t groups = (head_size + group_size - 1) / group_size;
   if (head_size % kPackSize == 0 && is_aligned_16(output)) {
     const int lanes_per_group = group_size / kPackSize;
-    const int groups_per_iteration = kWarpSize / lanes_per_group;
+    const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % lanes_per_group;
       const int64_t group = first_group + lane / lanes_per_group;
@@ -293,7 +350,7 @@ __device__ void dequantize_row_groups(const uint8_t* input, __nv_bfloat16* outpu
       if (group < groups && lane_in_group == 0) {
         scale = read_group_scale<kBf16Scale>(input, head_size, group);
       }
-      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      scale = __shfl_sync(0xffffffff, scale, shuffle_lane - lane_in_group);
       if (active) {
         uint8_t quantized[kPackSize];
         __nv_bfloat16 values[kPackSize];
@@ -306,7 +363,7 @@ __device__ void dequantize_row_groups(const uint8_t* input, __nv_bfloat16* outpu
       }
     }
   } else {
-    const int groups_per_iteration = kWarpSize / group_size;
+    const int groups_per_iteration = lanes_per_row / group_size;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
       const int lane_in_group = lane % group_size;
       const int64_t group = first_group + lane / group_size;
@@ -316,7 +373,7 @@ __device__ void dequantize_row_groups(const uint8_t* input, __nv_bfloat16* outpu
       if (group < groups && lane_in_group == 0) {
         scale = read_group_scale<kBf16Scale>(input, head_size, group);
       }
-      scale = __shfl_sync(0xffffffff, scale, lane - lane_in_group);
+      scale = __shfl_sync(0xffffffff, scale, shuffle_lane - lane_in_group);
       if (active) {
         output[d] = __float2bfloat16_rn(from_fp8(input[d]) * scale);
       }

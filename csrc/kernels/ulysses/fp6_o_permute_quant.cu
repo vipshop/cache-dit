@@ -23,20 +23,24 @@ __global__ void o_permute_fp6_quant_kernel(const __nv_bfloat16* x, uint8_t* y, i
   const int64_t p = index / num_heads;
   const __nv_bfloat16* input = x + b * stride_b + (p * local_seq_len + s) * stride_s + n * stride_n;
   uint8_t* output = y + row * packed_head_size;
-  const float absmax = row_absmax(input, head_size, lane);
-  const float scale = fmaxf(__fdiv_rn(absmax, kFp6Max), 1e-4f);
-  quantize_row_fp6<true>(input, output, head_size, packed_head_size, lane, scale);
+  quantize_row_per_token_fp6<true>(input, output, head_size, packed_head_size, lane, 1e-4f);
 }
 
+template <int kLanesPerRow = kWarpSize>
 __global__ void o_permute_fp6_group_quant_kernel(const __nv_bfloat16* x, uint8_t* y,
                                                  int64_t batches, int64_t local_seq_len,
                                                  int64_t num_heads, int64_t head_size,
                                                  int64_t packed_head_size, int64_t stride_b,
                                                  int64_t stride_s, int64_t stride_n, int64_t rows,
                                                  int group_size) {
+  static_assert(kLanesPerRow == kWarpSize || kLanesPerRow == 8);
+  constexpr int kRowsPerWarp = kWarpSize / kLanesPerRow;
   const int warp = threadIdx.x / kWarpSize;
   const int lane = threadIdx.x % kWarpSize;
-  const int64_t row = static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp;
+  const int row_in_warp = lane / kLanesPerRow;
+  const int row_lane = lane % kLanesPerRow;
+  const int64_t row =
+    (static_cast<int64_t>(blockIdx.x) * kWarpsPerBlock + warp) * kRowsPerWarp + row_in_warp;
   if (row >= rows) return;
 
   const int64_t s = row % local_seq_len;
@@ -47,8 +51,8 @@ __global__ void o_permute_fp6_group_quant_kernel(const __nv_bfloat16* x, uint8_t
   const int64_t p = index / num_heads;
   const __nv_bfloat16* input = x + b * stride_b + (p * local_seq_len + s) * stride_s + n * stride_n;
   uint8_t* output = y + row * packed_head_size;
-  quantize_row_groups_fp6<true>(input, output, head_size, packed_head_size, lane, group_size,
-                                1e-4f);
+  quantize_row_groups_fp6<true>(input, output, head_size, packed_head_size, row_lane, group_size,
+                                1e-4f, kLanesPerRow);
 }
 
 }  // namespace
@@ -91,10 +95,22 @@ void ulysses_fp6_o_permute_quant(at::Tensor x, at::Tensor y, int64_t partitions,
       reinterpret_cast<uint8_t*>(y.data_ptr()), batches, local_seq_len, num_heads, head_size,
       packed_head_size, x.stride(0), x.stride(1), x.stride(2), rows);
   } else {
-    o_permute_fp6_group_quant_kernel<<<grid, kThreads, 0, stream>>>(
-      reinterpret_cast<const __nv_bfloat16*>(x.data_ptr()),
-      reinterpret_cast<uint8_t*>(y.data_ptr()), batches, local_seq_len, num_heads, head_size,
-      packed_head_size, x.stride(0), x.stride(1), x.stride(2), rows, group_size);
+    const bool use_four_rows_per_warp =
+      head_size == 128 && rows >= 2048 && rows % (4 * kWarpsPerBlock) == 0 &&
+      reinterpret_cast<uintptr_t>(x.data_ptr()) % 16 == 0 && x.stride(0) % kPackSize == 0 &&
+      x.stride(1) % kPackSize == 0 && x.stride(2) % kPackSize == 0;
+    if (use_four_rows_per_warp) {
+      const dim3 multirow_grid(rows / (4 * kWarpsPerBlock));
+      o_permute_fp6_group_quant_kernel<8><<<multirow_grid, kThreads, 0, stream>>>(
+        reinterpret_cast<const __nv_bfloat16*>(x.data_ptr()),
+        reinterpret_cast<uint8_t*>(y.data_ptr()), batches, local_seq_len, num_heads, head_size,
+        packed_head_size, x.stride(0), x.stride(1), x.stride(2), rows, group_size);
+    } else {
+      o_permute_fp6_group_quant_kernel<<<grid, kThreads, 0, stream>>>(
+        reinterpret_cast<const __nv_bfloat16*>(x.data_ptr()),
+        reinterpret_cast<uint8_t*>(y.data_ptr()), batches, local_seq_len, num_heads, head_size,
+        packed_head_size, x.stride(0), x.stride(1), x.stride(2), rows, group_size);
+    }
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 #else

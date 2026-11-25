@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 
-from ..communicate.primitives import _All2AllComm
+from ..communicate.primitives import _FusedAll2AllComm
 from .config import _ContextParallelConfig
 
 __all__ = [
@@ -38,7 +38,7 @@ class UlyssesAttention(torch.autograd.Function):
     ctx._cp_config = _cp_config
 
     num_q_heads = query.shape[2]
-    comm = _All2AllComm(_cp_config)
+    comm = _FusedAll2AllComm(_cp_config)
 
     if cp_gqa_strategy == "group_aligned_flash_varlen":
       if return_lse:
@@ -63,18 +63,21 @@ class UlyssesAttention(torch.autograd.Function):
       )
       return comm.send_group_aligned_gqa_o(out, q_split_sizes, local_sequence_length)
 
-    # Keep K/LSE on the BF16 path unless quantize_k is enabled; LSE is always BF16 for better numerical stability.
-    query_wait = comm.send_q(query)
-    query = query_wait.wait()  # type: torch.Tensor
-
-    if cp_gqa_strategy == "replicate_kv_sequence":
-      key, value = comm.gather_replicated_kv_for_local_q(query, key, value, num_q_heads)
-      enable_gqa = False
+    if cp_gqa_strategy != "replicate_kv_sequence" and comm.fused_enabled:
+      query, key, value = comm.send_qkv(query, key, value).wait()
     else:
-      key_wait = comm.send_k(key)
-      value_wait = comm.send_v(value)
-      key = key_wait.wait()  # type: torch.Tensor
-      value = value_wait.wait()  # type: torch.Tensor
+      # BF16 and replicated-KV strategies retain the separate path; LSE is always BF16.
+      query_wait = comm.send_q(query)
+      query = query_wait.wait()  # type: torch.Tensor
+
+      if cp_gqa_strategy == "replicate_kv_sequence":
+        key, value = comm.gather_replicated_kv_for_local_q(query, key, value, num_q_heads)
+        enable_gqa = False
+      else:
+        key_wait = comm.send_k(key)
+        value_wait = comm.send_v(value)
+        key = key_wait.wait()  # type: torch.Tensor
+        value = value_wait.wait()  # type: torch.Tensor
 
     out = forward_op(
       ctx,
