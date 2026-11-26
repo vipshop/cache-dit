@@ -23,6 +23,7 @@ from .cache_contexts import SVDCalibratorConfig
 from .cache_contexts import HiCacheCalibratorConfig
 from .cache_contexts import BRACECalibratorConfig
 from .cache_contexts import BeziCastCalibratorConfig
+from .cache_contexts import ResidualMotionCalibratorConfig
 
 from .cache_blocks import CachedBlocks
 from .cache_blocks import UnifiedBlocks

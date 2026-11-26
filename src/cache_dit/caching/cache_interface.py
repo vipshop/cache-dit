@@ -110,7 +110,9 @@ def enable_cache(
     installed.
   :param attention_backend: Optional attention backend override for non-parallel execution.
   :param quantize_config: Optional quantization configuration applied after cache and parallelism.
-  :param kwargs: Deprecated cache-context keyword arguments kept for backward compatibility.
+  :param kwargs: Deprecated cache-context keyword arguments kept for backward compatibility, and
+    `residual_motion_scheduler`, the flow-matching scheduler Residual Motion reads sigmas from when
+    caching a transformer without its pipeline.
   :returns: The original object with cache-dit hooks and optional optimizations applied.
 
   Example::
@@ -354,6 +356,10 @@ def _enable_cache_impl(
 
   if calibrator_config is not None:
     context_kwargs["calibrator_config"] = calibrator_config
+
+  if (residual_motion_scheduler := kwargs.get("residual_motion_scheduler", None)) is not None:
+    # Transformer-only callers pass the scheduler whose sigmas Residual Motion extrapolates in.
+    context_kwargs["residual_motion_scheduler"] = residual_motion_scheduler
 
   if params_modifiers is not None:
     context_kwargs["params_modifiers"] = params_modifiers

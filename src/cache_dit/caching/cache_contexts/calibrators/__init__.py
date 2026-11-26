@@ -6,6 +6,7 @@ from .svd import SVDCalibrator, validate_svd_params
 from .hicache import HiCacheCalibrator, validate_hicache_params
 from .brace import BRACECalibrator, validate_brace_params
 from .bezicast import BeziCastCalibrator, validate_bezicast_params
+from .residual_motion import ResidualMotionCalibrator, validate_residual_motion_params
 
 import dataclasses
 from typing import Any, Dict, Optional
@@ -556,6 +557,51 @@ class BeziCastCalibratorConfig(CalibratorConfig):
     return kwargs
 
 
+@dataclasses.dataclass
+class ResidualMotionCalibratorConfig(CalibratorConfig):
+  """Config for SoftCache's Residual Motion predictor (arXiv 2610.22369).
+
+  Moves the cached residual along the secant of the last two real anchors, measured in the
+  flow-matching sigma rather than the step count, so it stays right on non-uniform sigma grids.
+  Needs a scheduler with flow-matching `sigmas`: the pipeline's, or `residual_motion_scheduler`
+  passed to `enable_cache` for transformer-only caching.
+  """
+
+  enable_calibrator: bool = True
+  enable_encoder_calibrator: bool = True
+  calibrator_type: str = "residual_motion"
+  residual_motion_beta: float = 1.0
+
+  def __post_init__(self):
+    """Validate the secant step size while building the config.
+
+    :raises ValueError: When beta is outside [0, 1].
+    """
+
+    validate_residual_motion_params(self.residual_motion_beta)
+
+  def strify(self, **kwargs) -> str:
+    """Return a filename-safe tag containing beta.
+
+    :param kwargs: Set `details=True` for a human-readable summary tag.
+    :returns: A compact or detailed Residual Motion configuration tag.
+    """
+
+    if kwargs.get("details", False):
+      return f"ResidualMotion(beta={self.residual_motion_beta:g})"
+    return f"RMB{_tag_number(self.residual_motion_beta)}"
+
+  def to_kwargs(self) -> Dict:
+    """Translate config fields into `ResidualMotionCalibrator` constructor kwargs.
+
+    :returns: Keyword arguments expected by `ResidualMotionCalibrator`.
+    """
+
+    kwargs = dict(self.calibrator_kwargs or {})
+    kwargs["beta"] = self.residual_motion_beta
+    return kwargs
+
+
 _CALIBRATOR_ALIASES = {
   "svd-calibrator": "svd",
   "svd-cache": "svd",
@@ -565,6 +611,8 @@ _CALIBRATOR_ALIASES = {
   "brace-calibrator": "brace",
   "bezicast-calibrator": "bezicast",
   "bezier-cast": "bezicast",
+  "residual-motion": "residual_motion",
+  "rm": "residual_motion",
   "taylorseer-calibrator": "taylorseer",
   "dmd-calibrator": "dmd",
   "foca-calibrator": "foca",
@@ -593,6 +641,7 @@ class Calibrator:
     "hicache",
     "brace",
     "bezicast",
+    "residual_motion",
   ]
 
   def __new__(
@@ -623,5 +672,7 @@ class Calibrator:
       return BRACECalibrator(**calibrator_config.to_kwargs())
     elif calibrator_type == "bezicast":
       return BeziCastCalibrator(**calibrator_config.to_kwargs())
+    elif calibrator_type == "residual_motion":
+      return ResidualMotionCalibrator(**calibrator_config.to_kwargs())
     else:
       raise ValueError(f"Calibrator {calibrator_config.calibrator_type} is not supported now!")

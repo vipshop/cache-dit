@@ -396,6 +396,61 @@ A FLUX.1-dev probe (1024², 28 steps, seed 0, compile+F1B0+warmup 8, RTX PRO 500
 
 The rdt=0.24 same-config repeat was 33.46dB/0.9887 SSIM. Ulysses CP2 completed with 12 hits for reuse (5.77s) and 6 for SeaCache (7.81s), with identical SEA diff distributions to the single-card run. These single-prompt results are wiring probes: at the same threshold SeaCache cached fewer steps and paid FFT/communication cost, so they do not establish a universal speed or quality benefit.
 
+## SoftCache: SeaCache Refresh Rule + Sampler Jumps
+
+<div id="softcache"></div>
+
+**<span style="color:#c77dff;">SoftCache</span>** ([arXiv 2610.22369](https://arxiv.org/abs/2610.22369), [code](https://github.com/ShimonMalnick/softcache)) is an optional mode of DBCache for FlowMatch Euler pipelines. It is not a new `CacheType`. Its predictor is the [Residual Motion](#residual-motion) calibrator. Two things change when it is enabled.
+
+- **The refresh rule is SeaCache's own.** Every step, SoftCache filters the modulated input of the first block (the official SeaCache probe, read with a `torch.compiler.disable`d wrapper on its `norm1.forward`) with the same SEA filter as above. It adds the relative-L1 change since the previous step to a running sum, and computes the step in full once the sum reaches `softcache_tau`. DBCache's warmup and cached-step caps still apply. `residual_diff_threshold` is not used.
+- **Cached steps can jump.** On a cached step, the sampler step is enlarged by $jf = 1 + (jf_{max}-1)(1 - \text{acc}/\tau)$, i.e. by more when more of the budget is unspent. A gate keeps it from jumping early ($\sigma > 0.9$) or right after a sharp probe change. The rest of the schedule is then re-spaced in place on the live scheduler. Its length never changes: the removed nodes become trailing $\sigma = 0$ entries, whose $dt = 0$ steps run no compute and move no DBCache counter.
+
+Any calibrator predicts the cached steps. Residual Motion is SoftCache's own and follows the jumped sigma grid (the paper uses `beta=1` up to `tau=0.5` and `beta=0.5` above). TaylorSeer order 1 also works. Use `Fn_compute_blocks >= 1`, so the probe block runs every step, and leave the cached-step caps off, as below. Capping consecutive cached steps adds refreshes that the rule did not ask for.
+
+```python
+from cache_dit import DBCacheConfig, ResidualMotionCalibratorConfig
+
+cache_dit.enable_cache(
+  pipe,  # A pipeline with a FlowMatchEulerDiscreteScheduler, e.g. FLUX.1-dev.
+  cache_config=DBCacheConfig(
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    max_warmup_steps=1,
+    max_cached_steps=-1,
+    max_continuous_cached_steps=-1,
+    enable_seacache=True,
+    seacache_feature_shape=(64, 64),  # Global packed-token H,W of the 1024x1024 latent.
+    enable_softcache=True,
+    softcache_tau=0.5,  # ~0.3-0.5 for ~3-4x, ~1.1 for ~6.5x on FLUX.1-dev (50 steps).
+  ),
+  calibrator_config=ResidualMotionCalibratorConfig(residual_motion_beta=1.0),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 \
+  --softcache --softcache-tau 0.5 --calibrator residual_motion --max-warmup-steps 1 \
+  --max-cached-steps -1 --max-continuous-cached-steps -1
+```
+
+Scope:
+- Supported: FlowMatch Euler schedulers without `stochastic_sampling`, one denoising transformer, and a first block whose `norm1` applies the timestep embedding (FLUX-style). A plain normalization there (e.g. Wan) still runs, but SoftCache warns once: the probe is then not timestep-conditioned, so the paper's `tau` values do not transfer.
+- Refused at `enable_cache`: `seacache_ab_schedule`, `enable_separate_cfg`, `steps_computation_mask` (a jump moves the schedule position its indices read), and transformer-only enablement.
+- `max_cached_steps=0` and a tiny `softcache_tau` are both bit-identical to no cache.
+- A pipeline that runs the transformer twice per sampler step (true CFG) is measured once per step, as in the reference loop.
+- A padded step returns the previous output before the offload hook runs, so `--cpu-offload` moves no weights for it.
+- `torch.compile` works when `enable_cache` runs before compiling. The probe is read through a `torch.compiler.disable`d wrapper on the first block's `norm1` (a forward hook would fire only while tracing, because compiled code calls submodule `forward` directly), so it costs one graph break per step. On FLUX.1-dev 1024² 28 steps that is 5.6s against 6.3s eager, versus 14.8s with the same compile and no cache. `fullgraph=True` rejects the graph break. Enabling the cache on an already-compiled transformer leaves the probe out of the graph, so SoftCache warns once and computes every step; call `torch._dynamo.reset()` after enabling to recover.
+
+A FLUX.1-dev check (1024², 50 steps, guidance 3.5, 8 DPG prompts, A100-40GB, bf16, no compile), F1B0, warmup 1, no caps, against the reference implementation on the same box and seeds. Residual Motion uses β=1 up to τ=0.5 and β=0.5 above it, as in the paper. PSNR / SSIM / LPIPS are against the uncached 50-step image.
+
+| `softcache_tau` | Speedup | Cache Steps | Residual Motion | TaylorSeer(1) | Reference impl. (speedup / PSNR / LPIPS) |
+|:--|--:|--:|:--|:--|:--|
+| 0.3 | 2.82x | 9.3 | 24.70 / 0.863 / 0.100 | 24.78 / 0.865 / 0.098 | 2.86x / 24.76 / 0.100 |
+| 0.5 | 3.60x | 15 | 21.25 / 0.801 / 0.188 | 21.27 / 0.803 / 0.186 | 3.70x / 21.13 / 0.189 |
+| 1.1 | 6.27x | 19 | 18.24 / 0.682 / 0.326 | 18.43 / 0.694 / 0.301 | 6.63x / 18.23 / 0.325 |
+
+Cache Steps leave out the 22–24 steps that jumps remove, which run no compute. For comparison, plain DBCache with TaylorSeer(1) gets 20.44 dB at 3.38x and 15.17 dB at 4.39x on the same harness (see [Residual Motion](#residual-motion)). With Residual Motion the images match the reference implementation's at 37.8 / 35.9 / 37.1 dB PSNR, against 34.4 / 31.9 / 22.3 dB with TaylorSeer(1). The wall clock is 1–5% under the reference because DBCache always recomputes the first block.
+
 ## Hybrid Cache CFG
 
 <div id="cfg"></div>
@@ -667,6 +722,56 @@ Same-config repeat PSNR/SSIM was 39.60/0.9932 with guardrail off and 32.58/0.987
 | `bezicast_beta_max` | `float` | 1.0 | Maximum guardrail blend, in [0, 1]. |
 | `bezicast_rho` | `float \| None` | None | Risk threshold; None measures risk at `u=1`. CLI: `rho=auto`. |
 | `bezicast_gamma` | `float` | 1.0 | Positive guardrail transition width. |
+| `enable_calibrator` | `bool` | True | Enable the calibrator for hidden states. |
+| `enable_encoder_calibrator` | `bool` | True | Enable the calibrator for encoder hidden states. |
+
+</details>
+
+## Residual Motion Calibrator: Sigma-Secant Extrapolation
+
+<div id="residual-motion"></div>
+
+**<span style="color:#c77dff;">Residual Motion</span>** ([SoftCache: Adaptive Step Size Caching for Diffusion Transformers](https://arxiv.org/abs/2610.22369), [code](https://github.com/ShimonMalnick/softcache)) is the predictor of SoftCache. It moves the cached residual along the secant of the last two real anchors, measured in the flow-matching sigma rather than the step count:
+
+$$r(\sigma)=r_a+\beta\,\lambda\,(r_a-r_{a-1}),\qquad \lambda=\frac{\sigma-\sigma_a}{\sigma_a-\sigma_{a-1}}$$
+
+With one real anchor it reuses that residual as is. Sigma coordinates keep the extrapolation right when the sigma grid is non-uniform, which is what SoftCache's jumps produce. It is not a better general calibrator. On plain DBCache it measured 0.5–1 dB PSNR below TaylorSeer order 1 at the same Cache Steps (table below), so for plain DBCache TaylorSeer remains the default pick. It needs a scheduler with flow-matching `sigmas`, read at the scheduler's own step index. With a pipeline this is `pipe.scheduler`. For transformer-only caching pass `residual_motion_scheduler=` to `enable_cache` along with `num_inference_steps`.
+
+```python
+from cache_dit import DBCacheConfig, ResidualMotionCalibratorConfig
+
+cache_dit.enable_cache(
+  pipe_or_adapter,
+  cache_config=DBCacheConfig(
+    max_warmup_steps=4,
+    max_cached_steps=-1,
+    Fn_compute_blocks=1,
+    Bn_compute_blocks=0,
+    residual_diff_threshold=0.12,
+  ),
+  calibrator_config=ResidualMotionCalibratorConfig(),
+)
+```
+
+```bash
+python3 -m cache_dit.generate flux --cache --calibrator residual_motion --calibrator-params beta=1.0
+```
+
+FLUX.1-dev, 1024², 50 steps, guidance 3.5, 8 DPG prompts, A100-40GB, bf16, no compile, DBCache F1B0 with the default warmup. PSNR / SSIM / LPIPS are against the uncached 50-step image.
+
+| `residual_diff_threshold` | Speedup | Cache Steps | TaylorSeer(1) | Residual Motion (β=1) |
+|:--|--:|--:|:--|:--|
+| 0.24 | 3.38x | 36.5 | 20.44 / 0.782 / 0.191 | 19.92 / 0.763 / 0.213 |
+| 0.6 | 4.39x | 40 | 15.17 / 0.593 / 0.470 | 14.13 / 0.530 / 0.573 |
+
+With `max_cached_steps=0` it is bit-identical to no cache (8/8).
+
+<details markdown="1">
+<summary>📖 Residual Motion Config Parameters</summary>
+
+| Parameter | Type | Default | Description |
+|:---|:---|:---|:---|
+| `residual_motion_beta` | `float` | 1.0 | Fraction of the anchor secant to apply, in [0, 1]. |
 | `enable_calibrator` | `bool` | True | Enable the calibrator for hidden states. |
 | `enable_encoder_calibrator` | `bool` | True | Enable the calibrator for encoder hidden states. |
 

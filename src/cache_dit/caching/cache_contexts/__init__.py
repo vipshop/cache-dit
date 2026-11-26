@@ -9,6 +9,7 @@ from .calibrators import (
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
   BeziCastCalibratorConfig,
+  ResidualMotionCalibratorConfig,
 )
 from .cache_config import (
   BasicCacheConfig,

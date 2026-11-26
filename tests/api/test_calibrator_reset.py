@@ -24,6 +24,7 @@ _CALIBRATORS = {
   "enable_hicache": "HiCacheCalibrator",
   "enable_brace": "BRACECalibrator",
   "enable_bezicast": "BeziCastCalibrator",
+  "enable_residual_motion": "ResidualMotionCalibrator",
 }
 
 
@@ -54,6 +55,7 @@ def test_base_config_survives_reset_too():
     ("enable_hicache", "hicache_sigma", 0.4, "sigma"),
     ("enable_brace", "brace_gamma", 0.6, "gamma"),
     ("enable_bezicast", "bezicast_control_points", 3, "control_points"),
+    ("enable_residual_motion", "residual_motion_beta", 0.5, "beta"),
   ],
 )
 def test_reset_path_preserves_explicit_params(switch, field, value, attr):

@@ -10,6 +10,7 @@ from .cache_contexts import (
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
   BeziCastCalibratorConfig,
+  ResidualMotionCalibratorConfig,
   CalibratorConfig,
 )
 from ..distributed import (
@@ -47,19 +48,23 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
     enable_hicache = kwargs.get("enable_hicache", False)
     enable_brace = kwargs.get("enable_brace", False)
     enable_bezicast = kwargs.get("enable_bezicast", False)
+    enable_residual_motion = kwargs.get("enable_residual_motion", False)
     switches = [
       enable_taylorseer, enable_dmd, enable_foca, enable_svd, enable_hicache, enable_brace,
-      enable_bezicast
+      enable_bezicast, enable_residual_motion
     ]
     if sum(switches) > 1:
       raise ValueError("`enable_taylorseer`, `enable_dmd`, `enable_foca`, `enable_svd`, "
-                       "`enable_hicache`, `enable_brace`, and `enable_bezicast` are mutually "
-                       "exclusive. Please set only one of them to true.")
+                       "`enable_hicache`, `enable_brace`, `enable_bezicast`, and "
+                       "`enable_residual_motion` are mutually exclusive. Please set only one of "
+                       "them to true.")
 
     # These calibrators follow the main switch for encoder states by default.
     enable_encoder_hicache = kwargs.get("enable_encoder_hicache", enable_hicache)
     enable_encoder_brace = kwargs.get("enable_encoder_brace", enable_brace)
     enable_encoder_bezicast = kwargs.get("enable_encoder_bezicast", enable_bezicast)
+    enable_encoder_residual_motion = kwargs.get("enable_encoder_residual_motion",
+                                                enable_residual_motion)
 
     if enable_taylorseer:
       cache_context_kwargs["calibrator_config"] = (TaylorSeerCalibratorConfig(
@@ -165,6 +170,16 @@ def load_cache_options_from_dict(cache_kwargs: dict, reset: bool = False) -> dic
       }
       cache_context_kwargs["calibrator_config"] = (BeziCastCalibratorConfig(
         **bezicast_kwargs) if not reset else BeziCastCalibratorConfig().reset(**bezicast_kwargs))
+    elif enable_residual_motion:
+      residual_motion_kwargs = {
+        "enable_calibrator": enable_residual_motion,
+        "enable_encoder_calibrator": enable_encoder_residual_motion,
+        "calibrator_cache_type": kwargs.get("calibrator_cache_type", "residual"),
+        "residual_motion_beta": kwargs.get("residual_motion_beta", 1.0),
+      }
+      cache_context_kwargs["calibrator_config"] = (ResidualMotionCalibratorConfig(
+        **residual_motion_kwargs) if not reset else ResidualMotionCalibratorConfig().reset(
+          **residual_motion_kwargs))
 
     if "cache_type" not in kwargs:
       # Assume DBCache if cache_type is not specified

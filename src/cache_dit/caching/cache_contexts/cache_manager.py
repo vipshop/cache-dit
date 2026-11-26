@@ -14,9 +14,18 @@ from .seacache_uitls import (
   resolve_seacache_ab,
   restore_seacache_geometry,
 )
+from .softcache_utils import (
+  softcache_decide,
+  softcache_rel_l1,
+  softcache_rewrite_tail,
+  softcache_step_index,
+)
 from ...logger import init_logger
 
 logger = init_logger(__name__)
+
+# Marks a scheduler that exposes no `step_index` at all, as a bare sigmas holder does.
+_NO_STEP_INDEX = object()
 
 
 class ContextNotExistError(Exception):
@@ -39,6 +48,14 @@ class CachedContextManager:
     self._seacache_scheduler = None
     self._seacache_parallelism_config = None
     self._seacache_transformers = []
+    self._residual_motion_scheduler = None
+    self._softcache_pipe = None
+    self._softcache_probe_module = None
+    self._softcache_probe_forward = None
+    self._softcache_probe_installed = None
+    self._softcache_warned_no_probe = False
+    self._softcache_warned_unconditioned_probe = False
+    self.reset_softcache()
 
   def configure_seacache(self, scheduler=None, parallelism_config=None, transformers=()):
     """Bind generic runtime providers used only when SeaCache is explicitly enabled."""
@@ -46,6 +63,38 @@ class CachedContextManager:
     self._seacache_scheduler = scheduler
     self._seacache_parallelism_config = parallelism_config
     self._seacache_transformers = [weakref.ref(transformer) for transformer in transformers]
+
+  def configure_residual_motion(self, scheduler):
+    """Bind the scheduler whose flow-matching sigmas sigma-aware calibrators (Residual Motion)
+    extrapolate in.
+
+    Used only when such a calibrator is explicitly enabled.
+    """
+
+    self._residual_motion_scheduler = scheduler
+
+  def calibrator_sigma(self) -> float:
+    """Sigma of the step about to run, read at the scheduler's own step index."""
+
+    scheduler = self._residual_motion_scheduler
+    if self.is_softcache_enabled():
+      # After a jump the executed-step count no longer tracks the scheduler: read the step's sigma
+      # from SoftCache's float64 schedule at the scheduler's own index.
+      return self.softcache_sigma(scheduler, softcache_step_index(scheduler))
+    # The scheduler's index is the schedule position; the executed-step counter is not: a true-CFG
+    # pipeline runs two transformer calls per step. Only count forwards when the scheduler exposes
+    # no index at all (transformer-only caching over a bare sigmas holder).
+    index = getattr(scheduler, "step_index", _NO_STEP_INDEX)
+    if index is _NO_STEP_INDEX:
+      index = self.get_accumulated_executed_steps() - 1
+    elif index is None:  # diffusers: no `step()` has run yet in this request
+      index = getattr(scheduler, "begin_index", None)
+      index = 0 if index is None else index
+    index = int(index)
+    sigmas = getattr(scheduler, "sigmas", None)
+    if sigmas is None or not 0 <= index < len(sigmas):
+      raise ValueError(f"Residual Motion requires scheduler.sigmas covering step {index}.")
+    return float(sigmas[index])
 
   def _get_seacache_parallelism_config(self):
     """Resolve CP/TP metadata lazily because cache enablement precedes parallel dispatch."""
@@ -59,6 +108,187 @@ class CachedContextManager:
         if config is not None:
           return config
     return self._seacache_parallelism_config
+
+  def configure_softcache(self, pipe, probe_module: Optional[torch.nn.Module] = None):
+    """Bind the pipeline whose live `scheduler` SoftCache reads sigmas from and regrids, and wrap
+    the module whose first output is SoftCache's probe (the first block's modulated input)."""
+
+    self._softcache_pipe = weakref.ref(pipe)
+    self._remove_softcache_probe()
+    if probe_module is not None:
+      self._softcache_probe_module = probe_module
+      self._softcache_probe_forward = probe_module.forward
+      probe_module.forward = self._softcache_probe_wrapper
+      self._softcache_probe_installed = probe_module.forward
+
+  def _remove_softcache_probe(self):
+    module = self._softcache_probe_module
+    installed = self._softcache_probe_installed
+    if module is not None and installed is not None and module.forward is installed:
+      # Only unwrap our own probe: another library installed afterwards (diffusers' offload hooks
+      # rewrite `forward` too) must keep its chain.
+      module.forward = self._softcache_probe_forward
+    self._softcache_probe_module = None
+    self._softcache_probe_forward = None
+    self._softcache_probe_installed = None
+
+  @torch.compiler.disable
+  def _softcache_probe_wrapper(self, *args, **kwargs):
+    """Record the probe, then run the wrapped module.
+
+    A forward hook would be cheaper, but `torch.compile` calls a submodule's `forward` directly
+    instead of its `__call__`, so a hook on it fires only while tracing, never at runtime. Wrapping
+    `forward` behind `torch.compiler.disable` costs one graph break per step and keeps the probe
+    working in eager too.
+    """
+
+    output = self._softcache_probe_forward(*args, **kwargs)
+    if not isinstance(output, (tuple, list)):
+      # FLUX-style modulation returns (modulated input, gates, shifts, ...); a plain normalization
+      # returns the tensor alone and loses the timestep conditioning the tau budget is tuned on.
+      if not self._softcache_warned_unconditioned_probe:
+        self._softcache_warned_unconditioned_probe = True
+        logger.warning(
+          "SoftCache's probe module returned a bare tensor instead of a modulated tuple, so the "
+          "probe is not timestep-conditioned and the paper's `softcache_tau` values do not "
+          "transfer. Use a first block whose `norm1` applies the timestep embedding (FLUX-style).")
+    first = output[0] if isinstance(output, (tuple, list)) else output
+    self._softcache_probe = first.detach()
+    return output
+
+  def reset_softcache(self):
+    """Clear per-request SoftCache state; called at the start of every pipeline call."""
+
+    self._softcache_jumped_step: Optional[int] = None
+    self._softcache_sigmas: Optional[List[float]] = None  # float64 schedule after the last jump
+    self._softcache_last_outputs = None
+    self._softcache_probe: Optional[torch.Tensor] = None  # this step's modulated input, unfiltered
+    self._softcache_prev: Optional[torch.Tensor] = None  # previous step's probe
+    self._softcache_observed_step: Optional[int] = None  # last sampler step measured
+    self._softcache_accumulated = 0.0  # SeaCache change accumulated since the last full compute
+    self._softcache_decision: Optional[Tuple[str, Optional[float]]] = None
+    self.softcache_stats = {"jumps": 0, "skipped_steps": 0, "padded_calls": 0}
+
+  def reset_softcache_outputs(self):
+    """Drop the per-step tensors once the request finishes, so an idle pipeline holds none."""
+
+    self._softcache_last_outputs = None
+    self._softcache_probe = None
+    self._softcache_prev = None
+
+  def softcache_record_outputs(self, outputs):
+    """Keep the latest transformer output so dt=0 padded steps can return it uncomputed."""
+
+    if self._softcache_pipe is not None:
+      self._softcache_last_outputs = outputs
+
+  def softcache_last_outputs(self):
+    if self._softcache_last_outputs is None:
+      raise RuntimeError("SoftCache padded step reached before any transformer output.")
+    return self._softcache_last_outputs
+
+  def get_softcache_scheduler(self):
+    """Return the running pipeline's scheduler, or `None` when SoftCache sigmas are unbound."""
+
+    pipe = self._softcache_pipe() if self._softcache_pipe is not None else None
+    return getattr(pipe, "scheduler", None)
+
+  def softcache_sigma(self, scheduler, index: int) -> float:
+    """Sigma of step `index`, from the float64 schedule once a jump has rewritten it."""
+
+    if self._softcache_sigmas is not None and index < len(self._softcache_sigmas):
+      return self._softcache_sigmas[index]
+    return float(scheduler.sigmas[index])
+
+  def is_softcache_enabled(self) -> bool:
+    """Return whether the current DBCache context enabled SoftCache jumps."""
+
+    cached_context = self.get_context()
+    return bool(cached_context is not None and cached_context.cache_config.enable_softcache)
+
+  @torch.compiler.disable
+  def softcache_is_padded_step(self) -> bool:
+    """Whether the scheduler step about to run is dt=0 padding left by an earlier jump."""
+
+    if self._softcache_pipe is None:
+      return False
+    scheduler = self.get_softcache_scheduler()
+    if scheduler is None or getattr(scheduler, "sigmas", None) is None:
+      return False
+    index = softcache_step_index(scheduler)
+    return 0 < index < len(scheduler.sigmas) and float(scheduler.sigmas[index]) <= 0.0
+
+  def _softcache_observe(self):
+    """Once per real step, before the cache decision: filter this step's probe, accumulate its
+    change since the previous step and decide fresh / cache / jump exactly as the reference loop
+    does."""
+
+    scheduler = self.get_softcache_scheduler()
+    index = softcache_step_index(scheduler)
+    if index == self._softcache_observed_step:
+      # A second transformer call in the same sampler step (true CFG) measured the same schedule
+      # point: one measurement per step, as in the reference loop.
+      return
+    self._softcache_observed_step = index
+    probe, self._softcache_probe = self._softcache_probe, None
+    if probe is None:  # the probe module did not run this step: compute in full
+      if not self._softcache_warned_no_probe:
+        self._softcache_warned_no_probe = True
+        logger.warning(
+          "SoftCache got no probe from the first block's `norm1`, so every step is computed in "
+          "full. Enabling the cache on a transformer that `torch.compile` already traced leaves "
+          "the probe out of the compiled graph; call `enable_cache` before compiling, or "
+          "`torch._dynamo.reset()` after enabling it.")
+      self._softcache_decision = ("fresh", None)
+      return
+    sigma = self.softcache_sigma(scheduler, index)
+    config = self.get_context().cache_config
+    if index == 0 or self._softcache_prev is None:
+      # At sigma = 1 the filter output is ~0, so the next step compares against the raw input.
+      raw, prev = 0.0, probe
+    else:
+      # Same clamp SeaCache applies to flow sigmas, so a schedule that repeats an endpoint sigma
+      # cannot push a zero coefficient into the filter.
+      signal_sigma = min(1.0 - 1e-6, max(1e-6, sigma))
+      prev = build_seacache_indicator(
+        probe,
+        1.0 - signal_sigma,
+        signal_sigma,
+        feature_shape=config.seacache_feature_shape,
+        power_exp=config.seacache_power_exp,
+        parallelism_config=self._get_seacache_parallelism_config(),
+      )
+      raw = softcache_rel_l1(prev, self._softcache_prev)
+    self._softcache_prev = prev
+    self._softcache_accumulated += raw
+    self._softcache_decision = softcache_decide(
+      index,
+      sigma,
+      raw,
+      self._softcache_accumulated,
+      tau=config.softcache_tau,
+      jf_max=config.softcache_jf_max,
+      sigma_hi=config.softcache_sigma_hi,
+      raw_rel_l1_max=config.softcache_raw_rel_l1_max,
+    )
+
+  def _softcache_can_cache(self) -> bool:
+    """Apply this step's SoftCache decision; a jump rewrites the rest of the schedule."""
+
+    action, jf = self._softcache_decision or ("fresh", None)
+    if action == "fresh":
+      return False
+    if action == "jump":
+      scheduler = self.get_softcache_scheduler()
+      index = softcache_step_index(scheduler)
+      if self._softcache_jumped_step != index:  # one jump per sampler step
+        self._softcache_jumped_step = index
+        removed, self._softcache_sigmas = softcache_rewrite_tail(scheduler, index, jf,
+                                                                 self._softcache_sigmas)
+        if removed:  # a jump on the last node removes no scheduled step
+          self.softcache_stats["jumps"] += 1
+          self.softcache_stats["skipped_steps"] += removed
+    return True
 
   def is_seacache_enabled(self) -> bool:
     """Return whether the current DBCache context selected the SEA probe metric."""
@@ -323,6 +553,10 @@ class CachedContextManager:
     self._seacache_scheduler = None
     self._seacache_parallelism_config = None
     self._seacache_transformers.clear()
+    self._residual_motion_scheduler = None
+    self._softcache_pipe = None
+    self._remove_softcache_probe()
+    self.reset_softcache()
 
   @contextlib.contextmanager
   def enter_context(self, cached_context: CachedContext | str):
@@ -365,6 +599,14 @@ class CachedContextManager:
     cached_context = self.get_context()
     assert cached_context is not None, "cached_context must be set before"
     cached_context.mark_step_begin()
+    if self.is_softcache_enabled():
+      self._softcache_observe()
+    if self._residual_motion_scheduler is not None and cached_context.has_calibrators():
+      # Sigma-aware calibrators (Residual Motion) extrapolate in sigma, not in step count.
+      sigma = self.calibrator_sigma()
+      for calibrator in (*cached_context.get_calibrators(), *cached_context.get_cfg_calibrators()):
+        if calibrator is not None and hasattr(calibrator, "set_sigma"):
+          calibrator.set_sigma(sigma)
 
   @torch.compiler.disable
   def get_current_step(self) -> int:
@@ -778,7 +1020,11 @@ class CachedContextManager:
     if downsample_factor > 1:
       buffer = buffer[..., ::downsample_factor]
       buffer = buffer.contiguous()
-    if self.is_seacache_enabled():
+    if self.is_softcache_enabled():
+      # A full compute: SoftCache's accumulated change restarts, as in SeaCache's own loop. SoftCache
+      # decides from its own probe, so the DBCache SEA anchor below is not needed.
+      self._softcache_accumulated = 0.0
+    elif self.is_seacache_enabled():
       current_key = self._seacache_current_key(prefix)
       current_indicator = self.get_buffer(current_key)
       if current_indicator is None:
@@ -1059,6 +1305,10 @@ class CachedContextManager:
                        f"accumulated_residual_diff: {accumulated_residual_diff:.6f}, "
                        "can not use cache.")
         return False
+
+    if self.is_softcache_enabled():
+      # SoftCache decides from its own probe (official SeaCache rule); DBCache's guards above apply.
+      return self._softcache_can_cache()
 
     if threshold is None or threshold <= 0.0:
       threshold = self.get_residual_diff_threshold()

@@ -27,6 +27,7 @@ from ..caching import (
   HiCacheCalibratorConfig,
   BRACECalibratorConfig,
   BeziCastCalibratorConfig,
+  ResidualMotionCalibratorConfig,
   TaylorSeerCalibratorConfig,
   load_configs,
   load_parallelism_config,
@@ -174,6 +175,9 @@ _CALIBRATOR_PARAM_SPECS: Dict[str, Dict[str, Tuple[str, Any]]] = {
     "rho": ("bezicast_rho", _optional_float),
     "gamma": ("bezicast_gamma", float),
   },
+  "residual_motion": {
+    "beta": ("residual_motion_beta", float),
+  },
 }
 
 # Keys every calibrator accepts; they live on `CalibratorConfig` itself.
@@ -200,6 +204,7 @@ _CALIBRATOR_CONFIG_CLASSES = {
   "hicache": HiCacheCalibratorConfig,
   "brace": BRACECalibratorConfig,
   "bezicast": BeziCastCalibratorConfig,
+  "residual_motion": ResidualMotionCalibratorConfig,
 }
 
 
@@ -640,12 +645,32 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="SeaCache clean-signal power-spectrum exponent (2 for images, commonly 3 for video).",
   )
   parser.add_argument(
+    "--softcache",
+    action="store_true",
+    default=False,
+    help="Enable SoftCache on top of --seacache: SeaCache's own refresh rule plus headroom "
+    "sampler jumps (FlowMatch Euler schedulers).",
+  )
+  parser.add_argument(
+    "--softcache-tau",
+    type=float,
+    default=0.5,
+    help="SoftCache staleness budget; ~0.3-0.5 for ~3-4x and ~1.1 for ~6.5x on FLUX.1-dev.",
+  )
+  parser.add_argument(
+    "--softcache-jf-max",
+    type=float,
+    default=8.0,
+    help="Cap on the SoftCache jump factor.",
+  )
+  parser.add_argument(
     "--calibrator",
     type=_parse_calibrator_arg,
     default=None,
     help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), "
-    "hicache (damped-Hermite), brace (barycentric rational), or bezicast "
-    "(Bernstein/Bezier). Long forms such as 'svd-calibrator' are accepted. Requires --cache.",
+    "hicache (damped-Hermite), brace (barycentric rational), bezicast "
+    "(Bernstein/Bezier), or residual_motion (sigma secant, SoftCache). Long forms such as "
+    "'svd-calibrator' are accepted. Requires --cache.",
   )
   parser.add_argument(
     "--calibrator-params",
@@ -655,6 +680,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
     "'order=2,sigma=0.5' for hicache, 'capacity=3,gamma=0.7' for brace, "
     "'history=6,control_points=4,ridge=0.5,guardrail=false' for bezicast, "
+    "'beta=0.5' for residual_motion, "
     "'history=6,svd_precision=low' for dmd, "
     "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
   )
@@ -1947,6 +1973,12 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
     if len(args.seacache_feature_shape) not in (2, 3) or any(
         dim <= 0 for dim in args.seacache_feature_shape):
       raise ValueError("--seacache-feature-shape requires positive H W or F H W dimensions.")
+  if args.softcache and not args.seacache:
+    raise ValueError("--softcache requires --seacache.")
+  if args.softcache and args.seacache_mode != "flow":
+    raise ValueError("--softcache requires --seacache-mode flow.")
+  if args.softcache and args.softcache_tau <= 0.0:
+    raise ValueError("--softcache-tau must be positive.")
 
   # Resolve --calibrator-params once the calibrator is known.
   if args.calibrator is not None and args.config_path is not None:
@@ -3537,6 +3569,12 @@ def maybe_apply_optimization(
           seacache_feature_shape=args.seacache_feature_shape,
           seacache_power_exp=args.seacache_power_exp,
         )
+        if args.softcache:
+          cache_config.update(
+            enable_softcache=True,
+            softcache_tau=args.softcache_tau,
+            softcache_jf_max=args.softcache_jf_max,
+          )
 
       enable_cache(
         pipe_or_adapter,
@@ -3556,6 +3594,9 @@ def maybe_apply_optimization(
           seacache_mode=args.seacache_mode,
           seacache_feature_shape=args.seacache_feature_shape,
           seacache_power_exp=args.seacache_power_exp,
+          enable_softcache=args.softcache,
+          softcache_tau=args.softcache_tau,
+          softcache_jf_max=args.softcache_jf_max,
         ) if cache_config is None and args.cache else cache_config),
         calibrator_config=build_calibrator_config(args),
         params_modifiers=kwargs.get("params_modifiers", None),

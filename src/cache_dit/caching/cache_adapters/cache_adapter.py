@@ -225,6 +225,9 @@ class CachedAdapter:
         parallelism_config,
         transformers=BlockAdapter.flatten(block_adapter.transformer),
       )
+    cls._maybe_configure_residual_motion(block_adapter, context_manager, cache_config,
+                                         context_kwargs)
+    cls._maybe_configure_softcache(block_adapter, context_manager, cache_config)
     flatten_contexts, contexts_kwargs = cls.modify_context_params(block_adapter, **context_kwargs)
 
     block_adapter.pipe._context_manager = context_manager  # instance level
@@ -244,7 +247,9 @@ class CachedAdapter:
                   context_name,
                   **context_kwargs,
                 ), ))
+          context_manager.reset_softcache()
           outputs = original_call(self, *args, **kwargs)
+          context_manager.reset_softcache_outputs()
           cls.apply_stats_hooks(block_adapter)
           return outputs
 
@@ -264,6 +269,87 @@ class CachedAdapter:
     cls.apply_params_hooks(block_adapter, contexts_kwargs)
 
     return flatten_contexts, contexts_kwargs
+
+  @classmethod
+  def _maybe_configure_residual_motion(
+    cls,
+    block_adapter: BlockAdapter,
+    context_manager,
+    cache_config: BasicCacheConfig,
+    context_kwargs: Dict[str, Any],
+  ):
+    """Bind the scheduler whose sigmas Residual Motion reads, mirroring SeaCache's binding."""
+
+    from ..cache_contexts.calibrators import normalize_calibrator_type
+
+    scheduler = context_kwargs.get("residual_motion_scheduler", None)
+    calibrator_config = context_kwargs.get("calibrator_config", None)
+    if (calibrator_config is None
+        or not (calibrator_config.enable_calibrator or calibrator_config.enable_encoder_calibrator)
+        or normalize_calibrator_type(calibrator_config.calibrator_type) != "residual_motion"):
+      if scheduler is not None:
+        raise ValueError("`residual_motion_scheduler` only applies to the `residual_motion` "
+                         "calibrator, which is not enabled.")
+      return
+    context_kwargs.pop("residual_motion_scheduler", None)
+    if scheduler is None:
+      scheduler = getattr(block_adapter.pipe, "scheduler", None)
+    if scheduler is None:
+      raise ValueError("Residual Motion requires a pipeline scheduler with flow-matching sigmas, "
+                       "or `residual_motion_scheduler` for transformer-only caching.")
+    if context_manager.persistent_context and cache_config.num_inference_steps is None:
+      raise ValueError("Transformer-only Residual Motion requires num_inference_steps so later "
+                       "requests cannot run past the schedule.")
+    context_manager.configure_residual_motion(scheduler)
+
+  @classmethod
+  def _maybe_configure_softcache(
+    cls,
+    block_adapter: BlockAdapter,
+    context_manager,
+    cache_config: BasicCacheConfig,
+  ):
+    """Validate SoftCache's scope, then bind the live scheduler and the probe module."""
+
+    from ..cache_contexts.softcache_utils import validate_softcache_scheduler
+
+    if not cache_config.enable_softcache:
+      return
+    if not cache_config.enable_seacache or cache_config.seacache_mode != "flow":
+      raise ValueError("SoftCache requires enable_seacache=True with seacache_mode='flow'.")
+    if cache_config.seacache_ab_schedule is not None:
+      raise ValueError(
+        "SoftCache regrids the live scheduler, so it cannot use seacache_ab_schedule.")
+    if context_manager.persistent_context:
+      raise ValueError(
+        "SoftCache needs the pipeline loop; transformer-only caching is not supported.")
+    if cache_config.enable_separate_cfg:
+      raise NotImplementedError("SoftCache does not support enable_separate_cfg yet.")
+    if cache_config.steps_computation_mask is not None:
+      raise ValueError("SoftCache decides which steps run, and a jump moves the schedule position "
+                       "that steps_computation_mask indices are read against.")
+    if cache_config.Fn_compute_blocks < 1:
+      raise ValueError("SoftCache probes the first block, so it needs Fn_compute_blocks >= 1.")
+    if cache_config.softcache_tau <= 0.0 or cache_config.softcache_jf_max < 1.0:
+      raise ValueError("SoftCache needs softcache_tau > 0 and softcache_jf_max >= 1.")
+    if not 0.0 < cache_config.softcache_sigma_hi <= 1.0:
+      raise ValueError("SoftCache needs 0 < softcache_sigma_hi <= 1.")
+    if cache_config.softcache_raw_rel_l1_max < 0.0:
+      raise ValueError("SoftCache needs softcache_raw_rel_l1_max >= 0.")
+    validate_softcache_scheduler(getattr(block_adapter.pipe, "scheduler", None))
+    transformers = BlockAdapter.flatten(block_adapter.transformer)
+    if len(transformers) != 1:
+      raise NotImplementedError("SoftCache binds one transformer's probe and output; "
+                                f"got {len(transformers)}.")
+    # The first block DBCache always runs (Fn); SoftCache reads its modulated input, as SeaCache
+    # does.
+    first_block = block_adapter.blocks[0][0][0]
+    probe_module = getattr(first_block, "norm1", None)
+    if probe_module is None:
+      raise NotImplementedError(
+        "SoftCache reads the modulated input from the first block's `norm1`; "
+        f"{type(first_block).__name__} has none.")
+    context_manager.configure_softcache(block_adapter.pipe, probe_module)
 
   @classmethod
   def modify_context_params(
@@ -439,6 +525,7 @@ class CachedAdapter:
         for dummy_name in dummy_blocks_names:
           stack.enter_context(unittest.mock.patch.object(self, dummy_name, dummy_blocks))
         outputs = original_forward(*args, **kwargs)
+        context_manager.softcache_record_outputs(outputs)
 
         if context_manager.persistent_context and context_manager.is_pre_refreshed():
           cls.apply_stats_hooks(block_adapter)
@@ -446,6 +533,12 @@ class CachedAdapter:
       return outputs
 
     def new_forward_with_hf_hook(self, *args, **kwargs):
+      if context_manager.softcache_is_padded_step():
+        # dt=0 padding after a SoftCache jump: the sampler ignores this output, so skip all
+        # compute and every cache counter, and hand back the previous call's output object. This
+        # runs before the offload hook, which would otherwise move the weights for nothing.
+        context_manager.softcache_stats["padded_calls"] += 1
+        return context_manager.softcache_last_outputs()
       # Compatible with model cpu offload
       if _hf_hook is not None and hasattr(_hf_hook, "pre_forward"):
         args, kwargs = _hf_hook.pre_forward(self, *args, **kwargs)
