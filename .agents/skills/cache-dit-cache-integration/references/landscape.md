@@ -153,6 +153,18 @@ when: 高分歧触发 trust-region refresh；refresh-and-repay 不属最小接�
 
 **裁定：探针可接做高加速 guard PoC；shrink-only 观察。** 不需当前 Fn 真值，但需短 trace 标定 O(1) 标量；仍须按闸 3 对 per-model 标定降权，不能默认豁免。`can_cache` 先于 `approximate`，所以必须新增显式只读 forecast/probe 路径。论文各表的高加速数字同时包含 shrink/refresh/repay，不可归因给单个组件。
 
+### 2.9 SoftCache（arXiv 2610.22369，2026-10）＋ Residual Motion
+
+```
+when: acc += RelL1(SEA(probe_t), SEA(probe_{t-1})); acc >= tau 则整块全算（SeaCache 官方刷新规则）
+      否则复用，并在闸允许时跳步：jf = 1 + (jf_max-1)(1 - acc/tau)，闸 = sigma<=0.9 且 raw<=0.18
+how much: 把当前 Euler 步放大 jf 倍，其余节点在活 scheduler 上原地线性重排
+what: Residual Motion  r(sigma) = r_a + beta*lam*(r_a - r_{a-1}), lam = (sigma-sigma_a)/(sigma_a-sigma_{a-1})
+probe: 首块 norm1 的调制后输入（经 temb 条件化），流程里逐 step 存 2 个 anchor
+```
+
+**裁定：已实现（2026-11-26，#1418）；推荐作 >5x 档的 when+how-much 组合，但依赖 sampler 改写 scheduler。** 落点是 `DBCacheConfig(enable_softcache=True)` + `ResidualMotionCalibratorConfig`，不新增 CacheType：跳过仍走块区间与 `Bn_residual` 复用，跳步只是放大 dt 并把被删节点变成尾部 `sigma=0` 的 dt=0 padding（不计算、不动计数器）。`decide`/`regrid_tail`/`moved_residual` 与论文参考实现逐字一致；`acc` 先加再判定、仅 fresh 后清零。**结构性代价**：必须就地改写活 scheduler 的 `sigmas`/`timesteps`（原地、长度不变），因此仅支持 FlowMatch-Euler 且 `len(timesteps)==len(sigmas)-1` 的版本，并且 `seacache_ab_schedule`/`enable_separate_cfg`/`steps_computation_mask`/transformer-only 全部拒绝。**探针陷阱**：`torch.compile` 直接调用子模块 `forward`，`norm1` 上的 forward hook 只在 trace 期触发一次，会让 SoftCache 静默退化成"每步全算"；必须用 `torch.compiler.disable` 的 `forward` wrapper（1 次/步 graph break）。数字见 §4.10。
+
 ## 3. 逐维总表
 
 | 维度 | DBCache | HiCache | MagCache | SVD-Cache | DiCache |
@@ -333,6 +345,19 @@ FLUX.1-dev 1024²、28 步、seed 0、compile+F1B0+warmup8+MCC3：
 
 rdt0.24 同配置重跑为 **33.46dB/0.9887**。同 rdt0.12 时 SeaCache 命中减半且慢于 reuse；rdt0.24 达到相近命中数，但 compile 波动下单 prompt 不构成速度/质量排名。CP2：reuse 5.77s/12 命中，SeaCache 7.81s/6 命中，二者 PSNR/SSIM 31.37/0.9728，单卡与 CP2 的 SeaCache diff 分布一致。所有图片正常。未覆盖 Wan、>5x、多 prompt 或通用最优阈值。完整记录：`cache-dit/.tmp/research/seacache_analysis.md`。
 
+### 4.10 SoftCache / Residual Motion 的同 harness 验收（2026-11-26，FLUX.1-dev 1024²，28 步，4 prompt，seed 0，RTX PRO 5000，torch 2.15.0，bf16，eager）
+
+PSNR/SSIM 为**自算**（`data_range=1`），不是 `calculate_psnr`：
+
+| 臂 | 加速 | PSNR | SSIM |
+|---|---:|---:|---:|
+| DBCache rdt0.24 + TaylorSeer(1) | 2.95x | 26.40 | 0.8769 |
+| SoftCache τ0.5 + Residual Motion | 2.63x | 28.46 | 0.8947 |
+| SoftCache τ0.5 + TaylorSeer(1) | 2.58x | 28.65 | 0.9013 |
+| SoftCache τ1.1 + Residual Motion | 4.35x | 19.99 | 0.7446 |
+
+`max_cached_steps=0` 与无缓存逐比特一致（4 prompt 全过）。同加速档 SoftCache 明显优于 plain DBCache（28.46 vs 26.40dB），与论文"跳步比单纯跳过更有性价比"一致；RM 与 TaylorSeer(1) 在 SoftCache 内相差 0.2dB 内，plain DBCache 上 RM 低 0.5–1dB（与 PR 数字同向）。compile 臂（`compile_repeated_blocks`，enable_cache 先于 compile）：5.55s vs 同配置无缓存 14.82s = 2.67x，与 eager 同 3 jumps/8 skipped；compile↔eager 自身漂移 26.31dB（无缓存基线），所以 25.06dB 的差异不可当精度损失。**修前**的 hook 版本在 compile 下 0 jumps、退化为全算（4.36s/8 步 ≈ 无缓存），这是本次唯一实质缺陷。单 prompt 的 τ1.1 只有 16.21dB，4 prompt 均值 19.99dB，仍属 >4x 档的正常衰减。完整记录：`cache-dit/.tmp/research/softcache_analysis.md`。
+
 ## 5. 复核用的原始出处
 
 - cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/utils.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
@@ -341,3 +366,4 @@ rdt0.24 同配置重跑为 **33.46dB/0.9887**。同 rdt0.12 时 SeaCache 命中�
 - SVD-Cache：Eq.(4)-(11)、Sec 3.3-3.5、Table 1/2/3、Fig 5(b)(c)(d)
 - DiCache：Eq.(3)(4)(5)(6)、Algorithm 1（p.6）、Eq.(7)-(11)、Fig 3(d)（m=1~3 相关 0.8）、Table 1/2
 - 2026 定向调研：`references/2026-cache-algorithms.md`（24 篇原文深读 + 6 篇摘要级初排；含 arXiv v1 日期、式/表号和原始链接）。BRACE Eq.(4)-(8)、BeziCast Eq.(3)-(14)、SeaCache Eq.(5)-(8)/Fig.9、RACER Eq.(9)-(13)/Algorithm 1、GP-Refiner Eq.(2)-(7)/Tables 1-4。
+- SoftCache：`softcache/method.py`（`decide`/`regrid_tail`/`moved_residual` 逐字对照）、`softcache/flux.py`（采样循环、probe = `transformer_blocks[0].norm1(hs, emb=temb)[0]`、`acc` 先加后判、`prev_h` 无条件前进）、arXiv 2610.22369。
