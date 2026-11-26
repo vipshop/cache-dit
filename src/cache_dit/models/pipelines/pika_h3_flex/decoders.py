@@ -135,7 +135,7 @@ class PikaH3FlexAfterDenoiseStep(ModularPipelineBlocks):
     return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.decoders.MiniMaxH3VideoDecodeStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
+# Adapted from diffusers.modular_pipelines.minimax_h3.decoders.MiniMaxH3VideoDecodeStep.
 class PikaH3FlexVideoDecodeStep(ModularPipelineBlocks):
   model_name = "pika-h3-flex"
 
@@ -183,28 +183,32 @@ class PikaH3FlexVideoDecodeStep(ModularPipelineBlocks):
   def __call__(self, components: PikaH3FlexModularPipeline,
                state: PipelineState) -> tuple[PikaH3FlexModularPipeline, PipelineState]:
     block_state = self.get_block_state(state)
-    device = components._execution_device
-
     if block_state.output_type not in ("pil", "np", "pt"):
       raise ValueError(
         f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To keep the "
         "latents instead of decoding them, run a pipeline that does not include the decode blocks.")
 
-    latents_mean = torch.tensor(components.vae.config.latents_mean,
-                                device=device).view(1, -1, 1, 1, 1)
-    latents_std = torch.tensor(components.vae.config.latents_std,
-                               device=device).view(1, -1, 1, 1, 1)
-    latents = block_state.latents * latents_std + latents_mean
-
+    latents = self.denormalize_latents(components, block_state.latents)
     video = components.vae.decode(latents, return_dict=False)[0]
+    block_state.videos = self.postprocess(components, video, block_state.output_type)
+    self.set_block_state(state, block_state)
+    return components, state
+
+  @staticmethod
+  def denormalize_latents(components: PikaH3FlexModularPipeline,
+                          latents: torch.Tensor) -> torch.Tensor:
+    device = components._execution_device
+    mean = torch.tensor(components.vae.config.latents_mean, device=device).view(1, -1, 1, 1, 1)
+    std = torch.tensor(components.vae.config.latents_std, device=device).view(1, -1, 1, 1, 1)
+    return latents * std + mean
+
+  @staticmethod
+  def postprocess(components: PikaH3FlexModularPipeline, video: torch.Tensor, output_type: str):
+    device = components._execution_device
     pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
     pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
     video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
-    block_state.videos = components.video_processor.postprocess_video(
-      video, output_type=block_state.output_type)
-
-    self.set_block_state(state, block_state)
-    return components, state
+    return components.video_processor.postprocess_video(video, output_type=output_type)
 
 
 class PikaH3FlexAudioDecodeStep(ModularPipelineBlocks):

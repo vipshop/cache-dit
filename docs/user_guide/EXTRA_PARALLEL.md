@@ -34,7 +34,7 @@ cache_dit.enable_cache(
 
 <div id="parallel-auto-encoder"></div>
 
-Currently, cache-dit supported auto encoder (<span style="color:#c77dff;">VAE</span>) <span style="color:#c77dff;">parallelism</span> for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLQwenImage21, AutoencoderKLWan, and AutoencoderKLHunyuanVideo** series, namely, supported almost **[🔥ALL](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
+Currently, cache-dit supported auto encoder (<span style="color:#c77dff;">VAE</span>) <span style="color:#c77dff;">parallelism</span> for **AutoencoderKL, AutoencoderKLQwenImage, AutoencoderKLQwenImage21, AutoencoderKLWan, AutoencoderKLHunyuanVideo, and AutoencoderKLMiniMaxH3 (video decode)**, covering most **[supported](../supported_matrix/NVIDIA_GPU.md)** pipelines in diffusers. It can further reduce the per-GPU memory requirement and slightly improve the inference performance of the auto encoder. Users can set it by `extra_parallel_modules` parameter in parallelism_config, for example:
 
 ```python
 from cache_dit import ParallelismConfig
@@ -48,6 +48,21 @@ cache_dit.enable_cache(
   ),
 )
 ```
+
+MiniMax-H3 and Pika-H3-Flex share the tiled video VAE `AutoencoderKLMiniMaxH3`. Its planner distributes each time window's spatial tiles across ranks, then the first rank stitches the window and sends it back to the group. Each rank decodes all of its local tiles of a window in one batched forward by default, which removes the per-tile forward overhead. Batching raises peak activation memory in proportion to the number of local tiles and can change floating-point rounding.
+
+```python
+import cache_dit
+
+pipe = cache_dit.enable_cache(
+  pipe,
+  parallelism_config=cache_dit.ParallelismConfig(tp_size=2, extra_parallel_modules=["vae"]),
+)
+# Per-tile decoding stays available as a per-instance opt-out on every rank:
+# pipe.vae._h3_vae_batch_local_tiles = False
+```
+
+The preference only takes effect during tiled decoding with a multi-rank VAE group; single-rank and untiled decoding use the native path.
 
 From the table below (Image Generation: FLUX.2-Klein-4B), it is clear that `Ulysses-4 + VAE-P-4` delivers higher throughput than `Ulysses-4` alone, while also significantly reducing the per-GPU memory usage thus can avoid OOM issues on low-VRAM devices. Furthermore, the image quality remains nearly identical between the two approaches while the inference speed is slightly improved with VAE parallelism.
 
