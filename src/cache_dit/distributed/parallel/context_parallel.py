@@ -12,6 +12,10 @@ import torch.distributed as dist
 if torch.distributed.is_available():
   import torch.distributed._functional_collectives as funcol
 
+  # torch >= 2.15 renamed this collective to `all_gather_single` and warns on the old
+  # `all_gather_tensor` alias in eager mode; older releases only expose the old name.
+  _all_gather_single = getattr(funcol, "all_gather_single", funcol.all_gather_tensor)
+
 from ...logger import init_logger
 from ..communicate.primitives import _gather_size
 from .config import (
@@ -316,7 +320,7 @@ class _AllGatherFunction(torch.autograd.Function):
     ctx.group = group
     ctx.world_size = dist.get_world_size(group)
     ctx.rank = dist.get_rank(group)
-    return funcol.all_gather_tensor(tensor, dim, group=group)
+    return _all_gather_single(tensor, dim, group=group)
 
   @staticmethod
   def backward(ctx, grad_output):
