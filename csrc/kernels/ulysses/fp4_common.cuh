@@ -95,8 +95,12 @@ __device__ void quantize_row_groups_fp4(const __nv_bfloat16* input, uint8_t* out
             packed_hi |= packed << ((i - 8) * 4);
           }
         }
-        // Eight scalar STG.U8 stores per group create severe write-sector amplification. The row
-        // guard above makes this uint2 store legal and coalesced across adjacent groups.
+        // Eight scalar STG.U8 stores per group create severe write-sector amplification. One G16
+        // payload is exactly 8B, so this uint2 preserves the pack contract and coalesces adjacent
+        // groups. A uint4 must span two groups: the tested shuffle variant left requests/sectors
+        // unchanged, increased instructions 3.9%, reduced occupancy 73.7% -> 67.0%, and regressed
+        // nsys 3.744 -> 3.872 us. Wider stores are not inherently faster; choose 64/128-bit from
+        // the actual lane layout, active masks, register pressure, and NCU/nsys measurements.
         *reinterpret_cast<uint2*>(output + d / 2) = make_uint2(packed_lo, packed_hi);
         write_group_scale<kBf16Scale>(output, payload_bytes, group, scale);
       }
