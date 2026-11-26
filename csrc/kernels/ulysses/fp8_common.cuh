@@ -89,11 +89,18 @@ __device__ void load_fp8_pack(const uint8_t* input, uint8_t* values) {
   }
 }
 
+// kPackSize is exactly eight bytes, so an aligned uint2 is the natural register/store container.
+// A uint4 spans two packs and is not inherently faster: warp transaction counts depend on lane
+// addresses and active masks, not just per-thread store width. For D=128/G16 QKV quant, using one
+// uint2 instead of two u32 stores reduced global-store sectors 393216 -> 196608 and requests
+// 86016 -> 61440, with nsys 6.208 -> 6.048 us. Other shapes keep the 4/2/1-byte fallbacks below.
+// Do not generalize this to loads: a uint2 dequant-load experiment increased registers 40 -> 72
+// and nsys 3.392 -> 4.480 us, so load/store widths must be profiled independently.
 __device__ void store_fp8_pack(uint8_t* output, const uint8_t* values) {
-  if (is_aligned_16(output)) {
-    uint4 pack;
+  if (reinterpret_cast<uintptr_t>(output) % 8 == 0) {
+    uint2 pack;
     std::memcpy(&pack, values, sizeof(pack));
-    *reinterpret_cast<uint4*>(output) = pack;
+    *reinterpret_cast<uint2*>(output) = pack;
   } else if (reinterpret_cast<uintptr_t>(output) % 4 == 0) {
 #pragma unroll
     for (int i = 0; i < kPackSize / 4; ++i) {

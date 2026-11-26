@@ -721,11 +721,7 @@ def ulysses_fp4_o_permute_dequant(quant_x: torch.Tensor, head_size: int,
 
 
 def _resolve_fN_group_size(bits: int, group_size: int | None) -> int:
-  if bits == 8:
-    return 0 if group_size is None else group_size
-  if bits == 6:
-    return 32 if group_size is None else group_size
-  if bits == 4:
+  if bits in (4, 6, 8):
     return 16 if group_size is None else group_size
   raise ValueError(f"bits must be 4, 6, or 8, got {bits}.")
 
