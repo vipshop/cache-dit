@@ -42,6 +42,27 @@ class Rank0Filter(logging.Filter):
       return True
 
 
+class _EnumPytreeWarningFilter(logging.Filter):
+  """Drop torch's Enum pytree registration notice coming from third-party imports."""
+
+  _MARKER = "is an Enum subclass and is now natively supported by torch.compile"
+
+  def filter(self, record: logging.LogRecord) -> bool:
+    return self._MARKER not in record.getMessage()
+
+
+def _suppress_enum_pytree_warning() -> None:
+  """Silence the Enum pytree registration notice emitted on torchao/mslk import.
+
+  torch >= 2.15 reports a deprecation from `torch.utils._pytree` whenever a package
+  registers an `enum.Enum` subclass as a pytree constant. torchao (and mslk behind it)
+  still do that at import time, while enums are already supported as opaque values, so
+  the notice is noise for cache-dit runs.
+  """
+
+  logging.getLogger("torch.utils._pytree").addFilter(_EnumPytreeWarningFilter())
+
+
 _root_logger = logging.getLogger("CACHE_DIT")
 _default_handler = None
 _default_file_handler = None
@@ -120,7 +141,9 @@ def _setup_logger():
     _root_logger.addHandler(_default_file_handler)
 
 
-# Initialize logger when module is imported
+# Initialize logger when module is imported. The pytree filter has to be installed
+# before cache-dit imports torchao, which happens right after this module is imported.
+_suppress_enum_pytree_warning()
 _setup_logger()
 
 
