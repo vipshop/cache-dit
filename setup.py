@@ -450,16 +450,15 @@ def _get_nvcc_version(cuda_home: str | None) -> str:
 
 
 def _get_cuda_nvcc_threads() -> int:
-  # One extension, so this thread count (`--threads=`) now applies to every family. The env name
-  # predates the merge and is kept so existing build scripts keep working.
-  raw_threads = os.getenv("CACHE_DIT_SVDQ_NVCC_THREADS", "8").strip()
+  # One extension, so this thread count (`--threads=`) applies to every kernel family.
+  raw_threads = os.getenv("CACHE_DIT_NVCC_THREADS", "8").strip()
   try:
     threads = int(raw_threads)
   except ValueError as exc:
-    raise RuntimeError("CACHE_DIT_SVDQ_NVCC_THREADS must be a positive integer.") from exc
+    raise RuntimeError("CACHE_DIT_NVCC_THREADS must be a positive integer.") from exc
 
   if threads < 1:
-    raise RuntimeError("CACHE_DIT_SVDQ_NVCC_THREADS must be a positive integer.")
+    raise RuntimeError("CACHE_DIT_NVCC_THREADS must be a positive integer.")
 
   return threads
 
