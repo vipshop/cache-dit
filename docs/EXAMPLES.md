@@ -99,7 +99,7 @@ python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
 python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator taylorseer --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
+python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator residual_motion --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
 python3 -m cache_dit.generate flux --cache --calibrator taylorseer
 python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
 python3 -m cache_dit.generate flux --cache --calibrator hicache --calibrator-params "order=2,sigma=0.5"

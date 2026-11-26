@@ -201,6 +201,40 @@ def test_residual_motion_reads_the_rewritten_schedule():
   assert per_step == pytest.approx(real, abs=1e-6)
 
 
+def test_true_cfg_reads_one_sigma_per_step():
+  """A pipeline that runs the transformer twice per step (true CFG) measures each step once and
+  hands both calls that step's sigma, not the next schedule slot."""
+
+  seen, original = [], ResidualMotionCalibrator.set_sigma
+  ResidualMotionCalibrator.set_sigma = lambda self, sigma: (seen.append(sigma), original(
+    self, sigma))[1]
+  pipe = _tiny_flux()
+  cache_dit.enable_cache(pipe,
+                         cache_config=_soft_config(),
+                         calibrator_config=ResidualMotionCalibratorConfig())
+  generator = torch.Generator().manual_seed(0)
+  try:
+    pipe(prompt_embeds=torch.randn(1, 8, 32, generator=generator),
+         negative_prompt_embeds=torch.randn(1, 8, 32, generator=generator),
+         pooled_prompt_embeds=torch.randn(1, 16, generator=generator),
+         negative_pooled_prompt_embeds=torch.randn(1, 16, generator=generator),
+         true_cfg_scale=4.5,
+         height=64,
+         width=64,
+         num_inference_steps=STEPS,
+         output_type="latent",
+         generator=generator)
+  finally:
+    ResidualMotionCalibrator.set_sigma = original
+  # One sigma per sampled node, repeated for every call of that node (two branches, two streams).
+  distinct = [sigma for i, sigma in enumerate(seen) if i == 0 or sigma != seen[i - 1]]
+  real = [float(s) for s in pipe.scheduler.sigmas if float(s) > 0.0]
+  assert distinct == pytest.approx(real, abs=1e-6)
+  stats = pipe._context_manager.softcache_stats
+  assert stats["padded_calls"] == 2 * stats["skipped_steps"]  # both branches skip the node
+  cache_dit.disable_cache(pipe)
+
+
 def test_zero_cache_is_bit_exact():
   """With caching disabled, SoftCache (with or without a calibrator) is the uncached pipeline."""
 
@@ -225,26 +259,43 @@ def test_tau_sets_how_often_the_step_is_computed():
   assert counts[2] == STEPS - 1  # only step 0 is computed in full
 
 
-def test_probe_hook_is_removed_on_disable():
+def test_probe_wrapper_is_restored_on_disable():
   pipe = _tiny_flux()
   norm1 = pipe.transformer.transformer_blocks[0].norm1
+  original = norm1.forward
   cache_dit.enable_cache(pipe, cache_config=_soft_config())
-  assert len(norm1._forward_hooks) == 1
+  assert norm1.forward != original
   cache_dit.disable_cache(pipe)
-  assert len(norm1._forward_hooks) == 0
+  assert norm1.forward == original
+
+
+def test_probe_survives_regional_compile():
+  """`torch.compile` calls submodule `forward` directly, so a probe hook would fire only while
+  tracing.
+
+  The wrapper is expected to keep firing at runtime and keep the jumps.
+  """
+
+  pipe = _tiny_flux()
+  cache_dit.enable_cache(pipe, cache_config=_soft_config())
+  pipe.transformer.compile_repeated_blocks(fullgraph=False)
+  _call(pipe)
+  stats = pipe._context_manager.softcache_stats
+  assert stats["jumps"] > 0 and stats["skipped_steps"] > 0
+  cache_dit.disable_cache(pipe)
 
 
 def test_missing_probe_warns_once():
-  """A probe hook that never fires (e.g. `enable_cache` on an already-compiled transformer) makes
-  every step fresh; that must not be silent."""
+  """A probe that never fires (e.g. `enable_cache` on an already-compiled transformer) makes every
+  step fresh; that must not be silent."""
 
   from unittest import mock
   from cache_dit.caching.cache_contexts import cache_manager
 
   pipe = _tiny_flux()
   cache_dit.enable_cache(pipe, cache_config=_soft_config())
-  pipe._context_manager._remove_softcache_hook(
-  )  # what a compiled graph traced without the hook does
+  pipe._context_manager._remove_softcache_probe(
+  )  # what a graph compiled before `enable_cache` never calls
   with mock.patch.object(cache_manager.logger, "warning") as warning:
     _call(pipe)
     _call(pipe)
@@ -278,6 +329,14 @@ def test_transformer_receives_the_rewritten_timesteps():
     (dict(seacache_mode="vp"), "enable_seacache"),
     (dict(seacache_ab_schedule=((0.5, 0.5), )), "seacache_ab_schedule"),
     (dict(enable_separate_cfg=True), "enable_separate_cfg"),
+    (dict(steps_computation_mask=[1] * STEPS), "steps_computation"),
+    (dict(steps_computation_mask=[1] * STEPS,
+          steps_computation_policy="static"), "steps_computation"),
+    (dict(Fn_compute_blocks=0), "Fn_compute_blocks"),
+    (dict(softcache_tau=0.0), "softcache_tau"),
+    (dict(softcache_jf_max=0.5), "softcache_jf_max"),
+    (dict(softcache_sigma_hi=1.5), "softcache_sigma_hi"),
+    (dict(softcache_raw_rel_l1_max=-0.1), "softcache_raw_rel_l1_max"),
   ],
 )
 def test_unsupported_configs_are_rejected(kwargs, match):
@@ -286,9 +345,22 @@ def test_unsupported_configs_are_rejected(kwargs, match):
     cache_dit.enable_cache(pipe, cache_config=_soft_config(**kwargs))
 
 
+def test_block_without_a_probe_module_is_rejected():
+  pipe = _tiny_flux()
+  pipe.transformer.transformer_blocks[0].norm1 = None
+  with pytest.raises(NotImplementedError, match="norm1"):
+    cache_dit.enable_cache(pipe, cache_config=_soft_config())
+
+
 def test_non_flowmatch_scheduler_is_rejected():
   from diffusers import FlowMatchHeunDiscreteScheduler
 
   pipe = _tiny_flux(scheduler=FlowMatchHeunDiscreteScheduler())
   with pytest.raises(ValueError, match="FlowMatchEulerDiscreteScheduler"):
+    cache_dit.enable_cache(pipe, cache_config=_soft_config())
+
+
+def test_stochastic_sampling_is_rejected():
+  pipe = _tiny_flux(scheduler=FlowMatchEulerDiscreteScheduler(stochastic_sampling=True))
+  with pytest.raises(ValueError, match="stochastic_sampling"):
     cache_dit.enable_cache(pipe, cache_config=_soft_config())

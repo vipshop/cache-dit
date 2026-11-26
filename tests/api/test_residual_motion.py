@@ -179,6 +179,20 @@ def test_transformer_only_takes_an_explicit_scheduler():
   cache_dit.disable_cache(adapter)
 
 
+def test_residual_motion_scheduler_requires_its_calibrator():
+  """Passing the scheduler without the Residual Motion calibrator is an error, not a silent drop."""
+
+  from cache_dit import TaylorSeerCalibratorConfig
+
+  pipe = RandPipeline(pattern=ForwardPattern.Pattern_0)
+  pipe.scheduler = SimpleNamespace(sigmas=SIGMAS)
+  with pytest.raises(ValueError, match="residual_motion"):
+    cache_dit.enable_cache(_adapter(pipe, pipe.transformer),
+                           cache_config=_config(),
+                           calibrator_config=TaylorSeerCalibratorConfig(),
+                           residual_motion_scheduler=pipe.scheduler)
+
+
 def test_other_calibrators_do_not_bind_a_scheduler():
   """Only Residual Motion binds a scheduler; the default path is untouched."""
 
