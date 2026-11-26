@@ -15,9 +15,9 @@ import torch
 
 
 def regrid_tail(sigmas: List[float], i: int, target: float) -> List[float]:
-  """After jumping from node i to sigma=`target`, re-space the rest of the schedule linearly
-  from target to 0 with only as many nodes as the old schedule had below target. The nodes
-  this removes are the compute a jump saves.
+  """After jumping from node i to sigma=`target`, re-space the rest of the schedule linearly from
+  target to 0 with only as many nodes as the old schedule had below target. The nodes this removes
+  are the compute a jump saves.
 
   Verbatim port of the reference implementation (`softcache.method.regrid_tail`).
   """

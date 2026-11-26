@@ -58,7 +58,10 @@ class CachedContextManager:
 
   def configure_residual_motion(self, scheduler):
     """Bind the scheduler whose flow-matching sigmas sigma-aware calibrators (Residual Motion)
-    extrapolate in. Used only when such a calibrator is explicitly enabled."""
+    extrapolate in.
+
+    Used only when such a calibrator is explicitly enabled.
+    """
 
     self._residual_motion_scheduler = scheduler
 
@@ -166,8 +169,9 @@ class CachedContextManager:
     return 0 < index < len(scheduler.sigmas) and float(scheduler.sigmas[index]) <= 0.0
 
   def _softcache_observe(self):
-    """Once per real step, before the cache decision: filter this step's probe, accumulate its change
-    since the previous step and decide fresh / cache / jump exactly as the reference loop does."""
+    """Once per real step, before the cache decision: filter this step's probe, accumulate its
+    change since the previous step and decide fresh / cache / jump exactly as the reference loop
+    does."""
 
     probe, self._softcache_probe = self._softcache_probe, None
     scheduler = self.get_softcache_scheduler()
