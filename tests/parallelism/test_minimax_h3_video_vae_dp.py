@@ -11,10 +11,7 @@ import torch
 import torch.distributed as dist
 from torch import nn
 
-from cache_dit.distributed.autoencoders import (
-  parallelize_autoencoder,
-  set_minimax_h3_vae_batch_local_tiles,
-)
+from cache_dit.distributed.autoencoders import parallelize_autoencoder
 from cache_dit.distributed.autoencoders.register import AutoEncoderDataParallelismPlanner
 from cache_dit.distributed.config import ParallelismConfig
 
@@ -75,6 +72,8 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
       return
     rank = dist.get_rank(mesh.get_group())
     reference, vae, other = _video_vae(), _video_vae(), _video_vae()
+    # The planner must not overwrite a preference set before installation.
+    other._h3_vae_batch_local_tiles = False
     config = ParallelismConfig(tp_size=2)
     # Install during inference mode, then exercise the planner under no_grad.
     with torch.inference_mode(), patch.object(AutoEncoderDataParallelismPlanner,
@@ -88,13 +87,24 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
     latent = torch.arange(37 * 10 * 16).view(1, 1, 37, 10, 16).float()
     expected = reference.decode(latent).sample
     assert expected.shape[2] == 124
+    # Local tiles are batched by default: 14 tiles per rank, one forward per window.
+    torch.testing.assert_close(vae.decode(latent).sample, expected, rtol=0, atol=0)
+    assert [len(batch) for batch in vae.decoder.calls] == [14] * 7
+    vae.decoder.calls.clear()
+
+    # The dynamic instance attribute is the opt-out, no public setter needed.
+    vae._h3_vae_batch_local_tiles = False
     torch.testing.assert_close(vae.decode(latent).sample, expected, rtol=0, atol=0)
     assert [len(batch) for batch in vae.decoder.calls] == [1] * 98
     vae.decoder.calls.clear()
+    del vae._h3_vae_batch_local_tiles
 
-    set_minimax_h3_vae_batch_local_tiles(vae)
-    torch.testing.assert_close(vae.decode(latent).sample, expected, rtol=0, atol=0)
-    assert [len(batch) for batch in vae.decoder.calls] == [14] * 7
+    # `other` opted out before installation; the planner must keep that preference.
+    torch.testing.assert_close(other.decode(latent).sample, expected, rtol=0, atol=0)
+    assert [len(batch) for batch in other.decoder.calls] == [1] * 98
+    other.decoder.calls.clear()
+    del other._h3_vae_batch_local_tiles
+
     for batch, height, width in ((2, 10, 16), (2, 3, 8), (2, 4, 4), (0, 10, 16)):
       reference.decoder.calls.clear()
       vae.decoder.calls.clear()
@@ -107,7 +117,6 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
     z = latent[:, :, :3]
     vae.disable_tiling()
     reference.disable_tiling()
-    set_minimax_h3_vae_batch_local_tiles(vae)
     torch.testing.assert_close(vae._decode_clip(z), reference._decode_clip(z), rtol=0, atol=0)
     vae.enable_tiling()
     reference.enable_tiling()
@@ -126,8 +135,8 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
     torch.testing.assert_close(vae._decode_clip(z), expected, rtol=0, atol=0)
 
     torch.testing.assert_close(other._decode_clip(z), expected, rtol=0, atol=0)
-    assert len(other.decoder.calls) == 14
-    set_minimax_h3_vae_batch_local_tiles(vae, enabled=False)
+    assert [len(batch) for batch in other.decoder.calls] == [14]
+    vae._h3_vae_batch_local_tiles = False
     vae.decoder.calls.clear()
     torch.testing.assert_close(vae._decode_clip(z), expected, rtol=0, atol=0)
     assert len(vae.decoder.calls) == 14
@@ -135,7 +144,6 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
     with patch.object(AutoEncoderDataParallelismPlanner, "mesh", return_value=singleton):
       parallelize_autoencoder(reference, config)
     reference.decoder.calls.clear()
-    set_minimax_h3_vae_batch_local_tiles(reference)
     torch.testing.assert_close(reference._decode_clip(z), expected, rtol=0, atol=0)
     assert len(reference.decoder.calls) == 28
   finally:
@@ -145,13 +153,3 @@ def _run_rank(world_rank: int, rendezvous: str) -> None:
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="requires CPU/Gloo")
 def test_h3_tile_ownership_stitching_and_failures(tmp_path: Path) -> None:
   torch.multiprocessing.spawn(_run_rank, args=((tmp_path / "group").as_uri(), ), nprocs=3)
-
-
-def test_h3_tile_batching_requires_an_installed_video_vae() -> None:
-  vae = _video_vae()
-  with pytest.raises(TypeError, match="enabled must be a boolean"):
-    set_minimax_h3_vae_batch_local_tiles(vae, enabled=1)
-  with pytest.raises(TypeError, match="AutoencoderKLMiniMaxH3"):
-    set_minimax_h3_vae_batch_local_tiles(nn.Identity())
-  with pytest.raises(RuntimeError, match="Install the MiniMax-H3 video VAE planner"):
-    set_minimax_h3_vae_batch_local_tiles(vae)

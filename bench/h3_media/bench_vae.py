@@ -13,10 +13,7 @@ from diffusers import AutoencoderKLMiniMaxH3
 from diffusers import __version__ as diffusers_version
 
 from cache_dit import ParallelismConfig
-from cache_dit.distributed.autoencoders import (
-  parallelize_autoencoder,
-  set_minimax_h3_vae_batch_local_tiles,
-)
+from cache_dit.distributed.autoencoders import parallelize_autoencoder
 
 NUM_RANKS = 2
 NUM_TRIALS = 3
@@ -86,7 +83,8 @@ def main() -> None:
     vae.enable_tiling()
     if args.mode != "replicated":
       vae = parallelize_autoencoder(vae, ParallelismConfig(tp_size=NUM_RANKS))
-      set_minimax_h3_vae_batch_local_tiles(vae, enabled=args.mode == "batched")
+      # Local tile batching is the default; B1 opts out through the dynamic attribute.
+      vae._h3_vae_batch_local_tiles = args.mode == "batched"
 
     generator = torch.Generator("cpu").manual_seed(SEED)
     latents = torch.randn(LATENT_SHAPE, generator=generator, dtype=torch.float32, device="cpu")

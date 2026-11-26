@@ -6,8 +6,9 @@ back with `_stitch_tiles`. A tile cannot be split further without changing the r
 the only independent unit of work — the same structure as the MiniMax-H3-Image VAE, one dimension up.
 
 This planner distributes the tiles of every clip round-robin and moves the decoded tiles back to rank
-0, which stitches and hands the clip down the chain. Each rank runs the same temporal loop.
-The instance can batch local tiles along the decoder's batch dimension.
+0, which stitches and hands the clip down the chain. Each rank runs the same temporal loop and decodes
+its local tiles as one batch along the decoder's batch dimension. Set the instance attribute
+`_h3_vae_batch_local_tiles = False` to fall back to one tile per forward.
 
 Three details matter:
 
@@ -166,7 +167,7 @@ class AutoencoderKLMiniMaxH3DataParallelismPlanner(AutoEncoderDataParallelismPla
           y, x = y_indices[i] // ratio, x_indices[j] // ratio
           tile = z[..., y:y + y_lengths[i] // ratio, x:x + x_lengths[j] // ratio]
           local_tiles.append((i, j, tile))
-        if self._h3_vae_batch_local_tiles and local_tiles:
+        if local_tiles and getattr(self, "_h3_vae_batch_local_tiles", True):
           inputs = torch.cat([tile for _, _, tile in local_tiles], dim=0)
           decoded_batch = self.decoder(self.post_quant_conv(inputs))
           outputs = decoded_batch.unflatten(0, (len(local_tiles), z.shape[0])).unbind(0)
@@ -184,6 +185,7 @@ class AutoencoderKLMiniMaxH3DataParallelismPlanner(AutoEncoderDataParallelismPla
     # Bind on the instance, not the class: `dispatch.py` only refuses to apply twice through
     # `_is_parallelized`, so a class-level patch would leak into every other
     # `AutoencoderKLMiniMaxH3` living in the same process with this rank's group and comm.
-    auto_encoder._h3_vae_batch_local_tiles = False
+    # The batch preference stays a dynamic attribute so users can opt out without an API:
+    # `vae._h3_vae_batch_local_tiles = False`.
     auto_encoder._decode_clip = new_decode_clip.__get__(auto_encoder)
     return auto_encoder
