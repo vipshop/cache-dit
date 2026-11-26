@@ -62,7 +62,8 @@ __device__ void quantize_row_groups_fp4(const __nv_bfloat16* input, uint8_t* out
                                         int lanes_per_row = kWarpSize) {
   const int64_t payload_bytes = fp4_payload_bytes(head_size);
   const int64_t groups = (head_size + group_size - 1) / group_size;
-  if (head_size % kFp4FastPack == 0 && is_aligned_16(input)) {
+  if (head_size % kFp4FastPack == 0 && is_aligned_16(input) &&
+      reinterpret_cast<uintptr_t>(output) % 8 == 0) {
     constexpr int lanes_per_group = kFp4GroupSize / kFp4FastPack;
     const int groups_per_iteration = lanes_per_row / lanes_per_group;
     for (int64_t first_group = 0; first_group < groups; first_group += groups_per_iteration) {
@@ -82,11 +83,21 @@ __device__ void quantize_row_groups_fp4(const __nv_bfloat16* input, uint8_t* out
       const float scale = fmaxf(__fdiv_rn(absmax, kFp4Max), epsilon);
       const float inv_scale = __fdiv_rn(1.0f, scale);
       if (active) {
+        uint32_t packed_lo = 0;
+        uint32_t packed_hi = 0;
 #pragma unroll
         for (int i = 0; i < kFp4FastPack; i += 2) {
-          output[d / 2 + i / 2] = to_fp4x2(__fmul_rn(__bfloat162float(values[i]), inv_scale),
+          const uint32_t packed = to_fp4x2(__fmul_rn(__bfloat162float(values[i]), inv_scale),
                                            __fmul_rn(__bfloat162float(values[i + 1]), inv_scale));
+          if (i < 8) {
+            packed_lo |= packed << (i * 4);
+          } else {
+            packed_hi |= packed << ((i - 8) * 4);
+          }
         }
+        // Eight scalar STG.U8 stores per group create severe write-sector amplification. The row
+        // guard above makes this uint2 store legal and coalesced across adjacent groups.
+        *reinterpret_cast<uint2*>(output + d / 2) = make_uint2(packed_lo, packed_hi);
         write_group_scale<kBf16Scale>(output, payload_bytes, group, scale);
       }
     }

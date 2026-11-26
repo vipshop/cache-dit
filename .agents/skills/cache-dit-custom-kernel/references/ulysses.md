@@ -973,3 +973,28 @@ Validation: 397 tests across FP4/FP6/FP8/fused operators and config/selector/exp
 including 29 direct FP4 and 25 total fused mega tests; plus 12 two-rank fused parity cases and one
 CP2 standard/UAA QKV/O case. Review-added cases cover odd-width mixed-K at D=66 and undersized fused
 rows. The original four-rank suite was not run under the GPU2/3-only constraint.
+
+### 14.3 FP4 QKV packed-store coalescing fix (2026-11-26)
+
+The initial FP4 QKV G16 quant regression was write amplification, not conversion count. At D=128 and
+24,576 rows, FP4 used eight scalar `STG.E.U8` operations per 16-value group. Despite a smaller output,
+it produced 491,520 global-store sectors and 73,728 requests versus FP6's 319,488 sectors and 43,008
+requests. The baseline FP4 nsys time was 10.720 us versus FP6's 4.927 us.
+
+Pack each group's eight payload bytes into two u32 words and write one aligned `uint2` when the output
+row is 8-byte aligned. Other shapes retain the scalar path. This preserves all packed bytes and scales.
+Final interleaved Event medians are **7.742 us FP4 vs 7.738 us FP6**, down from the original 11.149 us.
+Final FP4 nsys is **3.744 us**, store sectors fall to 147,456 and requests to 30,720, registers stay at
+40, and local-store sectors remain zero. NCU profiling duration is 8.128 us versus FP6's 8.224 us;
+do not compare that replay-clock duration directly with unserialized nsys latency.
+
+A 128-bit variant was implemented and rejected. It paired adjacent groups through two shuffles and let
+even lanes write one `uint4`. Requests/sectors did not improve, instructions rose 3.9%, occupancy fell
+from 73.7% to 67.0%, and nsys regressed from 3.744 to 3.872 us. A D=16 tail case also caught why a
+128-bit store requires a complete group pair. Wider stores are not automatically fewer warp-level
+transactions; retain the measured 64-bit version.
+
+Validation of the retained version: 397 operator/config tests plus 13 two-rank NCCL cases passed.
+FLUX CP2 UAA fused QKVO completed in 7.74s (original FP4 fused 7.78s), with 21.542 dB/0.91617 SSIM
+against UAA BF16 and preserved composition/readable text. The e2e delta is small and within the known
+run-noise band; the performance claim is based on the operator Event/nsys measurements above.
