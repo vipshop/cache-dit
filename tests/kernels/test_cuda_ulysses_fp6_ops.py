@@ -288,3 +288,13 @@ def test_ulysses_fp6_defaults_empty_and_invalid() -> None:
     ulysses_fN_per_token_quant(x, bits=5)
   with pytest.raises(ValueError, match="head_size is required"):
     ulysses_fN_per_token_dequant(default, bits=6)
+
+
+@pytest.mark.parametrize("bits", [4, 6, 8])
+def test_ulysses_fN_defaults_to_group16(bits: int) -> None:
+  if bits in (4, 6):
+    _require_runtime()
+  x = torch.randn((2, 128), device="cuda", dtype=torch.bfloat16)
+  default = ulysses_fN_per_token_quant(x, bits=bits)
+  explicit = ulysses_fN_per_token_quant(x, group_size=16, bits=bits)
+  torch.testing.assert_close(default.view(torch.uint8), explicit.view(torch.uint8), rtol=0, atol=0)

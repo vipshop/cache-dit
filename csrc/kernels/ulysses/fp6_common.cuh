@@ -102,6 +102,11 @@ __device__ void store_fp6x16(uint8_t* output, const uint8_t* codes) {
     packed[quarter] =
       (c[0] & 0x3f) | ((c[1] & 0x3f) << 6) | ((c[2] & 0x3f) << 12) | ((c[3] & 0x3f) << 18);
   }
+  // Sixteen FP6 codes occupy 12 bytes, so three u32 stores exactly cover one group's payload.
+  // Wider per-thread stores are not automatically better for this 12-byte-strided lane layout.
+  // A uint2+u32 experiment increased registers 56 -> 64, global-store sectors 319488 -> 466944,
+  // requests 43008 -> 55296, and nsys 4.927 -> 4.992 us. Keep these exact-width u32 stores unless
+  // a different lane/packing layout demonstrates better NCU coalescing and end-to-end latency.
   uint32_t* words = reinterpret_cast<uint32_t*>(output);
   words[0] = packed[0] | ((packed[1] & 0xff) << 24);
   words[1] = (packed[1] >> 8) | ((packed[2] & 0xffff) << 16);

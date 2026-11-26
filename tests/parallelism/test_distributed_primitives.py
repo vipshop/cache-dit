@@ -209,8 +209,11 @@ def test_quantize_k_communication_options():
                                   })
   assert config.quant_communicate_kwargs["quantize_k"]
 
-  default_config = _ContextParallelConfig(ulysses_degree=2, quant_communicate_kwargs={"bits": 8})
-  assert default_config.quant_communicate_kwargs["quantize_k"] is True
+  for bits in (4, 6, 8):
+    default_config = _ContextParallelConfig(ulysses_degree=2,
+                                            quant_communicate_kwargs={"bits": bits})
+    assert default_config.quant_communicate_kwargs["quant_type"] == "per_group_16"
+    assert default_config.quant_communicate_kwargs["quantize_k"] is True
 
   disabled_config = _ContextParallelConfig(ulysses_degree=2,
                                            quant_communicate_kwargs={
@@ -274,11 +277,11 @@ def test_quant_communicate_validation_and_suffix():
   fp4_uaa = ParallelismConfig(ulysses_size=2,
                               ulysses_anything=True,
                               quant_communicate_kwargs={"bits": 4})
-  assert default.strify() == "Ulysses2_UF8K"
-  assert default_without_k.strify() == "Ulysses2_UF8"
+  assert default.strify() == "Ulysses2_UF8K_G16"
+  assert default_without_k.strify() == "Ulysses2_UF8_G16"
   assert group16.strify() == "Ulysses2_UF8K_G16"
   assert group32.strify() == "Ulysses2_UF8K_G32"
-  assert fp6_default.strify() == "Ulysses2_UF6K_G32"
+  assert fp6_default.strify() == "Ulysses2_UF6K_G16"
   assert fp6_token_k.strify() == "Ulysses2_UF6K_PT"
   assert fp4_default.strify() == "Ulysses2_UF4K_G16"
   assert fp4_without_k.strify() == "Ulysses2_UF4_G16"

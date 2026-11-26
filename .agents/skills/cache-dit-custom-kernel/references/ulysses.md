@@ -477,9 +477,9 @@ Status: implemented and validated on `dev` with torch 2.15.0+cu132, sm120a, GPU 
 ### 10.1 Public configuration and naming
 
 - Use only `quant_communicate_kwargs={"bits": 4|6|8, "quant_type": ..., "quantize_k": ...}`.
-  Empty means BF16. FP8 defaults to `per_token`; FP6 defaults to `per_group_32` and both accept
-  explicit `per_token`, `per_group_16`, and `per_group_32`. FP4 E2M1 defaults to and only accepts
-  `per_group_16`. K is quantized by default when communication quantization is enabled; set
+  Empty means BF16. FP4 E2M1, FP6 E2M3, and FP8 E4M3 all default to `per_group_16` with Q/K/V/O
+  quantized. FP6/FP8 accept explicit `per_token` and `per_group_32`; FP4 accepts only G16. The
+  legacy direct `ulysses_fp{6,8}_*` operator defaults are separate and unchanged. Set
   `quantize_k=False` to keep K in BF16. LSE remains BF16.
 - CLI: `--quant-communicate-params 'bits=6,quant_type=per_group_32,quantize_k=false'`. All old
   `--ulysses-float8*` options and their config fields are removed.
@@ -998,3 +998,37 @@ Validation of the retained version: 397 operator/config tests plus 13 two-rank N
 FLUX CP2 UAA fused QKVO completed in 7.74s (original FP4 fused 7.78s), with 21.542 dB/0.91617 SSIM
 against UAA BF16 and preserved composition/readable text. The e2e delta is small and within the known
 run-noise band; the performance claim is based on the operator Event/nsys measurements above.
+
+### 14.4 FP8/FP6 packed-store audit (2026-11-26)
+
+After the FP4 store fix, audit FP8/FP6 with the same D=128/G16 QKV quant shape. Compare the actual
+NCU store traffic with the packed-size lower bound before changing instructions. The measured lower
+bounds were 98,304 sectors for FP6 and 122,880 for FP8, while the original kernels produced 319,488
+and 393,216 sectors respectively. FP6/FP8 therefore had write amplification, but not the same optimal
+container as FP4.
+
+- **Retain FP8 uint2 stores.** Eight FP8 codes are exactly eight bytes. One 8-byte-aligned `uint2`
+  replaces two u32 writes where possible, reducing sectors 393,216 -> 196,608 and requests
+  86,016 -> 61,440. Nsys improved 6.208 -> 6.048 us. This is a modest whole-kernel gain, not the
+  larger FP4 win; the 4/2/1-byte fallbacks remain for other alignments.
+- **Reject FP6 uint2+u32.** Sixteen FP6 codes occupy 12 bytes and the existing three u32 stores
+  cover them exactly. The wider variant raised registers 56 -> 64, sectors 319,488 -> 466,944,
+  requests 43,008 -> 55,296, and nsys 4.927 -> 4.992 us. Its 12-byte-strided lane layout needs a
+  different redistribution strategy before wider stores can help.
+- **Reject mechanical FP8 uint2 loads.** Although stores benefited, the dequant-load experiment
+  increased registers 40 -> 72 and nsys 3.392 -> 4.480 us. Load and store codegen must be tuned and
+  reviewed independently.
+
+The common headers record these measurements next to the corresponding helpers. The rule is not
+"the largest pack wins": scalar-to-vector packing usually helps, but 64-bit versus 128-bit and load
+versus store must be decided from the actual lane addresses, active masks, register pressure, NCU
+sectors/requests, and unserialized nsys latency. The final FP8-store-only source passed 397
+operator/config tests and 13 two-rank NCCL cases.
+
+Default granularity was subsequently unified for the **communication configuration**: FP4/FP6/FP8
+now all default to QKVO quantization with G16. `quantize_k=True` was already the default. Explicit
+FP8 per-token and FP6 G32 remain available, and legacy direct `ulysses_fp{6,8}_*` defaults are
+unchanged. Default-only FLUX runs confirmed `UAA_F8K_G16` (8.20s, 25.044 dB/0.97288 SSIM) and
+`UAA_F6K_G16` (8.03s, 29.848 dB/0.97118). Their previous G32 comparisons were 22.960/0.94120 and
+26.185/0.96580 respectively. G16 improves these measured image metrics but is slower than G32;
+treat this as an accuracy-driven default change, not a latency improvement.

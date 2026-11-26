@@ -131,7 +131,7 @@ cache_dit.enable_cache(
 
 ![async_ulysses_fp8](https://github.com/vipshop/cache-dit/raw/main/assets/parallelism/async_ulysses_fp8.png)
 
-cache-dit supports <span style="color:#c77dff;">Async FP4/FP6/FP8 Ulysses Attention</span> for supported DiTs. Low-precision communication is configured only by `quant_communicate_kwargs`; an empty dictionary keeps the default BF16 path. FP8 defaults to `per_token`, FP6 E2M3 defaults to `per_group_32`, and both accept explicit `per_token` and `per_group_16`. FP4 E2M1 defaults to and only accepts `per_group_16`. When communication quantization is enabled, K uses the same quantized path by default. Set `quantize_k=False` to keep K in BF16 and protect the numerically sensitive `Softmax(Q@K^T)` computation; LSE always remains BF16. The fused O path requires the global head count and global sequence length to be divisible by `ulysses_size`; disable communication quantization for unsupported shapes.
+cache-dit supports <span style="color:#c77dff;">Async FP4/FP6/FP8 Ulysses Attention</span> for supported DiTs. Low-precision communication is configured only by `quant_communicate_kwargs`; an empty dictionary keeps the default BF16 path. FP4 E2M1, FP6 E2M3, and FP8 E4M3 all default to `per_group_16`. FP6/FP8 also accept explicit `per_token` and `per_group_32`; FP4 accepts only `per_group_16`. When communication quantization is enabled, Q/K/V/O use the quantized path by default. Set `quantize_k=False` to keep K in BF16 and protect the numerically sensitive `Softmax(Q@K^T)` computation; LSE always remains BF16. The fused O path requires the global head count and global sequence length to be divisible by `ulysses_size`; disable communication quantization for unsupported shapes.
 
 ```python
 from cache_dit import ParallelismConfig
@@ -146,7 +146,7 @@ cache_dit.enable_cache(
       "quant_type": "per_group_16",   # per_token / per_group_16 / per_group_32 (FP4: G16 only)
       "quantize_k": False,             # Optional: keep K in BF16 (defaults to True).
     },
-    # FP6 with its default group-32 granularity can be written simply as:
+    # FP6 with the unified default group-16 granularity can be written simply as:
     # quant_communicate_kwargs={"bits": 6},
     # FP4 with its default (and only) group-16 granularity:
     # quant_communicate_kwargs={"bits": 4},
