@@ -71,6 +71,7 @@ user-invocable: true
 
 | 论文 / 方案 | 裁定 | 一句话理由 |
 |---|---|---|
+| **SoftCache**（τ 预算刷新 + sampler 跳步，2026） | **已实现（2026-11-26，#1418，`softcache_utils.py` + `calibrators/residual_motion.py`）；FLUX 4 prompt 验收，>4x 档首选，但依赖就地改写活 scheduler** | 跳过仍是块区间 + `Bn_residual` 复用，跳步只放大 dt 并把被删节点变 dt=0 padding；同加速档 28.46dB 优于 plain DBCache 26.40dB。结构代价：只能 FlowMatch-Euler、拒绝 `steps_computation_mask`/separate CFG/transformer-only；探针必须用 `torch.compiler.disable` 包 `norm1.forward`，forward hook 在 compile 下只在 trace 期触发（静默退化为全算）。见 `landscape.md` §2.9/§4.10 |
 | **BRACE**（barycentric rational forecast，2026） | **已实现（2026-11-19，`calibrators/brace.py`）；完成 FLUX 单点功能验收，仍需高加速/多骨干验证** | C≤3 真实锚点 FIFO、闭式权重、只换 `Bn_residual`；单点 compile 对照中 C2/C3 PSNR 29.57/30.75dB，reuse 29.03、TaylorSeer 31.52，不能据此宣称普遍优于现有预测器。见 `landscape.md` §4.7 |
 | **BeziCast**（Tikhonov Bernstein/Bézier 等价权重 + guardrail，2026） | **已实现（2026-11-19，`calibrators/bezicast.py`）；纯预测器完成 FLUX 单点+重跑，guardrail 默认关闭** | 论文默认 K=6/n=4/λ=0.5；cache-dit 单点 guard off/on 相对 compile 为 30.56/30.46dB，重跑 noise floor 39.60/32.58dB，guardrail 尚无稳定收益。见 `landscape.md` §4.8 |
 | **SeaCache**（SEA-filtered relative L1，2026） | **已实现（2026-11-19，`cache_contexts/seacache_uitls.py`）；通用 DBCache 可选探针，完成 FLUX 单卡+CP2 验收** | 不改 CacheType/缓存对象，原 similarity 不变；支持 flow/VP/AB、packed/dense、CP/TP/CP+TP。351 项回归与 SGLang 23 项通过；单点不构成普遍收益结论。见 `landscape.md` §4.9 |
