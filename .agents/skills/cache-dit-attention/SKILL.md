@@ -1,5 +1,5 @@
 ---
-name: cache-dit-attention-integration
+name: cache-dit-attention
 description: "Add, fix, or review a cache-dit attention backend under src/cache_dit/attention/: the _AttnBackend enum, _AttnBackendRegistry registration and signature filtering, the NHD dispatch contract, the templated-CP forward/backward ops (Ulysses / Ring / USP), the diffusers bridge, set_attn_backend and ParallelismConfig.attention_backend wiring, the --attn CLI choices, torch.compile-safe torch.library wrapping, and the acceptance matrix. Use when integrating a vendor attention kernel (ffpa-attn, SageAttention-2/3, Sol-Attn, FlashAttention, flash-varlen, a sparse or quantized attention), when --attn appears to do nothing or silently falls back to SDPA, when context parallelism rejects or corrupts a backend, or when reviewing such a PR. 触发词：新增 attention backend、接入 attention 后端、--attn 不生效、attention 静默回退、CP 不支持 attention、attention backend 注册."
 user-invocable: true
 ---
