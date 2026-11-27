@@ -340,7 +340,7 @@ Phase 3 — CP: Context Parallelism
 - [ ] 3.4 If attention_mask present: write mask permute patch (`./references/cp.md` attention mask reorder)
 - [ ] 3.5 Register in distributed/transformers/planners.py (_activate_cp_planners)
 - [ ] 3.6 TEST CP Ulysses 2GPU:
- torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'ulysses=2' --save-path .tmp/<task>/cp_ulysses2.png
+ CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <model> --parallel-params 'ulysses=2' --save-path .tmp/<task>/cp_ulysses2.png
 - [ ] 3.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 cp_ulysses2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
         - Visual check: top-left corner clean, no localized corruption
@@ -361,7 +361,7 @@ Phase 4 — TP: Tensor Parallelism
 - [ ] 4.4 Handle DTensor-unsafe fused kernels (`./references/tp.md` DTensor-unsafe ops): patch to PyTorch equivalents
 - [ ] 4.5 Register in distributed/transformers/planners.py (_activate_tp_planners)
 - [ ] 4.6 TEST TP 2GPU:
- torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2' --save-path .tmp/<task>/tp2.png
+ CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <model> --parallel-params 'tp=2' --save-path .tmp/<task>/tp2.png
 - [ ] 4.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
         - If garbled: check shard_div_attr, DTensor placement, ColwiseParallel output_layouts
@@ -374,7 +374,7 @@ Phase 5 — TE-P: Text Encoder Parallelism
         - Reference: HuggingFace Config.base_model_tp_plan
 - [ ] 5.3 Register in distributed/text_encoders/planners.py
 - [ ] 5.4 TEST TP + TE-P 2GPU:
- torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2,text=true' --save-path .tmp/<task>/tp2_tep2.png
+ CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <model> --parallel-params 'tp=2,text=true' --save-path .tmp/<task>/tp2_tep2.png
 - [ ] 5.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2_tep2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
 - [ ] 5.6 [STOP] TE-P verified (or confirmed not needed)
@@ -385,7 +385,7 @@ Phase 6 — VAE-P: VAE Parallelism
         IF not → create new planner in distributed/autoencoders/<vae>.py
 - [ ] 6.3 Register in distributed/autoencoders/planners.py
 - [ ] 6.4 TEST VAE-P 2GPU:
- torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2,vae=true' --save-path .tmp/<task>/vae2.png
+ CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <model> --parallel-params 'tp=2,vae=true' --save-path .tmp/<task>/vae2.png
         - `--parallel-params vae=true` alone is a NO-OP: parallelism_config is only built when `--parallel-params` carries a degree key (`ulysses` / `ring` / `tp`)
 - [ ] 6.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 vae2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
@@ -621,7 +621,7 @@ All paths are relative to the cache-dit repository root.
 | NPU support matrix      | `docs/supported_matrix/ASCEND_NPU.md`       | Same matrix for Ascend NPU — update only after the model is actually validated on NPU |
 | Developer guide         | `docs/developer_guide/SUPPORT_NEW_MODEL.md` | Official step-by-step integration guide                                          |
 | CLI examples            | `examples/README.md`                        | Comprehensive CLI usage examples (single-GPU, distributed, quantization, hybrid) |
-| Pipeline usage examples | `examples/generate.py`                      | Programmatic pipeline usage examples                                             |
+| Pipeline usage examples | `examples/api/`                             | Programmatic pipeline usage: cache refresh, steps mask, transformer-only         |
 | **User Guide**    | **`docs/user_guide/`**                | **Complete user documentation covering all features:**                     |
 |                         | `docs/user_guide/OVERVIEWS.md`              | Feature overview and architecture                                                |
 |                         | `docs/user_guide/INSTALL.md`                | Installation guide                                                               |

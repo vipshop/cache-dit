@@ -66,28 +66,23 @@ python3 -m cache_dit.generate <new_model> --cache-params 'type=DBCache' --summar
     --save-path .tmp/{task}/<new_model>_cache.png
 
 # === 3. Context Parallelism: Ulysses (2 GPUs) ===
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <new_model> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <new_model> \
  --parallel-params 'ulysses=2' --save-path .tmp/{task}/<new_model>_ulysses2.png
 
 # === 4. Context Parallelism: Ring (2 GPUs) ===
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <new_model> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <new_model> \
  --parallel-params 'ring=2' --save-path .tmp/{task}/<new_model>_ring2.png
 
 # === 5. Tensor Parallelism (2 GPUs) ===
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <new_model> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <new_model> \
  --parallel-params 'tp=2' --save-path .tmp/{task}/<new_model>_tp2.png
 
 # === 6. TP + Text Encoder Parallelism ===
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <new_model> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <new_model> \
  --parallel-params 'tp=2,text=true' --save-path .tmp/{task}/<new_model>_tp2_tep2.png
 
 # === 7. TP + VAE Parallelism ===
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <new_model> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <new_model> \
  --parallel-params 'tp=2,vae=true' --save-path .tmp/{task}/<new_model>_tp2_vaep2.png
 ```
 
