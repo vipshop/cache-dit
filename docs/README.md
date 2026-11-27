@@ -29,6 +29,39 @@ Cache-DiT is also compatible with torch.compile and fully integrates with [SGLan
 </div>
 
 <div align="center">
+  <p> <h2>🚀Quick Start: Unified CLI</h2> </p>
+</div>
+
+```bash
+# PyPI, stable release. The quantization extra adds torchao/bitsandbytes for FP8/FP4/INT4/SVDQ.
+pip install -U "cache-dit[quantization]"
+# +cu13 wheel (CUDA 13.0+, PyTorch 2.11+): the CUDA extensions (SVDQuant, FP8 Ulysses communication).
+pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+```
+
+```bash
+# FLUX.1-dev on two GPUs: DBCache + TaylorSeer + FP8 weights + FP8 Ulysses communication + compile.
+CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate \
+  black-forest-labs/FLUX.1-dev \
+  --parallel-config 'ulysses=2' \
+  --quant-communicate-config 'bits=8' \
+  --cache-config 'DBCache,rdt=0.12' \
+  --calibrator-config 'taylorseer,order=1' \
+  --quantize-config 'float8_per_row' \
+  --attn-config 'native' \
+  --compile
+```
+
+The CLI starts both workers itself (`--launcher auto`), so no external `torchrun` is needed. Drop
+`--parallel-config` and `--quant-communicate-config` for the single-GPU stack, and use
+`CUDA_VISIBLE_DEVICES=0,1` when the two cards are the first in the box.
+`python3 -m cache_dit.generate list` prints every bundled example.
+
+More commands: 📘[Quick Examples](https://cache-dit.readthedocs.io/en/latest/EXAMPLES/). Other
+platforms, the source build and the full install matrix:
+📘[Installation](https://cache-dit.readthedocs.io/en/latest/user_guide/INSTALL/).
+
+<div align="center">
   <p> <h2>🚀Quick Start: Cache, Parallelism and Quantization</h2> </p>
 </div>
 

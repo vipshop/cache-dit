@@ -4,37 +4,15 @@ Minimal `cache_dit.generate` commands for the bundled examples. Single-GPU first
 
 ## Installation
 
-```bash
-# base runtime
-pip install -U cache-dit
-# quantization extras: torchao (>=0.17), bitsandbytes and safetensors
-pip install -U "cache-dit[quantization]"
-```
-
-TorchAO-backed quantization (`--quantize-params quant_type=float8_*`, `int8_*`, `nvfp4`, ...) needs
-`torchao`, which the `quantization` extra installs. SVDQuant (`quant_type=svdq_*`) and the FP8
-Ulysses communication path (`--quant-communicate-params`) additionally require the CUDA extension
-compiled into cache-dit. The PyPI wheel is pure Python, so use the `+cu13` wheel from the project
-index or build from source:
-
-```bash
-# CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build)
-pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
-
-# or build from source
-git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
-git submodule update --init --recursive --force  # SVDQuant spdlog; SM120 CuTe CUTLASS
-CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-isolation
-```
-
-Without the extension, `svdq_*` and FP8 communication cannot run. For the full platform and
-architecture matrix, see [Installation](./user_guide/INSTALL.md).
+📘[Installation](https://cache-dit.readthedocs.io/en/latest/user_guide/INSTALL/) covers the PyPI
+install, the `quantization` extra (torchao, bitsandbytes), the `+cu13` wheel that carries the CUDA
+extensions (SVDQuant, FP8 Ulysses communication) and source builds.
 
 ## Single GPU
 
 ```bash
 python3 -m cache_dit.generate \
-  /path/to/FLUX.1-dev \
+  black-forest-labs/FLUX.1-dev \
   --cache-config 'DBCache,rdt=0.12' \
   --calibrator-config 'taylorseer,order=1' \
   --quantize-config 'float8_per_row' \
@@ -44,7 +22,7 @@ python3 -m cache_dit.generate \
 
 This is the full single-card stack: DBCache + TaylorSeer + FP8 + native attention + compile. Drop the
 optimization flags for a plain baseline; use the `flux` example name with `FLUX_DIR` instead of the
-model path if preferred; add `--save-path` to control the output name.
+repo id if preferred; add `--save-path` to control the output name.
 
 Common overrides: `--model-path`, `--prompt`, `--steps`, `--height`, `--width`, `--seed`,
 `--save-path`. A model directory or repo id can stand in for the example name; add `--task T2I` when
@@ -57,7 +35,7 @@ product of the parallel degrees must equal the number of processes.
 
 ```bash
 CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate \
-  /path/to/FLUX.1-dev \
+  black-forest-labs/FLUX.1-dev \
   --parallel-config 'ulysses=2' \
   --quant-communicate-config 'bits=8' \
   --cache-config 'DBCache,rdt=0.12' \
@@ -83,6 +61,9 @@ python3 -m cache_dit.generate list      # registered examples and their default 
 python3 -m cache_dit.generate --help    # every option, default and alias
 ```
 
-Feature guides: [cache](./user_guide/DBCACHE_DESIGN.md), [quantization](./user_guide/QUANTIZATION.md),
-[attention](./user_guide/ATTENTION.md), [parallelism](./user_guide/CONTEXT_PARALLEL.md),
-[CPU offload](./user_guide/OFFLOAD.md) and [compile](./user_guide/COMPILE.md).
+Feature guides: [cache](https://cache-dit.readthedocs.io/en/latest/user_guide/DBCACHE_DESIGN/),
+[quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/),
+[attention](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/),
+[parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/),
+[CPU offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/) and
+[compile](https://cache-dit.readthedocs.io/en/latest/user_guide/COMPILE/).
