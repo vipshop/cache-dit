@@ -286,15 +286,14 @@ requests skip this validation. Set `record_shapes=False` through Python to disab
 
 ## Multi-GPU Torch Profiling
 
-With `torchrun`, each worker creates its own request and Torch artifacts. The generate CLI keeps
+Each worker creates its own request and Torch artifacts. The generate CLI keeps
 its original current-device behavior. Direct callers must pass every device used by the request,
 for example `devices=["cuda:0", "cuda:1"]`; omitting `devices` uses the current device only. The
-standalone runner declares its rank device, or all visible devices for balanced loading. Profiling
-does not scan the model for devices.
+`examples/generate.py` runner declares its rank device, or all visible devices for balanced loading.
+Profiling does not scan the model for devices.
 
 ```bash
-cd examples
-torchrun --standalone --nproc_per_node=2 generate.py flux \
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux \
  --parallel-params 'tp=2' --profile --profile-name flux_tp --steps 3 --warmup 1 --repeat 1
 ```
 

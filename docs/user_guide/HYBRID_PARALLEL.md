@@ -93,17 +93,17 @@ cache_dit.enable_cache(
 
 ## Quick Examples
 
-`--parallel-params` states the degree of every axis explicitly, so torchrun is optional: without it the CLI starts one worker per visible GPU (Ray when installed, local subprocesses otherwise), and the degree product must equal the number of visible devices. For example, `CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate flux --parallel-params 'ulysses=2'`; pass `--launcher local` or `--launcher ray` to choose the launcher. The commands below keep the torchrun form; both are equivalent:
+`--parallel-params` states the degree of every axis explicitly, so the CLI starts the workers itself: one per visible GPU (Ray when installed, local subprocesses otherwise). The degree product must equal the number of visible devices, so make exactly that many GPUs visible through `CUDA_VISIBLE_DEVICES` (the commands below do); pass `--launcher local` or `--launcher ray` to choose the launcher. Starting the ranks with `torchrun` instead remains equivalent:
 
 ```bash
-torchrun --nproc_per_node=4 -m cache_dit.generate flux2 --parallel-params 'tp=4,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=8,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ring=4,tp=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ring=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory --cache-params 'type=DBCache'
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
+CUDA_VISIBLE_DEVICES=0,1,2,3 python3 -m cache_dit.generate flux2 --parallel-params 'tp=4,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'tp=8,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'ring=4,tp=2,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'tp=4,ring=2,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory --cache-params 'type=DBCache'
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python3 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
 ```

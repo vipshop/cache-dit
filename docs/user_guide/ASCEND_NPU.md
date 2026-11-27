@@ -183,6 +183,10 @@ python3 -m cache_dit.generate qwen_image --cache-params 'type=DBCache' --attn-pa
 
 cache-dit is designed to work Context Parallelism, Tensor Parallelism. For examples:
 
+These runs keep `torchrun` on purpose: the built-in launcher counts devices through
+`CUDA_VISIBLE_DEVICES` / `torch.cuda`, while Ascend selects devices with `ASCEND_RT_VISIBLE_DEVICES`,
+so the ranks are started explicitly here.
+
 ```bash
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --attn-params type=_native_npu
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel-params 'ulysses=4' --attn-params type=_native_npu

@@ -408,7 +408,7 @@ For examples, without fp8 per-tensor fallback, the cache-dit will auto skip the 
 
 ```bash
 # w/o fp8 per-tensor fallback, quantize 88 layers, skip 56 layers, performance downgrade.
-torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux2_klein_9b_kv_edit \
  --parallel-params 'tp=2' --compile --quantize-params \
  quant_type=float8_per_row,verbose=true,per_tensor_fallback=false
 ```
@@ -434,7 +434,7 @@ With fp8 per-tensor fallback enabled, those layers that do not support float8 pe
 
 ```bash
 # w/ fp8 per-tensor fallback enabled, quantize 144 layers, skip 0 layer, better performance.
-torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux2_klein_9b_kv_edit \
  --parallel-params 'tp=2' --compile --quantize-params quant_type=float8_per_row,verbose=true
 ```
 ```bash
