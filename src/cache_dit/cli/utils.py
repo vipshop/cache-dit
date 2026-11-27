@@ -1778,6 +1778,8 @@ _DEPRECATED_QUANTIZE_FLAGS = (
   ("mxfp4_quantize_device", "mxfp4_quantize_device", "auto", "mxfp4-quantize-device"),
 )
 _NEGATED_DEPRECATED_FLAGS = {"disable_regional_quantize", "disable_per_tensor_fallback"}
+# Flags folded into `--quantize-params` by dedicated code paths; only their help is marked here.
+_DEPRECATED_MARK_ONLY = ("quantize_exclude_layers", "quantize_text_encoder", "quantize_text_type")
 # Deprecated shortcut flags: dest -> quant_type. Every transformer type has a shortcut whose dest is
 # the type itself; the two extra entries are shortcuts with a dest of their own.
 _DEPRECATED_QUANT_TYPE_SHORTCUTS = {
@@ -1824,12 +1826,15 @@ def _fmt_param(value: Any) -> str:
 def _mark_deprecated_quant_flags(parser: argparse.ArgumentParser) -> None:
   """Prefix the help of every deprecated quantization flag with its replacement."""
 
-  for option, action in parser._option_string_actions.items():
+  # One action per flag, however many alias strings it has.
+  for action in {id(action): action for action in parser._option_string_actions.values()}.values():
     if action.dest in _DEPRECATED_QUANT_TYPE_SHORTCUTS:
       quant_type = _DEPRECATED_QUANT_TYPE_SHORTCUTS[action.dest]
       action.help = (f"DEPRECATED, use '--quantize --quantize-params quant_type={quant_type}' "
                      f"instead. {action.help}")
-    elif action.dest in {dest for dest, *_ in _DEPRECATED_QUANTIZE_FLAGS}:
+    elif (action.dest in {dest
+                          for dest, *_ in _DEPRECATED_QUANTIZE_FLAGS}
+          or action.dest in _DEPRECATED_MARK_ONLY):
       action.help = "DEPRECATED, use --quantize-params instead. " + (action.help or "")
     elif action.dest in {dest for dest, *_ in _DEPRECATED_SVDQ_FLAGS}:
       action.help = "DEPRECATED, use --svdq-params instead. " + (action.help or "")
