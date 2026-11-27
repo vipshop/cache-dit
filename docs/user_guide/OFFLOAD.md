@@ -157,14 +157,14 @@ python3 -m cache_dit.generate minimax_h3 \
 ```
 
 The transformer stays resident minus its AdaLN tables (~38 GiB for MiniMax-H3), so the per-step
-host-to-device traffic drops by that share. Under `--parallel tp` the tables are already sharded
+host-to-device traffic drops by that share. Under `--parallel-params tp=2` the tables are already sharded
 across the ranks, so the mode degenerates to streaming the text encoder only. `--compile` composes
 with the streamed variant too: the per-block host-to-device copy runs inside the layerwise hooks,
 which are `torch.compiler.disable`d, so each streamed block becomes a graph break and the block
 compiles around it (measured 1.10–1.13× instead of the 1.18–1.59× a resident transformer gets).
 `--compile-full-graph` and `--cuda-graph` are rejected while the tables are streamed — `fullgraph`
 refuses the break by construction, and a CUDA graph would replay the stale device pointers the host
-mirror rebinds every block. A transformer-quantized (`--quantize-params` with a transformer key) or tensor-parallel (`--parallel tp`) run
+mirror rebinds every block. A transformer-quantized (`--quantize-params` with a transformer key) or tensor-parallel (`--parallel-params tp=2`) run
 keeps the transformer resident, so only the text encoder is streamed and all three knobs compose.
 `--device-map-balance` is rejected outright.
 

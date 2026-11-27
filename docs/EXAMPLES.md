@@ -242,9 +242,9 @@ python3 -m cache_dit.generate ming_image_design_layer \
   --image-path /PATH/TO/reference.png --cache --rdt 0.08 --ws 8
 
 torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel ulysses --parallel-vae
+ --model-path /PATH/TO/Ming-Image-0.1-Design --parallel-params 'ulysses=2,vae=true' 
 torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp --parallel-text
+ --model-path /PATH/TO/Ming-Image-0.1-Design --parallel-params 'tp=2,text=true' 
 
 python3 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design --quantize-params quant_type=float8_per_row --compile
@@ -259,7 +259,7 @@ python3 -m cache_dit.generate ming_image_design \
 TE-P shards fused-QKV and every dense/routed/shared expert `gate_proj`/`up_proj` with replicated
 outputs. Each expert's `down_proj`, the attention output projection, routers and the vision tower
 stay replicated so every consumer of a sharded linear still receives a complete activation. Ring
-and `--ulysses-anything` are rejected for the zero-masked Design variant because it emits a full
+and `--parallel-params ulysses_anything=true` are rejected for the zero-masked Design variant because it emits a full
 padding mask; the learned-padding Design-Layer variant keeps the Z-Image behavior. TE-P is
 memory-oriented and can be slower than plain TP. For offload, keep async transfer on for the
 DiT/VAE but disable it for the 15k-submodule MLLM (`--no-layerwise-text-async-transfer`); global
@@ -307,26 +307,26 @@ cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥
 
 ```bash
 # context parallelism or tensor parallelism
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ring 
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel usp # USP: Ulysses + Ring 
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ulysses_tp # Ulysses + TP
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel ring_tp  # Ring + TP
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel usp_tp # USP + TP
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo --parallel ulysses 
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ring=4' 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=2,ring=2' # USP: Ulysses + Ring 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'tp=4'
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2' # Ulysses + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ring=4,tp=2' # Ring + TP
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2' # USP + TP
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo --parallel-params 'ulysses=4' 
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4' 
 # ulysses anything attention
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo --parallel ulysses --ulysses-anything
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything
-# text encoder parallelism: `--parallel-text-encoder` or `parallel-text`
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel tp --parallel-text
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel ulysses --ulysses-anything --parallel-text
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses 
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel tp --parallel-vae --parallel-text --cache
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel ulysses --parallel-vae --parallel-text --cache --ulysses-anything
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --parallel-vae --parallel-text --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo --parallel-params 'ulysses=4,ulysses_anything=true' 
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel-params 'ulysses=4,ulysses_anything=true' 
+# text encoder parallelism: `--parallel-params 'ulysses=2,text=true'`
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'tp=4,text=true' 
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel-params 'ulysses=4,text=true,ulysses_anything=true' 
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' 
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache 
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'tp=4,text=true,vae=true' --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache 
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'tp=4,text=true,vae=true' --cache
 ```
 
 > **MOSS-Image** ships its own pipeline, so it is vendored inside cache-dit
@@ -334,28 +334,28 @@ torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel tp --paral
 > `--model-path <checkpoint root>`. Caching assumes one DiT forward per CFG branch: keep batch 1,
 > `guidance_scale != 1` (unless `enable_separate_cfg=False`) and leave `slg_*` unset — the pipeline
 > raises otherwise. Its joint image+text sequence is short, so Ulysses generally needs
-> `--ulysses-anything` unless the token count divides by the CP size; Ring is not supported.
+> `--parallel-params ulysses_anything=true` unless the token count divides by the CP size; Ring is not supported.
 
 ```bash
 # single GPU: baseline + DBCache
 python3 -m cache_dit.generate moss_image_sft --steps 25 --cache --rdt 0.3
 
 # context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
-torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel ulysses --ulysses-anything --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel tp --parallel-text --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,ulysses_anything=true' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'tp=2,text=true' --cache
 
 # VAE parallelism needs a latent larger than the VAE tile size (>=1536px output)
-torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --height 1536 --width 1536 --parallel tp --parallel-vae
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --height 1536 --width 1536 --parallel-params 'tp=2,vae=true' 
 
 # hybrid CP + TP (4 GPUs, 2+2)
-torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel ulysses_tp --ulysses-anything --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,tp=2,ulysses_anything=true' --cache
 ```
 
 > **LingBot-Video** (Dense 1.3B) also ships its own pipeline, vendored at
 > `cache_dit/models/pipelines/lingbot_video/`; load it with `--model-path <checkpoint root>`. The
 > DiT concatenates the video and text tokens into one joint sequence that all 24 blocks attend over,
 > so caching pairs two forwards per step (cond + uncond, i.e. keep `guidance_scale > 1`) and
-> `--ulysses-anything` is normally required because the joint length rarely divides by the CP size;
+> `--parallel-params ulysses_anything=true` is normally required because the joint length rarely divides by the CP size;
 > Ring is not supported. Only the dense checkpoint is supported (MoE raises), and the pipeline
 > conditions on its structured JSON caption form — `--num-frames 1` renders a single image. The
 > native frame rate is 24 fps, so pass `--saved-fps 24` to write the clip at its real speed
@@ -367,11 +367,11 @@ torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel ulys
 python3 -m cache_dit.generate lingbot_video --cache --rdt 0.3 --Fn 1 --Bn 0 --saved-fps 24
 
 # context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel ulysses --ulysses-anything --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --parallel-text --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2,ulysses_anything=true' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'tp=2,text=true' --cache
 
 # VAE parallelism + quantization
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --parallel-vae
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'tp=2,vae=true' 
 python3 -m cache_dit.generate lingbot_video --quantize-params quant_type=float8_per_row --compile --cache
 
 # cheaper functional check (short clip, small canvas)
@@ -400,16 +400,16 @@ python3 -m cache_dit.generate causvid_wan --compile
 python3 -m cache_dit.generate causvid_wan --compile --attn-params type=ffpa_fp8
 
 # Ulysses context parallelism (2 GPUs): the KV cache is partitioned by head
-torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel ulysses --compile
+torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel-params 'ulysses=2' --compile
 
 # tensor parallelism / TE-P / VAE-P
-torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel tp --parallel-text --parallel-vae
+torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel-params 'tp=2,text=true,vae=true' 
 
 # Qwen-Image 2.1: Ulysses only. Prefix and target tokens are sharded as one sequence with tail
-# padding, and prefix KV caches are head-sharded. Ring and `--ulysses-anything` are rejected.
+# padding, and prefix KV caches are head-sharded. Ring and `--parallel-params ulysses_anything=true` are rejected.
 # Sequence lengths need not divide by cp_size; the local head count after TP must divide by it.
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel ulysses --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel tp --parallel-text --parallel-vae --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'ulysses=2' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'tp=2,text=true,vae=true' --cache
 ```
 
 ## Low-bits Quantization 
@@ -438,39 +438,39 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 python3 -m cache_dit.generate flux --cache --scm fast --calibrator-params type=taylorseer,order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn-params type=_sdpa_cudnn)
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn-params type=_sdpa_cudnn --parallel-text --cache --scm fast \
-         --calibrator-params type=taylorseer,order=1 \
-         --quantize-params quant_type=float8_per_row \
-         --warmup 2 --repeat 5 --compile
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4,text=true' --quant-communicate-params bits=8 \
+ --attn-params type=_sdpa_cudnn --cache --scm fast \
+ --calibrator-params type=taylorseer,order=1 \
+ --quantize-params quant_type=float8_per_row \
+ --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn-params type=sage)
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn-params type=sage --parallel-text --cache --scm fast \
-         --calibrator-params type=taylorseer,order=1 \
-         --quantize-params quant_type=float8_per_row \
-         --warmup 2 --repeat 5 --compile
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4,text=true' --quant-communicate-params bits=8 \
+ --attn-params type=sage --cache --scm fast \
+ --calibrator-params type=taylorseer,order=1 \
+ --quantize-params quant_type=float8_per_row \
+ --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel ulysses --ulysses-anything --parallel-text \
-         --quantize --quantize-params quant_type=float8_weight_only --steps 4 --track-memory --compile
+ --parallel-params 'ulysses=4,text=true,ulysses_anything=true' \
+ --quantize --quantize-params quant_type=float8_weight_only --steps 4 --track-memory --compile
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel tp --parallel-text --quantize --quantize-params quant_type=float8_weight_only \
-         --steps 4 --track-memory --compile
+ --parallel-params 'tp=4,text=true' --quantize --quantize-params quant_type=float8_weight_only \
+ --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses \
-         --parallel-controlnet --cache --rdt 0.6 --scm fast
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses \
-         --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
-         --compile-controlnet --quant-communicate-params bits=8 --attn-params type=_sdpa_cudnn \
-         --warmup 2 --repeat 4     
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4,controlnet=true' \
+ --cache --rdt 0.6 --scm fast
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4,controlnet=true' \
+ --cache --scm fast --rdt 0.6 --compile \
+ --compile-controlnet --quant-communicate-params bits=8 --attn-params type=_sdpa_cudnn \
+ --warmup 2 --repeat 4 
 ```
 
 ## End2End Examples
 
 ```bash
 # NO Cache Acceleration: 8.27s
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4'
 
 INFO 12-17 09:02:31 [base.py:151] Example Input Summary:
 INFO 12-17 09:02:31 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -486,7 +486,7 @@ INFO 12-17 09:02:31 [base.py:225] - Inference Time: 8.27s
 INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
 
 # Enabled Cache Acceleration: 4.23s
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cache --scm fast
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --cache --scm fast
 
 INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
 INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -737,12 +737,16 @@ options:
                         inherit --layerwise-* when omitted.
   --disable-per-row, --no-per-row
                         Disable per row quantization for transformer
-  --parallel-type {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}, --parallel {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}
-  --parallel-vae        Enable VAE parallelism if applicable.
-  --parallel-text-encoder, --parallel-text
-                        Enable text encoder parallelism if applicable.
-  --parallel-controlnet
-                        Enable ControlNet parallelism if applicable.
+  --parallel-params PARALLEL_PARAMS
+                        Enable parallelism; options as a comma separated
+                        key=value list. The degrees are 'ulysses', 'ring' and
+                        'tp' (each defaults to 1 and their product must equal
+                        the number of processes), e.g. 'ulysses=2' or
+                        'ulysses=2,tp=2'. Components: 'vae=true', 'text=true'
+                        (text encoder), 'controlnet=true'. Ulysses:
+                        'ulysses_anything=true', 'ulysses_async=true'. Ring:
+                        'ring_rotate_method=allgather',
+                        'ring_convert_to_fp32=false'.
   --attn-params ATTN_PARAMS
                         Select the attention backend and its options as a
                         comma separated key=value list whose 'type' key is the
@@ -759,21 +763,10 @@ options:
                         hybrid_n_early, fp4_hadamard, fp4_pv_mm_type
                         (fp4|fp8), fp4_smooth_v. The non-default options are
                         reflected in the saved filename.
-  --ulysses-anything, --uaa
-                        Enable Ulysses Anything Attention for context
-                        parallelism
   --quant-communicate-params QUANT_COMMUNICATE_PARAMS
                         Ulysses low-precision communication options as k=v
                         pairs, e.g.
                         'bits=6,quant_type=per_group_32,quantize_k=false'
-  --ulysses-async, --uaqkv
-                        Enabled experimental Async QKV Projection with Ulysses
-                        for context parallelism
-  --ring-rotate-method {allgather,p2p}, --rotate {allgather,p2p}
-                        Ring Attention rotation method for context parallelism
-  --ring-no-convert-to-fp32, --ring-no-fp32, --no-fp32
-                        Disable convert Ring Attention output and lse to fp32
-                        for context parallelism
   --cpu-offload, --cpu-offload-model
                         Enable diffusers model CPU offload for pipeline
                         components when supported.

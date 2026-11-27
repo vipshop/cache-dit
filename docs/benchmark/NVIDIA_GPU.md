@@ -88,14 +88,14 @@ Reproduce commands:
 ```bash
 # FLUX.1-dev: 50 steps
 python3 -m cache_dit.generate flux --steps 50
-torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses
-torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn-params type=_flash_3
-torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn-params type=_flash_3 --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel ulysses --attn-params type=_flash_3 --cache --compile
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel-params 'ulysses=2'
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3 --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate flux --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3 --cache --compile
 # Qwen-Image: 50 steps
 python3 generate.py qwen_image --steps 50
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn-params type=_flash_3
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn-params type=_flash_3 --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel ulysses --attn-params type=_flash_3 --cache --compile
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel-params 'ulysses=2'
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3 --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image --steps 50 --parallel-params 'ulysses=2' --attn-params type=_flash_3 --cache --compile
 ```

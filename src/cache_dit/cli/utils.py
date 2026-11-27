@@ -1,4 +1,5 @@
 import ast
+import os
 import torch
 import argparse
 import torch.distributed as dist
@@ -53,6 +54,7 @@ from .params import (
   parse_attn_params,
   parse_param_pairs,
   resolve_attn_params,
+  resolve_parallel_params,
   resolve_param_pairs,
   QUANTIZE_PARAM_SPECS,
   SVDQ_PARAM_SPECS,
@@ -748,42 +750,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   # Parallelism settings
   parser.add_argument(
-    "--parallel-type",
-    "--parallel",
-    type=str,
+    "--parallel-params",
+    type=pairs_parser("--parallel-params", "'ulysses=2,ring=1,tp=1'", allow_empty=False),
     default=None,
-    choices=[
-      None,
-      "tp",
-      "ulysses",
-      "ring",
-      "usp",
-      # hybrid cp + tp
-      "ulysses_tp",  # prefer ulysses first
-      "ring_tp",
-      "tp_ulysses",  # prefer tp first
-      "tp_ring",
-      "usp_tp",
-    ],
-  )
-  parser.add_argument(
-    "--parallel-vae",
-    action="store_true",
-    default=False,
-    help="Enable VAE parallelism if applicable.",
-  )
-  parser.add_argument(
-    "--parallel-text-encoder",
-    "--parallel-text",
-    action="store_true",
-    default=False,
-    help="Enable text encoder parallelism if applicable.",
-  )
-  parser.add_argument(
-    "--parallel-controlnet",
-    action="store_true",
-    default=False,
-    help="Enable ControlNet parallelism if applicable.",
+    help="Enable parallelism; options as a comma separated key=value list. The degrees are "
+    "'ulysses', 'ring' and 'tp' (each defaults to 1 and their product must equal the number of "
+    "processes), e.g. 'ulysses=2' or 'ulysses=2,tp=2'. Components: 'vae=true', 'text=true' "
+    "(text encoder), 'controlnet=true'. Ulysses: 'ulysses_anything=true', "
+    "'ulysses_async=true'. Ring: 'ring_rotate_method=allgather', 'ring_convert_to_fp32=false'.",
   )
   parser.add_argument(
     "--attn-params",
@@ -801,45 +775,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   # Ulysses context parallelism settings
   parser.add_argument(
-    "--ulysses-anything",
-    "--uaa",
-    action="store_true",
-    default=False,
-    help="Enable Ulysses Anything Attention for context parallelism",
-  )
-  parser.add_argument(
     "--quant-communicate-params",
     type=parse_quant_communicate_params,
     default=None,
     help="Ulysses low-precision communication options as k=v pairs, e.g. "
     "'bits=6,quant_type=per_group_32,quantize_k=false'",
-  )
-  parser.add_argument(
-    "--ulysses-async",
-    "--uaqkv",
-    action="store_true",
-    default=False,
-    help="Enabled experimental Async QKV Projection with Ulysses for context parallelism",
-  )
-  # Ring context parallelism settings
-  parser.add_argument(
-    "--ring-rotate-method",
-    "--rotate",
-    type=str,
-    default="p2p",
-    choices=[
-      "allgather",
-      "p2p",
-    ],
-    help="Ring Attention rotation method for context parallelism",
-  )
-  parser.add_argument(
-    "--ring-no-convert-to-fp32",
-    "--ring-no-fp32",
-    "--no-fp32",
-    action="store_true",
-    default=False,
-    help="Disable convert Ring Attention output and lse to fp32 for context parallelism",
   )
   # Offload settings
   offload_group = parser.add_mutually_exclusive_group()
@@ -1310,7 +1250,46 @@ def _apply_attn_params(args) -> None:
       getattr(ffpa, f"set_ffpa_{key}")(value)
 
 
+def _resolve_cli_parallelism(args) -> None:
+  """Resolve `--parallel-params` into the plain attributes the pipeline code reads.
+
+  `parallel_type` names the active axes as the former `--parallel` values did (`ulysses`, `tp`,
+  `ring`, `usp`, `ulysses_tp`, `ring_tp`, `usp_tp`), so the readers of `args.parallel_type` and
+  the output naming keep working. The degrees are validated against the world size where the
+  parallelism groups are built.
+
+  :param args: Parsed CLI namespace, updated in place.
+  """
+
+  args.parallel_type, args.parallel_axes, fields = resolve_parallel_params(args.parallel_params)
+  if args.parallel_params is not None and args.parallel_type is None and any(
+      axis in fields for axis in ("ulysses", "ring", "tp")):
+    logger.warning("--parallel-params only has degrees of 1, so parallelism is not enabled; "
+                   "raise a degree, e.g. 'ulysses=2'.")
+  args.parallel_vae = bool(fields.get("vae", False))
+  args.parallel_text_encoder = bool(fields.get("text", False))
+  args.parallel_controlnet = bool(fields.get("controlnet", False))
+  args.ulysses_anything = bool(fields.get("ulysses_anything", False))
+  args.ulysses_async = bool(fields.get("ulysses_async", False))
+  args.ring_rotate_method = fields.get("ring_rotate_method", "p2p")
+  args.ring_no_convert_to_fp32 = not fields.get("ring_convert_to_fp32", True)
+  args.parallel_degrees = {axis: fields.get(axis, 1) for axis in ("ulysses", "ring", "tp")}
+  if args.parallel_type is not None:
+    # torchrun exports WORLD_SIZE; fail here rather than after the model has been loaded. Without it
+    # (plain `python`), the world size is checked where the groups are built.
+    world_size = os.environ.get("WORLD_SIZE")
+    if world_size is not None:
+      product = args.parallel_degrees["ulysses"] * args.parallel_degrees[
+        "ring"] * args.parallel_degrees["tp"]
+      if product != int(world_size):
+        raise ValueError(
+          f"--parallel-params degrees (ulysses={args.parallel_degrees['ulysses']},"
+          f"ring={args.parallel_degrees['ring']},tp={args.parallel_degrees['tp']}) multiply to "
+          f"{product}, which must equal the world size {world_size}.")
+
+
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+  _resolve_cli_parallelism(args)
   _resolve_cli_quantization(args)
 
   if args.mask_policy is not None and not args.steps_mask:
@@ -2819,35 +2798,15 @@ def maybe_apply_optimization(
       def _prepare_distributed_size():
         if args.parallel_type is not None:
           world_size = dist.get_world_size() if dist.is_initialized() else 1
-          ulysses_size = world_size if args.parallel_type == "ulysses" else None
-          ring_size = world_size if args.parallel_type == "ring" else None
-          tp_size = world_size if args.parallel_type == "tp" else None
-          if args.parallel_type == "usp":
-            ulysses_size = max(1, world_size // 2)
-            ring_size = world_size // ulysses_size
-            tp_size = None
-          elif args.parallel_type == "ulysses_tp":
-            ulysses_size = max(1, world_size // 2)  # e.g, 4
-            ring_size = None
-            tp_size = world_size // ulysses_size  # e.g., 2
-          elif args.parallel_type == "tp_ulysses":
-            tp_size = max(1, world_size // 2)
-            ulysses_size = world_size // tp_size
-            ring_size = None
-          elif args.parallel_type == "ring_tp":
-            ulysses_size = None
-            ring_size = max(1, world_size // 2)
-            tp_size = world_size // ring_size
-          elif args.parallel_type == "tp_ring":
-            ulysses_size = None
-            tp_size = max(1, world_size // 2)
-            ring_size = world_size // tp_size
-          elif args.parallel_type == "usp_tp":
-            assert world_size == 8, "usp_tp currently only supports world size of 8."
-            ulysses_size = 2
-            ring_size = 2
-            tp_size = 2
-          return ulysses_size, ring_size, tp_size
+          degrees = args.parallel_degrees
+          product = degrees["ulysses"] * degrees["ring"] * degrees["tp"]
+          assert product == world_size, (
+            f"--parallel-params degrees (ulysses={degrees['ulysses']},ring={degrees['ring']},"
+            f"tp={degrees['tp']}) multiply to {product}, which must equal the world size "
+            f"{world_size}.")
+          # Inactive axes stay None so the pipeline does not build 1-rank groups for them.
+          return tuple(degrees[axis] if axis in args.parallel_axes else None
+                       for axis in ("ulysses", "ring", "tp"))
         return None, None, None
 
       ulysses_size, ring_size, tp_size = _prepare_distributed_size()

@@ -43,7 +43,7 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 
 # Understand or extend the distributed module.
 /cache-dit-distributed "Add a CP planner for the new transformer and a matching tiny CP+TP test."
-/cache-dit-distributed "--parallel tp on 4 GPUs gives wrong output for Wan2.2-S2V, narrow it down."
+/cache-dit-distributed "--parallel-params tp=4 on 4 GPUs gives wrong output for Wan2.2-S2V, narrow it down."
 /cache-dit-distributed "Explain how VAE parallelism tiles the decoder and why rank 0 blends."
 
 # Evaluate a caching paper before writing any code.

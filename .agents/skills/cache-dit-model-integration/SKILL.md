@@ -191,7 +191,7 @@ flowchart TD
     SM --> UA
     HY --> UA
     UA{"num_kv_heads or sequence length not divisible by cp_size?"}
-    UA -->|"Yes"| UAA["Enable UAA: --ulysses-anything - cp.md"]
+    UA -->|"Yes"| UAA["Enable UAA: --parallel-params ulysses_anything=true - cp.md"]
     UA -->|"No"| VF
     UAA --> VF["Verify: top-left corner clean, PSNR > 35, SSIM > 0.90"]
 ```
@@ -278,7 +278,7 @@ These are the traps that pass without crashing but produce wrong images. Each is
 6. **DTensor-unsafe fused kernels** (flash_attn SwiGLU, triton RMSNorm) crash with illegal-memory-access under TP → patch them to PyTorch ops first. → `./references/tp.md` DTensor-unsafe ops
 7. **Choosing pure patch-based CP when hybrid (hook + method patch) suffices.** If the ONLY obstacle is a method like `get_rotary_pos_embed` or `pos_embed` that returns a sequence-length-dependent tensor not reachable by hooks, patch that ONE method — do NOT patch the entire `forward()`. Pure patch-based CP is a maintenance burden that should never be green-lit without proving hybrid is truly impossible. → `./references/cp.md` implementation approaches and hybrid CP
 8. **Modular pipeline: dropping required transformer kwargs.** A `ModularPipeline` denoise step builds the transformer kwargs from `inspect.signature(transformer.forward)`. Cache-dit replaces `forward`, so the replacement must carry the original `__signature__` — otherwise `img_ids` / `txt_ids` / `image_cond_*` are silently dropped and the first denoise step raises `TypeError: ... missing N required positional arguments`. → `./references/modular_pipeline.md` §3.1
-9. **Optional prompt-rewrite / prompt-enhancement stages.** Many pipelines carry an extra LLM/VLM step that rewrites `prompt` into a long caption (FLUX.3 `prompt_upsampler`/`pup`, and similar steps in other families). Its components often have **no `pretrained_model_name_or_path`**, so `load_components()` leaves them `None` and the full pipeline crashes; and even when loaded it changes the *input distribution*, dominates the measured latency and is not covered by `--parallel-text` (that targets `text_encoder`). Decide explicitly: pop the step for benchmarking (fixed prompt in == prompt encoded) or inject the components for production, and record which one the example uses. → `./references/modular_pipeline.md` §4.1
+9. **Optional prompt-rewrite / prompt-enhancement stages.** Many pipelines carry an extra LLM/VLM step that rewrites `prompt` into a long caption (FLUX.3 `prompt_upsampler`/`pup`, and similar steps in other families). Its components often have **no `pretrained_model_name_or_path`**, so `load_components()` leaves them `None` and the full pipeline crashes; and even when loaded it changes the *input distribution*, dominates the measured latency and is not covered by `--parallel-params text=true` (that targets `text_encoder`). Decide explicitly: pop the step for benchmarking (fixed prompt in == prompt encoded) or inject the components for production, and record which one the example uses. → `./references/modular_pipeline.md` §4.1
 10. **Class-level processor patches leaking outside the CP-enabled transformer.** A class-level `__call__` patch also rewrites attention trees built from the same classes elsewhere in the pipeline (LTX-2.5: `LTX2TextConnectors`), and a stale fork drops newer upstream features (per-head gates) for them — CP then renders a **coherent but different** video (PSNR ~9 dB) while every transformer-level probe and the tiny parity test stay green. Arm via `_cp_config` only, keep a saved upstream `__call__` as the fallback, and test the unarmed path for bit-equality. → `./references/cp.md` §2.10
 11. **Quantization / compile silently degrading to whole-module scope.** Both regional quantization and `compile_repeated_blocks()` discover the denoising stack from `_repeated_blocks`, which diffusers does **not** declare for every model (PRX / PRXPixel is one). Without it, quantization widens to `modulation` / `final_layer` / `time_in` (≈3 dB worse) and `--compile` becomes a full-module `torch.compile` that can be **slower than eager** (PRX: 22.66 s vs 16.42 s block-level). Declare the stack (`declare_repeated_blocks()` in `cache_dit/utils.py`) and check the warmup time (block-level ≈ 25 s vs full-module ≈ 70 s on PRX) plus the `Compiling repeated blocks` log line before trusting any quantization number. Two related traps on the same axis: `fp8_per_row` only pays off together with `--compile` (PRX: 18.44 s eager → 10.94 s compiled), and svdq nvfp4 needs `--svdq-params smooth_strategy=few_shot` on pixel-space models (default `identity` garbles the image at SSIM 0.215 while PSNR still reads 27.9). → `./references/testing.md`
 12. **Blaming integration when the workload is attention-dominated.** fp8/svdq only quantize GEMM and `--compile` never rewrites the attention kernel — on a long-sequence video DiT (Motif-Video: 64k tokens → attention ≈ 90% of FLOPs) their ceiling is ~1.05x end-to-end and a measured 1.08x is *at* that ceiling, not a bug. Compute the FLOPs budget (attention vs GEMM share) BEFORE benchmarking or debugging; the single-GPU lever for an attention-dominated model is `--attn-params type=ffpa_fp8` / `type=ffpa_fp4` (Motif: 2.14x/2.41x). Also back out the VAE share from cache timing (Motif: 23%) before comparing end-to-end numbers. → `./references/perf_analysis.md`
@@ -340,12 +340,12 @@ Phase 3 — CP: Context Parallelism
 - [ ] 3.4 If attention_mask present: write mask permute patch (`./references/cp.md` attention mask reorder)
 - [ ] 3.5 Register in distributed/transformers/planners.py (_activate_cp_planners)
 - [ ] 3.6 TEST CP Ulysses 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel ulysses --save-path .tmp/<task>/cp_ulysses2.png
+ torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'ulysses=2' --save-path .tmp/<task>/cp_ulysses2.png
 - [ ] 3.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 cp_ulysses2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
         - Visual check: top-left corner clean, no localized corruption
-- [ ] 3.8 [OPTIONAL] CP Ring 2GPU: --parallel ring (long-sequence models only)
-- [ ] 3.9 [OPTIONAL] UAA: --parallel ulysses --ulysses-anything (indivisible heads/seq)
+- [ ] 3.8 [OPTIONAL] CP Ring 2GPU: --parallel-params ring=2 (long-sequence models only)
+- [ ] 3.9 [OPTIONAL] UAA: `--parallel-params 'ulysses=2,ulysses_anything=true'` (indivisible heads/seq)
 - [ ] 3.10 [STOP] CP fully verified ── do NOT proceed until this passes
 
 Phase 4 — TP: Tensor Parallelism
@@ -361,7 +361,7 @@ Phase 4 — TP: Tensor Parallelism
 - [ ] 4.4 Handle DTensor-unsafe fused kernels (`./references/tp.md` DTensor-unsafe ops): patch to PyTorch equivalents
 - [ ] 4.5 Register in distributed/transformers/planners.py (_activate_tp_planners)
 - [ ] 4.6 TEST TP 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --save-path .tmp/<task>/tp2.png
+ torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2' --save-path .tmp/<task>/tp2.png
 - [ ] 4.7 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
         - If garbled: check shard_div_attr, DTensor placement, ColwiseParallel output_layouts
@@ -374,7 +374,7 @@ Phase 5 — TE-P: Text Encoder Parallelism
         - Reference: HuggingFace Config.base_model_tp_plan
 - [ ] 5.3 Register in distributed/text_encoders/planners.py
 - [ ] 5.4 TEST TP + TE-P 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --parallel-text --save-path .tmp/<task>/tp2_tep2.png
+ torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2,text=true' --save-path .tmp/<task>/tp2_tep2.png
 - [ ] 5.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 tp2_tep2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
 - [ ] 5.6 [STOP] TE-P verified (or confirmed not needed)
@@ -385,14 +385,14 @@ Phase 6 — VAE-P: VAE Parallelism
         IF not → create new planner in distributed/autoencoders/<vae>.py
 - [ ] 6.3 Register in distributed/autoencoders/planners.py
 - [ ] 6.4 TEST VAE-P 2GPU:
-        torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel tp --parallel-vae --save-path .tmp/<task>/vae2.png
-        - `--parallel-vae` alone is a NO-OP: parallelism_config is only built when `--parallel` is set
+ torchrun --nproc_per_node=2 -m cache_dit.generate <model> --parallel-params 'tp=2,vae=true' --save-path .tmp/<task>/vae2.png
+        - `--parallel-params vae=true` alone is a NO-OP: parallelism_config is only built when `--parallel-params` carries a degree key (`ulysses` / `ring` / `tp`)
 - [ ] 6.5 CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 vae2.png
         - Criteria: PSNR > 35 dB, SSIM > 0.90
 - [ ] 6.6 [STOP] VAE-P verified (or confirmed not needed)
 
 Phase 7 — Final Integration Tests
-- [ ] 7.1 Hybrid CP + TP (4 GPU): --parallel ulysses_tp → U2×T2
+- [ ] 7.1 Hybrid CP + TP (4 GPU): --parallel-params 'ulysses=2' → U2×T2
         - on 2 GPUs `ulysses_tp` degenerates to U1×T2 (pure TP2) — that is Phase 4, not a hybrid test
 - [ ] 7.2 CORRECTNESS: vs baseline
 - [ ] 7.3 Fill in results table (`./references/testing.md` §7.5): latency, PSNR, SSIM, GPU mem per config
@@ -450,8 +450,8 @@ All of this is described by a single `BlockAdapter` dataclass instance.
 
 Context Parallelism splits the **sequence dimension** of hidden states across multiple GPUs. Each GPU computes attention over a local chunk, then gathers results. cache-dit supports two CP strategies:
 
-- **Ulysses** (`--parallel ulysses`): All-to-all communication. Better for shorter sequences or when combined with TP. **Always prefer Ulysses over Ring** — it is more mature, better tested, and supports `--ulysses-anything` (UAA) for non-divisible head counts and sequence lengths.
-- **Ring** (`--parallel ring`): Peer-to-peer communication in a ring topology. Better for very long sequences. Only consider Ring if Ulysses is proven inadequate for your use case.
+- **Ulysses** (`--parallel-params ulysses=2`): All-to-all communication. Better for shorter sequences or when combined with TP. **Always prefer Ulysses over Ring** — it is more mature, better tested, and supports `--parallel-params ulysses_anything=true` (UAA) for non-divisible head counts and sequence lengths.
+- **Ring** (`--parallel-params ring=2`): Peer-to-peer communication in a ring topology. Better for very long sequences. Only consider Ring if Ulysses is proven inadequate for your use case.
 
 ### 2.2 Two Implementation Approaches
 
@@ -477,7 +477,7 @@ cache-dit offers **two** CP implementation patterns:
 
 ### 3.1 Concept
 
-Tensor Parallelism splits **model parameters** (weight matrices) across GPUs. Unlike CP which splits the input, TP splits the linear layers themselves. TP reduces per-GPU memory and can be combined with CP for hybrid parallelism (`--parallel ulysses_tp`, `--parallel ring_tp`).
+Tensor Parallelism splits **model parameters** (weight matrices) across GPUs. Unlike CP which splits the input, TP splits the linear layers themselves. TP reduces per-GPU memory and can be combined with CP for hybrid parallelism (`--parallel-params 'ulysses=2,tp=2'` / `'ring=2,tp=2'`).
 
 cache-dit's TP is built on top of the **PyTorch tensor parallel API** (`torch.distributed.tensor.parallel`). The core primitives are:
 
@@ -524,7 +524,7 @@ For a detailed walkthrough, see the official PyTorch tutorial: https://docs.pyto
 
 ### 4.1 Concept
 
-TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-text` (or `--parallel-text-encoder`).
+TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-text` (or `--parallel-params text=true`).
 
 > Detailed support checks, HuggingFace `base_model_tp_plan` guidance, planner templates, and registration live in [`./references/tep.md`](./references/tep.md).
 
@@ -532,7 +532,7 @@ TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mech
 
 ### 5.1 Concept
 
-VAE-P applies **data parallelism** (not tensor parallelism) to the VAE decoder. Multiple GPUs each decode a portion of the latent grid, then results are stitched together. This is useful when the VAE decoder is a memory bottleneck. Activate via `--parallel-vae`.
+VAE-P applies **data parallelism** (not tensor parallelism) to the VAE decoder. Multiple GPUs each decode a portion of the latent grid, then results are stitched together. This is useful when the VAE decoder is a memory bottleneck. Activate via `--parallel-params vae=true`.
 
 > Detailed support checks, planner templates, and registration live in [`./references/vaep.md`](./references/vaep.md).
 

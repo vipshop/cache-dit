@@ -219,7 +219,7 @@ AttributeError: 'NoneType' object has no attribute 'apply_chat_template'
   )
   ```
 
-  Gate it behind an explicit flag and report its cost separately: `--parallel-text` only covers the
+  Gate it behind an explicit flag and report its cost separately: `--parallel-params text=true` only covers the
   pipeline's `text_encoder`, so a `prompt_upsampler` stays replicated on every rank, and layerwise
   offload only streams what `components` exposes (it does offload it, but as another slow stage).
 
@@ -290,7 +290,7 @@ Two **engine** limitations had to be fixed first — both hit any modular model,
    `CachedAdapter.mock_transformer`.
 
 Non-divisible stream lengths (e.g. `H/16 x W/16` odd, so `1089 % cp_size != 0`) need
-`--ulysses-anything`; without it the split fails with "Tensor size along dimension to be sharded
+`--parallel-params ulysses_anything=true`; without it the split fails with "Tensor size along dimension to be sharded
 must be divisible by mesh size".
 
 TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
@@ -321,8 +321,8 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 - [ ] I2I path (reference image) with the same adapter
 - [ ] cache_dit.summary(pipe) / --cache-summary prints the stats
 - [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache
-- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel ulysses
-      (and a non-divisible resolution with --ulysses-anything)
+- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel-params 'ulysses=2'
+      (and a non-divisible resolution with --parallel-params ulysses_anything=true)
 - [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
       -> peak memory drops, image stays bit-exact vs baseline
 - [ ] optional prompt-rewrite stage: policy decided and recorded (pop for benchmarks, inject for
@@ -388,7 +388,7 @@ tighter than the 1-GPU fp8+compile case. It costs 4–5 dB against the non-compi
 On 2 GPUs CP and TP land at a similar throughput (1.53–1.66× vs 1.62×). Pick CP when the token
 streams dominate memory (it shards the sequence of all three streams, including the long text
 stream); pick TP when the weights dominate. `parallelism_config` also allows combining them
-(`--parallel ulysses_tp` / `ring_tp`), which is untested for FLUX.3.
+(`--parallel-params 'ulysses=2,tp=2'`), which is untested for FLUX.3.
 
 ### 7.1 Quantization: fp8 per-row + compile
 

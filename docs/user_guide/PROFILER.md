@@ -295,7 +295,7 @@ does not scan the model for devices.
 ```bash
 cd examples
 torchrun --standalone --nproc_per_node=2 generate.py flux \
-    --parallel tp --profile --profile-name flux_tp --steps 3 --warmup 1 --repeat 1
+ --parallel-params 'tp=2' --profile --profile-name flux_tp --steps 3 --warmup 1 --repeat 1
 ```
 
 Each rank exports one `loopall-window0` trace for this request, distinguished by its rank, PID and

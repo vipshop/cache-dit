@@ -286,3 +286,71 @@ def resolve_attn_params(raw: Optional[Dict[str, str]]) -> Tuple[Optional[str], D
     raise ValueError(f"The '{backend}' attention backend takes no --attn-params options; backends "
                      f"with options: {list(ATTN_PARAM_SPECS)}.")
   return backend, resolve_param_pairs(options, specs, "--attn-params")
+
+
+def _degree(text: str) -> int:
+
+  def _cast(value: str) -> int:
+    return int(value)
+
+  value = _cast(text.strip())
+  if value < 1:
+    raise ValueError(f"expects an integer >= 1, got '{text}'.")
+  return value
+
+
+# `--parallel-params` keys. `ulysses` / `ring` / `tp` are the parallelism degrees; their product
+# must equal the world size. The other keys select parallel components and Ulysses / Ring options.
+PARALLEL_PARAM_SPECS: Dict[str, Caster] = {
+  "ulysses": _degree,
+  "ring": _degree,
+  "tp": _degree,
+  "vae": _as_bool,
+  "text": _as_bool,
+  "controlnet": _as_bool,
+  "ulysses_anything": _as_bool,
+  "ulysses_async": _as_bool,
+  "ring_rotate_method": _one_of(("allgather", "p2p")),
+  "ring_convert_to_fp32": _as_bool,
+}
+PARALLEL_PARAM_ALIASES = {
+  "uaa": "ulysses_anything",
+  "uaqkv": "ulysses_async",
+  "rotate": "ring_rotate_method",
+}
+PARALLEL_AXES = ("ulysses", "ring", "tp")
+# Name of the hybrid parallelism types, by the axes they combine.
+_PARALLEL_TYPE_NAMES = {
+  ("ulysses", ): "ulysses",
+  ("ring", ): "ring",
+  ("tp", ): "tp",
+  ("ulysses", "ring"): "usp",
+  ("ulysses", "tp"): "ulysses_tp",
+  ("ring", "tp"): "ring_tp",
+  ("ulysses", "ring", "tp"): "usp_tp",
+}
+
+
+def resolve_parallel_params(raw: Optional[Dict[str, str]]) -> Tuple[str, Tuple[int, ...], Dict]:
+  """Resolve `--parallel-params` into the parallelism type, its degrees and its options.
+
+  :param raw: Raw mapping from the CLI; None when the flag was not passed.
+  :returns:`(parallelism type or None, active axes, coerced fields)`. An axis is active when its
+    degree is greater than one, or when it is the only degree given (a single GPU still runs e.g.
+    `ulysses=1` through the Ulysses path). Degrees default to one.
+  """
+
+  if not raw:
+    return None, (), {}
+  canonical: Dict[str, str] = {}
+  for key, text in raw.items():
+    key = PARALLEL_PARAM_ALIASES.get(key, key)
+    if key in canonical:
+      raise ValueError(f"--parallel-params key '{key}' is given twice.")
+    canonical[key] = text
+  fields = resolve_param_pairs(canonical, PARALLEL_PARAM_SPECS, "--parallel-params")
+  active = tuple(axis for axis in PARALLEL_AXES if fields.get(axis, 1) > 1)
+  if not active:
+    given = tuple(axis for axis in PARALLEL_AXES if axis in fields)
+    active = given if len(given) == 1 else ()
+  return _PARALLEL_TYPE_NAMES.get(active), active, fields

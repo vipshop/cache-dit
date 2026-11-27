@@ -101,7 +101,7 @@ for step in range(world_size):
 
 ### 4.3 USP（`usp.py`）
 
-Ulysses 的 all-to-all 收 Q/K/V → 调 `RingAttention` → all-to-all 把输出换回来。LSE 同样走 a2a（`send_lse`），`lse` 形状 `[B,S,H,1]`。是 `--parallel usp` / `usp_tp` 的实现。
+Ulysses 的 all-to-all 收 Q/K/V → 调 `RingAttention` → all-to-all 把输出换回来。LSE 同样走 a2a（`send_lse`），`lse` 形状 `[B,S,H,1]`。是 `--parallel-params 'ulysses=2,ring=2'` 的实现。
 
 ## 5. 通信原语（`communicate/primitives.py`）
 

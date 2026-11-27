@@ -184,10 +184,10 @@ python3 -m cache_dit.generate qwen_image --cache --attn-params type=_native_npu
 cache-dit is designed to work Context Parallelism, Tensor Parallelism. For examples:
 
 ```bash
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --attn-params type=_native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --attn-params type=_native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel ulysses --attn-params type=_native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cache --attn-params type=_native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --cache --attn-params type=_native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel ulysses --cache --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --cache --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel-params 'ulysses=4' --cache --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel-params 'ulysses=4' --cache --attn-params type=_native_npu
 ```

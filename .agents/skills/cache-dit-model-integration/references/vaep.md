@@ -6,7 +6,7 @@ When to read this: read this file when a model uses a VAE not already supported 
 
 ### 5.1 Concept
 
-VAE-P applies **data parallelism** (not tensor parallelism) to the VAE decoder. Multiple GPUs each decode a portion of the latent grid, then results are stitched together. This is useful when the VAE decoder is a memory bottleneck. Activate via `--parallel-vae`.
+VAE-P applies **data parallelism** (not tensor parallelism) to the VAE decoder. Multiple GPUs each decode a portion of the latent grid, then results are stitched together. This is useful when the VAE decoder is a memory bottleneck. Activate via `--parallel-params vae=true`.
 
 ### 5.2 When to implement
 

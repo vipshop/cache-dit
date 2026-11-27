@@ -80,7 +80,7 @@ enable_cache(pipe, parallelism_config=...)
 | `ring_tp` / `tp_ring` | 同理，ring 与 tp 对半 |
 | `usp_tp` | 硬断言 world_size == 8，U2×R2×T2 |
 
-`--parallel-text` / `--parallel-vae` / `--parallel-controlnet` **单独用是 no-op**：它们只在 `--parallel` 非空时被装进 `extra_parallel_modules`。
+`--parallel-params text=true` / `--parallel-params vae=true` / `--parallel-params controlnet=true` **单独用是 no-op**：它们只在 `--parallel-params` 带度数键（`ulysses` / `ring` / `tp`）时被装进 `extra_parallel_modules`。
 
 ## 3. 四个最常被问的问题
 
@@ -89,7 +89,7 @@ enable_cache(pipe, parallelism_config=...)
 | CP 与 TP 怎么选？ | 序列长、attention 占比高、显存不够但不想切权重 → CP；只想省权重显存、heads 能整除 → TP；两者都要 → hybrid（先 CP 后 TP，4 卡起） |
 | 为什么 CP 直接报错？ | 先看 `validate_context_parallel_attention_backend`：非 cache-dit 注册的后端或 non-CP 后端会在这里 raise；再看 mesh 大小与 `heads` 整除 |
 | 为什么 CP 输出错但形状对？ | 90% 是 split/gather 双份或缺失：hook 与模型内部手工切分只能二选一；其次看 UAA 是否越界（`tensor_split` 不整除） |
-| 为什么 VAE 并行没生效？ | `check_auto_encoder` 只认 `pipe.vae`；pipeline 把 VAE 挂在 `video_vae` 时 `--parallel-vae` 只 warning（"no VAE found"）不报错，需给 pipeline 加 `vae` 别名；另外 `--parallel-vae` 与 `--vae-tiling` / `--vae-slicing` 互斥（断言） |
+| 为什么 VAE 并行没生效？ | `check_auto_encoder` 只认 `pipe.vae`；pipeline 把 VAE 挂在 `video_vae` 时 `--parallel-params vae=true` 只 warning（"no VAE found"）不报错，需给 pipeline 加 `vae` 别名；另外 `--parallel-params vae=true` 与 `--vae-tiling` / `--vae-slicing` 互斥（断言） |
 
 ## 4. 高频坑（详细版在各 reference）
 
