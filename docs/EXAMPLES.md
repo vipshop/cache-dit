@@ -192,13 +192,13 @@ python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache
 python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator residual_motion --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
-python3 -m cache_dit.generate flux --cache --calibrator taylorseer
-python3 -m cache_dit.generate flux --cache --calibrator svd --calibrator-params "tau=0.9,beta=0.9"
-python3 -m cache_dit.generate flux --cache --calibrator hicache --calibrator-params "order=2,sigma=0.5"
-python3 -m cache_dit.generate flux --cache --calibrator brace --calibrator-params "capacity=3,gamma=0.7"
-python3 -m cache_dit.generate flux --cache --calibrator bezicast --calibrator-params "history=6,control_points=4,ridge=0.5,guardrail=false"
-python3 -m cache_dit.generate flux --cache --calibrator residual_motion --calibrator-params "beta=1.0"
+python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator-params type=residual_motion --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
+python3 -m cache_dit.generate flux --cache --calibrator-params type=taylorseer
+python3 -m cache_dit.generate flux --cache --calibrator-params "type=svd,tau=0.9,beta=0.9"
+python3 -m cache_dit.generate flux --cache --calibrator-params "type=hicache,order=2,sigma=0.5"
+python3 -m cache_dit.generate flux --cache --calibrator-params "type=brace,capacity=3,gamma=0.7"
+python3 -m cache_dit.generate flux --cache --calibrator-params "type=bezicast,history=6,control_points=4,ridge=0.5,guardrail=false"
+python3 -m cache_dit.generate flux --cache --calibrator-params "type=residual_motion,beta=1.0"
 python3 -m cache_dit.generate flux_nunchaku --cache
 python3 -m cache_dit.generate qwen_image --cache
 python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast
@@ -409,18 +409,20 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 
 ```bash
 # DBCache + SCM + Taylorseer
-python3 -m cache_dit.generate flux --cache --scm fast --calibrator taylorseer --calibrator-params order=1
+python3 -m cache_dit.generate flux --cache --scm fast --calibrator-params type=taylorseer,order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn _sdpa_cudnn --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize-params quant_type=float8_per_row \
+         --attn _sdpa_cudnn --parallel-text --cache --scm fast \
+         --calibrator-params type=taylorseer,order=1 \
+         --quantize-params quant_type=float8_per_row \
          --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn sage --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize-params quant_type=float8_per_row \
+         --attn sage --parallel-text --cache --scm fast \
+         --calibrator-params type=taylorseer,order=1 \
+         --quantize-params quant_type=float8_per_row \
          --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
@@ -657,24 +659,25 @@ options:
                         ~1.1 for ~6.5x on FLUX.1-dev.
   --softcache-jf-max SOFTCACHE_JF_MAX
                         Cap on the SoftCache jump factor.
-  --calibrator CALIBRATOR
-                        DBCache calibrator to enable: taylorseer, dmd, foca,
-                        svd (SVD-Cache), hicache (damped-Hermite), brace
+  --calibrator-params CALIBRATOR_PARAMS
+                        Enable a DBCache calibrator (requires --cache);
+                        options as a comma separated key=value list whose
+                        'type' key selects the calibrator: taylorseer, dmd,
+                        foca, svd (SVD-Cache), hicache (damped-Hermite), brace
                         (barycentric rational), bezicast (Bernstein/Bezier),
                         or residual_motion (sigma secant, SoftCache). Long
-                        forms such as 'svd-calibrator' are accepted. Requires
-                        --cache.
-  --calibrator-params CALIBRATOR_PARAMS
-                        Calibrator options as a comma separated key=value
-                        list, e.g. 'tau=0.9,beta=0.9' or
-                        'predictor=taylor,order=1' for svd,
-                        'order=2,sigma=0.5' for hicache,
-                        'capacity=3,gamma=0.7' for brace,
-                        'history=6,control_points=4,ridge=0.5,guardrail=false'
-                        for bezicast, 'beta=0.5' for residual_motion,
-                        'history=6,svd_precision=low' for dmd, or
+                        forms such as 'svd-calibrator' are accepted. e.g.
+                        'type=svd,tau=0.9,beta=0.9' or
+                        'type=svd,predictor=taylor,order=1' for svd,
+                        'type=hicache,order=2,sigma=0.5' for hicache,
+                        'type=brace,capacity=3,gamma=0.7' for brace,
+                        'type=bezicast,history=6,ridge=0.5,guardrail=false'
+                        for bezicast, 'type=residual_motion,beta=0.5' for
+                        residual_motion,
+                        'type=dmd,history=6,svd_precision=low' for dmd;
                         'calibrator_cache_type=hidden_states,encoder=false'
-                        for any calibrator.
+                        may be added to any of them for the keys every
+                        calibrator accepts.
   --steps-mask          Enable steps mask for CacheDiT
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy

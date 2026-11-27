@@ -218,7 +218,7 @@ _CALIBRATOR_CONFIG_CLASSES = {
 
 
 def _parse_calibrator_arg(value: str) -> str:
-  """Normalize a `--calibrator` value into its canonical short name.
+  """Normalize a calibrator name (the `type` key of `--calibrator-params`) into its short name.
 
   :param value: Raw argument value, e.g. `svd`, `svd-calibrator`, or `svd-cache`.
   :returns: The canonical calibrator name.
@@ -233,17 +233,36 @@ def _parse_calibrator_arg(value: str) -> str:
 
 
 def parse_calibrator_params(value: str) -> Optional[Dict[str, str]]:
-  """Parse `--calibrator-params "k=v,k=v"` into a raw key -> value mapping.
+  """Parse a `--calibrator-params "k=v,k=v"` list into a raw key -> value mapping.
 
-  Only the syntax is validated here; keys are resolved against the selected calibrator later, in
-  :func:`resolve_calibrator_params`, because argparse does not guarantee `--calibrator` is parsed
-  before this flag.
+  Only the syntax is validated here. The generate CLI goes through
+  :func:`parse_cli_calibrator_params`, which also requires the `type` key.
 
   :param value: Raw argument value.
   :returns: The raw string mapping, or None for an empty value.
   """
 
-  return parse_param_pairs(value, "--calibrator-params", "'tau=0.9,beta=0.9'")
+  return parse_param_pairs(value, "--calibrator-params", "'type=svd,tau=0.9,beta=0.9'")
+
+
+def parse_cli_calibrator_params(value: str) -> Dict[str, str]:
+  """Parse the generate CLI `--calibrator-params "type=taylorseer,k=v,k=v"`.
+
+  The `type` key selects the calibrator, so it is required and validated here. It is not a
+  calibrator option: it is dropped in `maybe_postprocess_args` before the other keys are resolved
+  in :func:`resolve_calibrator_params`.
+
+  :param value: Raw argument value.
+  :returns: The raw string mapping, including `type`.
+  """
+
+  example = "'type=svd,tau=0.9,beta=0.9'"
+  raw = parse_param_pairs(value, "--calibrator-params", example, allow_empty=False)
+  if "type" not in raw:
+    raise argparse.ArgumentTypeError(f"--calibrator-params needs a 'type' key, e.g. {example}.")
+  # Fail here rather than after the model has been loaded.
+  _parse_calibrator_arg(raw["type"])
+  return raw
 
 
 def parse_quant_communicate_params(value: str) -> Optional[Dict[str, str]]:
@@ -283,6 +302,9 @@ def _coerce_calibrator_param(field: str, caster: Any, text: str) -> Any:
 def resolve_calibrator_params(calibrator_type: str, raw: Optional[Dict[str,
                                                                        str]]) -> Dict[str, Any]:
   """Map raw `--calibrator-params` keys onto config fields of the selected calibrator.
+
+  Every key must be a known option of that calibrator, so callers drop the selector `type` key
+  first (see `maybe_postprocess_args`).
 
   :param calibrator_type: Canonical calibrator name.
   :param raw: Raw key -> value mapping from the command line.
@@ -647,25 +669,19 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Cap on the SoftCache jump factor.",
   )
   parser.add_argument(
-    "--calibrator",
-    type=_parse_calibrator_arg,
-    default=None,
-    help="DBCache calibrator to enable: taylorseer, dmd, foca, svd (SVD-Cache), "
-    "hicache (damped-Hermite), brace (barycentric rational), bezicast "
-    "(Bernstein/Bezier), or residual_motion (sigma secant, SoftCache). Long forms such as "
-    "'svd-calibrator' are accepted. Requires --cache.",
-  )
-  parser.add_argument(
     "--calibrator-params",
-    type=parse_calibrator_params,
+    type=parse_cli_calibrator_params,
     default=None,
-    help="Calibrator options as a comma separated key=value list, e.g. "
-    "'tau=0.9,beta=0.9' or 'predictor=taylor,order=1' for svd, "
-    "'order=2,sigma=0.5' for hicache, 'capacity=3,gamma=0.7' for brace, "
-    "'history=6,control_points=4,ridge=0.5,guardrail=false' for bezicast, "
-    "'beta=0.5' for residual_motion, "
-    "'history=6,svd_precision=low' for dmd, "
-    "or 'calibrator_cache_type=hidden_states,encoder=false' for any calibrator.",
+    help="Enable a DBCache calibrator (requires --cache); options as a comma separated key=value "
+    "list whose 'type' key selects the calibrator: taylorseer, dmd, foca, svd (SVD-Cache), "
+    "hicache (damped-Hermite), brace (barycentric rational), bezicast (Bernstein/Bezier), or "
+    "residual_motion (sigma secant, SoftCache). Long forms such as 'svd-calibrator' are accepted. "
+    "e.g. 'type=svd,tau=0.9,beta=0.9' or 'type=svd,predictor=taylor,order=1' for svd, "
+    "'type=hicache,order=2,sigma=0.5' for hicache, 'type=brace,capacity=3,gamma=0.7' for brace, "
+    "'type=bezicast,history=6,ridge=0.5,guardrail=false' for bezicast, "
+    "'type=residual_motion,beta=0.5' for residual_motion, 'type=dmd,history=6,svd_precision=low' "
+    "for dmd; 'calibrator_cache_type=hidden_states,encoder=false' may be added to any of them "
+    "for the keys every calibrator accepts.",
   )
   parser.add_argument(
     "--steps-mask",
@@ -1358,19 +1374,22 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   if args.softcache and args.softcache_tau <= 0.0:
     raise ValueError("--softcache-tau must be positive.")
 
-  # Resolve --calibrator-params once the calibrator is known.
-  if args.calibrator is not None and args.config_path is not None:
-    raise ValueError("--calibrator/--calibrator-params cannot be combined with --config-path; "
+  # Resolve --calibrator-params; its `type` key selects the calibrator.
+  raw_calibrator = args.calibrator_params
+  if raw_calibrator is not None and args.config_path is not None:
+    raise ValueError("--calibrator-params cannot be combined with --config-path; "
                      "set the calibrator inside the config file instead.")
-  if args.calibrator is None and args.calibrator_params:
-    raise ValueError("--calibrator-params requires --calibrator.")
+  args.calibrator = None
   args.calibrator_fields = None
-  if args.calibrator is not None:
+  if raw_calibrator is not None:
     if not args.cache:
-      raise ValueError(f"--calibrator {args.calibrator} requires --cache.")
+      raise ValueError(f"--calibrator-params type={raw_calibrator['type']} requires --cache.")
+    args.calibrator = normalize_calibrator_type(raw_calibrator["type"])
     # Keep `calibrator_params` in its raw form so post-processing stays idempotent; the
-    # resolved config-field mapping lives in `calibrator_fields`.
-    args.calibrator_fields = resolve_calibrator_params(args.calibrator, args.calibrator_params)
+    # resolved config-field mapping lives in `calibrator_fields`. `type` is the selector, not an
+    # option, so it is dropped here rather than loosening `resolve_calibrator_params`.
+    options = {key: text for key, text in raw_calibrator.items() if key != "type"}
+    args.calibrator_fields = resolve_calibrator_params(args.calibrator, options)
 
   return args
 
