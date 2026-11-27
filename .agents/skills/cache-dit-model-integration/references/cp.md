@@ -388,8 +388,7 @@ CP degree — e.g. `--parallel-params 'ulysses=2,ulysses_anything=true'`. A valu
 
 ```bash
 # task: task name for logging and output organization
-CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
- -m cache_dit.generate <model_name> \
+CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <model_name> \
  --parallel-params 'ulysses=2,ulysses_anything=true' \
  --save-path .tmp/{task}/<model_name>_ulysses_uaa.png
 ```

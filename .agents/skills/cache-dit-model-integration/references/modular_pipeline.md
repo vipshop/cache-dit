@@ -321,7 +321,7 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
 - [ ] I2I path (reference image) with the same adapter
 - [ ] cache_dit.summary(pipe) / --cache-summary prints the stats
 - [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache-params 'type=DBCache'
-- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel-params 'ulysses=2'
+- [ ] CP: CUDA_VISIBLE_DEVICES=6,7 python3 -m cache_dit.generate <name> --parallel-params 'ulysses=2'
       (and a non-divisible resolution with --parallel-params ulysses_anything=true)
 - [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
       -> peak memory drops, image stays bit-exact vs baseline

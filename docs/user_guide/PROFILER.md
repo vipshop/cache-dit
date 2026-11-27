@@ -16,17 +16,16 @@ when comparing their timelines.
 
 ## Quick Start
 
-Make sure `cache_dit` is importable, then run from the `examples/` directory:
+Make sure `cache_dit` is importable, then run:
 
 ```bash
-cd examples
-python3 generate.py list
+python3 -m cache_dit.generate list
 
 # A short inference produces a small Torch trace.
-python3 generate.py flux --profile --steps 3 --warmup 1 --repeat 1
+python3 -m cache_dit.generate flux --profile --steps 3 --warmup 1 --repeat 1
 
 # Choose the Torch output directory and filename prefix.
-python3 generate.py flux --profile --steps 3 --warmup 1 --repeat 1 \
+python3 -m cache_dit.generate flux --profile --steps 3 --warmup 1 --repeat 1 \
     --profile-dir /tmp/cache_dit_profiles --profile-name flux_test
 ```
 
@@ -81,8 +80,7 @@ The generate CLI uses Torch. Use `--profile-activities` to select host events,
 accelerator events and optional memory recording:
 
 ```bash
-cd examples
-python3 generate.py flux --profile --steps 3 --warmup 1 --repeat 1 \
+python3 -m cache_dit.generate flux --profile --steps 3 --warmup 1 --repeat 1 \
     --profile-activities CPU GPU MEM
 ```
 
@@ -289,8 +287,8 @@ requests skip this validation. Set `record_shapes=False` through Python to disab
 Each worker creates its own request and Torch artifacts. The generate CLI keeps
 its original current-device behavior. Direct callers must pass every device used by the request,
 for example `devices=["cuda:0", "cuda:1"]`; omitting `devices` uses the current device only. The
-`examples/generate.py` runner declares its rank device, or all visible devices for balanced loading.
-Profiling does not scan the model for devices.
+standalone runner (`bench/profile/run.py`) declares its rank device, or all visible devices for
+balanced loading. Profiling does not scan the model for devices.
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux \
