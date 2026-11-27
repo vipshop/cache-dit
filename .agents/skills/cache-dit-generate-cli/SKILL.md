@@ -63,7 +63,7 @@ python3 -m cache_dit.generate /path/to/FLUX.1-dev --task T2I --save-path flux.ba
 
 ```bash
 export FLUX_DIR=/workspace/dev/vipdev/hf_models/FLUX.1-dev
-python3 -m cache_dit.generate flux --steps 2 --height 64 --width 64
+python3 -m cache_dit.generate flux --height 1024 --width 1024
 ```
 
 不是所有模型都在本地；上述位置都没有目标模型时，先确认是否已下载，或改用 `--model-path` 指向实际目录，不要用不存在的路径硬跑。
@@ -227,7 +227,7 @@ python3 -m cache_dit.generate list
 python3 -m cache_dit.generate flux --help 2>/dev/null || true   # 例子级参数以全局 help 为准
 ```
 
-先用极小尺寸做参数冒烟（不验证质量，只验证接线）：
+先用少步数做参数冒烟（不验证质量，只验证接线）：
 
 ```bash
 python3 -m cache_dit.generate flux \
@@ -235,7 +235,7 @@ python3 -m cache_dit.generate flux \
   --calibrator-params 'taylorseer,order=1' \
   --quantize-params 'float8_per_row' \
   --attn-params 'native' \
-  --steps 2 --height 64 --width 64 --warmup 0 \
+  --steps 2 --height 1024 --width 1024 --warmup 0 \
   --save-path /tmp/generate-smoke.png
 ```
 
