@@ -157,7 +157,7 @@ def _my_attention_forward_op(
 
 ## 8. CLI、全局配置与 env
 
-`src/cache_dit/cli/utils.py`：
+`src/cache_dit/cli/attention.py`：
 
 - `--attn-params` 的 `type` 取值（`ATTN_BACKENDS`）是硬白名单，新增 backend 必须加，否则 argparse 直接拒。
 - backend 专属选项统一走 `--attn-params "k=v,k=v"`，合法 key 由 `--attn-params type=X` 选中的 backend 决定：

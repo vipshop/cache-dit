@@ -171,10 +171,11 @@ class _AdalnStack(torch.nn.Module):
 @CUDA
 def test_compile_is_allowed_while_the_adaln_tables_are_streamed(monkeypatch):
   """`--compile` may stream: the copy runs in a `torch.compiler.disable`d hook, so it is a break."""
+  from cache_dit.cli import offload as offload_mod
   from cache_dit.cli import utils as utils_mod
 
   installed = []
-  monkeypatch.setattr(utils_mod, "layerwise_cpu_offload",
+  monkeypatch.setattr(offload_mod, "layerwise_cpu_offload",
                       lambda module, **kwargs: installed.append(kwargs))
 
   args = _residency_args(utils_mod)
@@ -190,9 +191,10 @@ def test_compile_is_allowed_while_the_adaln_tables_are_streamed(monkeypatch):
 def test_full_graph_and_cuda_graph_are_still_rejected(monkeypatch, flag):
   """`fullgraph` refuses the break, and a CUDA graph would replay the pointers the mirror
   rebinds."""
+  from cache_dit.cli import offload as offload_mod
   from cache_dit.cli import utils as utils_mod
 
-  monkeypatch.setattr(utils_mod, "layerwise_cpu_offload", lambda module, **kwargs: None)
+  monkeypatch.setattr(offload_mod, "layerwise_cpu_offload", lambda module, **kwargs: None)
   args = _residency_args(utils_mod)
   args.compile = True
   setattr(args, flag, True)

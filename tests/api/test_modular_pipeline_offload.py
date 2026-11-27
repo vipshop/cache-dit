@@ -97,14 +97,16 @@ def test_cpu_offload_switch_falls_back_to_layerwise_for_modular(monkeypatch):
   transformer = torch.nn.Sequential(torch.nn.Linear(4, 4, bias=False))
   pipe = _fake_modular_pipeline({"transformer": transformer})
 
+  from cache_dit.cli import offload as offload_mod
+
   applied = []
   monkeypatch.setattr(
-    cli_utils,
+    offload_mod,
     "layerwise_cpu_offload",
     lambda module, **kwargs: applied.append((module, kwargs)) or "handle",
   )
-  monkeypatch.setattr(cli_utils, "remove_layerwise_offload", lambda module, **kwargs: 0)
-  monkeypatch.setattr(cli_utils, "_find_offload_related_hf_hook", lambda module: None)
+  monkeypatch.setattr(offload_mod, "remove_layerwise_offload", lambda module, **kwargs: 0)
+  monkeypatch.setattr(offload_mod, "_find_offload_related_hf_hook", lambda module: None)
 
   for flag in ("cpu_offload", "sequential_cpu_offload"):
     applied.clear()

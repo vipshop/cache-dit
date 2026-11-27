@@ -607,7 +607,7 @@ All paths are relative to the cache-dit repository root.
 | Example registration         | `src/cache_dit/cli/__init__.py`  | `_safe_import` of all examples                                                               |
 | Example/ExampleRegister base | `src/cache_dit/cli/registers.py` | `Example`, `ExampleRegister`, `ExampleInitConfig`, `ExampleInputData`, `ExampleType` |
 | CLI entry point              | `src/cache_dit/cli/generate.py`  | CLI argument parsing and dispatch                                                              |
-| CLI argument definitions     | `src/cache_dit/cli/utils.py`     | `get_base_args()` — all CLI flags                                                           |
+| CLI argument definitions     | `src/cache_dit/cli/entrypoint.py` | `get_base_args()` — all CLI flags                                                          |
 | Metrics CLI                  | `src/cache_dit/metrics/metrics.py`  | PSNR, SSIM, LPIPS, FID computation and CLI                                                     |
 
 ### Documentation & Examples

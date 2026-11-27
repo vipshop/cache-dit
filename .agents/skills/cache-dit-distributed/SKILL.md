@@ -69,7 +69,7 @@ enable_cache(pipe, parallelism_config=...)
                     controlnet   → parallelize_controlnet（仅 CACHE_DIT CP）
 ```
 
-`--parallel` 的字符串在 `cli/utils.py::_prepare_distributed_size` 里折算成三元组（真实语义，容易记错）：
+`--parallel-params` 的显式度数在 `cli/optimize.py::_prepare_distributed_size` 里折算成三元组（真实语义，容易记错）：
 
 | `--parallel` | 折算 |
 |---|---|

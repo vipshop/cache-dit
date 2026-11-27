@@ -90,7 +90,7 @@ user-invocable: true
 
 1. **只换预测器** → 新 `calibrators/<name>.py` + 工厂注册 + CLI flag。`CalibratorConfig.calibrator_kwargs` 能透传参数，**不需要新 dataclass**。
 2. **换基 / 换系数** → 扩展现有 calibrator（HiCache = Taylor 的 `basis` 开关；把 FoCa 的常数系数换成数据驱动系数，仍是同一类改动）。不新增 `calibrator_type`，维护面零增长。**例外**：用户明确要求独立文件/独立算法名时按方案 1 走，但基函数仍必须做成基类钩子（`_basis_term`）而不是复制累加循环，见 HiCache 先例。
-3. **换调度** → 给 `steps_mask(mask_policy=...)` 加一个预设/生成分支（`cache_interface.py`）+ CLI flag（`cli/utils.py`），运行时配合 `steps_computation_policy="static"`。2 个文件，不动跳过粒度。
+3. **换调度** → 给 `steps_mask(mask_policy=...)` 加一个预设/生成分支（`cache_interface.py`）+ CLI flag（`cli/entrypoint.py`），运行时配合 `steps_computation_policy="static"`。2 个文件，不动跳过粒度。
 4. **换跳过粒度** → 新增 `CacheType`：enum / config / load_configs / ContextManager / context / blocks `__new__` / **两份 pattern** / stats / summary / CLI，约 10 处。**最后手段**。
 
 ## 6. 验收纪律（不可协商）

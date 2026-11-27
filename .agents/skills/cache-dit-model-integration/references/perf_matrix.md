@@ -70,7 +70,7 @@ Rules:
 - TE-P / VAE-P are **run-only** rows (user requirement: 跑通就行): record pass/fail + PSNR/SSIM,
   never quote them as a speedup.
 - `--parallel-params text=true` / `--parallel-params vae=true` are **no-ops without a degree key** — `parallelism_config` is
-  only built when `--parallel-params` has `ulysses` / `ring` / `tp` greater than 1 (`cli/utils.py::maybe_apply_optimization`), so always hang
+  only built when `--parallel-params` has `ulysses` / `ring` / `tp` greater than 1 (`cli/optimize.py::maybe_apply_optimization`), so always hang
   them under `--parallel-params tp=2`.
 - **Attention-dominated models** (long video sequences, see `./perf_analysis.md`): the GEMM-side rows
   above have a hard ceiling of the model's GEMM share. Add two single-GPU rows
@@ -165,7 +165,7 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
 ## 3. Distributed size mapping and preflight
 
 `--parallel` is resolved into (ulysses, ring, tp) sizes by
-`cli/utils.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
+`cli/optimize.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
 
 | `--parallel` | ws=2 | ws=4 | ws=8 | notes |
 |---|---|---|---|---|

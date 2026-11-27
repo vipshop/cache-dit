@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from torch import nn
 
+from cache_dit.cli import quantize as quantize_mod
 from cache_dit.cli import utils as cli_utils
 from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization.backend import QuantizeBackend
@@ -68,7 +69,7 @@ def test_transformer_cli_passes_backend_to_config(monkeypatch, quant_type: str) 
       self._repeated_blocks = ["_Block"]
       self.proj = nn.Linear(2, 2)
 
-  monkeypatch.setattr(cli_utils, "quantize", fake_quantize)
+  monkeypatch.setattr(quantize_mod, "quantize", fake_quantize)
   args = cli_utils.maybe_postprocess_args(_parser().parse_args([
     "--quantize-params",
     f"quant_type={quant_type},backend=cache_dit",
@@ -86,7 +87,7 @@ def test_transformer_cli_passes_backend_to_config(monkeypatch, quant_type: str) 
 @pytest.mark.skipif(not cuda_ext_is_available(), reason="TorchAO backend availability")
 def test_torchao_backend_is_passed_explicitly(monkeypatch) -> None:
   captured = []
-  monkeypatch.setattr(cli_utils, "quantize",
+  monkeypatch.setattr(quantize_mod, "quantize",
                       lambda module, quantize_config: captured.append(quantize_config) or module)
 
   class _Toy(nn.Module):
@@ -108,7 +109,7 @@ def test_torchao_backend_is_passed_explicitly(monkeypatch) -> None:
 @requires_native_fp8
 def test_fp8_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
   captured = []
-  monkeypatch.setattr(cli_utils, "quantize",
+  monkeypatch.setattr(quantize_mod, "quantize",
                       lambda module, quantize_config: captured.append(quantize_config) or module)
 
   class _Toy(nn.Module):

@@ -58,7 +58,7 @@ src/cache_dit/attention/backends/register.py     # 1 行 enum 成员
 src/cache_dit/attention/backends/<name>.py       # 新文件：注册 + 调用体
 src/cache_dit/attention/backends/__init__.py     # 1 行 import
 src/cache_dit/attention/__init__.py              # 显式 import 列表加一个名字
-src/cache_dit/cli/utils.py                       # choices（+ 专属 flag 校验）
+src/cache_dit/cli/params.py                      # choices（+ 专属 flag 校验）
 docs/user_guide/ATTENTION.md                     # 表格一行 + 专节
 tests/api/test_<name>_backend.py                 # 新文件
 ```

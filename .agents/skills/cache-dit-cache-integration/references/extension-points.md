@@ -41,7 +41,7 @@ src/cache_dit/caching/
 | 1 | `calibrators/<name>.py`（新增） | 继承 `CalibratorBase`，实现 `reset_cache/approximate/mark_step_begin/update`（**`reset_cache` 不是 `reset`**，基类是普通类，写错只会延迟到第一次推理才 `NotImplementedError`） |
 | 2 | `calibrators/__init__.py` | `_supported_calibrators` 加名字 + 工厂 `if` 分支；参数走 `calibrator_kwargs` 透传（**不需要新 dataclass**） |
 | 3 | `load_configs.py` | `enable_<name>` 开关 + 与 taylorseer/dmd/foca 的互斥校验 |
-| 4 | `cli/utils.py` | `--<name>` 及参数 flag；组装 `CalibratorConfig(...)` |
+| 4 | `cli/cache.py` | `--calibrator-params` 的 `type` 及参数 key；组装 `CalibratorConfig(...)` |
 
 骨架（2 空格缩进，相对导入；照 `taylorseer.py` 的形状写）：
 
@@ -147,7 +147,7 @@ for gamma in ratios:
 | block 分派 | `cache_blocks/__init__.py` | `UnifiedBlocks.__new__` / `CachedBlocks.__new__` 两层 `if/elif` |
 | block 执行 | `pattern_base.py` **和** `pattern_3_4_5.py` | 两套模板都要写 |
 | stats | `pattern_utils.py`、`summary.py` | `apply_stats/remove_stats` + `CacheStats` + `strify` 三处分支 |
-| CLI | `cli/utils.py` | 现在硬编码 `DBCacheConfig(...)` 且**没有 `--cache-type`** |
+| CLI | `cli/optimize.py` | 现在硬编码 `DBCacheConfig(...)`；`--cache-params` 的 `type` 只认 DBCache/SeaCache/SoftCache |
 | docs | `docs/user_guide/CACHE_API.md`、`docs/README.md` | 新算法要进文档（根 `README.md` 已最简化，不写算法说明） |
 
 ## 7. 与其它特性的交互

@@ -360,7 +360,7 @@ PSNR/SSIM 为**自算**（`data_range=1`），不是 `calculate_psnr`：
 
 ## 5. 复核用的原始出处
 
-- cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/utils.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
+- cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/cache.py`、`cli/optimize.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
 - HiCache：Algorithm 1/2/3（p.5、A.2）、Eq.(10)、Table 1（FLUX）、Table 4（σ 消融）、A.7 Listing 1
 - MagCache：Eq.(3)(4)(6)(7)(8)(9)(10)(11)、Sec 3.3、Table 1/2/3、A.3/A.4
 - SVD-Cache：Eq.(4)-(11)、Sec 3.3-3.5、Table 1/2/3、Fig 5(b)(c)(d)

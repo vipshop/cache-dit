@@ -824,16 +824,16 @@ def test_generic_module_offload_uses_text_specific_layerwise_overrides(
   )
   captured: dict[str, dict[str, object]] = {}
 
-  monkeypatch.setattr("cache_dit.cli.utils.get_rank_device", lambda: (0, torch.device("cuda", 0)))
-  monkeypatch.setattr("cache_dit.cli.utils.remove_layerwise_offload", lambda _module: 0)
-  monkeypatch.setattr("cache_dit.cli.utils._find_offload_related_hf_hook", lambda _module: None)
+  monkeypatch.setattr("cache_dit.cli.offload.get_rank_device", lambda: (0, torch.device("cuda", 0)))
+  monkeypatch.setattr("cache_dit.cli.offload.remove_layerwise_offload", lambda _module: 0)
+  monkeypatch.setattr("cache_dit.cli.offload._find_offload_related_hf_hook", lambda _module: None)
 
   def _capture_handle(module: nn.Module, **kwargs):
     module_name = next(name for name, candidate in vars(pipe).items() if candidate is module)
     captured[module_name] = kwargs
     return SimpleNamespace(remove=lambda **_kwargs: None)
 
-  monkeypatch.setattr("cache_dit.cli.utils.layerwise_cpu_offload", _capture_handle)
+  monkeypatch.setattr("cache_dit.cli.offload.layerwise_cpu_offload", _capture_handle)
 
   assert maybe_generic_module_offload(args, pipe) is True
   assert captured["transformer"]["async_transfer"] is True
@@ -1598,7 +1598,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
     compile_calls.append(name)
     return transformer
 
-  monkeypatch.setattr("cache_dit.cli.utils._compile_transformer_module",
+  monkeypatch.setattr("cache_dit.cli.compile._compile_transformer_module",
                       _fake_compile_transformer_module)
 
   maybe_quantize_transformer(args, holder)
