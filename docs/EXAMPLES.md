@@ -397,7 +397,7 @@ export CAUSVID_DIR=/path/to/CausVid
 python3 -m cache_dit.generate causvid_wan --compile
 
 # attention is ~58% of the FLOPs, so fp8 attention pays off before weight quantization does
-python3 -m cache_dit.generate causvid_wan --compile --attn ffpa_fp8
+python3 -m cache_dit.generate causvid_wan --compile --attn-params type=ffpa_fp8
 
 # Ulysses context parallelism (2 GPUs): the KV cache is partitioned by head
 torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel ulysses --compile
@@ -437,16 +437,16 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 # DBCache + SCM + Taylorseer
 python3 -m cache_dit.generate flux --cache --scm fast --calibrator-params type=taylorseer,order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
-# + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
+# + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn-params type=_sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn _sdpa_cudnn --parallel-text --cache --scm fast \
+         --attn-params type=_sdpa_cudnn --parallel-text --cache --scm fast \
          --calibrator-params type=taylorseer,order=1 \
          --quantize-params quant_type=float8_per_row \
          --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
-# + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
+# + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn-params type=sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
-         --attn sage --parallel-text --cache --scm fast \
+         --attn-params type=sage --parallel-text --cache --scm fast \
          --calibrator-params type=taylorseer,order=1 \
          --quantize-params quant_type=float8_per_row \
          --warmup 2 --repeat 5 --compile
@@ -462,7 +462,7 @@ torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --
          --parallel-controlnet --cache --rdt 0.6 --scm fast
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses \
          --parallel-controlnet --cache --scm fast --rdt 0.6 --compile \
-         --compile-controlnet --quant-communicate-params bits=8 --attn _sdpa_cudnn \
+         --compile-controlnet --quant-communicate-params bits=8 --attn-params type=_sdpa_cudnn \
          --warmup 2 --repeat 4     
 ```
 
@@ -743,14 +743,19 @@ options:
                         Enable text encoder parallelism if applicable.
   --parallel-controlnet
                         Enable ControlNet parallelism if applicable.
-  --attn {None,flash,flash_varlen,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,sage3,sol_attn,ffpa,ffpa_fp8,ffpa_fp4,ffpa_fp8_per_block,_native_npu,_npu_fia,_mindiesd_laser}
   --attn-params ATTN_PARAMS
-                        Attention backend options as a comma separated
-                        key=value list; the valid keys depend on --attn.
-                        sol_attn: tau, thresh_type (diag|exact), strict,
-                        sink_tokens. ffpa: hybrid, hybrid_n_early. ffpa_fp8 /
-                        ffpa_fp8_per_block: hybrid, hybrid_n_early,
-                        fp8_hadamard, fp8_smooth_v. ffpa_fp4: hybrid,
+                        Select the attention backend and its options as a
+                        comma separated key=value list whose 'type' key is the
+                        backend: flash, flash_varlen, _flash_3
+                        (FlashAttention-3), native (SDPA), _native_cudnn,
+                        _sdpa_cudnn, sage, sage3, sol_attn, ffpa, ffpa_fp8,
+                        ffpa_fp4, ffpa_fp8_per_block, _native_npu, _npu_fia,
+                        _mindiesd_laser. e.g. 'type=flash'. Backends with
+                        options: sol_attn: tau, thresh_type (diag|exact),
+                        strict, sink_tokens; ffpa: hybrid, hybrid_n_early;
+                        ffpa_fp8 / ffpa_fp8_per_block: hybrid, hybrid_n_early,
+                        fp8_hadamard, fp8_smooth_v, e.g.
+                        'type=ffpa_fp8,fp8_hadamard=true'; ffpa_fp4: hybrid,
                         hybrid_n_early, fp4_hadamard, fp4_pv_mm_type
                         (fp4|fp8), fp4_smooth_v. The non-default options are
                         reflected in the saved filename.

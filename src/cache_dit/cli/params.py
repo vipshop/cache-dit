@@ -5,7 +5,7 @@ Syntax is validated while argparse runs; keys are resolved once the flag that sc
 """
 
 import argparse
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from ..offload import _parse_byte_size_arg
 from ..quantization.config import TEXT_ENCODER_QUANT_TYPES, TRANSFORMER_QUANT_TYPES
@@ -192,6 +192,33 @@ ATTN_PARAM_SPECS: Dict[str, Dict[str, Caster]] = {
 }
 ATTN_PARAM_SPECS["ffpa_fp8_per_block"] = ATTN_PARAM_SPECS["ffpa_fp8"]
 
+# Attention backends selectable with `--attn-params type=<backend>`. Those with options are the
+# keys of `ATTN_PARAM_SPECS`.
+ATTN_BACKENDS = (
+  "flash",
+  "flash_varlen",
+  "_flash_3",  # FlashAttention-3
+  # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
+  "native",  # native pytorch attention: sdpa
+  "_native_cudnn",
+  # '_sdpa_cudnn' is only in cache-dit to support context parallelism
+  # with attn masks, e.g., ZImage. It is not in diffusers yet.
+  "_sdpa_cudnn",
+  "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
+  "sage3",  # SageAttention-3 Blackwell FP4 backend
+  "sol_attn",  # NVIDIA Sol-Attn sparse attention (BF16, head_dim=128)
+  # ffpa-attn CUDA backends (fp16/fp8: sm_120 + sm_89; fp4: sm_120 only;
+  # forward inference only; attn_mask supported without CP):
+  # Need install ffpa-attn: https://github.com/vipshop/ffpa-attn
+  "ffpa",  # CUTE_TMA fp16/bf16
+  "ffpa_fp8",  # CUTE_TMA_FP8
+  "ffpa_fp4",  # CUTE_TMA_FP4 NVFP4 (sm_120 only)
+  "ffpa_fp8_per_block",  # CUTE_TMA_FP8 per-block quant (fastest, lowest precision)
+  "_native_npu",  # native npu attention
+  "_npu_fia",  # npu fused infer attention
+  "_mindiesd_laser",  # MindIE-SD laser attention
+)
+
 
 def resolve_param_pairs(
   raw: Optional[Dict[str, str]],
@@ -220,20 +247,42 @@ def resolve_param_pairs(
   return resolved
 
 
-def resolve_attn_params(backend: Optional[str], raw: Optional[Dict[str, str]]) -> Dict[str, Any]:
-  """Resolve `--attn-params` against the keys of the selected attention backend.
+def parse_attn_params(value: str) -> Dict[str, str]:
+  """Parse the CLI `--attn-params "type=<backend>,k=v,k=v"`.
 
-  :param backend: Value of `--attn`, or None when it was not passed.
-  :param raw: Raw mapping from :func:`parse_param_pairs`.
-  :returns: The coerced mapping, empty when nothing was passed.
+  The `type` key selects the attention backend, so it is required and validated here; the other
+  keys are resolved against that backend later in :func:`resolve_attn_params`.
+
+  :param value: Raw argument value.
+  :returns: The raw string mapping, including `type`.
+  """
+
+  example = "'type=ffpa_fp8,fp8_hadamard=true'"
+  raw = parse_param_pairs(value, "--attn-params", example, allow_empty=False)
+  if "type" not in raw:
+    raise argparse.ArgumentTypeError(f"--attn-params needs a 'type' key, e.g. {example}.")
+  if raw["type"].lower() not in ATTN_BACKENDS:
+    raise argparse.ArgumentTypeError(f"Invalid --attn-params 'type={raw['type']}'. Expected one of "
+                                     f"{list(ATTN_BACKENDS)}.")
+  return raw
+
+
+def resolve_attn_params(raw: Optional[Dict[str, str]]) -> Tuple[Optional[str], Dict[str, Any]]:
+  """Split `--attn-params` into the attention backend and the options of that backend.
+
+  :param raw: Raw mapping from the CLI, including the `type` selector; None when the flag was
+    not passed.
+  :returns: `(backend or None, coerced options)`.
   """
 
   if not raw:
-    return {}
-  if backend is None:
-    raise ValueError("--attn-params requires --attn.")
+    return None, {}
+  backend = raw["type"].lower()
+  options = {key: text for key, text in raw.items() if key != "type"}
+  if not options:
+    return backend, {}
   specs = ATTN_PARAM_SPECS.get(backend)
   if specs is None:
-    raise ValueError(f"The '{backend}' attention backend takes no --attn-params; backends with "
-                     f"options: {list(ATTN_PARAM_SPECS)}.")
-  return resolve_param_pairs(raw, specs, "--attn-params")
+    raise ValueError(f"The '{backend}' attention backend takes no --attn-params options; backends "
+                     f"with options: {list(ATTN_PARAM_SPECS)}.")
+  return backend, resolve_param_pairs(options, specs, "--attn-params")

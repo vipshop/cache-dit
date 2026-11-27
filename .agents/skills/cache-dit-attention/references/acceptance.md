@@ -101,7 +101,7 @@ def _run_ulysses(rank, world_size, port):
 ## 2. 假绿清单（这些都是"测试全绿但 backend 没生效"）
 
 1. **走了 fallback**：数值与 SDPA 完全一致（rel-L2 恰好 0）反而是可疑信号。必须断言 `kernel_calls > 0 and fallback_calls == 0`，或 spy vendor 调用次数。
-2. **`--attn` 没落到模块上**：非 diffusers 模型若没有 `_attention_backend` 属性，`set_attn_backend` 只 warning。验收时读回 `processor._attention_backend`。
+2. **`--attn-params type=X` 没落到模块上**：非 diffusers 模型若没有 `_attention_backend` 属性，`set_attn_backend` 只 warning。验收时读回 `processor._attention_backend`。
 3. **CP 路径没被走到**：`cp_config=None` 时永远走单卡分支。CP 测试必须真的传 `_ContextParallelConfig` 并 `dist.init_process_group`。
 4. **mask 被丢弃**：签名漏 `attn_mask` 时 dispatcher 静默过滤，输出看起来"没报错"。用 `attn_mask` 全 `-inf` / 全 False 的极端 mask 断言输出变化。
 5. **compile 没编译**：`TORCH_LOGS=graph_breaks` 打 0 条不代表没跑 dynamo；判据是 `torch._dynamo.utils.counters["stats"]["unique_graphs"]`。

@@ -21,7 +21,7 @@ _ffpa_fp4_attention          → _ffpa_attention_impl(enable_fp4=True)
 
 - **能力门按精度族分开写**：fp16/fp8 允许 `sm_120` 与 `sm_89`，fp4 只允许 `sm_120`。错误信息里直接写"sm_90 / sm_100 are not supported"，不要让用户在 kernel 崩溃里猜。
 - **配置对象缓存**：`_build_ffpa_cuda_backend` 用 `(device.index, flags..., overrides...)` 作 key 缓存 `CUDABackend`（`__post_init__` 有 auto-resolve 开销）。多档变体族必备。
-- **全局 override + CLI 交叉校验**：`set_ffpa_hybrid` / `set_ffpa_fp4_hadamard` / `set_ffpa_fp4_pv_mm_type` 等写模块级全局变量，CLI 侧逐个校验"必须配对应 `--attn`"，再在 `_build_ffpa_cuda_backend` 里注入 kwargs。**新字段用 `kwargs["x"] = True` 后置注入**，这样旧版 ffpa-attn 没有该字段时 off-path 不会炸。
+- **全局 override + CLI 交叉校验**：`set_ffpa_hybrid` / `set_ffpa_fp4_hadamard` / `set_ffpa_fp4_pv_mm_type` 等写模块级全局变量，CLI 侧逐个校验"必须配对应 `--attn-params type=X`"，再在 `_build_ffpa_cuda_backend` 里注入 kwargs。**新字段用 `kwargs["x"] = True` 后置注入**，这样旧版 ffpa-attn 没有该字段时 off-path 不会炸。
 - **mask 归一化集中在 backend**：`_normalize_attn_mask` 只扩展无歧义的低秩形状（`[Nkv]` → `[1,1,1,Nkv]`、`[B,Nkv]` → `[B,1,1,Nkv]`），3D/4D 原样透传，并在 docstring 里写"mask 语义是调用方的契约"。
 - **NHD 零拷贝快路径**：sm_120 且无 mask 时直接 `tensor_layout="NHD"`，省掉输入 permute 视图和输出 permute（非连续视图会在下游 flatten 时触发真实拷贝）。退路是同一数学的 BHND permute。
 
@@ -132,7 +132,7 @@ def _ineligible_reason(query, key, value, attn_mask, dropout_p, is_causal,
 - vendor 要求 BHND，cache-dit 是 NHD → op 内 `transpose(1, 2).contiguous()`，输出再转回。
 - 只支持 `head_dim ∈ {64, 128}` → 用零 pad 到最近的合法尺寸（`D<=64 → 64`，`D<=128 → 128`），`D>128` 退 SDPA。数学上 QK 点积不变，softmax scale 从 `1/sqrt(D)` 变成 `1/sqrt(D_pad)`，V 的 pad 维为 0 所以输出切片是精确的。
 - 同样用 `torch.library` 包黑盒（理由同 Sol-Attn 的 Triton 问题）。
-- **精度警告写在 docstring 里**：FP4 的 P 矩阵在 `[0,1]` 只有 `{0, 0.5, 1}` 三档，PV MMA 实际是在三桶权重上算，与 SDPA 的 cos≈0.03；README 建议交替使用 Sage2++，所以 cache-dit 推荐 `--attn sage` 而不是 `--attn sage3`。
+- **精度警告写在 docstring 里**：FP4 的 P 矩阵在 `[0,1]` 只有 `{0, 0.5, 1}` 三档，PV MMA 实际是在三桶权重上算，与 SDPA 的 cos≈0.03；README 建议交替使用 Sage2++，所以 cache-dit 推荐 `--attn-params type=sage` 而不是 `--attn-params type=sage3`。
 
 别抄：`_sage3_attention` 的 `scale` 参数**没有往下传**（静默忽略非默认 scale）。新 backend 要么透传、要么 raise。
 

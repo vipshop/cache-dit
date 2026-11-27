@@ -29,7 +29,7 @@ class _AttnBackend(str, Enum):
 
 要点：
 
-- 成员**值**就是用户看到的字符串（`--attn`、`ParallelismConfig.attention_backend`、`processor._attention_backend`），改名等于破坏兼容。
+- 成员**值**就是用户看到的字符串（`--attn-params type=X`、`ParallelismConfig.attention_backend`、`processor._attention_backend`），改名等于破坏兼容。
 - 下划线前缀成员（`_flash_3`）仍可正常访问；它表达"内部/特殊用途"，且能被 CLI `choices` 直接列出来。
 - 默认 active backend 由 `_default_active_backend()` 从 `CACHE_DIT_ATTN_BACKEND` 读取，非法值只 warning 后退回 `native`（**注意：这里就是一处静默回退**，报错能力有限，别依赖它发现拼写错误）。
 
@@ -159,11 +159,11 @@ def _my_attention_forward_op(
 
 `src/cache_dit/cli/utils.py`：
 
-- `--attn` 的 `choices` 是硬白名单，新增 backend 必须加，否则 argparse 直接拒。
-- backend 专属选项统一走 `--attn-params "k=v,k=v"`，合法 key 由 `--attn` 选中的 backend 决定：
+- `--attn-params` 的 `type` 取值（`ATTN_BACKENDS`）是硬白名单，新增 backend 必须加，否则 argparse 直接拒。
+- backend 专属选项统一走 `--attn-params "k=v,k=v"`，合法 key 由 `--attn-params type=X` 选中的 backend 决定：
   - key 表在 `src/cache_dit/cli/params.py::ATTN_PARAM_SPECS`（按 backend 分表，值是 str→类型的 caster）；
   - `maybe_postprocess_args → _apply_attn_params` 解析后写进进程级配置：`sol_attn` 调 `set_sol_attn_config(**fields)`（不带选项也会调一次，用来提前校验运行时依赖），ffpa 系列对每个 key 调 `set_ffpa_<key>(value)`；
-  - key 不属于该 backend、不带 `--attn`、或 backend 没有任何选项 → 启动即报错，不会拖到模型加载后；
+  - key 不属于该 backend、不带 `--attn-params type=X`、或 backend 没有任何选项 → 启动即报错，不会拖到模型加载后；
   - 新增带选项的 backend：在 `ATTN_PARAM_SPECS` 加一张表，并在 `_apply_attn_params` 里接上它的 setter（命名跟 `set_<backend>_<key>` 对齐就能走 ffpa 同款的循环）。
 - 非 sol_attn 的选项会体现在保存文件名后缀里（`strify`，固定顺序 `hybrid_n_early_N` / `hybrid` / `fp4_hadamard` / `fp8_hadamard` / `fp4_pv_mm_type_T` / `fp4_smooth_v` / `fp8_smooth_v`），新增 key 要同步这里。
 

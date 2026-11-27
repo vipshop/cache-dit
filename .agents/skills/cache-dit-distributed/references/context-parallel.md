@@ -155,7 +155,7 @@ ParallelismConfig(
 
 | 症状 | 先查 |
 |---|---|
-| `Context parallelism requires a cache-dit registered attention backend` | `--attn` 是不是 diffusers-only 名字（`_native_cudnn`）；换成 `native`/`flash`/`sage`/`ffpa*` |
+| `Context parallelism requires a cache-dit registered attention backend` | `--attn-params type=X` 是不是 diffusers-only 名字（`_native_cudnn`）；换成 `native`/`flash`/`sage`/`ffpa*` |
 | `... which does not support context parallelism` | 该 backend 的 `supports_context_parallel=False`（如 `_flash_3` 之外的假想 backend、或未注册的 proxy） |
 | 形状对但数值错 | 双切/双 gather；processor 自己做了 a2a 又传了 `parallel_config` |
 | `Tensor size along dimension to be sharded must be divisible by mesh size` | 非 UAA 下序列/head 不整除；改 `--uaa` 或换 mesh |

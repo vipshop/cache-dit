@@ -12,7 +12,7 @@ Each skill is a `SKILL.md` router plus a `references/` folder, and works with an
 | [`cache-dit-quantization`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-quantization) | Choosing or extending quantization: TorchAO (fp8/int8/int4/nvfp4), cache-dit's own FP8 path, SVDQuant W4A4 PTQ and DQ, `QuantizeConfig`, regional quantize, precision plans and per-layer observers. |
 | [`cache-dit-custom-kernel`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-custom-kernel) | Operators under `csrc/kernels/`: the CUDA → pybind → Python → `torch.library` integration chain, ports from other projects, reproducible builds, profiling and optimization. |
 | [`cache-dit-cache-integration`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-cache-integration) | Deciding whether a new caching paper is worth integrating, and where it lands: the three-layer split (skip timing / skip granularity / replacement operator), the DBCache / `CalibratorBase` seams, the 12-point paper triage, the already-judged cases (HiCache / MagCache / SVD-Cache / DiCache), and the acceptance gate (raw-float PSNR, `cached_steps > 0`, bit-exact at `max_cached_steps=0`). |
-| [`cache-dit-attention`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-attention) | Adding or changing an attention backend under `src/cache_dit/attention/`: the `_AttnBackend` enum and `_AttnBackendRegistry` (signature filtering, constraints, CP capability), the NHD dispatch contract, the templated-CP forward/backward ops, the diffusers bridge and `set_attn_backend` wiring, the `--attn` CLI choices, `torch.library` wrapping for `torch.compile`, and the acceptance matrix. Uses ffpa-attn, SageAttention-2/3, Sol-Attn and flash-varlen as worked precedents. |
+| [`cache-dit-attention`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-attention) | Adding or changing an attention backend under `src/cache_dit/attention/`: the `_AttnBackend` enum and `_AttnBackendRegistry` (signature filtering, constraints, CP capability), the NHD dispatch contract, the templated-CP forward/backward ops, the diffusers bridge and `set_attn_backend` wiring, the `--attn-params type=` CLI choices, `torch.library` wrapping for `torch.compile`, and the acceptance matrix. Uses ffpa-attn, SageAttention-2/3, Sol-Attn and flash-varlen as worked precedents. |
 | [`cache-dit-distributed`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-distributed) | Understanding or extending `src/cache_dit/distributed/`: `ParallelismConfig` / `ParallelismBackend` derivation, the CP plan DSL and split/gather hooks, Ring / Ulysses / USP attention, the all-to-all and P2P primitives (FP4/FP6/FP8 Ulysses communication, async Ulysses), tensor-parallel planners and the CP+TP hybrid 3D mesh, plus the text-encoder / VAE / ControlNet parallelism paths. Includes the per-model planner inventory and the add-a-planner runbook. |
 
 ## Install
@@ -37,8 +37,8 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 /cache-dit-custom-kernel "Speed up the SVDQ NVFP4 producer on sm120 (NCU)."
 
 # Add or debug an attention backend.
-/cache-dit-attention "Add the vLLM FlashAttention-4 kernel as a --attn backend."
-/cache-dit-attention "--attn sage runs but the output matches SDPA bit-for-bit, find out why."
+/cache-dit-attention "Add the vLLM FlashAttention-4 kernel as a --attn-params type=<backend> backend."
+/cache-dit-attention "--attn-params type=sage runs but the output matches SDPA bit-for-bit, find out why."
 /cache-dit-attention "Make the new backend work with Ulysses context parallelism."
 
 # Understand or extend the distributed module.

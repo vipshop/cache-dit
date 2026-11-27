@@ -50,6 +50,7 @@ from ..quantization.config import _resolve_svdq_kwargs
 from ..quantization.config import TEXT_ENCODER_QUANT_TYPES
 from .params import (
   pairs_parser,
+  parse_attn_params,
   parse_param_pairs,
   resolve_attn_params,
   resolve_param_pairs,
@@ -785,44 +786,18 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable ControlNet parallelism if applicable.",
   )
   parser.add_argument(
-    "--attn",  # attention backend for context parallelism
-    type=str,
-    default=None,
-    choices=[
-      None,
-      "flash",
-      "flash_varlen",
-      "_flash_3",  # FlashAttention-3
-      # Based on this fix: https://github.com/huggingface/diffusers/pull/12563
-      "native",  # native pytorch attention: sdpa
-      "_native_cudnn",
-      # '_sdpa_cudnn' is only in cache-dit to support context parallelism
-      # with attn masks, e.g., ZImage. It is not in diffusers yet.
-      "_sdpa_cudnn",
-      "sage",  # Need install sageattention: https://github.com/thu-ml/SageAttention
-      "sage3",  # SageAttention-3 Blackwell FP4 backend
-      "sol_attn",  # NVIDIA Sol-Attn sparse attention (BF16, head_dim=128)
-      # ffpa-attn CUDA backends (fp16/fp8: sm_120 + sm_89; fp4: sm_120 only;
-      # forward inference only; attn_mask supported without CP):
-      # Need install ffpa-attn: https://github.com/vipshop/ffpa-attn
-      "ffpa",  # CUTE_TMA fp16/bf16
-      "ffpa_fp8",  # CUTE_TMA_FP8
-      "ffpa_fp4",  # CUTE_TMA_FP4 NVFP4 (sm_120 only)
-      "ffpa_fp8_per_block",  # CUTE_TMA_FP8 per-block quant (fastest, lowest precision)
-      "_native_npu",  # native npu attention
-      "_npu_fia",  # npu fused infer attention
-      "_mindiesd_laser",  # MindIE-SD laser attention
-    ],
-  )
-  parser.add_argument(
     "--attn-params",
-    type=pairs_parser("--attn-params", "'fp8_hadamard=true,hybrid=true'"),
+    type=parse_attn_params,
     default=None,
-    help="Attention backend options as a comma separated key=value list; the valid keys depend "
-    "on --attn. sol_attn: tau, thresh_type (diag|exact), strict, sink_tokens. ffpa: hybrid, "
-    "hybrid_n_early. ffpa_fp8 / ffpa_fp8_per_block: hybrid, hybrid_n_early, fp8_hadamard, "
-    "fp8_smooth_v. ffpa_fp4: hybrid, hybrid_n_early, fp4_hadamard, fp4_pv_mm_type (fp4|fp8), "
-    "fp4_smooth_v. The non-default options are reflected in the saved filename.",
+    help="Select the attention backend and its options as a comma separated key=value list whose "
+    "'type' key is the backend: flash, flash_varlen, _flash_3 (FlashAttention-3), native (SDPA), "
+    "_native_cudnn, _sdpa_cudnn, sage, sage3, sol_attn, ffpa, ffpa_fp8, ffpa_fp4, "
+    "ffpa_fp8_per_block, _native_npu, _npu_fia, _mindiesd_laser. e.g. 'type=flash'. Backends with "
+    "options: sol_attn: tau, thresh_type (diag|exact), strict, sink_tokens; ffpa: hybrid, "
+    "hybrid_n_early; ffpa_fp8 / ffpa_fp8_per_block: hybrid, hybrid_n_early, fp8_hadamard, "
+    "fp8_smooth_v, e.g. 'type=ffpa_fp8,fp8_hadamard=true'; ffpa_fp4: hybrid, hybrid_n_early, "
+    "fp4_hadamard, fp4_pv_mm_type (fp4|fp8), fp4_smooth_v. The non-default options are reflected "
+    "in the saved filename.",
   )
   # Ulysses context parallelism settings
   parser.add_argument(
@@ -1314,13 +1289,14 @@ def _resolve_cli_quantization(args) -> None:
 def _apply_attn_params(args) -> None:
   """Resolve `--attn-params` and push the options into the process-wide backend configuration.
 
-  The ffpa and sol_attn options are module-level state, so they apply to both the direct and the
-  context-parallel attention paths.
+  The `type` key selects the backend and is exposed as `args.attn`; the ffpa and sol_attn options
+  are module-level state, so they apply to both the direct and the context-parallel attention
+  paths.
 
-  :param args: Parsed CLI namespace; `attn_fields` is set to the resolved options.
+  :param args: Parsed CLI namespace; `attn` and `attn_fields` are set here.
   """
 
-  fields = resolve_attn_params(args.attn, args.attn_params)
+  args.attn, fields = resolve_attn_params(args.attn_params)
   args.attn_fields = fields
   if args.attn == "sol_attn":
     # Runs without options too: it validates the Sol-Attn runtime up front.

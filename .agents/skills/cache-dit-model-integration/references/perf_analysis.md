@@ -11,14 +11,14 @@ compute decides which optimizations can possibly pay off:
   rewrites the attention kernel**.
 - Context parallelism and cache are the only levers that shrink the **attention** share
   (CP splits the O(S^2) work across ranks, cache skips whole steps).
-- `--attn ffpa_fp8 / ffpa_fp4` quantizes the attention computation itself — the only
+- `--attn-params type=ffpa_fp8 / ffpa_fp4` quantizes the attention computation itself — the only
   single-GPU lever against an attention-dominated model.
 
 A model where attention is 90% of the FLOPs **cannot** show a meaningful fp8 speedup no
 matter how well the quantization is wired: 2x on 10% of the time saves 5%. This is the
 Motif-Video lesson (PR #1142): fp8-per-row measured 1.08x and svdq-nvfp4 1.09x and both
 were **at their theoretical ceiling** — the integration was fine; the workload was
-attention-dominated. `--attn ffpa_fp8` then delivered 2.14x on the same model, confirming
+attention-dominated. `--attn-params type=ffpa_fp8` then delivered 2.14x on the same model, confirming
 the analysis.
 
 ## The formulas
@@ -89,9 +89,9 @@ Use this order — each step is cheap and eliminates one hypothesis:
 | fp8-per-row + compile | 265.0s | 1.08x | 35.51 | 0.9544 |
 | svdq-nvfp4-r64 + compile | 264.5s | 1.09x | 32.22 | 0.9332 |
 | compile only | 282.2s | 1.02x | 42.44 | 0.9716 |
-| **--attn ffpa_fp8 (1 GPU)** | **134.2s** | **2.14x** | **41.55** | **0.9702** |
-| --attn ffpa_fp4 (1 GPU) | 119.1s | 2.41x | 32.43 | 0.9152 |
-| **--attn ffpa_fp4 + cache** | **69.7s** | **4.12x** | 32.40 | 0.9141 |
+| **--attn-params type=ffpa_fp8 (1 GPU)** | **134.2s** | **2.14x** | **41.55** | **0.9702** |
+| --attn-params type=ffpa_fp4 (1 GPU) | 119.1s | 2.41x | 32.43 | 0.9152 |
+| **--attn-params type=ffpa_fp4 + cache** | **69.7s** | **4.12x** | 32.40 | 0.9141 |
 
 Readings from this table:
 

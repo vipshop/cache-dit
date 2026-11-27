@@ -14,7 +14,7 @@ Run order (do not reorder):
 
 1. `./perf_analysis.md` — FLOPs budget (attention vs GEMM share). It decides **in advance** which
    optimizations can pay off, so a flat fp8 number later is not misdiagnosed as an integration bug.
-   An attention-dominated model additionally needs the `--attn ffpa_fp8` / `ffpa_fp4` rows (§1 note),
+   An attention-dominated model additionally needs the `--attn-params type=ffpa_fp8` / `ffpa_fp4` rows (§1 note),
    because GEMM-only quantization is capped by its GEMM share.
 2. Tier A 1-GPU rows, starting with the baseline **and** the determinism baseline (§2).
 3. Tier A 2-GPU rows.
@@ -74,7 +74,7 @@ Rules:
   them under `--parallel tp`.
 - **Attention-dominated models** (long video sequences, see `./perf_analysis.md`): the GEMM-side rows
   above have a hard ceiling of the model's GEMM share. Add two single-GPU rows
-  `A1_C1_Q0_ATTN8` (`--attn ffpa_fp8`) and, if acceptable, `A1_C1_Q0_ATTN4` (`--attn ffpa_fp4`), each
+  `A1_C1_Q0_ATTN8` (`--attn-params type=ffpa_fp8`) and, if acceptable, `A1_C1_Q0_ATTN4` (`--attn-params type=ffpa_fp4`), each
   ± `--cache`. Without them the table under-reports the ceiling by 2× on such models.
 
 ### Tier B checklist (4 GPUs, on request)
@@ -265,7 +265,7 @@ run U1_C0_Q0_OFFA            --layerwise-offload --layerwise-async-transfer
 run U1_C1_Q0_OFF             --layerwise-offload --compile
 run U1_C1_Q0_OFFA            --layerwise-offload --layerwise-async-transfer --compile
 # attention-dominated models only (§1 note):
-# run A1_C1_Q0_ATTN8         --compile --attn ffpa_fp8
+# run A1_C1_Q0_ATTN8         --compile --attn-params type=ffpa_fp8
 
 export CUDA_VISIBLE_DEVICES=4,5
 NPROC=2
