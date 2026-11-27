@@ -62,7 +62,7 @@ export <NEW_MODEL>_DIR=/workspace/dev/vipdev/hf_models/<your-model-dir>
 python3 -m cache_dit.generate <new_model> --save-path .tmp/{task}/<new_model>_base.png
 
 # === 2. Cache acceleration ===
-python3 -m cache_dit.generate <new_model> --cache --summary \
+python3 -m cache_dit.generate <new_model> --cache-params 'type=DBCache' --summary \
     --save-path .tmp/{task}/<new_model>_cache.png
 
 # === 3. Context Parallelism: Ulysses (2 GPUs) ===
@@ -115,7 +115,7 @@ cache-dit-metrics psnr ssim -i1 .tmp/{task}/<new_model>_base.png -i2 .tmp/{task}
 
 **Acceptance criteria:**
 
-- **Cache**: PSNR > 25 dB, SSIM > 0.90 (lossy optimization; exact values depend on `--rdt` threshold).
+- **Cache**: PSNR > 25 dB, SSIM > 0.90 (lossy optimization; exact values depend on the `--cache-params rdt=...` threshold).
 - **CP/TP/VAE-P**: PSNR > 35 dB, SSIM > 0.90.  These should be numerically near-identical to baseline; the SSIM threshold is set lower than 0.999 to accommodate real-world models like Boogu-Image where CP/TP are verified at ~0.994–0.997.
 - **⚠️ Garbled-image red flag**: If PSNR is "reasonable" (e.g., 28 dB) but SSIM is below 0.5, the image is almost certainly visually corrupted. **Do not accept the result** — investigate the root cause (common culprits: missing/wrong `shard_div_attr`, DTensor placement mismatch, incorrect GQA handling).
 - Always **visually inspect** at least one output image per configuration.
@@ -199,7 +199,7 @@ a band is a finding to report, not a threshold to lower.
 2. **BlockAdapter not activating**: Check that `check_forward_pattern=True` and verify the block forward signature matches the declared pattern.
 3. **CP/TP errors**: Verify the transformer class name matches exactly what `@ContextParallelismPlannerRegister.register(...)` expects. Check `transformer.__class__.__name__`.
 4. **Image corruption with TP**: Ensure `shard_div_attr(block.attn, "heads", tp_mesh.size())` is called for each attention block.
-5. **Cache producing identical output to baseline**: The cache warmup may not have completed. Increase `--max-warmup-steps` or decrease `--residual-diff-threshold`.
+5. **Cache producing identical output to baseline**: The cache warmup may not have completed. Increase `--cache-params ws=...` or decrease `--cache-params rdt=...`.
 
 ---
 

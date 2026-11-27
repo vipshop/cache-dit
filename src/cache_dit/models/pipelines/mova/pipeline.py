@@ -48,7 +48,7 @@ def _prompt_clean(text: str) -> str:
   """Normalize a prompt the way the released pipeline does.
 
   `ftfy` is imported here, not at module scope: it only ships in the `[dev]` extra, and the MOVAPipeline
-  import chain is reached by `--cache` on any installation, so a top-level import would break a plain
+  import chain is reached by `--cache-params` on any installation, so a top-level import would break a plain
   `pip install cache_dit` for every user.
 
   :param text: Raw prompt.

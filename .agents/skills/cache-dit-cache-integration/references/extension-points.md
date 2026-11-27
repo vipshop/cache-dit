@@ -176,8 +176,8 @@ for gamma in ratios:
 
 ## 9. 已知坑
 
-- `--warmup` 是 perf 预热，不是 cache warmup；cache warmup 是 `--max-warmup-steps`/`--ws`（默认 8）。少步模型配 `ws=8` 会全程 warmup ⇒ 零缓存。
+- `--warmup` 是 perf 预热，不是 cache warmup；cache warmup 是 `--cache-params ws=...`（默认 8）。少步模型配 `ws=8` 会全程 warmup ⇒ 零缓存。
 - `rdt >= 1.0` 是"永远命中"的短路分支，不是"放宽阈值"，不能拿来证明 cache 有效。
 - `--compile` 会改变命中序列（数值扰动变了决策），所以 compile 行与非 compile 行不能共用同一工作点。
 - **`residual_diffs` 里有 sentinel**：`-0.0`（阈值关闭）/`-1.0`（永远命中）/`-2.0`（shape 不匹配）都会写进同一个 dict。统计 diff 均值/画曲线前必须过滤负值，否则得到无意义的数。
-- 行号/默认值有 2 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `--rdt` 默认 0.12 而 dataclass 默认 0.08。
+- 行号/默认值有 2 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `rdt` 默认 0.12 而 dataclass 默认 0.08。

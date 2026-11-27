@@ -139,8 +139,8 @@ Available examples:
 - ✅ longlive2                        [T2V] - Default: Efficient-Large-Model/LongLive-2.0-5B
 - ✅ wan2.2_s2v                       [S2V] - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
   (speech-to-video: `--audio-path` + `--image-path`. The cache skips the audio injection on
-  cached steps, so keep `--rdt` tighter than the Wan-T2V presets and prefer a small
-  `--max-cached-steps`; `rdt=0.08` reaches 39.6 dB, `rdt=0.20` 38.7 dB at 480x832.)
+  cached steps, so keep `--cache-params rdt=...` tighter than the Wan-T2V presets and prefer a
+  small `--cache-params mc=...`; `rdt=0.08` reaches 39.6 dB, `rdt=0.20` 38.7 dB at 480x832.)
 - ✅ sana_video                       [T2V] - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
 - ✅ sana_video_i2v                   [I2V] - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
 - ✅ longcat_video_avatar_a2v         [S2V] - Default: meituan-longcat/LongCat-Video-Avatar-1.5
@@ -160,6 +160,7 @@ Available examples:
 - ✅ minimax_h3_image_edit            [IE2I] - Default: MiniMaxAI/MiniMax-H3-Image
 - ✅ ph3_image                        [T2I] - Default: PrunaAI/P-H3-Image
 - ✅ ph3_image_edit                   [IE2I] - Default: PrunaAI/P-H3-Image
+Pass a model directory or repo id instead of an example name to match the example from the model, e.g. `python3 -m cache_dit.generate /path/to/FLUX.1-dev`; add `--task T2I` (T2V, I2V, ...) when the model serves several tasks.
 ```
 
 ## Single GPU Inference
@@ -177,10 +178,10 @@ python3 -m cache_dit.generate flux3_edit # diffusers modular pipeline, image edi
 python3 -m cache_dit.generate ovis_image
 python3 -m cache_dit.generate qwen_image_edit_lightning
 python3 -m cache_dit.generate qwen_image
-python3 -m cache_dit.generate ltx2_t2v --cache --cpu-offload
-python3 -m cache_dit.generate ltx2_i2v --cache --cpu-offload
-python3 -m cache_dit.generate ltx25_dfr --cache --cpu-offload   # DFR, schedules its own 8 sigmas
-python3 -m cache_dit.generate ltx25_t2v --cache --cpu-offload
+python3 -m cache_dit.generate ltx2_t2v --cache-params 'type=DBCache' --cpu-offload
+python3 -m cache_dit.generate ltx2_i2v --cache-params 'type=DBCache' --cpu-offload
+python3 -m cache_dit.generate ltx25_dfr --cache-params 'type=DBCache' --cpu-offload # DFR, schedules its own 8 sigmas
+python3 -m cache_dit.generate ltx25_t2v --cache-params 'type=DBCache' --cpu-offload
 python3 -m cache_dit.generate skyreels_v2
 python3 -m cache_dit.generate wan2.2_t2v
 python3 -m cache_dit.generate zimage_turbo 
@@ -190,41 +191,41 @@ python3 -m cache_dit.generate firered_image_edit_1.0
 python3 -m cache_dit.generate generate longcat_image
 python3 -m cache_dit.generate generate longcat_image_edit
 # w/ cache acceleration
-python3 -m cache_dit.generate flux --cache
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 --softcache --softcache-tau 0.5 --calibrator-params type=residual_motion --max-warmup-steps 1 --max-cached-steps -1 --max-continuous-cached-steps -1
-python3 -m cache_dit.generate flux --cache --calibrator-params type=taylorseer
-python3 -m cache_dit.generate flux --cache --calibrator-params "type=svd,tau=0.9,beta=0.9"
-python3 -m cache_dit.generate flux --cache --calibrator-params "type=hicache,order=2,sigma=0.5"
-python3 -m cache_dit.generate flux --cache --calibrator-params "type=brace,capacity=3,gamma=0.7"
-python3 -m cache_dit.generate flux --cache --calibrator-params "type=bezicast,history=6,control_points=4,ridge=0.5,guardrail=false"
-python3 -m cache_dit.generate flux --cache --calibrator-params "type=residual_motion,beta=1.0"
-python3 -m cache_dit.generate flux_nunchaku --cache
-python3 -m cache_dit.generate qwen_image --cache
-python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast
-python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 --cache --rdt 0.6 --scm fast
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache'
+python3 -m cache_dit.generate flux --cache-params 'type=SeaCache,seacache_feature_shape=64x64'
+python3 -m cache_dit.generate flux --cache-params 'type=SoftCache,ws=1,mc=-1,mcc=-1,seacache_feature_shape=64x64,softcache_tau=0.5' --calibrator-params type=residual_motion
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params type=taylorseer
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params "type=svd,tau=0.9,beta=0.9"
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params "type=hicache,order=2,sigma=0.5"
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params "type=brace,capacity=3,gamma=0.7"
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params "type=bezicast,history=6,control_points=4,ridge=0.5,guardrail=false"
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params "type=residual_motion,beta=1.0"
+python3 -m cache_dit.generate flux_nunchaku --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image --cache-params 'type=DBCache'
+python3 -m cache_dit.generate zimage_turbo --cache-params 'type=DBCache,rdt=0.6,scm=fast'
+python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 --cache-params 'type=DBCache,rdt=0.6,scm=fast'
 # enable cpu offload or vae tiling if your encounter an OOM error
-python3 -m cache_dit.generate qwen_image --cache --cpu-offload
-python3 -m cache_dit.generate qwen_image --cache --cpu-offload --vae-tiling
+python3 -m cache_dit.generate qwen_image --cache-params 'type=DBCache' --cpu-offload
+python3 -m cache_dit.generate qwen_image --cache-params 'type=DBCache' --cpu-offload --vae-tiling
 python3 -m cache_dit.generate qwen_image_edit_lightning --cpu-offload --steps 4
 python3 -m cache_dit.generate qwen_image_edit_lightning --cpu-offload --steps 8
 # or, enable sequential cpu offload for extremly low VRAM device
 python3 -m cache_dit.generate flux2 --sequential-cpu-offload # FLUX2 56B total
 # use `--summary` option to show the cache acceleration stats
-python3 -m cache_dit.generate zimage_turbo --cache --rdt 0.6 --scm fast --summary
+python3 -m cache_dit.generate zimage_turbo --cache-params 'type=DBCache,rdt=0.6,scm=fast' --summary
 
 # Qwen-Image 2.1: the pipeline samples without guidance by default, so the example disables
 # separate-CFG bookkeeping (pass `--true-cfg-scale 4.0` and a negative prompt only in your own
 # script, and set `enable_separate_cfg=True` there). Turbo keeps the 8-step sigma grid that ships
 # with the checkpoint, `--steps` does not override it.
-python3 -m cache_dit.generate qwen_image_21 --cache
-python3 -m cache_dit.generate qwen_image_21_turbo --cache
-python3 -m cache_dit.generate qwen_image_21_edit --cache # 40 steps, needs cfg bookkeeping
-python3 -m cache_dit.generate qwen_image_21_turbo_edit --cache
-python3 -m cache_dit.generate qwen_image_21_modular --cache # diffusers modular pipeline
-python3 -m cache_dit.generate qwen_image_21_turbo_modular --cache
-python3 -m cache_dit.generate qwen_image_21_modular_edit --cache
-python3 -m cache_dit.generate qwen_image_21_turbo_modular_edit --cache
+python3 -m cache_dit.generate qwen_image_21 --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_turbo --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_edit --cache-params 'type=DBCache' # 40 steps, needs cfg bookkeeping
+python3 -m cache_dit.generate qwen_image_21_turbo_edit --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_modular --cache-params 'type=DBCache' # diffusers modular pipeline
+python3 -m cache_dit.generate qwen_image_21_turbo_modular --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_modular_edit --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_turbo_modular_edit --cache-params 'type=DBCache'
 ```
 
 ### Ming-Image 0.1
@@ -236,10 +237,10 @@ reference image aspect ratio with 16-pixel alignment.
 
 ```bash
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --cache --rdt 0.20 --ws 8
+  --model-path /PATH/TO/Ming-Image-0.1-Design --cache-params 'type=DBCache,rdt=0.20,ws=8'
 python3 -m cache_dit.generate ming_image_design_layer \
   --model-path /PATH/TO/Ming-Image-0.1-Design-Layer \
-  --image-path /PATH/TO/reference.png --cache --rdt 0.08 --ws 8
+  --image-path /PATH/TO/reference.png --cache-params 'type=DBCache,rdt=0.08,ws=8'
 
 torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
  --model-path /PATH/TO/Ming-Image-0.1-Design --parallel-params 'ulysses=2,vae=true' 
@@ -272,7 +273,7 @@ The default model paths are the official model names on HuggingFace Hub. Pass th
 ```bash
 # the example is matched from the model path
 python3 -m cache_dit.generate /PATH/TO/FLUX.1-dev
-python3 -m cache_dit.generate /PATH/TO/Z-Image-Turbo --cache
+python3 -m cache_dit.generate /PATH/TO/Z-Image-Turbo --cache-params 'type=DBCache'
 python3 -m cache_dit.generate black-forest-labs/FLUX.1-dev   # repo id works too
 ```
 
@@ -323,10 +324,10 @@ torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --pa
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'tp=4,text=true' 
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning --parallel-params 'ulysses=4,text=true,ulysses_anything=true' 
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' 
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache 
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'tp=4,text=true,vae=true' --cache
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache 
-torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'tp=4,text=true,vae=true' --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_t2v --parallel-params 'tp=4,text=true,vae=true' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'ulysses=4,text=true,vae=true,ulysses_anything=true' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'tp=4,text=true,vae=true' --cache-params 'type=DBCache'
 ```
 
 > **MOSS-Image** ships its own pipeline, so it is vendored inside cache-dit
@@ -338,17 +339,17 @@ torchrun --nproc_per_node=4 -m cache_dit.generate ltx2_i2v --parallel-params 'tp
 
 ```bash
 # single GPU: baseline + DBCache
-python3 -m cache_dit.generate moss_image_sft --steps 25 --cache --rdt 0.3
+python3 -m cache_dit.generate moss_image_sft --steps 25 --cache-params 'type=DBCache,rdt=0.3'
 
 # context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
-torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,ulysses_anything=true' --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'tp=2,text=true' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,ulysses_anything=true' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --parallel-params 'tp=2,text=true' --cache-params 'type=DBCache'
 
 # VAE parallelism needs a latent larger than the VAE tile size (>=1536px output)
 torchrun --nproc_per_node=2 -m cache_dit.generate moss_image_sft --height 1536 --width 1536 --parallel-params 'tp=2,vae=true' 
 
 # hybrid CP + TP (4 GPUs, 2+2)
-torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,tp=2,ulysses_anything=true' --cache
+torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel-params 'ulysses=2,tp=2,ulysses_anything=true' --cache-params 'type=DBCache'
 ```
 
 > **LingBot-Video** (Dense 1.3B) also ships its own pipeline, vendored at
@@ -364,18 +365,18 @@ torchrun --nproc_per_node=4 -m cache_dit.generate moss_image_sft --parallel-para
 
 ```bash
 # single GPU: baseline + DBCache (official recipe: 480x832, 81 frames, 40 steps, CFG 3.0)
-python3 -m cache_dit.generate lingbot_video --cache --rdt 0.3 --Fn 1 --Bn 0 --saved-fps 24
+python3 -m cache_dit.generate lingbot_video --cache-params 'type=DBCache,Fn=1,Bn=0,rdt=0.3' --saved-fps 24
 
 # context parallelism (2 GPUs) / tensor parallelism (2 GPUs)
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2,ulysses_anything=true' --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'tp=2,text=true' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2,ulysses_anything=true' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'tp=2,text=true' --cache-params 'type=DBCache'
 
 # VAE parallelism + quantization
 torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'tp=2,vae=true' 
-python3 -m cache_dit.generate lingbot_video --quantize-params quant_type=float8_per_row --compile --cache
+python3 -m cache_dit.generate lingbot_video --quantize-params quant_type=float8_per_row --compile --cache-params 'type=DBCache'
 
 # cheaper functional check (short clip, small canvas)
-python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 256 --steps 20 --cache
+python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 256 --steps 20 --cache-params 'type=DBCache'
 ```
 
 > **CausVid-Wan** (`tianweiy/CausVid`, a Wan2.1-T2V-1.3B causal few-step student) is vendored at
@@ -384,8 +385,8 @@ python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 
 > `autoregressive_checkpoint/model.pt` student is converted on load, `strict=True`). The model is
 > chunk-autoregressive: 81 frames = 7 chunks of 3 latent frames, each chunk runs the fixed DMD table
 > `1000/757/522` and then a clean-latent pass that writes the KV cache every later chunk attends to,
-> so `--steps` is ignored and there is no CFG. `--cache` only becomes effective above
-> `--rdt 0.95` because consecutive DMD steps are far apart (measured residual diffs 0.96-1.20), and
+> so `--steps` is ignored and there is no CFG. `--cache-params` only becomes effective above
+> `--cache-params rdt=0.95` because consecutive DMD steps are far apart (measured residual diffs 0.96-1.20), and
 > at that point the clip changes; TP, Ulysses CP (head-sharded KV, Ring refused), TE-P, VAE-P,
 > fp8/SVDQ, layerwise offload and compile all run — measured 1.04-1.27x, see the PR for the matrix.
 
@@ -408,8 +409,8 @@ torchrun --nproc_per_node=2 -m cache_dit.generate causvid_wan --parallel-params 
 # Qwen-Image 2.1: Ulysses only. Prefix and target tokens are sharded as one sequence with tail
 # padding, and prefix KV caches are head-sharded. Ring and `--parallel-params ulysses_anything=true` are rejected.
 # Sequence lengths need not divide by cp_size; the local head count after TP must divide by it.
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'ulysses=2' --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'tp=2,text=true,vae=true' --cache
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'ulysses=2' --cache-params 'type=DBCache'
+torchrun --nproc_per_node=2 -m cache_dit.generate qwen_image_21_turbo --parallel-params 'tp=2,text=true,vae=true' --cache-params 'type=DBCache'
 ```
 
 ## Low-bits Quantization 
@@ -418,15 +419,15 @@ cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥t
 
 ```bash
 # please also enable torch.compile if the quantation is using.
-python3 -m cache_dit.generate flux --cache --quantize-params quant_type=float8_per_row --compile
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --quantize-params quant_type=float8_per_row --compile
 # cache-dit's own FP8 kernels (sm100+), instead of the default TorchAO backend
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
   --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
-python3 -m cache_dit.generate flux --cache --quantize-params quant_type=int8_per_row --compile
-python3 -m cache_dit.generate flux --cache --quantize-params quant_type=float8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize-params quant_type=int8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize-params quant_type=bitsandbytes_4bit --compile # w4a16
-python3 -m cache_dit.generate flux_nunchaku --cache --compile # w4a4 SVDQ
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --quantize-params quant_type=int8_per_row --compile
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --quantize-params quant_type=float8_weight_only --compile
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --quantize-params quant_type=int8_weight_only --compile
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --quantize-params quant_type=bitsandbytes_4bit --compile # w4a16
+python3 -m cache_dit.generate flux_nunchaku --cache-params 'type=DBCache' --compile # w4a4 SVDQ
 ```
 
 ## Hybrid Acceleration 
@@ -435,18 +436,18 @@ Here are some examples for `hybrid cache acceleration + parallelism` for popular
 
 ```bash
 # DBCache + SCM + Taylorseer
-python3 -m cache_dit.generate flux --cache --scm fast --calibrator-params type=taylorseer,order=1
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache,scm=fast' --calibrator-params type=taylorseer,order=1
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn-params type=_sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4,text=true' --quant-communicate-params bits=8 \
- --attn-params type=_sdpa_cudnn --cache --scm fast \
+ --attn-params type=_sdpa_cudnn --cache-params 'type=DBCache,scm=fast' \
  --calibrator-params type=taylorseer,order=1 \
  --quantize-params quant_type=float8_per_row \
  --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn-params type=sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4,text=true' --quant-communicate-params bits=8 \
- --attn-params type=sage --cache --scm fast \
+ --attn-params type=sage --cache-params 'type=DBCache,scm=fast' \
  --calibrator-params type=taylorseer,order=1 \
  --quantize-params quant_type=float8_per_row \
  --warmup 2 --repeat 5 --compile
@@ -459,11 +460,11 @@ torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
  --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4,controlnet=true' \
- --cache --rdt 0.6 --scm fast
+ --cache-params 'type=DBCache,rdt=0.6,scm=fast'
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4,controlnet=true' \
- --cache --scm fast --rdt 0.6 --compile \
+ --cache-params 'type=DBCache,rdt=0.6,scm=fast' --compile \
  --compile-controlnet --quant-communicate-params bits=8 --attn-params type=_sdpa_cudnn \
- --warmup 2 --repeat 4 
+ --warmup 2 --repeat 4
 ```
 
 ## End2End Examples
@@ -486,7 +487,7 @@ INFO 12-17 09:02:31 [base.py:225] - Inference Time: 8.27s
 INFO 12-17 09:02:32 [base.py:182] Image saved to flux.1024x1024.C0_Q0_NONE_Ulysses4.png
 
 # Enabled Cache Acceleration: 4.23s
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --cache --scm fast
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --cache-params 'type=DBCache,scm=fast'
 
 INFO 12-17 09:10:09 [base.py:151] Example Input Summary:
 INFO 12-17 09:10:09 [base.py:151] - prompt: A cat holding a sign that says hello world
@@ -647,44 +648,28 @@ options:
   --save-path SAVE_PATH
                         Path to save the generated output, e.g., output.png or
                         output.mp4
-  --cache               Enable Cache Acceleration
+  --cache-params CACHE_PARAMS
+                        Enable Cache Acceleration; options as a comma
+                        separated key=value list whose optional 'type' key
+                        selects the cache: DBCache (default), SeaCache
+                        (DBCache plus the SEA probe) or SoftCache (SeaCache
+                        plus jump-step reuse). DBCache knobs: 'Fn=1', 'Bn=0',
+                        'rdt=0.12', 'ws=8' (max warmup steps), 'wi=1' (warmup
+                        interval), 'mc=-1' (max cached steps), 'mcc=3' (max
+                        continuous cached steps), 'scm=fast' (steps mask
+                        policy: slow|medium|fast|ultra), 'steps_mask=true'.
+                        SeaCache: 'seacache=true', 'seacache_mode=flow|vp',
+                        'seacache_feature_shape=64x64' (H W, or F H W for
+                        video), 'seacache_power_exp=2'. SoftCache:
+                        'softcache=true', 'softcache_tau=0.5',
+                        'softcache_jf_max=8'. The long names
+                        Fn_compute_blocks, Bn_compute_blocks,
+                        residual_diff_threshold, max_warmup_steps,
+                        warmup_interval, max_cached_steps,
+                        max_continuous_cached_steps and mask_policy are
+                        accepted too.
   --cache-summary, --summary
                         Enable Cache Summary logging
-  --Fn-compute-blocks FN_COMPUTE_BLOCKS, --Fn FN_COMPUTE_BLOCKS
-                        CacheDiT Fn_compute_blocks parameter
-  --Bn-compute-blocks BN_COMPUTE_BLOCKS, --Bn BN_COMPUTE_BLOCKS
-                        CacheDiT Bn_compute_blocks parameter
-  --residual-diff-threshold RESIDUAL_DIFF_THRESHOLD, --rdt RESIDUAL_DIFF_THRESHOLD
-                        CacheDiT residual diff threshold. A model with per-
-                        workflow cache presets treats this default as 'not
-                        set' and uses its own starting point; any other value
-                        wins
-  --max-warmup-steps MAX_WARMUP_STEPS, --ws MAX_WARMUP_STEPS
-                        Maximum warmup steps for CacheDiT
-  --warmup-interval WARMUP_INTERVAL, --wi WARMUP_INTERVAL
-                        Warmup interval for CacheDiT
-  --max-cached-steps MAX_CACHED_STEPS, --mc MAX_CACHED_STEPS
-                        Maximum cached steps for CacheDiT
-  --max-continuous-cached-steps MAX_CONTINUOUS_CACHED_STEPS, --mcc MAX_CONTINUOUS_CACHED_STEPS
-                        Maximum continuous cached steps for CacheDiT
-  --seacache            Enable the optional SEA-filtered relative-L1 probe
-                        inside DBCache.
-  --seacache-mode {flow,vp}
-                        SeaCache scheduler coefficient convention.
-  --seacache-feature-shape DIM [DIM ...]
-                        Global packed-token geometry: H W for images or F H W
-                        for video.
-  --seacache-power-exp SEACACHE_POWER_EXP
-                        SeaCache clean-signal power-spectrum exponent (2 for
-                        images, commonly 3 for video).
-  --softcache           Enable SoftCache on top of --seacache: SeaCache's own
-                        refresh rule plus headroom sampler jumps (FlowMatch
-                        Euler schedulers).
-  --softcache-tau SOFTCACHE_TAU
-                        SoftCache staleness budget; ~0.3-0.5 for ~3-4x and
-                        ~1.1 for ~6.5x on FLUX.1-dev.
-  --softcache-jf-max SOFTCACHE_JF_MAX
-                        Cap on the SoftCache jump factor.
   --calibrator-params CALIBRATOR_PARAMS
                         Enable a DBCache calibrator (requires --cache);
                         options as a comma separated key=value list whose
@@ -704,9 +689,6 @@ options:
                         'calibrator_cache_type=hidden_states,encoder=false'
                         may be added to any of them for the keys every
                         calibrator accepts.
-  --steps-mask          Enable steps mask for CacheDiT
-  --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
-                        Pre-defined steps computation mask policy
   --quantize-params QUANTIZE_PARAMS
                         Quantize the transformer; options as a comma separated
                         key=value list, e.g. 'quant_type=float8_per_row' (the

@@ -10,7 +10,7 @@ covered by the acceptance run):
    popping that copy leaves the step in place and the "prompt rendered as given" contract silently
    breaks; the components also have to be unloaded, or the ~2 GiB conditioner stays resident.
 3. **The cache budget matches the checkpoint's schedule.** Eight steps leave room for at most a
-   two-step warmup, and a `--steps-mask` run has to switch to the static policy.
+   two-step warmup, and a `--cache-params steps_mask=true` run has to switch to the static policy.
 """
 
 import argparse

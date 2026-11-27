@@ -93,10 +93,10 @@ Each of them is a normal pipeline object: `from_pretrained(...)`, `enable_cache(
 `python3 -m cache_dit.generate list` prints the CLI example name and default checkpoint of every supported model, e.g.
 
 ```bash
-python3 -m cache_dit.generate moss_image_sft --cache --rdt 0.20
-python3 -m cache_dit.generate sana_video2 --cache
-python3 -m cache_dit.generate qwen_image_21_turbo_fused --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2' --cache
+python3 -m cache_dit.generate moss_image_sft --cache-params 'type=DBCache,rdt=0.20'
+python3 -m cache_dit.generate sana_video2 --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_turbo_fused --cache-params 'type=DBCache'
+torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2' --cache-params 'type=DBCache'
 ```
 
 ## Notes

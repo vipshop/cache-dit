@@ -312,7 +312,7 @@ Phase 1 — Cache (BlockAdapter)
 - [ ] 1.5 BASELINE TEST: python3 -m cache_dit.generate <model> --save-path .tmp/<task>/base.png
         - Verify: image loads, inference completes, output looks correct
         - If OOM: consider --cpu-offload, --sequential-cpu-offload, or multi-GPU
-- [ ] 1.6 CACHE TEST: ... --cache --summary --save-path .tmp/<task>/cache.png
+- [ ] 1.6 CACHE TEST: ... --cache-params --summary --save-path .tmp/<task>/cache.png
         - Verify: inference faster than baseline, output visually identical
 - [ ] 1.7 CACHE CORRECTNESS: cache-dit-metrics psnr ssim -i1 base.png -i2 cache.png
         - Criteria: PSNR > 30 dB, SSIM > 0.90

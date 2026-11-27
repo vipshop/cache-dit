@@ -101,7 +101,7 @@ torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulyss
 torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ring=4,tp=2,text=true' --track-memory
 torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ring=2,text=true' --track-memory
 torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory --cache
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory --cache
-torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory --cache
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=4,ulysses=2,text=true' --track-memory --cache-params 'type=DBCache'
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=4,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
+torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'ulysses=2,ring=2,tp=2,text=true' --track-memory --cache-params 'type=DBCache'
 ```

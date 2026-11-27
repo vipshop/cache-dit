@@ -49,9 +49,9 @@ Rules:
 |---|---|---|---|---|
 | [ ] | single-GPU bf16 reference | `U1_C0_Q0_NONE_a` / `_b` | – | the reference itself; run it **twice** for the determinism baseline (§2) |
 | [ ] | single-GPU + compile | `U1_C1_Q0_NONE` | `--compile` | ≈30 dB (bf16 is not bit-exact under compile) |
-| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache` | hits > 0 on a 30+ step model; record the real `_R` value |
-| [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache --rdt <hi>` | required when the default caches 0 steps (distilled models) |
-| [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache --rdt <hi> --compile` | fastest cache entry |
+| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache-params` | hits > 0 on a 30+ step model; record the real `_R` value |
+| [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache-params rdt=<hi>` | required when the default caches 0 steps (distilled models) |
+| [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache-params rdt=<hi> --compile` | fastest cache entry |
 | [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize --quantize-params quant_type=float8_per_row` | ~26 dB |
 | [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-params exclude_layers=` if a gate layer has `min(in, out) < rank` |
 | [ ] | layerwise offload (sync) | `U1_C0_Q0_OFF` | `--layerwise-offload` | **PSNR inf** (bit-exact) |
@@ -75,7 +75,7 @@ Rules:
 - **Attention-dominated models** (long video sequences, see `./perf_analysis.md`): the GEMM-side rows
   above have a hard ceiling of the model's GEMM share. Add two single-GPU rows
   `A1_C1_Q0_ATTN8` (`--attn-params type=ffpa_fp8`) and, if acceptable, `A1_C1_Q0_ATTN4` (`--attn-params type=ffpa_fp4`), each
-  ± `--cache`. Without them the table under-reports the ceiling by 2× on such models.
+  ± `--cache-params`. Without them the table under-reports the ceiling by 2× on such models.
 
 ### Tier B checklist (4 GPUs, on request)
 
@@ -85,7 +85,7 @@ Rules:
 | [ ] | TP4 + compile | `TP4_C1_Q0_NONE` | `--parallel-params 'tp=4' --compile` |
 | [ ] | CP4 | `U4_C0_Q0_NONE` | `--parallel-params 'ulysses=4'` |
 | [ ] | CP4 + compile | `U4_C1_Q0_NONE` | `--parallel-params 'ulysses=4' --compile` |
-| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel-params 'ulysses=4' --cache` |
+| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel-params 'ulysses=4' --cache-params` |
 | [ ] | **TP2 + CP2 (Ulysses)** | `U2T2_C0_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2'` |
 | [ ] | TP2 + CP2 + compile | `U2T2_C1_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile` |
 | [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row` |
@@ -98,7 +98,7 @@ Rules:
 | [ ] | TP8 + compile | `TP8_C1_Q0_NONE` | `--parallel-params 'tp=8' --compile` |
 | [ ] | CP8 | `U8_C0_Q0_NONE` | `--parallel-params 'ulysses=8'` |
 | [ ] | CP8 + compile | `U8_C1_Q0_NONE` | `--parallel-params 'ulysses=8' --compile` |
-| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel-params 'ulysses=8' --cache` |
+| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel-params 'ulysses=8' --cache-params` |
 | [ ] | **TP2 + CP4 (Ulysses first)** | `U4T2_C0_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2'` |
 | [ ] | TP2 + CP4 + compile | `U4T2_C1_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile` |
 | [ ] | **TP4 + CP2 (TP first)** | `T4U2_C0_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2'` |
@@ -115,7 +115,7 @@ Rules:
   a compiled row measured without warmup is garbage.
 - Flag disambiguation — these three are different things:
   - `--warmup N` / `--repeat N`: **timing** warmup / repeats.
-  - `--ws` / `--max-warmup-steps`: **cache** warmup steps.
+  - `--cache-params ws=...`: **cache** warmup steps.
   - `--warmup-steps`: inference steps used inside each warmup run.
 - **One reference for everything**: the single-GPU bf16 output of the same seed (`U1_C0_Q0_NONE_a`).
   Every row's PSNR/SSIM is computed against it, never against another accelerated row. If that row
@@ -255,9 +255,9 @@ Tier A:
 run U1_C0_Q0_NONE_a                                           # reference, run 1
 run U1_C0_Q0_NONE_b                                           # reference, run 2 (determinism, §2)
 run U1_C1_Q0_NONE            --compile
-run U1_C0_Q0_DB              --cache                          # read the effective _R from the tag
-run U1_C0_Q0_DB_HI           --cache --rdt 0.20               # distilled models need the raised one
-run U1_C1_Q0_DB_HI           --cache --rdt 0.20 --compile
+run U1_C0_Q0_DB --cache-params 'type=DBCache' # read the effective _R from the tag
+run U1_C0_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' # distilled models need the raised one
+run U1_C1_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' --compile
 run U1_C1_FP8_NONE           --compile --quantize --quantize-params quant_type=float8_per_row
 run U1_C1_W4A4_NONE          --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run U1_C0_Q0_OFF             --layerwise-offload
@@ -299,7 +299,7 @@ run TP4_C0_Q0_NONE --parallel-params 'tp=4'
 run TP4_C1_Q0_NONE --parallel-params 'tp=4' --compile
 run U4_C0_Q0_NONE --parallel-params 'ulysses=4'
 run U4_C1_Q0_NONE --parallel-params 'ulysses=4' --compile
-run U4_C0_Q0_DB --parallel-params 'ulysses=4' --cache
+run U4_C0_Q0_DB --parallel-params 'ulysses=4' --cache-params 'type=DBCache'
 run U2T2_C0_Q0_NONE --parallel-params 'ulysses=2,tp=2'
 run U2T2_C1_Q0_NONE --parallel-params 'ulysses=2,tp=2' --compile
 run U2T2_C1_FP8_NONE --parallel-params 'ulysses=2,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row
@@ -314,7 +314,7 @@ run TP8_C0_Q0_NONE --parallel-params 'tp=8'
 run TP8_C1_Q0_NONE --parallel-params 'tp=8' --compile
 run U8_C0_Q0_NONE --parallel-params 'ulysses=8'
 run U8_C1_Q0_NONE --parallel-params 'ulysses=8' --compile
-run U8_C0_Q0_DB --parallel-params 'ulysses=8' --cache
+run U8_C0_Q0_DB --parallel-params 'ulysses=8' --cache-params 'type=DBCache'
 run U4T2_C0_Q0_NONE --parallel-params 'ulysses=4,tp=2' # TP2 + CP4, Ulysses first
 run U4T2_C1_Q0_NONE --parallel-params 'ulysses=4,tp=2' --compile
 run T4U2_C0_Q0_NONE --parallel-params 'tp=4,ulysses=2' # TP4 + CP2, TP first
@@ -466,8 +466,8 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
 **Where the numbers in the caption come from**
 
 - Effective cache threshold: the `- Optimization:` line's tag carries `_R<threshold>`
-  (`DBCacheConfig.strify()`); `--rdt` left at its default is replaced by the model's own preset when
-  that model ships one, so never write "0.12" from memory.
+  (`DBCacheConfig.strify()`); `--cache-params rdt=...` left at its default is replaced by the
+  model's own preset when that model ships one, so never write "0.12" from memory.
 - Cache hits: `--summary` logs `Cache Steps and Residual Diffs Statistics: <cls>, Executed Steps: N`
   plus a `| Cache Steps | ... |` row; the tag also ends with `_S<hits>`.
 - Counts differ by mode: image mode prints `Num:` = **total pairs including** the ones skipped as

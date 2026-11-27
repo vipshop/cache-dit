@@ -468,12 +468,12 @@ device. `_default_module_filter` now refuses to select state holders without a `
 |---|---|---|---|---|---|---|
 | single GPU bf16 | 0.26 s | 1.00× | – | 1.000 | – | yes (bit-exact rerun) |
 | + compile | 0.09 s | 2.89× | 33.00 / 29.53 | 0.877 / 0.798 | 16.6 / 11.8 | **no** (per-process) |
-| + cache rdt 0.30 (`--max-warmup-steps 1`) | 0.21 s | 1.24× | 20.52 | 0.512 | −0.36 | yes |
+| + cache rdt 0.30 (`--cache-params ws=1`) | 0.21 s | 1.24× | 20.52 | 0.512 | −0.36 | yes |
 | + cache rdt 0.30 (`W2`) | 0.24 s | 1.08× | 26.14 | 0.691 | 8.67 | yes |
 | + cache + compile | 0.08 s | 3.25× | 20.56 | 0.488 | −2.56 | **no** |
 | float8_per_row (+compile) | 0.52 / 0.12 s | 0.50 / 2.17× | 22.63 / 30.75 | 0.530 / 0.828 | −0.8 / 11.6 | **no** |
 | CP2 Ulysses | 0.51 s | 0.51× | 30.15 | 0.798 | 12.16 | yes |
-| CP2 + cache (`--Bn 1`) | 0.40 s | 0.65× | 23.60 | 0.657 | 8.78 | yes |
+| CP2 + cache (`--cache-params Bn=1`) | 0.40 s | 0.65× | 23.60 | 0.657 | 8.78 | yes |
 | CP2 + compile | 0.20 s | 1.30× | 32.48 | 0.867 | 17.83 | **no** |
 | TP2 / TP2+TE-P / TP2+compile | 0.67 / 0.70 / 0.15 s | 0.39 / 0.37 / 1.73× | 30.22 / 22.09 / 29.06 | 0.799 / 0.460 / 0.793 | 13.2 / −3.1 / 12.1 | TP2 yes, compile no |
 | layerwise offload (sync / async) | 0.82 / 1.15 s | 0.32 / 0.23× | inf | 1.000 | inf | yes (bit-exact) |

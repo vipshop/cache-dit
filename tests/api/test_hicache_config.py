@@ -180,41 +180,48 @@ class TestHiCacheCLI:
 
   def test_unified_entry_builds_hicache_config(self):
     """`type=hicache` plus option keys fills the HiCache fields."""
-    args = _cli(["--cache", "--calibrator-params", "type=hicache,order=1,sigma=0.4"])
+    args = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=hicache,order=1,sigma=0.4"])
     config = build_calibrator_config(args)
     assert isinstance(config, HiCacheCalibratorConfig)
     assert (config.hicache_order, config.hicache_sigma) == (1, 0.4)
 
   def test_defaults_without_params(self):
     """Without option keys the paper setting (order 2, sigma 0.5) is used."""
-    config = build_calibrator_config(_cli(["--cache", "--calibrator-params", "type=hicache"]))
+    config = build_calibrator_config(
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=hicache"]))
     assert (config.hicache_order, config.hicache_sigma) == (2, 0.5)
 
   def test_long_name_is_accepted(self):
     """The long 'hicache-calibrator' spelling resolves to the same config."""
-    args = _cli(["--cache", "--calibrator-params", "type=hicache-calibrator"])
+    args = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=hicache-calibrator"])
     assert isinstance(build_calibrator_config(args), HiCacheCalibratorConfig)
 
   @pytest.mark.parametrize("params", ["sigma=1.5", "order=5"])
   def test_out_of_range_param_is_rejected(self, params):
     """A value outside the algorithm's domain fails before any inference."""
-    args = _cli(["--cache", "--calibrator-params", f"type=hicache,{params}"])
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", f"type=hicache,{params}"])
     with pytest.raises(ValueError):
       build_calibrator_config(args)
 
   def test_requires_cache(self):
     """A calibrator without --cache would be a silent no-op, so it fails."""
-    with pytest.raises(ValueError, match="requires --cache"):
+    with pytest.raises(ValueError, match="requires --cache-params"):
       _cli(["--calibrator-params", "type=hicache"])
 
   def test_config_path_conflict(self):
     """A config file already owns the calibrator settings."""
     with pytest.raises(ValueError, match="cannot be combined with --config-path"):
-      _cli(["--cache", "--config-path", "some.yaml", "--calibrator-params", "type=hicache"])
+      _cli([
+        "--cache-params", "type=DBCache", "--config-path", "some.yaml", "--calibrator-params",
+        "type=hicache"
+      ])
 
   def test_postprocess_is_idempotent(self):
     """Resolving the params must not consume them, so a second pass is a no-op."""
-    once = _cli(["--cache", "--calibrator-params", "type=hicache,order=1,sigma=0.4"])
+    once = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=hicache,order=1,sigma=0.4"])
     twice = maybe_postprocess_args(once)
     assert once.calibrator_fields == {"hicache_order": 1, "hicache_sigma": 0.4}
     assert twice.calibrator_fields == once.calibrator_fields

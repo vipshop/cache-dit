@@ -320,7 +320,7 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
       (proves the per-inference context reset works for the modular pipe)
 - [ ] I2I path (reference image) with the same adapter
 - [ ] cache_dit.summary(pipe) / --cache-summary prints the stats
-- [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache
+- [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache-params 'type=DBCache'
 - [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel-params 'ulysses=2'
       (and a non-divisible resolution with --parallel-params ulysses_anything=true)
 - [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
@@ -392,7 +392,7 @@ stream); pick TP when the weights dominate. `parallelism_config` also allows com
 
 ### 7.1 Quantization: fp8 per-row + compile
 
-`python3 -m cache_dit.generate flux3 --quantize-params quant_type=float8_per_row --compile [--cache]`
+`python3 -m cache_dit.generate flux3 --quantize-params quant_type=float8_per_row --compile [--cache-params 'type=DBCache']`
 (an omitted `quant_type` defaults to
 torchao `float8_per_row`, i.e. `Float8DynamicActivationFloat8WeightConfig`). Regional quantization
 covers the 4 block stacks only: 258 linear layers (`43 blocks x 6`), 0 skipped.
@@ -447,7 +447,7 @@ Four things had to be modular-pipeline aware:
    'enable_model_cpu_offload'`). They now log the fallback and stream the components with cache-dit's
    own layerwise offload (shared `_apply_layerwise_cpu_offload(args, pipe)`), which also keeps
    `pipe.to(device)` skipped afterwards. Pass the resolved pipe, never the `BlockAdapter`, or the
-   offloaded set would depend on whether `--cache` is on.
+   offloaded set would depend on whether `--cache-params` is on.
 3. **Quantized / wrapper-subclass weights cannot use the pinned CPU mirror.** The mirror rebinds
    tensors with `parameter.data = <tensor on another device>`; torchao `Float8Tensor` has no
    `aten.empty_like` during packing and its `.data` rejects the cross-device swap (*"Attempted to set

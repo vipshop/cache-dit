@@ -354,3 +354,102 @@ def resolve_parallel_params(raw: Optional[Dict[str, str]]) -> Tuple[str, Tuple[i
     given = tuple(axis for axis in PARALLEL_AXES if axis in fields)
     active = given if len(given) == 1 else ()
   return _PARALLEL_TYPE_NAMES.get(active), active, fields
+
+
+# `--cache-params` keys: the DBCache knobs plus the SeaCache / SoftCache extras. The `type` key
+# selects the cache: DBCache (default), SeaCache (DBCache + SEA probe) or SoftCache (SeaCache +
+# jump-step reuse).
+_MASK_POLICIES = ("slow", "medium", "fast", "ultra", "s", "m", "f", "u")
+_cast_mask_policy = _one_of(_MASK_POLICIES)
+
+
+def _cast_feature_shape(text: str) -> list:
+  return [int(value) for value in text.replace("x", " ").replace("*", " ").split()]
+
+
+CACHE_PARAM_SPECS: Dict[str, Caster] = {
+  "fn": int,
+  "fn_compute_blocks": int,
+  "bn": int,
+  "bn_compute_blocks": int,
+  "rdt": float,
+  "residual_diff_threshold": float,
+  "ws": int,
+  "max_warmup_steps": int,
+  "wi": int,
+  "warmup_interval": int,
+  "mc": int,
+  "max_cached_steps": int,
+  "mcc": int,
+  "max_continuous_cached_steps": int,
+  "scm": _cast_mask_policy,
+  "mask_policy": _cast_mask_policy,
+  "steps_mask": _as_bool,
+  "seacache": _as_bool,
+  "seacache_mode": _one_of(("flow", "vp")),
+  "seacache_feature_shape": _cast_feature_shape,
+  "seacache_power_exp": float,
+  "softcache": _as_bool,
+  "softcache_tau": float,
+  "softcache_jf_max": float,
+}
+# Short aliases of the DBCache knob names; every key is lowercase because `parse_param_pairs`
+# lowercases the raw keys.
+CACHE_PARAM_ALIASES = {
+  "fn": "Fn_compute_blocks",
+  "fn_compute_blocks": "Fn_compute_blocks",
+  "bn": "Bn_compute_blocks",
+  "bn_compute_blocks": "Bn_compute_blocks",
+  "rdt": "residual_diff_threshold",
+  "ws": "max_warmup_steps",
+  "wi": "warmup_interval",
+  "mc": "max_cached_steps",
+  "mcc": "max_continuous_cached_steps",
+  "scm": "mask_policy",
+}
+CACHE_TYPES = ("dbcache", "seacache", "softcache")
+
+
+def parse_cache_params(value: str) -> Dict[str, str]:
+  """Parse the CLI `--cache-params "type=DBCache,k=v,k=v"`.
+
+  The `type` key selects the cache and is validated here; the other keys are coerced later in
+  :func:`resolve_cache_params`.
+
+  :param value: Raw argument value.
+  :returns: The raw string mapping, including `type`.
+  """
+
+  example = "'rdt=0.12,Fn=1,scm=fast'"
+  raw = parse_param_pairs(value, "--cache-params", example, allow_empty=False)
+  if "type" in raw and raw["type"].lower() not in CACHE_TYPES:
+    raise argparse.ArgumentTypeError(f"Invalid --cache-params 'type={raw['type']}'. Expected one "
+                                     f"of {[name for name in CACHE_TYPES]}.")
+  return raw
+
+
+def resolve_cache_params(raw: Optional[Dict[str, str]]) -> Tuple[Optional[str], Dict[str, Any]]:
+  """Resolve `--cache-params` into the cache type and its coerced options.
+
+  :param raw: Raw mapping from the CLI, including the optional `type` selector.
+  :returns: `(cache type or None, coerced options)`; option keys are the canonical names
+    (`Fn_compute_blocks`, `residual_diff_threshold`, ...).
+  """
+
+  if not raw:
+    return None, {}
+  cache_type = raw.get("type", "DBCache").lower()
+  options = {key: text for key, text in raw.items() if key != "type"}
+  fields: Dict[str, Any] = {}
+  for key, text in options.items():
+    if key not in CACHE_PARAM_SPECS:
+      raise ValueError(f"Unknown --cache-params key '{key}'. Expected one of "
+                       f"{sorted(CACHE_PARAM_SPECS)}.")
+    canonical = CACHE_PARAM_ALIASES.get(key, key)
+    if canonical in fields:
+      raise ValueError(f"--cache-params key '{canonical}' is given twice.")
+    try:
+      fields[canonical] = CACHE_PARAM_SPECS[key](text)
+    except (ValueError, argparse.ArgumentTypeError) as error:
+      raise ValueError(f"Invalid --cache-params '{key}={text}': {error}") from error
+  return cache_type, fields

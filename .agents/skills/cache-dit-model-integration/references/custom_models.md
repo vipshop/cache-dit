@@ -343,7 +343,7 @@ if getattr(self.transformer, "_is_cached", False):
 ```
 
 The CLI example must then default to the guarded mode (`guidance_scale > 1`,
-`num_images_per_prompt=1`, no SLG), otherwise the first `--cache` run fails on the user.
+`num_images_per_prompt=1`, no SLG), otherwise the first `--cache-params` run fails on the user.
 
 ## 7. Context parallelism
 
@@ -515,7 +515,7 @@ doubles as the §3.6 "did the copy change anything?" gate.
 - [ ] `from_pretrained` handles torch_dtype / quantization_config / device_map / trust_remote_code
       / pre-built components explicitly (§5)
 - [ ] bit-exact vs the upstream source (transformer output and per-step latents)
-- [ ] baseline CLI run renders, then `--cache` run: PSNR > 30 dB **and** SSIM > 0.90
+- [ ] baseline CLI run renders, then `--cache-params` run: PSNR > 30 dB **and** SSIM > 0.90
 - [ ] cache guard fires for the unsupported modes (`guidance_scale == 1`, SLG enabled)
 - [ ] CP: `--parallel-params ulysses=2` on 2 GPUs, plus a non-divisible length with `--parallel-params ulysses_anything=true`
       (or a documented Ring rejection)

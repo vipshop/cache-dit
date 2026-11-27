@@ -113,7 +113,7 @@ def _run_ulysses(rank, world_size, port):
 - 同 recipe、同 seed、同分辨率，比较 **attention 段耗时**与端到端；attention 占比决定收益上限：
   - 1024² 图像模型 attn 通常只占 18–25% ⇒ 端到端 1.03–1.05x 是正常结果；
   - 长视频 / 长序列（H3 类 56%+）才有明显收益。
-- 与 `--compile`、`--cache`、量化叠加时，各行独立报，不要用一个加速比概括（cache 会减少前向次数，直接放大或稀释 attention 的绝对收益）。
+- 与 `--compile`、`--cache-params`、量化叠加时，各行独立报，不要用一个加速比概括（cache 会减少前向次数，直接放大或稀释 attention 的绝对收益）。
 - 报告必须写清实际生效档位（backend 名 + 精度档 + 硬件 capability），因为同一 backend 名在不同卡上走的是不同 kernel 家族。
 
 ## 4. 精度口径

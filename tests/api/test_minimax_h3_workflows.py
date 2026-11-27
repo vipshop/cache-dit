@@ -12,7 +12,7 @@ the checkpoint partition a workflow loads. The silent failure modes covered here
    conditioning frames.
 4. The conditioning workflows pin their conditioning rows every step, which dilutes the residual
    mean DBCache compares against; their threshold preset must differ from `t2va` while an explicit
-   `--residual-diff-threshold` still wins.
+   `--cache-params rdt=...` still wins.
 """
 import argparse
 import importlib

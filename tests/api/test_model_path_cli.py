@@ -135,7 +135,7 @@ def test_every_shared_default_is_reachable_by_task():
 
 
 def test_path_positional_selects_the_example_and_sets_the_model_path(monkeypatch):
-  args = cli([f"{LOCAL}/FLUX.1-dev", "--cache"], monkeypatch)
+  args = cli([f"{LOCAL}/FLUX.1-dev", "--cache-params", "type=DBCache"], monkeypatch)
   assert args.task == "generate"
   assert args.example == "flux"
   assert args.model_path == f"{LOCAL}/FLUX.1-dev"

@@ -260,7 +260,7 @@ class TestBeziCastCLI:
   def test_unified_entry_builds_full_config(self):
     """Short CLI keys populate fitting, guardrail, and encoder fields."""
     args = _cli([
-      "--cache", "--calibrator-params",
+      "--cache-params", "type=DBCache", "--calibrator-params",
       "type=bezicast,history=4,control_points=3,ridge=0.25,guardrail=true,u_max=2.0,"
       "beta_max=0.8,rho=auto,gamma=0.5,encoder=false"
     ])
@@ -278,14 +278,17 @@ class TestBeziCastCLI:
 
   def test_defaults_without_params(self):
     """No params selects pure Bezier fitting with guardrail disabled."""
-    config = build_calibrator_config(_cli(["--cache", "--calibrator-params", "type=bezicast"]))
+    config = build_calibrator_config(
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=bezicast"]))
     assert config.bezicast_guardrail is False
     assert (config.bezicast_history, config.bezicast_control_points) == (6, 4)
 
   def test_numeric_rho_and_long_name(self):
     """The long calibrator name and numeric guardrail threshold are accepted."""
-    args = _cli(
-      ["--cache", "--calibrator-params", "type=bezicast-calibrator,guardrail=true,rho=0.28"])
+    args = _cli([
+      "--cache-params", "type=DBCache", "--calibrator-params",
+      "type=bezicast-calibrator,guardrail=true,rho=0.28"
+    ])
     config = build_calibrator_config(args)
     assert isinstance(config, BeziCastCalibratorConfig)
     assert config.bezicast_rho == 0.28
@@ -303,23 +306,27 @@ class TestBeziCastCLI:
   def test_out_of_range_param_is_rejected(self, params):
     """Invalid CLI values fail before model inference starts."""
     with pytest.raises(ValueError):
-      args = _cli(["--cache", "--calibrator-params", f"type=bezicast,{params}"])
+      args = _cli(
+        ["--cache-params", "type=DBCache", "--calibrator-params", f"type=bezicast,{params}"])
       build_calibrator_config(args)
 
   def test_requires_cache(self):
     """BeziCast without --cache is rejected instead of becoming a silent no-op."""
-    with pytest.raises(ValueError, match="requires --cache"):
+    with pytest.raises(ValueError, match="requires --cache-params"):
       _cli(["--calibrator-params", "type=bezicast"])
 
   def test_config_path_conflict(self):
     """A config file and unified calibrator params cannot both own the settings."""
     with pytest.raises(ValueError, match="cannot be combined with --config-path"):
-      _cli(["--cache", "--config-path", "some.yaml", "--calibrator-params", "type=bezicast"])
+      _cli([
+        "--cache-params", "type=DBCache", "--config-path", "some.yaml", "--calibrator-params",
+        "type=bezicast"
+      ])
 
   def test_postprocess_is_idempotent_with_auto_rho(self):
     """Resolving rho=auto twice preserves None and all other fields."""
     once = _cli([
-      "--cache", "--calibrator-params",
+      "--cache-params", "type=DBCache", "--calibrator-params",
       "type=bezicast,control_points=3,ridge=0.25,guardrail=true,rho=auto"
     ])
     twice = maybe_postprocess_args(once)

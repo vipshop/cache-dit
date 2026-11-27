@@ -118,8 +118,8 @@ Baseline vs cache on one GPU, then PSNR/SSIM:
 export FLUX_DIR=<models>/FLUX.1-dev
 python -m cache_dit.generate flux --width 1024 --height 1024 --num_inference_steps 28 --seed 42 \
     --warmup 1 --repeat 3 --save-path base.png
-python -m cache_dit.generate flux ... --cache --save-path cache.png
-python -m cache_dit.generate flux ... --cache --compile --save-path cache_compile.png
+python -m cache_dit.generate flux ... --cache-params 'type=DBCache' --save-path cache.png
+python -m cache_dit.generate flux ... --cache-params 'type=DBCache' --compile --save-path cache_compile.png
 cache-dit-metrics psnr ssim -i1 base.png -i2 cache.png
 ```
 

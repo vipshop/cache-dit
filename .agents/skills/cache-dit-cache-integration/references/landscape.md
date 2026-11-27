@@ -240,7 +240,7 @@ probe: 首块 norm1 的调制后输入（经 temb 条件化），流程里逐 st
 
 ### 4.4 SVD-Cache 在 cache-dit 内的同 harness 实测（2026-11-17，FLUX.1-dev 1024²，28 步，seed 0，2 prompt，RTX PRO 5000，torch 2.15.0）
 
-行 = `--cache --ws 1`，psnr 用 `cache-dit-metrics --psnr-type skimage`（uint8 PNG 口径），全部 warmup 后计时：
+行 = `--cache-params ws=1`，psnr 用 `cache-dit-metrics --psnr-type skimage`（uint8 PNG 口径），全部 warmup 后计时：
 
 | 工作点 | 配置 | latency | 加速 | PSNR(dB) | SSIM |
 |---|---|---|---|---|---|
@@ -332,7 +332,7 @@ FLUX.1-dev 1024²、28 步、seed 0、物理卡 2、compile+F1B0+rdt0.12。所�
 
 ### 4.9 SeaCache cache-dit 通用与分布式验收（2026-11-19）
 
-SeaCache 落在 DBCache 的可选 when 探针：`DBCacheConfig(enable_seacache=True)` 或 `--seacache`，不新增 CacheType。原 `similarity()` 函数体不变，SGLang 23 项集成测试通过；351 项相关回归、8 项行为探针及 pre-commit 通过。CP 等长/非等长、TP、CP+TP 和 CP+CFG 均以全量参照验证。
+SeaCache 落在 DBCache 的可选 when 探针：`DBCacheConfig(enable_seacache=True)` 或 `--cache-params type=SeaCache`，不新增 CacheType。原 `similarity()` 函数体不变，SGLang 23 项集成测试通过；351 项相关回归、8 项行为探针及 pre-commit 通过。CP 等长/非等长、TP、CP+TP 和 CP+CFG 均以全量参照验证。
 
 FLUX.1-dev 1024²、28 步、seed 0、compile+F1B0+warmup8+MCC3：
 

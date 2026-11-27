@@ -52,8 +52,10 @@ from ..quantization.config import TEXT_ENCODER_QUANT_TYPES
 from .params import (
   pairs_parser,
   parse_attn_params,
+  parse_cache_params,
   parse_param_pairs,
   resolve_attn_params,
+  resolve_cache_params,
   resolve_parallel_params,
   resolve_param_pairs,
   QUANTIZE_PARAM_SPECS,
@@ -65,7 +67,7 @@ from ..utils import is_modular_pipeline
 
 logger = init_logger(__name__)
 
-# Default of `--residual-diff-threshold`. Model-specific cache presets treat "the flag still holds
+# Default of the `rdt` key in `--cache-params`. Model-specific cache presets treat "the flag still holds
 # this value" as "the user did not touch it", so the literal has to live in one place.
 DEFAULT_RESIDUAL_DIFF_THRESHOLD = 0.12
 
@@ -563,10 +565,19 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   # Cache specific settings
   parser.add_argument(
-    "--cache",
-    action="store_true",
-    default=False,
-    help="Enable Cache Acceleration",
+    "--cache-params",
+    type=parse_cache_params,
+    default=None,
+    help="Enable Cache Acceleration; options as a comma separated key=value list whose optional "
+    "'type' key selects the cache: DBCache (default), SeaCache (DBCache plus the SEA probe) or "
+    "SoftCache (SeaCache plus jump-step reuse). DBCache knobs: 'Fn=1', 'Bn=0', 'rdt=0.12', "
+    "'ws=8' (max warmup steps), 'wi=1' (warmup interval), 'mc=-1' (max cached steps), 'mcc=3' "
+    "(max continuous cached steps), 'scm=fast' (steps mask policy: slow|medium|fast|ultra), "
+    "'steps_mask=true'. SeaCache: 'seacache=true', 'seacache_mode=flow|vp', "
+    "'seacache_feature_shape=64x64' (H W, or F H W for video), 'seacache_power_exp=2'. "
+    "SoftCache: 'softcache=true', 'softcache_tau=0.5', 'softcache_jf_max=8'. The long names "
+    "Fn_compute_blocks, Bn_compute_blocks, residual_diff_threshold, max_warmup_steps, "
+    "warmup_interval, max_cached_steps, max_continuous_cached_steps and mask_policy are accepted too.",
   )
   parser.add_argument(
     "--cache-summary",
@@ -576,106 +587,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable Cache Summary logging",
   )
   parser.add_argument(
-    "--Fn-compute-blocks",
-    "--Fn",
-    type=int,
-    default=1,
-    help="CacheDiT Fn_compute_blocks parameter",
-  )
-  parser.add_argument(
-    "--Bn-compute-blocks",
-    "--Bn",
-    type=int,
-    default=0,
-    help="CacheDiT Bn_compute_blocks parameter",
-  )
-  parser.add_argument(
-    "--residual-diff-threshold",
-    "--rdt",
-    type=float,
-    default=DEFAULT_RESIDUAL_DIFF_THRESHOLD,
-    help=("CacheDiT residual diff threshold. A model with per-workflow cache presets treats this "
-          "default as 'not set' and uses its own starting point; any other value wins"),
-  )
-  parser.add_argument(
-    "--max-warmup-steps",
-    "--ws",
-    type=int,
-    default=8,
-    help="Maximum warmup steps for CacheDiT",
-  )
-  parser.add_argument(
-    "--warmup-interval",
-    "--wi",
-    type=int,
-    default=1,
-    help="Warmup interval for CacheDiT",
-  )
-  parser.add_argument(
-    "--max-cached-steps",
-    "--mc",
-    type=int,
-    default=-1,
-    help="Maximum cached steps for CacheDiT",
-  )
-  parser.add_argument(
-    "--max-continuous-cached-steps",
-    "--mcc",
-    type=int,
-    default=3,
-    help="Maximum continuous cached steps for CacheDiT",
-  )
-  parser.add_argument(
-    "--seacache",
-    action="store_true",
-    default=False,
-    help="Enable the optional SEA-filtered relative-L1 probe inside DBCache.",
-  )
-  parser.add_argument(
-    "--seacache-mode",
-    type=str,
-    default="flow",
-    choices=["flow", "vp"],
-    help="SeaCache scheduler coefficient convention.",
-  )
-  parser.add_argument(
-    "--seacache-feature-shape",
-    type=int,
-    nargs="+",
-    default=None,
-    metavar="DIM",
-    help="Global packed-token geometry: H W for images or F H W for video.",
-  )
-  parser.add_argument(
-    "--seacache-power-exp",
-    type=float,
-    default=2.0,
-    help="SeaCache clean-signal power-spectrum exponent (2 for images, commonly 3 for video).",
-  )
-  parser.add_argument(
-    "--softcache",
-    action="store_true",
-    default=False,
-    help="Enable SoftCache on top of --seacache: SeaCache's own refresh rule plus headroom "
-    "sampler jumps (FlowMatch Euler schedulers).",
-  )
-  parser.add_argument(
-    "--softcache-tau",
-    type=float,
-    default=0.5,
-    help="SoftCache staleness budget; ~0.3-0.5 for ~3-4x and ~1.1 for ~6.5x on FLUX.1-dev.",
-  )
-  parser.add_argument(
-    "--softcache-jf-max",
-    type=float,
-    default=8.0,
-    help="Cap on the SoftCache jump factor.",
-  )
-  parser.add_argument(
     "--calibrator-params",
     type=parse_cli_calibrator_params,
     default=None,
-    help="Enable a DBCache calibrator (requires --cache); options as a comma separated key=value "
+    help="Enable a DBCache calibrator (requires --cache-params); "
+    "options as a comma separated key=value "
     "list whose 'type' key selects the calibrator: taylorseer, dmd, foca, svd (SVD-Cache), "
     "hicache (damped-Hermite), brace (barycentric rational), bezicast (Bernstein/Bezier), or "
     "residual_motion (sigma secant, SoftCache). Long forms such as 'svd-calibrator' are accepted. "
@@ -685,30 +601,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "'type=residual_motion,beta=0.5' for residual_motion, 'type=dmd,history=6,svd_precision=low' "
     "for dmd; 'calibrator_cache_type=hidden_states,encoder=false' may be added to any of them "
     "for the keys every calibrator accepts.",
-  )
-  parser.add_argument(
-    "--steps-mask",
-    action="store_true",
-    default=False,
-    help="Enable steps mask for CacheDiT",
-  )
-  parser.add_argument(
-    "--mask-policy",
-    "--scm",
-    type=str,
-    default=None,
-    choices=[
-      None,
-      "slow",
-      "s",
-      "medium",
-      "m",
-      "fast",
-      "f",
-      "ultra",
-      "u",
-    ],
-    help="Pre-defined steps computation mask policy",
   )
   # Quantization settings
   parser.add_argument(
@@ -1288,46 +1180,74 @@ def _resolve_cli_parallelism(args) -> None:
           f"{product}, which must equal the world size {world_size}.")
 
 
+def _resolve_cli_cache_params(args) -> None:
+  """Resolve `--cache-params` into the plain attributes the cache setup reads.
+
+  Passing the flag enables the cache, so `type=DBCache` alone is the former `--cache`. The `type`
+  key seeds the SeaCache / SoftCache switches and any explicit key overrides them. The DBCache
+  defaults are always written back: the per-model presets treat `residual_diff_threshold` holding
+  its default as "the user did not touch it".
+
+  :param args: Parsed CLI namespace, updated in place.
+  """
+
+  cache_type, fields = resolve_cache_params(args.cache_params)
+  args.cache_type = cache_type
+  args.cache = args.cache_params is not None
+  args.Fn_compute_blocks = fields.get("Fn_compute_blocks", 1)
+  args.Bn_compute_blocks = fields.get("Bn_compute_blocks", 0)
+  args.residual_diff_threshold = fields.get("residual_diff_threshold",
+                                            DEFAULT_RESIDUAL_DIFF_THRESHOLD)
+  args.max_warmup_steps = fields.get("max_warmup_steps", 8)
+  args.warmup_interval = fields.get("warmup_interval", 1)
+  args.max_cached_steps = fields.get("max_cached_steps", -1)
+  args.max_continuous_cached_steps = fields.get("max_continuous_cached_steps", 3)
+  mask_policy = fields.get("mask_policy")
+  args.mask_policy = {
+    "s": "slow",
+    "m": "medium",
+    "f": "fast",
+    "u": "ultra",
+  }.get(mask_policy, mask_policy)
+  # A mask policy used to imply the mask switch, and still does.
+  args.steps_mask = bool(fields.get("steps_mask", False) or args.mask_policy is not None)
+  args.seacache = fields.get("seacache", cache_type in ("seacache", "softcache"))
+  args.seacache_mode = fields.get("seacache_mode", "flow")
+  args.seacache_feature_shape = fields.get("seacache_feature_shape")
+  args.seacache_power_exp = fields.get("seacache_power_exp", 2.0)
+  args.softcache = fields.get("softcache", cache_type == "softcache")
+  args.softcache_tau = fields.get("softcache_tau", 0.5)
+  args.softcache_jf_max = fields.get("softcache_jf_max", 8.0)
+
+  if args.seacache and args.config_path is not None:
+    raise ValueError("--cache-params SeaCache options cannot be combined with --config-path; "
+                     "set SeaCache in YAML.")
+  if args.seacache_feature_shape is not None:
+    if not args.seacache:
+      raise ValueError(
+        "--cache-params 'seacache_feature_shape' requires a SeaCache or SoftCache type.")
+    if len(args.seacache_feature_shape) not in (2, 3) or any(
+        dim <= 0 for dim in args.seacache_feature_shape):
+      raise ValueError(
+        "--cache-params 'seacache_feature_shape' requires positive H W or F H W dimensions.")
+  if args.softcache and not args.seacache:
+    raise ValueError("--cache-params 'softcache=true' requires SeaCache.")
+  if args.softcache and args.seacache_mode != "flow":
+    raise ValueError("--cache-params 'softcache=true' requires 'seacache_mode=flow'.")
+  if args.softcache and args.softcache_tau <= 0.0:
+    raise ValueError("--cache-params 'softcache_tau' must be positive.")
+
+
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+  _resolve_cli_cache_params(args)
   _resolve_cli_parallelism(args)
   _resolve_cli_quantization(args)
-
-  if args.mask_policy is not None and not args.steps_mask:
-    # Enable steps mask if mask_policy is specified
-    args.steps_mask = True
-  # Handle alias for mask_policy
-  if args.mask_policy == "s":  # alias
-    args.mask_policy = "slow"
-  if args.mask_policy == "m":  # alias
-    args.mask_policy = "medium"
-  if args.mask_policy == "f":  # alias
-    args.mask_policy = "fast"
-  if args.mask_policy == "u":  # alias
-    args.mask_policy = "ultra"
 
   # Force enable compile if force_compile_dynamic is enabled
   if args.force_compile_dynamic:
     args.compile = True
 
   _apply_attn_params(args)
-
-  if args.seacache and not args.cache:
-    raise ValueError("--seacache requires --cache.")
-  if args.seacache and args.config_path is not None:
-    raise ValueError(
-      "--seacache flags cannot be combined with --config-path; set SeaCache in YAML.")
-  if args.seacache_feature_shape is not None:
-    if not args.seacache:
-      raise ValueError("--seacache-feature-shape requires --seacache.")
-    if len(args.seacache_feature_shape) not in (2, 3) or any(
-        dim <= 0 for dim in args.seacache_feature_shape):
-      raise ValueError("--seacache-feature-shape requires positive H W or F H W dimensions.")
-  if args.softcache and not args.seacache:
-    raise ValueError("--softcache requires --seacache.")
-  if args.softcache and args.seacache_mode != "flow":
-    raise ValueError("--softcache requires --seacache-mode flow.")
-  if args.softcache and args.softcache_tau <= 0.0:
-    raise ValueError("--softcache-tau must be positive.")
 
   # Resolve --calibrator-params; its `type` key selects the calibrator.
   raw_calibrator = args.calibrator_params
@@ -1338,7 +1258,8 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   args.calibrator_fields = None
   if raw_calibrator is not None:
     if not args.cache:
-      raise ValueError(f"--calibrator-params type={raw_calibrator['type']} requires --cache.")
+      raise ValueError(f"--calibrator-params type={raw_calibrator['type']} requires "
+                       f"--cache-params, e.g. type=DBCache.")
     args.calibrator = normalize_calibrator_type(raw_calibrator["type"])
     # Keep `calibrator_params` in its raw form so post-processing stays idempotent; the
     # resolved config-field mapping lives in `calibrator_fields`. `type` is the selector, not an
@@ -2167,7 +2088,7 @@ def maybe_cpu_offload(
       logger.info(f"{pipe_cls_name} is a modular pipeline and has no diffusers CPU offload API, "
                   "using cache-dit layerwise CPU offload for its components instead ...")
       # Pass the resolved pipe, not the adapter: an adapter would only expose the transformer and
-      # the offloaded component set would silently depend on whether `--cache` is enabled.
+      # the offloaded component set would silently depend on whether `--cache-params` is enabled.
       return _apply_layerwise_cpu_offload(args, pipe, strict=False)
 
     if args.sequential_cpu_offload:

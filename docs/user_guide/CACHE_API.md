@@ -381,8 +381,7 @@ CP restores the complete token geometry with the existing CP mesh before FFT, in
 The official FLUX implementation probes the first block's modulated input. Its reference code implements the paper's radial response as a separable per-axis product, which this module follows. The cache-dit integration filters the existing Fn residual/hidden-state probe and retains DBCache scheduling; it is an adaptation of the SEA metric, not a reproduction of the official whole-step execution path.
 
 ```bash
-python3 -m cache_dit.generate flux --cache --seacache \
-  --seacache-mode flow --seacache-feature-shape 64 64 --seacache-power-exp 2.0
+python3 -m cache_dit.generate flux --cache-params 'type=SeaCache,seacache_mode=flow,seacache_feature_shape=64x64,seacache_power_exp=2.0'
 ```
 
 A FLUX.1-dev probe (1024², 28 steps, seed 0, compile+F1B0+warmup 8, RTX PRO 5000) produced:
@@ -428,9 +427,8 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 \
-  --softcache --softcache-tau 0.5 --calibrator-params type=residual_motion --max-warmup-steps 1 \
-  --max-cached-steps -1 --max-continuous-cached-steps -1
+python3 -m cache_dit.generate flux --cache-params 'type=SoftCache,ws=1,mc=-1,mcc=-1,seacache_feature_shape=64x64,softcache_tau=0.5' \
+    --calibrator-params type=residual_motion
 ```
 
 Scope:
@@ -559,7 +557,7 @@ cache_dit.enable_cache(
 The same selection from the CLI:
 
 ```bash
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
   --calibrator-params type=hicache,order=2,sigma=0.5
 ```
 
@@ -580,7 +578,7 @@ Measured (FLUX.1-dev, 1024², 28 steps, prompt "A cat holding a sign that says h
 | + HiCache (order 2, σ=1/√2) | 32.44 | 0.9770 | 9.88s |
 | + HiCache (order 2, σ=1.0) | 24.99 | 0.9280 | 9.89s |
 
-Two readings: the **damping is what carries the gain** — the undamped basis (σ=1) collapses to 25 dB, the same direction as the paper's σ ablation, which is the cheapest proof that the basis is wired and not silently falling back to TaylorSeer; and within this probe **order 1 is already enough at ~1.7×**. A mask-pinned pair (`--steps-mask --mask-policy medium`, 9 cached steps, schedule independent of the forecast) keeps the ordering (TaylorSeer 27.77 dB vs HiCache 29.36 dB), so the gap comes from the basis rather than from a shifted hit sequence. The `+ compile` row lands at 27.5-28.2 dB and differs run to run, as with every calibrator under `torch.compile`.
+Two readings: the **damping is what carries the gain** — the undamped basis (σ=1) collapses to 25 dB, the same direction as the paper's σ ablation, which is the cheapest proof that the basis is wired and not silently falling back to TaylorSeer; and within this probe **order 1 is already enough at ~1.7×**. A mask-pinned pair (`--cache-params scm=medium,steps_mask=true`, 9 cached steps, schedule independent of the forecast) keeps the ordering (TaylorSeer 27.77 dB vs HiCache 29.36 dB), so the gap comes from the basis rather than from a shifted hit sequence. The `+ compile` row lands at 27.5-28.2 dB and differs run to run, as with every calibrator under `torch.compile`.
 
 <details markdown="1">
 <summary>📖 HiCache Config Parameters</summary>
@@ -626,7 +624,7 @@ cache_dit.enable_cache(
 The same selection from the CLI:
 
 ```bash
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
   --calibrator-params type=brace,capacity=3,gamma=0.7
 ```
 
@@ -684,7 +682,7 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
   --calibrator-params type=bezicast,history=6,control_points=4,ridge=0.5,guardrail=false
 ```
 
@@ -754,7 +752,7 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator-params type=residual_motion,beta=1.0
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params type=residual_motion,beta=1.0
 ```
 
 FLUX.1-dev, 1024², 50 steps, guidance 3.5, 8 DPG prompts, A100-40GB, bf16, no compile, DBCache F1B0 with the default warmup. PSNR / SSIM / LPIPS are against the uncached 50-step image.
@@ -1011,9 +1009,9 @@ cache_dit.enable_cache(
 Or from the command line:
 
 ```bash
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
         --calibrator-params "type=svd,tau=0.9,beta=0.9" --save-path flux.cache.svd.png
-python3 -m cache_dit.generate flux --cache \
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
         --calibrator-params "type=svd,predictor=taylor,order=1,tau=0.9" --save-path flux.cache.svd.taylor.png
 ```
 

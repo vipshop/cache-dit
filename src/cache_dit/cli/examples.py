@@ -904,8 +904,9 @@ def _qwen_image_21_cache_config(
 
   if not args.cache:
     return None
-  # A model-provided cache config normally overrides the CLI knobs, so `--ws`/`--rdt` would be
-  # silently ignored. Honour an explicit value and fall back to the tuned default otherwise.
+  # A model-provided cache config normally overrides the CLI knobs, so the `ws`/`rdt` keys of
+  # --cache-params would be silently ignored. Honour an explicit value and fall back to the tuned
+  # default otherwise.
   warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
   threshold = (args.residual_diff_threshold if args.residual_diff_threshold != 0.12 else
                (0.24 if distilled else 0.12))
@@ -3051,7 +3052,7 @@ def _minimax_h3_drop_lm_head(pipe) -> None:
     text_encoder.lm_head = None
 
 
-# The CLI default of `--residual-diff-threshold`; a value that differs from it is an explicit
+# The CLI default of the `rdt` key in --cache-params; a value that differs from it is an explicit
 # request and wins over the per-workflow preset below.
 _MINIMAX_H3_DEFAULT_THRESHOLD = DEFAULT_RESIDUAL_DIFF_THRESHOLD
 
@@ -3080,8 +3081,8 @@ def _minimax_h3_cache_config(
   Only the block stack is cached, so `Fn_compute_blocks` stays small and one block at the tail is
   recomputed as a scaler. Every block rebuilds its AdaLN modulation from the current timestep, so
   consecutive steps move further apart than in a fixed-modulation image model: only one
-  consecutive step is ever reused. The threshold comes from `--residual-diff-threshold` when the
-  user set it, and from `_MINIMAX_H3_CACHE_THRESHOLDS[workflow]` otherwise.
+  consecutive step is ever reused. The threshold comes from the `rdt` key of `--cache-params` when
+  the user set it, and from `_MINIMAX_H3_CACHE_THRESHOLDS[workflow]` otherwise.
 
   :param args: CLI arguments.
   :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
@@ -4194,8 +4195,9 @@ def sana_video2_example(args: argparse.Namespace, **kwargs) -> Example:
   `--quantize-params exclude_layers=beta_proj+attn_res` (the acceptance matrix uses exactly that).
 
   Caching note: the model aggregates depth representations every 8 layers, so a cached step reuses
-  the group residuals of the skipped groups. Keep `--Fn` on a multiple of 8: `--Fn 16 --rdt 0.20`
-  trades ~7% latency for SSIM 0.91, `--Fn 8 --rdt 0.10` trades 20% for SSIM 0.74.
+  the group residuals of the skipped groups. Keep `Fn` on a multiple of 8:
+  `--cache-params Fn=16,rdt=0.20` trades ~7% latency for SSIM 0.91, `--cache-params Fn=8,rdt=0.10`
+  trades 20% for SSIM 0.74.
 
   :param args: CLI arguments.
   :returns: The SANA-Video 2.0 text-to-video example.
@@ -5303,12 +5305,12 @@ def _mova_cache_config(args: argparse.Namespace, steps: int) -> Optional[DBCache
     return None
   warmup_steps = args.max_warmup_steps
   if warmup_steps >= steps:
-    # `--max-warmup-steps` (not `--warmup`, which only pre-warms the timer) defaults to 8; a run
-    # with fewer steps than that would never leave the warmup phase and report a bit-identical,
+    # `ws` in `--cache-params` (not `--warmup`, which only pre-warms the timer) defaults to 8; a
+    # run with fewer steps than that would never leave the warmup phase and report a bit-identical,
     # zero-hit "cached" run.
     clamped = max(steps - 1, 1)
     logger.warning(
-      f"MOVA caches {steps} steps but `--max-warmup-steps={warmup_steps}` covers all of "
+      f"MOVA caches {steps} steps but `--cache-params ws={warmup_steps}` covers all of "
       f"them; clamping to {clamped} so at least one step can hit the cache.")
     warmup_steps = clamped
   return DBCacheConfig(
@@ -5498,9 +5500,9 @@ _PIKA_H3_FLEX_ADAPTERS = {
 # `num_inference_steps` to choose.
 _PIKA_H3_FLEX_STEPS = 6
 
-# DBCache warmup is `--max-warmup-steps` / `--ws` (default 8), not `--warmup` (that one only warms the
-# perf timer). Five of the six forwards are skippable in the best case, so the preset spends one of
-# them on the warmup and leaves four.
+# DBCache warmup is the `ws` key of `--cache-params` (default 8), not `--warmup` (that one only
+# warms the perf timer). Five of the six forwards are skippable in the best case, so the preset
+# spends one of them on the warmup and leaves four.
 _PIKA_H3_FLEX_MAX_WARMUP = 1
 
 # Starting point of the residual threshold per workflow. Every step draws fresh Gaussian noise from
@@ -5668,15 +5670,16 @@ def _pika_h3_flex_cache_config(
 ) -> Optional[DBCacheConfig]:
   """DBCache config for the six-step re-noising ladder.
 
-  Six forwards per request bound the reachable speedup: with `--ws 1` and one consecutive cached step
-  allowed, the most optimistic ladder is `compute, cache, compute, cache, compute, cache` — three
-  forwards, i.e. 2x. Anything above four forwards (1.5x) already means the threshold is not being met.
-  The CLI default warmup (`--max-warmup-steps`, default 8) instead covers the whole ladder, leaves
-  nothing to skip and reports a PSNR of `inf` — a false green — so the preset clamps it to
+  Six forwards per request bound the reachable speedup: with `--cache-params ws=1` and one
+  consecutive cached step allowed, the most optimistic ladder is
+  `compute, cache, compute, cache, compute, cache` — three forwards, i.e. 2x. Anything above four
+  forwards (1.5x) already means the threshold is not being met. The CLI default warmup (the `ws`
+  key of `--cache-params`, default 8) instead covers the whole ladder, leaves nothing to skip and
+  reports a PSNR of `inf` — a false green — so the preset clamps it to
   `_PIKA_H3_FLEX_MAX_WARMUP`, warns when the caller asked for a warmer start, and never raises.
 
-  `--Fn` / `--Bn` pass through: they are real CLI knobs, and hardcoding them would make the preset
-  silently ignore the flag during a threshold sweep.
+  `Fn` / `Bn` pass through: they are real CLI keys, and hardcoding them would make the preset
+  silently ignore the value during a threshold sweep.
 
   :param args: CLI arguments.
   :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
@@ -5694,21 +5697,21 @@ def _pika_h3_flex_cache_config(
   max_warmup_steps = min(requested_warmup, _PIKA_H3_FLEX_MAX_WARMUP)
   if requested_warmup >= _PIKA_H3_FLEX_STEPS:
     logger.warning(
-      f"`--max-warmup-steps {requested_warmup}` covers all {_PIKA_H3_FLEX_STEPS} forwards of the Pika "
-      f"H3 Flex ladder, so DBCache would never skip a step and the accuracy delta would read as "
-      f"perfect by construction. Clamped to {max_warmup_steps}; pass `--ws {max_warmup_steps}` "
-      "explicitly to silence this.")
+      f"`--cache-params ws={requested_warmup}` covers all {_PIKA_H3_FLEX_STEPS} forwards of the "
+      f"Pika H3 Flex ladder, so DBCache would never skip a step and the accuracy delta would read "
+      f"as perfect by construction. Clamped to {max_warmup_steps}; pass "
+      f"`--cache-params ws={max_warmup_steps}` explicitly to silence this.")
   # Every step re-noises onto a new sigma with fresh Gaussian noise, so a step's blocks cannot be
   # reused back to back; cap the consecutive run at one even when the CLI default (3) allows more.
   max_continuous = min(args.max_continuous_cached_steps, 1)
   if max_continuous != args.max_continuous_cached_steps:
     logger.info(
-      f"Clamping `--max-continuous-cached-steps {args.max_continuous_cached_steps}` to "
+      f"Clamping `--cache-params mcc={args.max_continuous_cached_steps}` to "
       f"{max_continuous}: the re-noising update draws new noise every step, so consecutive cached "
       "steps accumulate error faster than a residual threshold can bound.")
   return DBCacheConfig(
-    # `--Fn` / `--Bn` are *not* owned by this preset: they pass straight through from the CLI, and the
-    # measured sweep only varies `--rdt`. A preset that pinned them would make `--Fn` a silent no-op,
+    # `Fn` / `Bn` are *not* owned by this preset: they pass straight through from the CLI, and the
+    # measured sweep only varies `rdt`. A preset that pinned them would make `Fn` a silent no-op,
     # which is worse than leaving them at the CLI defaults (Fn 1 / Bn 0).
     Fn_compute_blocks=args.Fn_compute_blocks,
     Bn_compute_blocks=args.Bn_compute_blocks,
@@ -6083,13 +6086,13 @@ def _minimax_h3_image_quantize_exclusions(args: argparse.Namespace) -> None:
 def _minimax_h3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
   """Resolve the fixed 6-step computation mask of a MiniMax-H3-Image run.
 
-  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :param args: CLI arguments with `steps_mask` / `scm` in `--cache-params`.
   :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
   """
   if not args.cache:
     return None
   if args.mask_policy is not None:
-    # `--mask-policy` asserts on a step count (`--num-inference-steps`), which this pipeline does
+    # `scm` asserts on a step count (`--num-inference-steps`), which this pipeline does
     # not take: the schedule is the checkpoint. Fill it in so the CLI's mask bookkeeping passes;
     # `use_num_inference_steps=False` keeps it out of the pipeline call.
     if args.num_inference_steps is None:
@@ -6118,9 +6121,9 @@ def _minimax_h3_image_cache_config(
   steps to the widest sigma jumps of the grid (0.75 -> 0.53 -> 0.23 -> 0), which are exactly the
   ones that have to be recomputed.
 
-  A `--steps-mask` / `--mask-policy` run switches to `steps_computation_policy="static"`, and the
-  static policy caches every masked step unconditionally, so `max_cached_steps` and
-  `max_continuous_cached_steps` do not apply to it.
+  A `--cache-params steps_mask=true,scm=...` run switches to
+  `steps_computation_policy="static"`, and the static policy caches every masked step
+  unconditionally, so `mc` and `mcc` do not apply to it.
 
   :param args: CLI arguments.
   :param workflow: `text2image` or `image_conditioned`; selects the default threshold.
@@ -6472,13 +6475,13 @@ def _ph3_image_bounded(value: int, bound: int, name: str) -> int:
 def _ph3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
   """Resolve the computation mask of an eight-step P-H3-Image run.
 
-  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :param args: CLI arguments with `steps_mask` / `scm` in `--cache-params`.
   :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
   """
   if not args.cache:
     return None
   if args.mask_policy is not None:
-    # `--mask-policy` asserts on a step count, which this pipeline takes from the checkpoint.
+    # `scm` asserts on a step count, which this pipeline takes from the checkpoint.
     if args.num_inference_steps is None:
       args.num_inference_steps = _PH3_IMAGE_STEPS
     return steps_mask(mask_policy=args.mask_policy, total_steps=_PH3_IMAGE_STEPS)
