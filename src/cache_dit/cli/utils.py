@@ -51,6 +51,7 @@ from ..quantization.config import TEXT_ENCODER_QUANT_TYPES
 from .params import (
   pairs_parser,
   parse_param_pairs,
+  resolve_attn_params,
   resolve_param_pairs,
   QUANTIZE_PARAM_SPECS,
   SVDQ_PARAM_SPECS,
@@ -802,100 +803,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     ],
   )
   parser.add_argument(
-    "--sol-attn-tau",
-    type=float,
+    "--attn-params",
+    type=pairs_parser("--attn-params", "'fp8_hadamard=true,hybrid=true'"),
     default=None,
-    help="Sol-Attn routing threshold multiplier; larger values select fewer exact KV blocks.",
-  )
-  parser.add_argument(
-    "--sol-attn-thresh-type",
-    type=str,
-    default=None,
-    choices=["diag", "exact"],
-    help="Sol-Attn threshold estimator: diagonal or full covariance.",
-  )
-  parser.add_argument(
-    "--sol-attn-strict",
-    action="store_true",
-    default=False,
-    help="Raise on Sol-Attn-ineligible calls instead of using observable native fallback.",
-  )
-  parser.add_argument(
-    "--sol-attn-sink-tokens",
-    type=int,
-    default=None,
-    help="Exact prefix-KV token budget (default: 1024; 0 disables; capped at sequence length).",
-  )
-  parser.add_argument(
-    "--ffpa-hybrid",
-    dest="ffpa_hybrid",
-    action="store_true",
-    default=False,
-    help=("Enable the FFPA hybrid fp16 early-rows stage (--attn ffpa_fp8 / "
-          "ffpa_fp4 / ffpa_fp8_per_block). Off by default for every backend, "
-          "including causal attention; opt-in only. Reflected in the saved "
-          "filename as hybrid."),
-  )
-  parser.add_argument(
-    "--ffpa-hybrid-n-early",
-    "--ffpa-hybird-n-early",  # typo-tolerant alias
-    dest="ffpa_hybrid_n_early",
-    type=int,
-    default=None,
-    help=("Number of fp16 early rows for the FFPA hybrid mode (multiple of "
-          "128). Requires --attn ffpa_fp8/ffpa_fp4 and --ffpa-hybrid. "
-          "Reflected in the saved filename as hybrid_n_early_<N>."),
-  )
-  parser.add_argument(
-    "--ffpa-fp4-hadamard",
-    dest="ffpa_fp4_hadamard",
-    action="store_true",
-    default=False,
-    help=("Enable the Hadamard Q/K pre-rotation for the FFPA fp4 backend "
-          "(flattens per-16-group outliers, exact in fp32 math, small perf "
-          "overhead). Requires --attn ffpa_fp4. Reflected in the saved "
-          "filename as fp4_hadamard."),
-  )
-  parser.add_argument(
-    "--ffpa-fp8-hadamard",
-    dest="ffpa_fp8_hadamard",
-    action="store_true",
-    default=False,
-    help=("Enable the Hadamard Q/K pre-rotation for the FFPA fp8 backends "
-          "(incoherent processing as in FlashAttention-3: spreads per-dim "
-          "outliers so per-block/per-group quant amax drops, exact in fp32 "
-          "math). Requires an ffpa_fp8* attention backend. Reflected in the "
-          "saved filename as fp8_hadamard."),
-  )
-  parser.add_argument(
-    "--ffpa-fp4-pv-mm-type",
-    dest="ffpa_fp4_pv_mm_type",
-    type=str,
-    default=None,
-    choices=["fp4", "fp8"],
-    help=("PV MMA dtype for the FFPA fp4 backend: fp4 (NVFP4 e2m1 + ue4m3/16, "
-          "default) or fp8 (MXFP8 e4m3 + ue8m0/32, higher PV precision, "
-          "persist_d head_dim <= 192 only). Requires --attn ffpa_fp4. "
-          "Reflected in the saved filename as fp4_pv_mm_type_<T>."),
-  )
-  parser.add_argument(
-    "--ffpa-fp4-smooth-v",
-    dest="ffpa_fp4_smooth_v",
-    action="store_true",
-    default=False,
-    help=("Subtract the per-(b,hkv) V column mean before V quantize for the "
-          "FFPA fp4 backend (persist_d head_dim <= 256 only). Requires "
-          "--attn ffpa_fp4. Reflected in the saved filename as fp4_smooth_v."),
-  )
-  parser.add_argument(
-    "--ffpa-fp8-smooth-v",
-    dest="ffpa_fp8_smooth_v",
-    action="store_true",
-    default=False,
-    help=("Subtract the per-(b,h) V dim mean before V quantize for the FFPA "
-          "fp8 backends (requires per-channel V, the default). Off by default; "
-          "requires --attn ffpa_fp8 or ffpa_fp8_per_block. Reflected in the "
-          "saved filename as fp8_smooth_v."),
+    help="Attention backend options as a comma separated key=value list; the valid keys depend "
+    "on --attn. sol_attn: tau, thresh_type (diag|exact), strict, sink_tokens. ffpa: hybrid, "
+    "hybrid_n_early. ffpa_fp8 / ffpa_fp8_per_block: hybrid, hybrid_n_early, fp8_hadamard, "
+    "fp8_smooth_v. ffpa_fp4: hybrid, hybrid_n_early, fp4_hadamard, fp4_pv_mm_type (fp4|fp8), "
+    "fp4_smooth_v. The non-default options are reflected in the saved filename.",
   )
   # Ulysses context parallelism settings
   parser.add_argument(
@@ -1382,6 +1297,29 @@ def _resolve_cli_quantization(args) -> None:
   args.svdq_kwargs = kwargs
 
 
+def _apply_attn_params(args) -> None:
+  """Resolve `--attn-params` and push the options into the process-wide backend configuration.
+
+  The ffpa and sol_attn options are module-level state, so they apply to both the direct and the
+  context-parallel attention paths.
+
+  :param args: Parsed CLI namespace; `attn_fields` is set to the resolved options.
+  """
+
+  fields = resolve_attn_params(args.attn, args.attn_params)
+  args.attn_fields = fields
+  if args.attn == "sol_attn":
+    # Runs without options too: it validates the Sol-Attn runtime up front.
+    from ..attention import set_sol_attn_config
+
+    set_sol_attn_config(**fields)
+  elif fields:
+    from ..attention.backends import ffpa
+
+    for key, value in fields.items():
+      getattr(ffpa, f"set_ffpa_{key}")(value)
+
+
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   _resolve_cli_quantization(args)
 
@@ -1402,78 +1340,7 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   if args.force_compile_dynamic:
     args.compile = True
 
-  sol_attn_tau = getattr(args, "sol_attn_tau", None)
-  sol_attn_thresh_type = getattr(args, "sol_attn_thresh_type", None)
-  sol_attn_strict = getattr(args, "sol_attn_strict", False)
-  sol_attn_sink_tokens = getattr(args, "sol_attn_sink_tokens", None)
-  if ((sol_attn_tau is not None or sol_attn_thresh_type is not None or sol_attn_strict
-       or sol_attn_sink_tokens is not None) and args.attn != "sol_attn"):
-    raise ValueError("--sol-attn-* options require --attn sol_attn.")
-  if args.attn == "sol_attn":
-    from ..attention import set_sol_attn_config
-    sol_attn_kwargs = {}
-    if sol_attn_tau is not None:
-      sol_attn_kwargs["tau"] = sol_attn_tau
-    if sol_attn_thresh_type is not None:
-      sol_attn_kwargs["thresh_type"] = sol_attn_thresh_type
-    if sol_attn_strict:
-      sol_attn_kwargs["strict"] = True
-    if sol_attn_sink_tokens is not None:
-      sol_attn_kwargs["sink_tokens"] = sol_attn_sink_tokens
-    set_sol_attn_config(**sol_attn_kwargs)
-
-  # FFPA hybrid toggle: applied globally so both the direct and the
-  # context-parallel attention paths pick it up. Off by default.
-  if getattr(args, "ffpa_hybrid", False):
-    if args.attn is None or not str(args.attn).startswith("ffpa"):
-      raise ValueError("--ffpa-hybrid requires an ffpa attention backend "
-                       "(--attn ffpa_fp8 / ffpa_fp4 / ffpa_fp8_per_block).")
-    from ..attention.backends.ffpa import set_ffpa_hybrid
-    set_ffpa_hybrid(True)
-
-  # FFPA hybrid n_early override: validated early and applied globally so
-  # both the direct and the context-parallel attention paths pick it up.
-  if getattr(args, "ffpa_hybrid_n_early", None) is not None:
-    if args.attn is None or not str(args.attn).startswith("ffpa"):
-      raise ValueError("--ffpa-hybrid-n-early requires an ffpa attention backend "
-                       "(--attn ffpa_fp8 / ffpa_fp4 / ...).")
-    from ..attention.backends.ffpa import set_ffpa_hybrid_n_early
-    set_ffpa_hybrid_n_early(args.ffpa_hybrid_n_early)
-
-  # FFPA fp4 Hadamard toggle: applied globally like the hybrid override so
-  # both the direct and the context-parallel attention paths pick it up.
-  if getattr(args, "ffpa_fp4_hadamard", False):
-    if args.attn != "ffpa_fp4":
-      raise ValueError("--ffpa-fp4-hadamard requires --attn ffpa_fp4.")
-    from ..attention.backends.ffpa import set_ffpa_fp4_hadamard
-    set_ffpa_fp4_hadamard(True)
-
-  if getattr(args, "ffpa_fp8_hadamard", False):
-    if args.attn is None or not str(args.attn).startswith("ffpa_fp8"):
-      raise ValueError("--ffpa-fp8-hadamard requires an ffpa_fp8 attention "
-                       "backend (--attn ffpa_fp8 / ffpa_fp8_per_block).")
-    from ..attention.backends.ffpa import set_ffpa_fp8_hadamard
-    set_ffpa_fp8_hadamard(True)
-
-  # FFPA fp4 PV MMA dtype / V smoothing: applied globally like the other
-  # ffpa overrides so both the direct and the CP attention paths pick it up.
-  if getattr(args, "ffpa_fp4_pv_mm_type", None) is not None:
-    if args.attn != "ffpa_fp4":
-      raise ValueError("--ffpa-fp4-pv-mm-type requires --attn ffpa_fp4.")
-    from ..attention.backends.ffpa import set_ffpa_fp4_pv_mm_type
-    set_ffpa_fp4_pv_mm_type(args.ffpa_fp4_pv_mm_type)
-
-  if getattr(args, "ffpa_fp4_smooth_v", False):
-    if args.attn != "ffpa_fp4":
-      raise ValueError("--ffpa-fp4-smooth-v requires --attn ffpa_fp4.")
-    from ..attention.backends.ffpa import set_ffpa_fp4_smooth_v
-    set_ffpa_fp4_smooth_v(True)
-
-  if getattr(args, "ffpa_fp8_smooth_v", False):
-    if args.attn not in ("ffpa_fp8", "ffpa_fp8_per_block"):
-      raise ValueError("--ffpa-fp8-smooth-v requires --attn ffpa_fp8 or ffpa_fp8_per_block.")
-    from ..attention.backends.ffpa import set_ffpa_fp8_smooth_v
-    set_ffpa_fp8_smooth_v(True)
+  _apply_attn_params(args)
 
   if args.seacache and not args.cache:
     raise ValueError("--seacache requires --cache.")
@@ -3148,20 +3015,18 @@ def strify(args, pipe_or_stats):
     base_str += "_ADALN"  # AdaLN tables streamed, transformer resident
   if args.attn is not None:
     base_str += f"_{args.attn.strip('_')}"
-  if getattr(args, "ffpa_hybrid_n_early", None) is not None:
-    base_str += f"_hybrid_n_early_{args.ffpa_hybrid_n_early}"
-  if getattr(args, "ffpa_hybrid", False):
-    base_str += "_hybrid"
-  if getattr(args, "ffpa_fp4_hadamard", False):
-    base_str += "_fp4_hadamard"
-  if getattr(args, "ffpa_fp8_hadamard", False):
-    base_str += "_fp8_hadamard"
-  if getattr(args, "ffpa_fp4_pv_mm_type", None) is not None:
-    base_str += f"_fp4_pv_mm_type_{args.ffpa_fp4_pv_mm_type}"
-  if getattr(args, "ffpa_fp4_smooth_v", False):
-    base_str += "_fp4_smooth_v"
-  if getattr(args, "ffpa_fp8_smooth_v", False):
-    base_str += "_fp8_smooth_v"
+  # Fixed order so the filename does not depend on the order of the --attn-params keys.
+  attn_fields = getattr(args, "attn_fields", None) or {}
+  if attn_fields.get("hybrid_n_early") is not None:
+    base_str += f"_hybrid_n_early_{attn_fields['hybrid_n_early']}"
+  for key in ("hybrid", "fp4_hadamard", "fp8_hadamard"):
+    if attn_fields.get(key):
+      base_str += f"_{key}"
+  if attn_fields.get("fp4_pv_mm_type") is not None:
+    base_str += f"_fp4_pv_mm_type_{attn_fields['fp4_pv_mm_type']}"
+  for key in ("fp4_smooth_v", "fp8_smooth_v"):
+    if attn_fields.get(key):
+      base_str += f"_{key}"
   if args.cuda_graph:
     base_str += "_cuda_graph"
   # __ -> _, ___ -> _, etc.

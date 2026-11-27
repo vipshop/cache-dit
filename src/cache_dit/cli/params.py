@@ -154,15 +154,33 @@ SVDQ_PARAM_SPECS: Dict[str, Caster] = {
   "packed_a4_inner_group": int,
 }
 
-LAYERWISE_SVDQ_KEYS = (
-  "async_transfer",
-  "transfer_buckets",
-  "prefetch_limit",
-  "max_copy_streams",
-  "max_inflight_prefetch_bytes",
-  "persistent_buckets",
-  "persistent_bins",
-)
+# `--attn-params` keys per attention backend. Every key maps onto one process-wide setter of its
+# backend: `set_sol_attn_config(**fields)` for sol_attn, `set_ffpa_<key>(value)` for ffpa*.
+_FFPA_HYBRID_KEYS = {
+  "hybrid": _as_bool,
+  "hybrid_n_early": int,
+}
+ATTN_PARAM_SPECS: Dict[str, Dict[str, Caster]] = {
+  "sol_attn": {
+    "tau": float,
+    "thresh_type": _one_of(("diag", "exact")),
+    "strict": _as_bool,
+    "sink_tokens": int,
+  },
+  "ffpa": dict(_FFPA_HYBRID_KEYS),
+  "ffpa_fp8": {
+    **_FFPA_HYBRID_KEYS,
+    "fp8_hadamard": _as_bool,
+    "fp8_smooth_v": _as_bool,
+  },
+  "ffpa_fp4": {
+    **_FFPA_HYBRID_KEYS,
+    "fp4_hadamard": _as_bool,
+    "fp4_pv_mm_type": _one_of(("fp4", "fp8")),
+    "fp4_smooth_v": _as_bool,
+  },
+}
+ATTN_PARAM_SPECS["ffpa_fp8_per_block"] = ATTN_PARAM_SPECS["ffpa_fp8"]
 
 
 def resolve_param_pairs(
@@ -190,3 +208,22 @@ def resolve_param_pairs(
     except (ValueError, argparse.ArgumentTypeError) as e:
       raise ValueError(f"Invalid {flag} '{key}={text}': {e}") from e
   return resolved
+
+
+def resolve_attn_params(backend: Optional[str], raw: Optional[Dict[str, str]]) -> Dict[str, Any]:
+  """Resolve `--attn-params` against the keys of the selected attention backend.
+
+  :param backend: Value of `--attn`, or None when it was not passed.
+  :param raw: Raw mapping from :func:`parse_param_pairs`.
+  :returns: The coerced mapping, empty when nothing was passed.
+  """
+
+  if not raw:
+    return {}
+  if backend is None:
+    raise ValueError("--attn-params requires --attn.")
+  specs = ATTN_PARAM_SPECS.get(backend)
+  if specs is None:
+    raise ValueError(f"The '{backend}' attention backend takes no --attn-params; backends with "
+                     f"options: {list(ATTN_PARAM_SPECS)}.")
+  return resolve_param_pairs(raw, specs, "--attn-params")

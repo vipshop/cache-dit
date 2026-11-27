@@ -713,52 +713,16 @@ options:
   --parallel-controlnet
                         Enable ControlNet parallelism if applicable.
   --attn {None,flash,flash_varlen,_flash_3,native,_native_cudnn,_sdpa_cudnn,sage,sage3,sol_attn,ffpa,ffpa_fp8,ffpa_fp4,ffpa_fp8_per_block,_native_npu,_npu_fia,_mindiesd_laser}
-  --sol-attn-tau SOL_ATTN_TAU
-                        Sol-Attn routing threshold multiplier; larger values
-                        select fewer exact KV blocks.
-  --sol-attn-thresh-type {diag,exact}
-                        Sol-Attn threshold estimator: diagonal or full
-                        covariance.
-  --sol-attn-strict     Raise on Sol-Attn-ineligible calls instead of using
-                        observable native fallback.
-  --sol-attn-sink-tokens SOL_ATTN_SINK_TOKENS
-                        Exact prefix-KV token budget (default: 1024; 0
-                        disables; capped at sequence length).
-  --ffpa-hybrid         Enable the FFPA hybrid fp16 early-rows stage (--attn
-                        ffpa_fp8 / ffpa_fp4 / ffpa_fp8_per_block). Off by
-                        default for every backend, including causal attention;
-                        opt-in only. Reflected in the saved filename as
-                        hybrid.
-  --ffpa-hybrid-n-early FFPA_HYBRID_N_EARLY, --ffpa-hybird-n-early FFPA_HYBRID_N_EARLY
-                        Number of fp16 early rows for the FFPA hybrid mode
-                        (multiple of 128). Requires --attn ffpa_fp8/ffpa_fp4
-                        and --ffpa-hybrid. Reflected in the saved filename as
-                        hybrid_n_early_<N>.
-  --ffpa-fp4-hadamard   Enable the Hadamard Q/K pre-rotation for the FFPA fp4
-                        backend (flattens per-16-group outliers, exact in fp32
-                        math, small perf overhead). Requires --attn ffpa_fp4.
-                        Reflected in the saved filename as fp4_hadamard.
-  --ffpa-fp8-hadamard   Enable the Hadamard Q/K pre-rotation for the FFPA fp8
-                        backends (incoherent processing as in
-                        FlashAttention-3: spreads per-dim outliers so per-
-                        block/per-group quant amax drops, exact in fp32 math).
-                        Requires an ffpa_fp8* attention backend. Reflected in
-                        the saved filename as fp8_hadamard.
-  --ffpa-fp4-pv-mm-type {fp4,fp8}
-                        PV MMA dtype for the FFPA fp4 backend: fp4 (NVFP4 e2m1
-                        + ue4m3/16, default) or fp8 (MXFP8 e4m3 + ue8m0/32,
-                        higher PV precision, persist_d head_dim <= 192 only).
-                        Requires --attn ffpa_fp4. Reflected in the saved
-                        filename as fp4_pv_mm_type_<T>.
-  --ffpa-fp4-smooth-v   Subtract the per-(b,hkv) V column mean before V
-                        quantize for the FFPA fp4 backend (persist_d head_dim
-                        <= 256 only). Requires --attn ffpa_fp4. Reflected in
-                        the saved filename as fp4_smooth_v.
-  --ffpa-fp8-smooth-v   Subtract the per-(b,h) V dim mean before V quantize
-                        for the FFPA fp8 backends (requires per-channel V, the
-                        default). Off by default; requires --attn ffpa_fp8 or
-                        ffpa_fp8_per_block. Reflected in the saved filename as
-                        fp8_smooth_v.
+  --attn-params ATTN_PARAMS
+                        Attention backend options as a comma separated
+                        key=value list; the valid keys depend on --attn.
+                        sol_attn: tau, thresh_type (diag|exact), strict,
+                        sink_tokens. ffpa: hybrid, hybrid_n_early. ffpa_fp8 /
+                        ffpa_fp8_per_block: hybrid, hybrid_n_early,
+                        fp8_hadamard, fp8_smooth_v. ffpa_fp4: hybrid,
+                        hybrid_n_early, fp4_hadamard, fp4_pv_mm_type
+                        (fp4|fp8), fp4_smooth_v. The non-default options are
+                        reflected in the saved filename.
   --ulysses-anything, --uaa
                         Enable Ulysses Anything Attention for context
                         parallelism
