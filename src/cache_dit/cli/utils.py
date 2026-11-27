@@ -2504,7 +2504,9 @@ def maybe_compile_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-  if args.compile or args.svdq_few_shot_compile:
+  few_shot_auto_compile = bool((getattr(args, "svdq_kwargs", None)
+                                or {}).get("few_shot_auto_compile"))
+  if args.compile or few_shot_auto_compile:
     set_compile_configs(cuda_graphs=args.cuda_graph, ulysses_anything=args.ulysses_anything)
     torch.set_float32_matmul_precision("high")
 
