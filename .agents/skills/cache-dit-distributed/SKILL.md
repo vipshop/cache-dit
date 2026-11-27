@@ -69,16 +69,9 @@ enable_cache(pipe, parallelism_config=...)
                     controlnet   → parallelize_controlnet（仅 CACHE_DIT CP）
 ```
 
-`--parallel-params` 的显式度数在 `cli/optimize.py::_prepare_distributed_size` 里折算成三元组（真实语义，容易记错）：
+`--parallel-params` 的度数就是各轴的真实度数（`ulysses` / `ring` / `tp`，默认 1，乘积必须等于进程数），没有旧的 `--parallel` 类型折算表；任意组合如 `ulysses=2,ring=2`、`tp=2,ulysses=2` 都直接给。
 
-| `--parallel` | 折算 |
-|---|---|
-| `ulysses` / `ring` / `tp` | 该维 = world_size |
-| `usp` | ulysses = world//2，ring = 余数 |
-| `ulysses_tp` | ulysses = world//2，tp = 余数（2 卡 = U1×T2，**纯 TP**） |
-| `tp_ulysses` | tp = world//2，ulysses = 余数（4 卡 = U2×T2） |
-| `ring_tp` / `tp_ring` | 同理，ring 与 tp 对半 |
-| `usp_tp` | 硬断言 world_size == 8，U2×R2×T2 |
+没有 torchrun 时 CLI 会按 `CUDA_VISIBLE_DEVICES` 自己拉起 worker：`cli/ray.py` 优先用 Ray（每个 task 占 1 张卡），Ray 未安装则用本地子进程；`--launcher auto|ray|local` 选择启动方式，度数乘积必须等于可见 GPU 数。torchrun 路径完全保留（`WORLD_SIZE` 已导出时跳过自启动）。
 
 `--parallel-params text=true` / `--parallel-params vae=true` / `--parallel-params controlnet=true` **单独用是 no-op**：它们只在 `--parallel-params` 带度数键（`ulysses` / `ring` / `tp`）时被装进 `extra_parallel_modules`。
 

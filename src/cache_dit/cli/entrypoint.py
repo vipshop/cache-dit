@@ -318,6 +318,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "'ulysses_async=true'. Ring: 'ring_rotate_method=allgather', 'ring_convert_to_fp32=false'.",
   )
   parser.add_argument(
+    "--launcher",
+    choices=["auto", "ray", "local"],
+    default="auto",
+    help="How to start the workers when --parallel-params needs several processes and the run is "
+    "not already under torchrun: 'auto' uses Ray when installed and local subprocesses otherwise, "
+    "'ray' requires Ray, 'local' always spawns local processes.",
+  )
+  parser.add_argument(
     "--attn-params",
     type=parse_attn_params,
     default=None,

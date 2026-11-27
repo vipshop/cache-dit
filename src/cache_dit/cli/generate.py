@@ -1,4 +1,5 @@
 import os
+import sys
 from ..logger import (
   init_logger,
   suppress_torch_compile_loggers,
@@ -166,6 +167,11 @@ def entrypoint():
       logger.error("Please specify an example name or a model path to run. Use "
                    "'python3 -m cache_dit.generate list' to see all available examples.")
       exit(1)
+
+    from .ray import maybe_launch_parallel
+
+    if maybe_launch_parallel(args, sys.argv[1:]):
+      return
 
     if args.cache_summary or args.example_summary:
       # Only logging all args when the 'summary' flag is set for better readability.

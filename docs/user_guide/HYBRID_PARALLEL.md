@@ -93,6 +93,8 @@ cache_dit.enable_cache(
 
 ## Quick Examples
 
+`--parallel-params` states the degree of every axis explicitly, so torchrun is optional: without it the CLI starts one worker per visible GPU (Ray when installed, local subprocesses otherwise), and the degree product must equal the number of visible devices. For example, `CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate flux --parallel-params 'ulysses=2'`; pass `--launcher local` or `--launcher ray` to choose the launcher. The commands below keep the torchrun form; both are equivalent:
+
 ```bash
 torchrun --nproc_per_node=4 -m cache_dit.generate flux2 --parallel-params 'tp=4,text=true' --track-memory
 torchrun --nproc_per_node=8 -m cache_dit.generate flux2 --parallel-params 'tp=8,text=true' --track-memory

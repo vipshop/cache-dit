@@ -304,7 +304,14 @@ Run `python3 -m cache_dit.generate list` to see every example with its task and 
 
 ## Distributed Inference 
 
-cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. For examples:
+cache-dit is designed to work seamlessly with CPU or Sequential Offloading, 🔥Context Parallelism, 🔥Tensor Parallelism. `--parallel-params` states the degree of every axis explicitly, so torchrun is optional: without it the CLI starts one worker per visible GPU itself (Ray when installed, local subprocesses otherwise), and the degree product must equal the number of visible devices:
+
+```bash
+export CUDA_VISIBLE_DEVICES=4,5
+python3 -m cache_dit.generate flux --parallel-params 'ulysses=2'
+```
+
+Pass `--launcher local` or `--launcher ray` to choose the launcher instead of `auto`. The torchrun form below is equivalent. For examples:
 
 ```bash
 # context parallelism or tensor parallelism
@@ -671,7 +678,7 @@ options:
   --cache-summary, --summary
                         Enable Cache Summary logging
   --calibrator-params CALIBRATOR_PARAMS
-                        Enable a DBCache calibrator (requires --cache);
+                        Enable a DBCache calibrator (requires --cache-params);
                         options as a comma separated key=value list whose
                         'type' key selects the calibrator: taylorseer, dmd,
                         foca, svd (SVD-Cache), hicache (damped-Hermite), brace
@@ -729,6 +736,12 @@ options:
                         'ulysses_anything=true', 'ulysses_async=true'. Ring:
                         'ring_rotate_method=allgather',
                         'ring_convert_to_fp32=false'.
+  --launcher {auto,ray,local}
+                        How to start the workers when --parallel-params needs
+                        several processes and the run is not already under
+                        torchrun: 'auto' uses Ray when installed and local
+                        subprocesses otherwise, 'ray' requires Ray, 'local'
+                        always spawns local processes.
   --attn-params ATTN_PARAMS
                         Select the attention backend and its options as a
                         comma separated key=value list whose 'type' key is the
