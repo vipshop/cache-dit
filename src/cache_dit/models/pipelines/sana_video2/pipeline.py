@@ -19,8 +19,8 @@ Note:
 
   * :class:`SanaVideo2Pipeline` must inherit `DiffusionPipeline` and the transformer must be a
     `ModelMixin` + `ConfigMixin`; `vae` must stay a diffusers `AutoencoderKLLTX2Video` and
-    `text_encoder` a `transformers` module, otherwise `--parallel-vae` / `--parallel-text`
-    silently do nothing.
+    `text_encoder` a `transformers` module, otherwise `--parallel-params vae=true` /
+    `--parallel-params text=true` silently do nothing.
   * Caching assumes exactly one ``transformer.forward()`` per denoising step. CFG is folded into
     the batch axis, so ``guidance_scale`` must stay above 1 while caching; the guard below
     enforces it instead of silently halving the effective step count.

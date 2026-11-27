@@ -10,7 +10,7 @@ Context parallelism is unusual for this model in two ways:
   plain sums over the token axis, so a rank holding a token shard only needs one all-reduce of
   the two local aggregates per layer to obtain the global ones (the denominator all-reduce stays in
   the input dtype, the numerator one is fp32, matching upstream) — no Ulysses head all-to-all, so
-  `--ulysses` and `--ring` behave identically here. The cross-attention keeps its query local and
+  `ulysses` and `ring` degrees behave identically here. The cross-attention keeps its query local and
   its K/V (the complete prompt) replicated, so it runs locally with `cp_config=None`.
 * The feed-forward is convolution-based (`GLUMBTempConv`), including a **3-tap temporal
   convolution**, and the block reshapes with `frames/height/width` integers that `forward()` derives
@@ -26,10 +26,10 @@ Context parallelism is unusual for this model in two ways:
 
 The frame split requires the **latent frame count to be divisible by the CP size** (the Wan VAE
 compresses time by 4, so `frames = 4k + 1` becomes `k + 1` latent frames), unless
-`--ulysses-anything` switches the sharder to an uneven split. An indivisible count is rejected up
+`ulysses_anything=true` switches the sharder to an uneven split. An indivisible count is rejected up
 front with the suggested counts and the flag that relaxes it instead of failing inside the sharder.
 
-`--ulysses-anything` is not free: the uneven gather is `torch.compiler.disable`d and adds one
+`ulysses_anything=true` is not free: the uneven gather is `torch.compiler.disable`d and adds one
 `_gather_size` collective per gather, so an uneven run gives up `--compile` and splits the frames
 unevenly (81 frames become 11/10). Prefer an even frame count when compile matters.
 """
@@ -516,7 +516,7 @@ def _validate_frame_split(transformer: nn.Module, hidden_states: torch.Tensor) -
   frames = hidden_states.shape[2]
   cp_config = getattr(transformer, "_cp_config", None)
   if getattr(cp_config, "ulysses_anything", False):
-    # `--ulysses-anything` switches the sharder to an uneven split, which the halo / RoPE patches
+    # `ulysses_anything=true` switches the sharder to an uneven split, which the halo / RoPE patches
     # already handle because they work from per-rank lengths instead of assuming equipartition.
     if frames >= world_size:
       return
@@ -526,10 +526,10 @@ def _validate_frame_split(transformer: nn.Module, hidden_states: torch.Tensor) -
   candidates = [f for f in range(13, 121, 4) if ((f - 1) // 4 + 1) % world_size == 0]
   raise ValueError(
     "SANA-Video context parallelism shards the frame axis, so either the latent frame count must "
-    f"divide by the CP size, or `--ulysses-anything` must be enabled: the input has {frames} "
+    f"divide by the CP size, or `ulysses_anything=true` must be enabled: the input has {frames} "
     f"latent frames and the CP size is {world_size}. The Wan VAE compresses time by 4 "
     f"(`frames = 4k + 1`), so `--num-frames {candidates[0]}` runs on the even-split path (frames "
-    f"from {candidates[:6]}...). Add `--ulysses-anything` to keep {frames} frames on the uneven "
+    f"from {candidates[:6]}...). Add `ulysses_anything=true` to keep {frames} frames on the uneven "
     "split instead, which gives up `--compile` because the uneven gather cannot be compiled.")
 
 

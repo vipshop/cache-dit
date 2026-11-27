@@ -847,7 +847,7 @@ class LongCatVideoAvatarPipeline(DiffusionPipeline):
           "local sequence lengths (`q` of the noise frames vs `k`/`v` of the conditioning frame) "
           "differ per rank while Ulysses requires them equal. Measured on 480x832 x 93 frames, "
           "forcing it through a single uniform attention drops the clip to 21.9 dB / SSIM 0.76 "
-          "against 38.6 dB / 0.974 for the audio+text task. Use `--parallel tp` for AI2V.")
+          "against 38.6 dB / 0.974 for the audio+text task. Use `--parallel-params tp=N` for AI2V.")
 
     sigmas = self.get_timesteps_sigmas(num_inference_steps, use_distill=use_distill)
     self.scheduler.set_timesteps(num_inference_steps, sigmas=sigmas, device=device)

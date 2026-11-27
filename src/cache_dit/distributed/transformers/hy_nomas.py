@@ -64,7 +64,7 @@ class NomasContextParallelismPlanner(ContextParallelismPlanner):
   Because ``final_layer`` also runs on the KV-write pass, every segment pays one extra all-gather in
   addition to the per-block exchanges.
 
-  Ring attention and ``--ulysses-anything`` are rejected: every rank's cache holds the **full**
+  Ring attention and ``ulysses_anything=true`` are rejected: every rank's cache holds the **full**
   segment row count (``video_tokens + text_tokens``; the capacity is derived from the whole
   segment, not divided by ``sp_size``) and only its own head slice, which is exactly what the
   block's Ulysses all-to-all leaves behind.  A ring/variable partition would give ranks different
@@ -83,10 +83,10 @@ class NomasContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "HY-Nomas context parallelism does not support Ring attention: the segment KV cache stores "
         "an equal number of rows per rank, which only holds for the Ulysses equipartition. Use "
-        "`--parallel ulysses`.")
+        "`--parallel-params ulysses=N`.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "HY-Nomas context parallelism does not support `--ulysses-anything`: the video tokens are "
+        "HY-Nomas context parallelism does not support `ulysses_anything=true`: the video tokens are "
         "split evenly and the cache capacity is derived from that split. Use the default Ulysses "
         "partition.")
 

@@ -197,7 +197,8 @@ class Magi2PreviewPipeline(DiffusionPipeline):
       raise NotImplementedError(
         "MAGI-2 does not support `device_map`: the preview transformer is 228 GiB and the CLI skips "
         "`pipe.to(device)` whenever a balanced device map is requested, which would leave the whole "
-        "pipeline on the CPU. Use `--layerwise-offload` (cache-dit) or `--parallel tp` instead.")
+        "pipeline on the CPU. Use `--layerwise-offload` (cache-dit) or `--parallel-params tp=N` instead."
+      )
     if quantization_config is not None:
       import warnings
 

@@ -95,7 +95,7 @@ class MotifVideoContextParallelismPlanner(ContextParallelismPlanner):
       # each rank's text segment from that same equipartition; UAA's uneven split would
       # silently misalign both. Same guard as `BriaFibo2ContextParallelismPlanner`.
       raise NotImplementedError(
-        "Motif-Video CP does not support --ulysses-anything: the attention-mask permutation "
+        "Motif-Video CP does not support `ulysses_anything=true`: the attention-mask permutation "
         "and the cross-attention text-mask extraction assume an even sequence split. "
         "Pick resolutions whose image-token count and text length divide by ulysses_size.")
 

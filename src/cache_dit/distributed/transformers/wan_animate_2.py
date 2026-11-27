@@ -249,7 +249,7 @@ class WanAnimate2ContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "Ring attention is not supported for Wan-Animate-2: the in-context flex block mask indexes "
         "the full [generation | reference] K/V on every rank, which ring attention splits across "
-        "ranks. Use `--parallel ulysses` instead.")
+        "ranks. Use `--parallel-params ulysses=N` instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
         "ulysses_anything is not supported for Wan-Animate-2: only the standard padded Ulysses "

@@ -37,8 +37,8 @@ class Qwen3_5TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
   * `linear_attention` layers stay replicated: their conv/scan kernels are DTensor-unsafe, and the
     FLA fallback path materializes the whole layer anyway.
 
-  There is no fallback planner if this one is missing, so `--parallel-text` fails loudly instead of
-  silently running the encoder replicated.
+  There is no fallback planner if this one is missing, so `text=true` in `--parallel-params` fails
+  loudly instead of silently running the encoder replicated.
   """
 
   def _apply(

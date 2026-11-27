@@ -1,4 +1,5 @@
-"""Two-rank regression for the P-H3-Image VAE planner (`--parallel-vae`) on a CPU/gloo build.
+"""Two-rank regression for the P-H3-Image VAE planner (`vae=true` in `--parallel-params`) on a
+CPU/gloo build.
 
 The single-round tests in `test_ph3_image_vae_dp.py` only prove the patch point and the pass-through.
 This file exercises the plan itself: two real ranks, four tiles, real P2P, and a comparison against

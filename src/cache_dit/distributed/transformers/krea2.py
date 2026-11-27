@@ -57,7 +57,7 @@ def _patch_attention_processor_for_cp() -> None:
 
      - ``enable_gqa=True``  (original): ~26.4 s
      - ``enable_gqa=False`` (MHA repeat): ~12.2 s
-     - ``enable_gqa=True`` + ``--attn _sdpa_cudnn``: ~11.5 s
+     - ``enable_gqa=True`` + ``--attn-params type=_sdpa_cudnn``: ~11.5 s
 
      The cuDNN SDPA backend handles GQA efficiently without the repeat,
      achieving the same ~2.2× speedup.  Either approach (MHA repeat for the

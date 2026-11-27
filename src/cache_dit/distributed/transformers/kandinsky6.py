@@ -203,7 +203,7 @@ class Kandinsky6ContextParallelismPlanner(ContextParallelismPlanner):
   cached step (nothing gathers) and, on a computed step, it lands in the middle group whose residual
   subtraction would then mix a gathered tensor with a local one.
 
-  Ring attention and `--ulysses-anything` are rejected: the video KV gather assumes the plain
+  Ring attention and `ulysses_anything=true` are rejected: the video KV gather assumes the plain
   equipartition that Ulysses uses, and neither combination can be validated here.
   """
 
@@ -219,10 +219,10 @@ class Kandinsky6ContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "Kandinsky 6.0 Context Parallelism does not support Ring attention: the fused block's "
         "audio->video cross-attention gathers the video KV, which assumes the plain Ulysses "
-        "equipartition. Use Ulysses (`--parallel ulysses`).")
+        "equipartition. Use Ulysses (`--parallel-params ulysses=N`).")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "Kandinsky 6.0 Context Parallelism does not support `--ulysses-anything`: the video KV "
+        "Kandinsky 6.0 Context Parallelism does not support `ulysses_anything=true`: the video KV "
         "gather assumes equally sized shards. Use the default Ulysses partition.")
 
     ulysses_size = parallelism_config.ulysses_size or 1

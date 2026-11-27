@@ -298,8 +298,8 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
       model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
       pipeline_class=FluxPipeline,
       transformer=transformer,  # maybe use Nunchaku Flux transformer
-      # `text_encoder_2` will be quantized when `--quantize-params text_encoder`
-      # is set to `bnb_4bit`. Only hints for quantization.
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder=bnb_4bit`
+      # is set. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
     input_data=ExampleInputData(
@@ -329,8 +329,8 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
       task_type=ExampleType.IE2I,  # Image Editing to Image
       model_name_or_path=_path("black-forest-labs/FLUX.1-Fill-dev"),
       pipeline_class=FluxFillPipeline,
-      # `text_encoder_2` will be quantized when `--quantize-params text_encoder`
-      # is set to `bnb_4bit`. Only hints for quantization.
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder=bnb_4bit`
+      # is set. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
     input_data=ExampleInputData(
@@ -3122,7 +3122,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
   together with the model's activations. `--adaln-host-residency` is the tightest fit: it keeps the
   transformer resident minus its 24 GiB of AdaLN tables and streams the conditioner, which peaks at
   about 49 GiB. `--module-layerwise-cpu-offload` streams both components instead, and
-  `--parallel tp`/`ulysses` spreads the weights over several devices.
+  `--parallel-params tp=N` / `ulysses=N` spread the weights over several devices.
 
   :param args: CLI arguments.
   :returns: The MiniMax-H3 t2va example.
@@ -3763,8 +3763,8 @@ def hidream_o1_image_example(args: argparse.Namespace, **kwargs) -> Example:
   pass `--extra-input-kwargs "{'snap_resolution': False}"` to render an arbitrary multiple of 32.
 
   The model is pixel-space and embeds its own token ids, so there is no VAE and no text encoder to
-  shard: `--parallel-vae` / `--parallel-text` cannot work and are rejected here instead of being
-  silently ignored.
+  shard: `vae=true` / `text=true` in `--parallel-params` cannot work and are rejected here instead
+  of being silently ignored.
 
   :param args: Parsed CLI arguments.
   :param kwargs: Unused extra keyword arguments.
@@ -3774,10 +3774,10 @@ def hidream_o1_image_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if getattr(args, "parallel_text_encoder", False):
     raise NotImplementedError("HiDream-O1-Image embeds its own token ids: it has no text encoder, "
-                              "so `--parallel-text` is not applicable.")
+                              "so `text=true` in `--parallel-params` is not applicable.")
   if getattr(args, "parallel_vae", False):
-    raise NotImplementedError("HiDream-O1-Image is pixel-space: it has no VAE, so `--parallel-vae` "
-                              "is not applicable.")
+    raise NotImplementedError("HiDream-O1-Image is pixel-space: it has no VAE, so `vae=true` in "
+                              "`--parallel-params` is not applicable.")
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -3958,7 +3958,8 @@ def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
   `audio_duration_s` goes through `extra_input_kwargs`: there is no dedicated input field for it.
   10 s is the reference load used for the acceptance numbers (117 latent frames, well under the
   30 s cap the pipeline hardcodes). Note that 117 is odd: context parallelism over two ranks needs
-  `--ulysses-anything`, or a duration whose frame count is even (5 s = 58, 6 s = 70).
+  `--parallel-params 'ulysses=2,ulysses_anything=true'`, or a duration whose frame count is even
+  (5 s = 58, 6 s = 70).
 
   :param args: CLI arguments.
   :returns: The LongCat-AudioDiT text-to-speech example.
@@ -4018,9 +4019,10 @@ def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
   `duration` goes through `extra_input_kwargs`: there is no dedicated input field for it. 10 s is
   the reference load used for the acceptance numbers (108 latent frames, i.e. `64 + 108 = 172`
   transformer tokens after the 64 memory tokens, divisible by 2 and 4 — context parallelism needs that
-  divisibility, or `--ulysses-anything`). Unlike Stable Audio 1/2 the distilled checkpoint default is
-  `guidance_scale=1.0` — CFG is baked into the weights, so every step runs a single velocity forward
-  and 8 steps is the shipped schedule. The non-distilled `-base` checkpoint needs ~100 steps and
+  divisibility, or `--parallel-params 'ulysses=2,ulysses_anything=true'`). Unlike Stable Audio 1/2
+  the distilled checkpoint default is `guidance_scale=1.0` — CFG is baked into the weights, so every
+  step runs a single velocity forward and 8 steps is the shipped schedule. The non-distilled
+  `-base` checkpoint needs ~100 steps and
   `guidance_scale > 1`; point `STABLE_AUDIO_3_DIR` at it and override `--steps` / `--guidance-scale`.
 
   :param args: CLI arguments.
@@ -4032,8 +4034,8 @@ def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
   if getattr(args, "parallel_vae", False):
     raise NotImplementedError(
       "Stable Audio 3 has an audio VAE (`AutoencoderSAME`, a 1-D convolutional decoder) and no "
-      "registered VAE parallel planner; its decode is only ~8% of the run, so `--parallel-vae` "
-      "is not applicable.")
+      "registered VAE parallel planner; its decode is only ~8% of the run, so `vae=true` in "
+      "`--parallel-params` is not applicable.")
 
   model_name_or_path = _path("stabilityai/stable-audio-3-medium", args)
   _assert_stable_audio_3_layout(model_name_or_path)
@@ -5345,11 +5347,12 @@ def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
 
   The released script (`scripts/inference_single.py`) defaults to **720x1280 / 193 frames / 50 steps
   / guidance 5.0**: the two video experts alone are ~52 GB in bf16, so it needs `--layerwise-offload`
-  or `--parallel tp` on two cards. Note that neither the 360p geometry the checkpoint name suggests
-  (640x360) nor any other odd-latent size is admissible: `check_inputs` requires both sides divisible
-  by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640** for a 360p-class run (an
-  8-pixel height crop, ~43k video tokens at 49 latent frames). The defaults below stay at the
-  development geometry; override with `--height/--width/--num-frames/--steps`.
+  or `--parallel-params tp=N` on two cards. Note that neither the 360p geometry the checkpoint
+  name suggests (640x360) nor any other odd-latent size is admissible: `check_inputs` requires
+  both sides divisible by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640**
+  for a 360p-class run (an 8-pixel height crop, ~43k video tokens at 49 latent frames). The
+  defaults below stay at the development geometry; override with
+  `--height/--width/--num-frames/--steps`.
 
   :param args: CLI arguments.
   :returns: The MOVA 360p t2va example.
@@ -5454,11 +5457,12 @@ def hy_nomas_example(args: argparse.Namespace, **kwargs) -> Example:
   if getattr(args, "parallel_vae", False):
     raise NotImplementedError(
       "HY-Nomas decodes with the vendored PixelUMM expert, which is not a diffusers autoencoder and "
-      "therefore has no VAE parallelism planner; `--parallel-vae` is not applicable.")
+      "therefore has no VAE parallelism planner; `vae=true` in `--parallel-params` is not "
+      "applicable.")
   if getattr(args, "attn", None) is not None:
     raise NotImplementedError(
       "HY-Nomas owns its attention plan (varlen log-sum-exp merge / FlexAttention block mask) and "
-      "bypasses cache-dit's dispatcher in exactly one place; `--attn` cannot be applied.")
+      "bypasses cache-dit's dispatcher in exactly one place; `--attn-params` cannot be applied.")
   height = 352 if args.height is None else args.height
   width = 640 if args.width is None else args.width
   steps = _HY_NOMAS_FORWARDS if args.num_inference_steps is None else args.num_inference_steps
@@ -6235,11 +6239,11 @@ def _minimax_h3_image_init_config(
 
   The 62 GiB transformer and the 63 GiB Qwen3-VL conditioner do not fit on one 72 GiB device
   together, so every single-GPU run needs one of cache-dit's streaming switches, or
-  `--parallel tp` / `ulysses` across several devices. `--adaln-online` is the one to use: the AdaLN
-  tables are a pure function of the fixed 6-step grid, so they are memoized once (a few MiB) and the
-  24 GiB of projections are parked on the host instead of being streamed on every step — that
-  removes ~3 s per step and is bit-exact. `--adaln-host-residency` streams the same tables and is the
-  fallback when the sampling grid is not a fixed one.
+  `--parallel-params tp=N` / `ulysses=N` across several devices. `--adaln-online` is the one to
+  use: the AdaLN tables are a pure function of the fixed 6-step grid, so they are memoized once (a
+  few MiB) and the 24 GiB of projections are parked on the host instead of being streamed on every
+  step — that removes ~3 s per step and is bit-exact. `--adaln-host-residency` streams the same
+  tables and is the fallback when the sampling grid is not a fixed one.
 
   :param args: CLI arguments.
   :param task_type: Task the example drives.
@@ -6379,8 +6383,9 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
 
   The pipeline ships a Qwen3.5 prompt upsampler as one of its six top-level blocks. Benchmarking
   pops it: the upsampler rewrites the prompt (a different input distribution), dominates the measured
-  latency and cannot be parallelised (`--parallel-text` only covers `text_encoder`). Production keeps
-  it, and `upsampler_dir` then names the repository (or a directory with `prompt_upsampler/` and
+  latency and cannot be parallelised (`text=true` in `--parallel-params` only covers
+  `text_encoder`). Production keeps it, and `upsampler_dir` then names the repository (or a
+  directory with `prompt_upsampler/` and
   `prompt_upsampler_processor/` subfolders) its weights come from.
 
   The step is only ever removed when no enhancer directory is given: `update_components` swaps
@@ -6403,7 +6408,7 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
     raise ValueError(
       "--prompt-enhancer keeps an 18.8 GiB upsampler resident, and an example is built before the "
       "process group exists, so under torchrun every rank would load its own copy and no "
-      "`--parallel*` option covers it. Expand the prompt on one GPU first (or run single-card), "
+      "`--parallel-params` option covers it. Expand the prompt on one GPU first (or run single-card), "
       "pass the result as `--prompt`, and drop the flag.")
 
   same_dir = (upsampler_dir is not None

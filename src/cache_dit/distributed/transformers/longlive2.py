@@ -67,13 +67,13 @@ class LongLive2ContextParallelismPlanner(ContextParallelismPlanner):
         "LongLive 2.0 supports Ulysses context parallelism only: its causal KV cache is written at "
         "exact global token coordinates, so Ring's equal-chunk rotation makes the cache slice "
         "(chunk/ring_size tokens) and the rotated sequence disagree - measured to raise a shape "
-        "error inside the cache write. Re-run with `--parallel ulysses`.")
+        "error inside the cache write. Re-run with `--parallel-params ulysses=N`.")
     if bool(getattr(parallelism_config, "ulysses_anything", False)):
       # Measured: bypassing this check lets a 2-rank run finish, but the output is bit-identical to
       # plain Ulysses (30.16 dB / 0.7222 SSIM against the single-GPU reference, same as CP2), so the
       # flag is swallowed by the custom attention processor instead of buying extra CP sizes.
       raise NotImplementedError(
-        "LongLive 2.0 rejects `--ulysses-anything`: the custom causal attention processor has no "
+        "LongLive 2.0 rejects `ulysses_anything=true`: the custom causal attention processor has no "
         "UAA padding branch, so the flag is silently ignored (measured: bit-identical to plain "
         "Ulysses). Pick an Ulysses size that divides both the head count and the chunk's latent "
         "frame count instead.")

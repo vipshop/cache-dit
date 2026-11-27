@@ -81,7 +81,7 @@ def test_rope_tables_are_complex_and_split_on_the_token_axis():
 def test_head_divisibility_is_checked_for_anchor_layers():
   transformer = _tiny_transformer()
   # 2 softmax heads per anchor layer: a degree of 4 cannot split them evenly.
-  with pytest.raises(ValueError, match="ulysses-anything"):
+  with pytest.raises(ValueError, match="ulysses_anything=true"):
     SanaVideo2ContextParallelismPlanner()._apply(transformer=transformer,
                                                  parallelism_config=_config(ulysses=4))
   # Degree 2 is fine.

@@ -142,7 +142,7 @@ def test_cp_plan_rejects_ring():
 def test_cp_plan_rejects_ulysses_anything():
   """The gather assumes equally sized shards, which UAA breaks."""
 
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     MOVAContextParallelismPlanner()._apply(
       transformer=_tiny_stack(),
       parallelism_config=_config(ulysses_size=2, ulysses_anything=True),

@@ -52,9 +52,9 @@ def cp_group(cp_config) -> tuple:
   """Resolve the context-parallel degree and this rank's offset inside it.
 
   `_ContextParallelConfig._rank` / `._world_size` are the *global* values handed to `setup()`, so a
-  hybrid run (`--parallel ulysses_tp`, TP2 + CP2) reports 4 here and the frame axis would be cut
-  into quarters that no rank owns. `_flattened_mesh` is the only CP-scoped view, and it is what the
-  `blocks.0` split hook shards by.
+  hybrid run (`--parallel-params 'ulysses=2,tp=2'`, TP2 + CP2) reports 4 here and the frame axis
+  would be cut into quarters that no rank owns. `_flattened_mesh` is the only CP-scoped view, and
+  it is what the `blocks.0` split hook shards by.
 
   :param cp_config: cache-dit context-parallel config, or `None` when the sequence is not split.
   :returns: `(size, rank)`; `(1, 0)` when context parallelism is off.

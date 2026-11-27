@@ -121,7 +121,7 @@ def test_cp_planner_rejects_ring_and_ulysses_anything():
       parallelism_config=ParallelismConfig(ring_size=2),
     )
 
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     planner._apply(
       transformer=transformer,
       parallelism_config=ParallelismConfig(ulysses_size=2, ulysses_anything=True),

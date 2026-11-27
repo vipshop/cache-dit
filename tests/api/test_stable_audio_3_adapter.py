@@ -167,7 +167,7 @@ def test_example_rejects_parallel_vae():
     seed=None,
     skip_negative_prompt=False,
   )
-  with pytest.raises(NotImplementedError, match="parallel-vae"):
+  with pytest.raises(NotImplementedError, match="VAE parallel planner"):
     stable_audio_3_example(args)
 
 

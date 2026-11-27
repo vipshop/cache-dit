@@ -8,7 +8,7 @@ things can silently degrade it back to the base model, so each is pinned here:
 2. The ladder must be shifted per modality before it reaches the scheduler, because
    `MiniMaxH3Scheduler.set_timesteps(sigmas=...)` uses the values verbatim.
 3. The class names are new, so adapter and planner lookup must resolve them; a miss is a
-   `ValueError` at `--parallel` time or a silently uncached run.
+   `ValueError` at parallel-setup time or a silently uncached run.
 
 Everything here is CPU-only.
 """

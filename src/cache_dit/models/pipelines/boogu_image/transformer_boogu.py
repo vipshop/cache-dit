@@ -131,10 +131,11 @@ def _boogu_local_double_stream_inputs(
                                               ("joint", l_instruct + l_img)) if length % world != 0
     ]
     if uneven:
-      raise ValueError("Boogu-Image context parallelism needs the instruction, image and joint "
-                       f"sequence lengths to divide evenly across {world} ranks, got "
-                       f"{', '.join(uneven)}. Pass `--ulysses-anything` to shard uneven "
-                       "lengths.")
+      raise ValueError(
+        "Boogu-Image context parallelism needs the instruction, image and joint "
+        f"sequence lengths to divide evenly across {world} ranks, got "
+        f"{', '.join(uneven)}. Pass `ulysses_anything=true` in `--parallel-params` to shard uneven "
+        "lengths.")
   inst_start, inst_end = _tensor_split_bounds(l_instruct, world, rank)
   img_start, img_end = _tensor_split_bounds(l_img, world, rank)
   enc_local = inst_end - inst_start

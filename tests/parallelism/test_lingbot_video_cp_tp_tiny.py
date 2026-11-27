@@ -23,7 +23,7 @@ _WIDTH = 4
 _LATENT_CHANNELS = 16
 _TEXT_DIM = 32
 _TEXT_TOKENS = 16  # H*W/4 + text = 20, divisible by 2 for plain Ulysses
-_TEXT_TOKENS_ODD = 15  # odd joint length, only `--ulysses-anything` can split it
+_TEXT_TOKENS_ODD = 15  # odd joint length, only `ulysses_anything=true` can split it
 # Ulysses only reorders the sequence, so CP must reproduce the single-rank result almost exactly.
 # TP shards the projections, which changes the fp32/bf16 accumulation order of the all-reduce, so it
 # carries a wider (still tiny) tolerance.
@@ -142,7 +142,7 @@ def test_lingbot_video_parallel_matches_single_rank(mode):
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 @pytest.mark.parametrize("mode", ["cp", "tp"])
 def test_lingbot_video_odd_joint_length(mode):
-  # An odd joint length needs `--ulysses-anything` for CP; TP never splits the sequence.
+  # An odd joint length needs `ulysses_anything=true` for CP; TP never splits the sequence.
   mp.spawn(_run_rank, args=(2, mode, _TEXT_TOKENS_ODD, mode == "cp"), nprocs=2, join=True)
 
 

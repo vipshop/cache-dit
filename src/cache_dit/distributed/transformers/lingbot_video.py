@@ -41,7 +41,7 @@ class LingBotVideoContextParallelismPlanner(ContextParallelismPlanner):
   * `cp_rotary` / `cp_temb6` / `cp_temb_input` output-split the RoPE table, the token-wise
     modulation and the timestep conditioning with the same partition. They are computed before the
     block loop and consumed per token, so they must follow the framework sharder to keep
-    `--ulysses-anything` consistent. `temb6` is split while it is still 3-D: the block loop rebuilds
+    `ulysses_anything=true` consistent. `temb6` is split while it is still 3-D: the block loop rebuilds
     it as `(B*S, 6D)` afterwards.
   * `cp_out` gathers dim 1 back after `proj_out`, i.e. on `prod(patch_size) * out_channels = 64`
     wide tokens instead of the 2048 wide residual stream, which cuts the all-gather volume 32x. The
@@ -51,9 +51,9 @@ class LingBotVideoContextParallelismPlanner(ContextParallelismPlanner):
   independent or run on the full text sequence, so they stay replicated.
 
   Ring attention is rejected: it needs equally sized local chunks on every rank, the joint length is
-  usually not divisible by the CP size, and `--ulysses-anything` only covers the Ulysses path. The
+  usually not divisible by the CP size, and `ulysses_anything=true` only covers the Ulysses path. The
   vendored transformer also does not implement upstream's pad-to-divisible path, so a Ulysses run on
-  a non-divisible joint length needs `--ulysses-anything`.
+  a non-divisible joint length needs `ulysses_anything=true`.
   """
 
   def _apply(
@@ -68,7 +68,7 @@ class LingBotVideoContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "LingBot-Video context parallelism does not support Ring attention: Ring needs equally sized "
         "local chunks, and the joint `video + text` length is usually not divisible by the CP size "
-        "(`--ulysses-anything` only covers Ulysses). Use `--parallel ulysses` instead.")
+        "(`ulysses_anything=true` only covers Ulysses). Use `--parallel-params ulysses=N` instead.")
 
     _cp_plan: _ContextParallelModelPlan = {
       "cp_rotary": {

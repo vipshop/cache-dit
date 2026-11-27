@@ -62,7 +62,7 @@ class BriaFibo2ContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "Ring attention is not supported for Bria Fibo 2.0: when a batch pads its gist tokens to "
         "the largest count, the resulting 2-D mask describes the global key axis, which only "
-        "Ulysses keeps valid. Use `--parallel ulysses` instead.")
+        "Ulysses keeps valid. Use `--parallel-params ulysses=N` instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
         "ulysses_anything is not supported for Bria Fibo 2.0: the packed sequence mixes gist, image "

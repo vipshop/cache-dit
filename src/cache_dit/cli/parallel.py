@@ -93,7 +93,8 @@ def prepare_extra_parallel_modules(
     if text_encoder is not None:
       extra_parallel_modules.append(text_encoder)
     else:
-      logger.warning("parallel-text-encoder is set but no text encoder found in the pipeline.")
+      logger.warning("`text=true` in `--parallel-params` was requested but no text encoder found "
+                     "in the pipeline.")
 
   if args.parallel_vae:
     assert not args.vae_tiling, "VAE tiling is not compatible with VAE parallelism."
@@ -101,13 +102,15 @@ def prepare_extra_parallel_modules(
     if hasattr(pipe, "vae"):
       extra_parallel_modules.append(getattr(pipe, "vae"))
     else:
-      logger.warning("parallel-vae is set but no VAE found in the pipeline.")
+      logger.warning("`vae=true` in `--parallel-params` was requested but no VAE found in the "
+                     "pipeline.")
 
   if args.parallel_controlnet:
     if hasattr(pipe, "controlnet"):
       extra_parallel_modules.append(getattr(pipe, "controlnet"))
     else:
-      logger.warning("parallel-controlnet is set but no ControlNet found in the pipeline.")
+      logger.warning("`controlnet=true` in `--parallel-params` was requested but no ControlNet "
+                     "found in the pipeline.")
 
   return extra_parallel_modules
 

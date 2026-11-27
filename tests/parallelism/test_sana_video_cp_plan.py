@@ -147,7 +147,7 @@ def test_cp_plan_rejects_a_frame_count_the_sharder_cannot_split(monkeypatch):
 
   transformer = _tiny_transformer()
   # `frames=81` -> 21 latent frames, which a CP size of 2 cannot split evenly.
-  with pytest.raises(ValueError, match="ulysses-anything"):
+  with pytest.raises(ValueError, match="ulysses_anything=true"):
     planner_module._validate_frame_split(transformer, torch.zeros(1, _IN_CHANNELS, 21, 8, 8))
   # An even latent frame count passes through.
   planner_module._validate_frame_split(transformer, torch.zeros(1, _IN_CHANNELS, 20, 8, 8))
@@ -166,7 +166,7 @@ def test_odd_frame_count_passes_on_the_uneven_split(monkeypatch):
   planner_module._validate_frame_split(transformer, torch.zeros(1, _IN_CHANNELS, 21, 8, 8))
 
   transformer._cp_config = _FakeCPConfig(ring=1, ulysses=2, anything=False)
-  with pytest.raises(ValueError, match="ulysses-anything"):
+  with pytest.raises(ValueError, match="ulysses_anything=true"):
     planner_module._validate_frame_split(transformer, torch.zeros(1, _IN_CHANNELS, 21, 8, 8))
 
 

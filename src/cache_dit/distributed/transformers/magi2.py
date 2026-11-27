@@ -49,9 +49,9 @@ def _install_ulysses_group(parallelism_config: ParallelismConfig) -> None:
     raise NotImplementedError(
       "MAGI-2 does not support a CP+TP hybrid layout: the packed attention exchange and the token "
       "split must share one axis, and `Magi2GroupedLinear` shards with the same group the MoE head "
-      "axis uses. Run `--parallel ulysses` or `--parallel tp` instead.")
+      "axis uses. Run `--parallel-params ulysses=N` or `--parallel-params tp=N` instead.")
   if not dist.is_available() or not dist.is_initialized():
-    # Single-process bring-up (tests, `--parallel` not requested): nothing to shard.
+    # Single-process bring-up (tests, `--parallel-params` not requested): nothing to shard.
     return
   world = dist.get_world_size()
   ulysses_size = int(getattr(parallelism_config, "ulysses_size", 1) or 1)
@@ -92,7 +92,7 @@ class Magi2PreviewContextParallelismPlanner(ContextParallelismPlanner):
         f"Context parallelism for MAGI-2 Preview ({name}) supports Ulysses only; got ring_size={ring_size}. "
         "The released packed attention exchanges heads and sequence with a fused Ulysses all-to-all "
         "that carries uneven per-rank `split_sizes`; Ring attention would need a different kernel and a "
-        "different RoPE/position bookkeeping. Use `--parallel ulysses`.")
+        "different RoPE/position bookkeeping. Use `--parallel-params ulysses=N`.")
     _install_ulysses_group(parallelism_config)
     return {}
 

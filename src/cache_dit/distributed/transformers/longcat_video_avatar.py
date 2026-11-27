@@ -71,10 +71,11 @@ class LongCatVideoAvatarContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "LongCat-Video-Avatar context parallelism does not support Ring attention: the audio "
         "cross-attention reshapes the token axis by frame, so every rank needs whole latent frames, "
-        "and Ring's wrap-around schedule has no gain here. Use `--parallel ulysses` instead.")
+        "and Ring's wrap-around schedule has no gain here. "
+        "Use `--parallel-params ulysses=N` instead.")
     if getattr(parallelism_config, "ulysses_anything", False):
       raise NotImplementedError(
-        "LongCat-Video-Avatar does not support `--ulysses-anything`: an uneven sequence split cuts "
+        "LongCat-Video-Avatar does not support `ulysses_anything=true`: an uneven sequence split cuts "
         "through a latent frame, and the per-frame audio cross-attention cannot be reshaped from a "
         "partial frame. Pick a clip whose latent frame count is divisible by the CP size.")
 

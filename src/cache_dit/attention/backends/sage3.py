@@ -205,7 +205,7 @@ def _sage3_attention(
      The SAGE3 README recommends alternating SageAttention2++ and
      SageAttention3 across layers/timesteps, suggesting the authors are
      aware of this limitation.  For cache-dit the preferred path is
-     ``--attn sage`` (SAGE2, lossless) rather than ``--attn sage3`` until
+     ``--attn-params type=sage`` (SAGE2, lossless) rather than ``--attn-params type=sage3`` until
      the upstream kernel is fixed to keep P at FP16 or FP8 precision.
   """
   if attn_mask is not None:

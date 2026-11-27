@@ -51,8 +51,8 @@ class SanaVideo2ContextParallelismPlanner(ContextParallelismPlanner):
   the shard is gathered before the latent grid is rebuilt.
 
   Head divisibility: the dense anchor layers have 10 heads, so `ulysses_size` must divide 10 (2 is
-  fine, 4 needs `--ulysses-anything`); the gated linear layers have 20 heads and only need the
-  state all-reduce, which is degree-agnostic.
+  fine, 4 needs `ulysses_anything=true` in `--parallel-params`); the gated linear layers have
+  20 heads and only need the state all-reduce, which is degree-agnostic.
   """
 
   def _apply(
@@ -76,9 +76,10 @@ class SanaVideo2ContextParallelismPlanner(ContextParallelismPlanner):
         int(block.attn.heads) for block in transformer.blocks
         if getattr(block.attn, "dim", None) == transformer.config.softmax_head_dim)
       if softmax_heads % ulysses:
-        hint = ("Pass `--ulysses-anything` to shard them unevenly, or use a smaller `--ulysses`."
-                if ring == 1 else ("Use a smaller `--ulysses`: `--ulysses-anything` is not "
-                                   "available together with `--ring`."))
+        hint = ("Add `ulysses_anything=true` to `--parallel-params` to shard them unevenly, or "
+                "use a smaller `ulysses` degree." if ring == 1 else
+                ("Use a smaller `ulysses` degree: `ulysses_anything=true` is not available "
+                 "together with `ring`."))
         raise ValueError(
           f"SANA-Video 2.0 dense anchor layers have {softmax_heads} heads, which is not divisible "
           f"by the Ulysses degree {ulysses}. {hint}")

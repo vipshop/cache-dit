@@ -504,7 +504,7 @@ class SanaVideo2Transformer3DModel(ModelMixin, ConfigMixin):
         raise NotImplementedError(
           "SANA-Video 2.0 TI2V (per-frame timestep) does not support context parallelism: the "
           "per-frame modulation indexes frames, but CP shards the token axis inside a frame. Run "
-          "TI2V without `--parallel ulysses`/`--parallel ring`.")
+          "TI2V without `ulysses=N` / `ring=N` in `--parallel-params`.")
       timestep = timestep.reshape(batch, 1, frames)
     if self.timestep_norm_scale_factor != 1.0:
       timestep = timestep.float() / self.timestep_norm_scale_factor

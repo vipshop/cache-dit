@@ -15,8 +15,8 @@ Note:
   * The block loop must call one block per iteration and nothing else, so the cached-block wrapper
     reproduces the exact computation.
   * There is no VAE and no text encoder: the model embeds its own token ids and predicts raw RGB
-    patches. `--parallel-vae` and `--parallel-text` are therefore rejected by the CLI example
-    instead of being silently skipped.
+    patches. `vae=true` / `text=true` in `--parallel-params` are therefore rejected by the CLI
+    example instead of being silently skipped.
 """
 from __future__ import annotations
 

@@ -551,13 +551,14 @@ def maybe_adaln_host_residency(
   if getattr(args, "cuda_graph", False) and not keep_transformer_resident:
     # CUDA Graph capture bakes the parameter pointers into the graph, and the host mirror rebinds
     # `parameter.data` on every block, so the capture would replay stale device buffers.
-    raise ValueError("--adaln-host-residency cannot be combined with --cuda-graph unless the "
-                     "transformer stays resident (transformer quantization or `--parallel tp`).")
+    raise ValueError(
+      "--adaln-host-residency cannot be combined with --cuda-graph unless the "
+      "transformer stays resident (transformer quantization or `--parallel-params tp=N`).")
   if getattr(args, "compile_full_graph", False) and not keep_transformer_resident:
     # `fullgraph=True` refuses the graph break the streaming hook causes by construction.
     raise ValueError(
       "--adaln-host-residency cannot be combined with --compile-full-graph unless "
-      "the transformer stays resident (transformer quantization or `--parallel tp`).")
+      "the transformer stays resident (transformer quantization or `--parallel-params tp=N`).")
   if getattr(args, "compile", False) and online:
     logger.info(
       "Compiling the repeated blocks with the AdaLN plans on the device: keying a plan is "
@@ -578,7 +579,8 @@ def maybe_adaln_host_residency(
 
   # The transformer has to be on the device before any handle is installed: the pinned host mirror
   # rebinds `parameter.data`, so a `module.to()` afterwards would copy those tables back and leave
-  # the mirror stale. `--parallel tp` only places the sharded projections, so the replicated parts
+  # the mirror stale. `--parallel-params tp=N` only places the sharded projections, so the
+  # replicated parts (`proj_in`, `token_refiner`, the rope buffer) still need this move.
   # (`proj_in`, `token_refiner`, the rope buffer) still need this move.
   for name, module in targets:
     if _is_transformer(name, module):
