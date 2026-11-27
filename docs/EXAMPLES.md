@@ -5,11 +5,30 @@ Minimal `cache_dit.generate` commands for the bundled examples. Single-GPU first
 ## Installation
 
 ```bash
+# base runtime
 pip install -U cache-dit
+# quantization extras: torchao (>=0.17), bitsandbytes and safetensors
+pip install -U "cache-dit[quantization]"
 ```
 
-For a source install, optional kernels and platform packages, see
-[Installation](./user_guide/INSTALL.md).
+TorchAO-backed quantization (`--quantize-params quant_type=float8_*`, `int8_*`, `nvfp4`, ...) needs
+`torchao`, which the `quantization` extra installs. SVDQuant (`quant_type=svdq_*`) and the FP8
+Ulysses communication path (`--quant-communicate-params`) additionally require the CUDA extension
+compiled into cache-dit. The PyPI wheel is pure Python, so use the `+cu13` wheel from the project
+index or build from source:
+
+```bash
+# CUDA 13.0+, PyTorch 2.11+ (a CUDA 13 build)
+pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+
+# or build from source
+git clone https://github.com/vipshop/cache-dit.git && cd cache-dit
+git submodule update --init --recursive --force  # SVDQuant spdlog; SM120 CuTe CUTLASS
+CACHE_DIT_BUILD_CUDA=1 MAX_JOBS=32 pip install -e ".[quantization]" --no-build-isolation
+```
+
+Without the extension, `svdq_*` and FP8 communication cannot run. For the full platform and
+architecture matrix, see [Installation](./user_guide/INSTALL.md).
 
 ## Single GPU
 
