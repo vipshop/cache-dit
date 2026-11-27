@@ -36,130 +36,130 @@ pip install -U cache-dit # stable release from PyPI.
 python3 -m cache_dit.generate list  # list all available examples
 
 Available examples:
-- ✅ flux_nunchaku                    - Default: nunchaku-tech/nunchaku-flux.1-dev
-- ✅ flux                             - Default: black-forest-labs/FLUX.1-dev
-- ✅ flux_fill                        - Default: black-forest-labs/FLUX.1-Fill-dev
-- ✅ flux2                            - Default: black-forest-labs/FLUX.2-dev
-- ✅ flux2_klein_base_9b              - Default: black-forest-labs/FLUX.2-klein-base-9B
-- ✅ flux2_klein_base_4b              - Default: black-forest-labs/FLUX.2-klein-base-4B
-- ✅ flux2_klein_9b                   - Default: black-forest-labs/FLUX.2-klein-9B
-- ✅ flux2_klein_4b                   - Default: black-forest-labs/FLUX.2-klein-4B
-- ✅ flux2_klein_base_9b_edit         - Default: black-forest-labs/FLUX.2-klein-base-9B
-- ✅ flux2_klein_base_4b_edit         - Default: black-forest-labs/FLUX.2-klein-base-4B
-- ✅ flux2_klein_9b_edit              - Default: black-forest-labs/FLUX.2-klein-9B
-- ✅ flux2_klein_4b_edit              - Default: black-forest-labs/FLUX.2-klein-4B
-- ✅ flux3                            - Default: black-forest-labs/flux-3-image-klein
-- ✅ flux3_fused                      - Default: black-forest-labs/flux-3-image-klein
-- ✅ flux3_edit                       - Default: black-forest-labs/flux-3-image-klein
-- ✅ flux2_klein_9b_kv_edit           - Default: black-forest-labs/FLUX.2-klein-9b-kv
-- ✅ qwen_image_lightning             - Default: lightx2v/Qwen-Image-Lightning
-- ✅ qwen_image_2512                  - Default: Qwen/Qwen-Image-2512
-- ✅ qwen_image                       - Default: Qwen/Qwen-Image
-- ✅ qwen_image_edit_2511_lightning   - Default: lightx2v/Qwen-Image-Edit-2511-Lightning
-- ✅ qwen_image_edit_2511             - Default: Qwen/Qwen-Image-Edit-2511
-- ✅ qwen_image_edit_lightning        - Default: lightx2v/Qwen-Image-Lightning
-- ✅ qwen_image_edit                  - Default: Qwen/Qwen-Image-Edit-2509
-- ✅ qwen_image_21                    - Default: Qwen/Qwen-Image-2.1
-- ✅ qwen_image_21_fused              - Default: Qwen/Qwen-Image-2.1
-- ✅ qwen_image_21_turbo_fused        - Default: Qwen/Qwen-Image-2.1-Turbo
-- ✅ qwen_image_21_turbo              - Default: Qwen/Qwen-Image-2.1-Turbo
-- ✅ qwen_image_21_edit               - Default: Qwen/Qwen-Image-2.1
-- ✅ qwen_image_21_turbo_edit         - Default: Qwen/Qwen-Image-2.1-Turbo
-- ✅ qwen_image_21_modular            - Default: Qwen/Qwen-Image-2.1
-- ✅ qwen_image_21_turbo_modular      - Default: Qwen/Qwen-Image-2.1-Turbo
-- ✅ qwen_image_21_modular_edit       - Default: Qwen/Qwen-Image-2.1
-- ✅ qwen_image_21_turbo_modular_edit - Default: Qwen/Qwen-Image-2.1-Turbo
-- ✅ qwen_image_controlnet            - Default: InstantX/Qwen-Image-ControlNet-Inpainting
-- ✅ qwen_image_layered               - Default: Qwen/Qwen-Image-Layered
-- ✅ skyreels_v2                      - Default: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
-- ✅ ltx2_t2v                         - Default: Lightricks/LTX-2
-- ✅ ltx2_i2v                         - Default: Lightricks/LTX-2
-- ✅ ltx25_t2v                        - Default: Lightricks/LTX-2.5-Diffusers
-- ✅ ltx25_i2v                        - Default: Lightricks/LTX-2.5-Diffusers
-- ✅ ltx25_dfr                        - Default: Lightricks/LTX-2.5-Diffusers
-- ✅ wan2.2_t2v                       - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
-- ✅ wan2.1_t2v                       - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-- ✅ wan2.2_i2v                       - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers
-- ✅ wan2.1_i2v                       - Default: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
-- ✅ wan2.2_vace                      - Default: linoyts/Wan2.2-VACE-Fun-14B-diffusers
-- ✅ wan2.1_vace                      - Default: Wan-AI/Wan2.1-VACE-1.3B-diffusers
-- ✅ ovis_image                       - Default: AIDC-AI/Ovis-Image-7B
-- ✅ zimage_turbo_nunchaku            - Default: nunchaku/nunchaku-z-image-turbo
-- ✅ zimage_turbo                     - Default: Tongyi-MAI/Z-Image-Turbo
-- ✅ zimage                           - Default: Tongyi-MAI/Z-Image
-- ✅ zimage_turbo_controlnet_2.0      - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
-- ✅ zimage_turbo_controlnet_2.1      - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
-- ✅ longcat_image                    - Default: meituan-longcat/LongCat-Image
-- ✅ longcat_image_edit               - Default: meituan-longcat/LongCat-Image-Edit
-- ✅ glm_image                        - Default: zai-org/GLM-Image
-- ✅ glm_image_edit                   - Default: zai-org/GLM-Image
-- ✅ firered_image_edit_1.1           - Default: FireRedTeam/FireRed-Image-Edit-1.1
-- ✅ firered_image_edit_1.0           - Default: FireRedTeam/FireRed-Image-Edit-1.0
-- ✅ helios_t2v                       - Default: BestWishYsh/Helios-Base
-- ✅ helios_t2v_distill               - Default: BestWishYsh/Helios-Distilled
-- ✅ cosmos3_omni_t2i                 - Default: nvidia/Cosmos3-Nano
-- ✅ cosmos3_omni_t2v                 - Default: nvidia/Cosmos3-Nano
-- ✅ boogu_image_edit                 - Default: BOOGU-IMAGE/Boogu-Image-0.1-Edit
-- ✅ ernie_image                      - Default: baidu/ERNIE-Image
-- ✅ ernie_image_turbo                - Default: baidu/ERNIE-Image-Turbo
-- ✅ krea2                            - Default: krea/Krea-2-Turbo
-- ✅ joy_image_edit                   - Default: jdopensource/JoyAI-Image-Edit-Diffusers
-- ✅ bria_fibo                        - Default: briaai/FIBO
-- ✅ bria_fibo2                       - Default: briaai/Fibo-2.0-dev
-- ✅ bria_fibo2_turbo                 - Default: briaai/Fibo-2.0-edit-turbo
-- ✅ echo_t2va                        - Default: jdopensource/JoyAI-Echo
-- ✅ motif_video_t2v                  - Default: Motif-Technologies/Motif-Video-2B
-- ✅ motif_video_i2v                  - Default: Motif-Technologies/Motif-Video-2B
-- ✅ anyflow_t2v                      - Default: nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers
-- ✅ minimax_h3                       - Default: MiniMaxAI/MiniMax-H3
-- ✅ minimax_h3_fl2va                 - Default: MiniMaxAI/MiniMax-H3
-- ✅ minimax_h3_ref2va                - Default: MiniMaxAI/MiniMax-H3
-- ✅ fasth3                           - Default: FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree
-- ✅ fasth3_v2                        - Default: FastVideo/FastVideo-FastH3-8-Step-V2
-- ✅ anyflow_far                      - Default: nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers
-- ✅ prx_pixel                        - Default: Photoroom/prxpixel-t2i
-- ✅ anima                            - Default: circlestone-labs/Anima-Base-v1.0-Diffusers
-- ✅ ideogram4                        - Default: ideogram-ai/ideogram-4-fp8
-- ✅ moss_image_sft                   - Default: OpenMOSS-Team/MOSS-Image-SFT
-- ✅ moss_image_base                  - Default: OpenMOSS-Team/MOSS-Image-Base
-- ✅ ming_image_design                - Default: inclusionAI/Ming-Image-0.1-Design
-- ✅ ming_image_design_layer          - Default: inclusionAI/Ming-Image-0.1-Design-Layer
-- ✅ hidream_o1_image                 - Default: HiDream-ai/HiDream-O1-Image
-- ✅ nucleus_image                    - Default: NucleusAI/Nucleus-Image
-- ✅ kandinsky6_ti2va                 - Default: kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers
-- ✅ longcat_audio_dit                - Default: ruixiangma/LongCat-AudioDiT-1B-Diffusers
-- ✅ stable_audio_3                   - Default: stabilityai/stable-audio-3-medium
-- ✅ sana_wm                          - Default: Efficient-Large-Model/SANA-WM_bidirectional-diffusers
-- ✅ sana_video2                      - Default: Efficient-Large-Model/SANA-Video_2.0_5B_720p
-- ✅ sana_video2_ti2v                 - Default: Efficient-Large-Model/SANA-Video_2.0_5B_720p
-- ✅ wan_animate_2                    - Default: Wan-AI/Wan2.2-Animate-2-14B-Diffusers
-- ✅ wan_animate_2_distilled          - Default: Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers
-- ✅ lingbot_video                    - Default: robbyant/lingbot-video-dense-1.3b
-- ✅ causvid_wan                      - Default: tianweiy/CausVid
-- ✅ longlive2                        - Default: Efficient-Large-Model/LongLive-2.0-5B
-- ✅ wan2.2_s2v                       - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
+- ✅ flux_nunchaku                    [T2I] - Default: nunchaku-tech/nunchaku-flux.1-dev
+- ✅ flux                             [T2I] - Default: black-forest-labs/FLUX.1-dev
+- ✅ flux_fill                        [IE2I] - Default: black-forest-labs/FLUX.1-Fill-dev
+- ✅ flux2                            [T2I] - Default: black-forest-labs/FLUX.2-dev
+- ✅ flux2_klein_base_9b              [T2I] - Default: black-forest-labs/FLUX.2-klein-base-9B
+- ✅ flux2_klein_base_4b              [T2I] - Default: black-forest-labs/FLUX.2-klein-base-4B
+- ✅ flux2_klein_9b                   [T2I] - Default: black-forest-labs/FLUX.2-klein-9B
+- ✅ flux2_klein_4b                   [T2I] - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ flux2_klein_base_9b_edit         [IE2I] - Default: black-forest-labs/FLUX.2-klein-base-9B
+- ✅ flux2_klein_base_4b_edit         [IE2I] - Default: black-forest-labs/FLUX.2-klein-base-4B
+- ✅ flux2_klein_9b_edit              [IE2I] - Default: black-forest-labs/FLUX.2-klein-9B
+- ✅ flux2_klein_4b_edit              [IE2I] - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ flux3                            [T2I] - Default: black-forest-labs/flux-3-image-klein
+- ✅ flux3_fused                      [T2I] - Default: black-forest-labs/flux-3-image-klein
+- ✅ flux3_edit                       [IE2I] - Default: black-forest-labs/flux-3-image-klein
+- ✅ flux2_klein_9b_kv_edit           [IE2I] - Default: black-forest-labs/FLUX.2-klein-9b-kv
+- ✅ qwen_image_lightning             [T2I] - Default: lightx2v/Qwen-Image-Lightning
+- ✅ qwen_image_2512                  [T2I] - Default: Qwen/Qwen-Image-2512
+- ✅ qwen_image                       [T2I] - Default: Qwen/Qwen-Image
+- ✅ qwen_image_edit_2511_lightning   [IE2I] - Default: lightx2v/Qwen-Image-Edit-2511-Lightning
+- ✅ qwen_image_edit_2511             [IE2I] - Default: Qwen/Qwen-Image-Edit-2511
+- ✅ qwen_image_edit_lightning        [IE2I] - Default: lightx2v/Qwen-Image-Lightning
+- ✅ qwen_image_edit                  [IE2I] - Default: Qwen/Qwen-Image-Edit-2509
+- ✅ qwen_image_21                    [T2I] - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_fused              [T2I] - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_fused        [T2I] - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_turbo              [T2I] - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_edit               [IE2I] - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_edit         [IE2I] - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_modular            [T2I] - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_modular      [T2I] - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_21_modular_edit       [IE2I] - Default: Qwen/Qwen-Image-2.1
+- ✅ qwen_image_21_turbo_modular_edit [IE2I] - Default: Qwen/Qwen-Image-2.1-Turbo
+- ✅ qwen_image_controlnet            [T2I] - Default: InstantX/Qwen-Image-ControlNet-Inpainting
+- ✅ qwen_image_layered               [T2I] - Default: Qwen/Qwen-Image-Layered
+- ✅ skyreels_v2                      [T2V] - Default: Skywork/SkyReels-V2-T2V-14B-720P-Diffusers
+- ✅ ltx2_t2v                         [T2V] - Default: Lightricks/LTX-2
+- ✅ ltx2_i2v                         [I2V] - Default: Lightricks/LTX-2
+- ✅ ltx25_t2v                        [T2VA] - Default: Lightricks/LTX-2.5-Diffusers
+- ✅ ltx25_i2v                        [I2V] - Default: Lightricks/LTX-2.5-Diffusers
+- ✅ ltx25_dfr                        [T2VA] - Default: Lightricks/LTX-2.5-Diffusers
+- ✅ wan2.2_t2v                       [T2V] - Default: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+- ✅ wan2.1_t2v                       [T2V] - Default: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+- ✅ wan2.2_i2v                       [I2V] - Default: Wan-AI/Wan2.2-I2V-A14B-Diffusers
+- ✅ wan2.1_i2v                       [I2V] - Default: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers
+- ✅ wan2.2_vace                      [VACE] - Default: linoyts/Wan2.2-VACE-Fun-14B-diffusers
+- ✅ wan2.1_vace                      [VACE] - Default: Wan-AI/Wan2.1-VACE-1.3B-diffusers
+- ✅ ovis_image                       [T2I] - Default: AIDC-AI/Ovis-Image-7B
+- ✅ zimage_turbo_nunchaku            [T2I] - Default: nunchaku-tech/nunchaku-z-image-turbo
+- ✅ zimage_turbo                     [T2I] - Default: Tongyi-MAI/Z-Image-Turbo
+- ✅ zimage                           [T2I] - Default: Tongyi-MAI/Z-Image
+- ✅ zimage_turbo_controlnet_2.0      [T2I] - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0
+- ✅ zimage_turbo_controlnet_2.1      [T2I] - Default: alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
+- ✅ longcat_image                    [T2I] - Default: meituan-longcat/LongCat-Image
+- ✅ longcat_image_edit               [IE2I] - Default: meituan-longcat/LongCat-Image-Edit
+- ✅ glm_image                        [T2I] - Default: zai-org/GLM-Image
+- ✅ glm_image_edit                   [IE2I] - Default: zai-org/GLM-Image
+- ✅ firered_image_edit_1.1           [IE2I] - Default: FireRedTeam/FireRed-Image-Edit-1.1
+- ✅ firered_image_edit_1.0           [IE2I] - Default: FireRedTeam/FireRed-Image-Edit-1.0
+- ✅ helios_t2v                       [T2V] - Default: BestWishYsh/Helios-Base
+- ✅ helios_t2v_distill               [T2V] - Default: BestWishYsh/Helios-Distilled
+- ✅ cosmos3_omni_t2i                 [T2I] - Default: nvidia/Cosmos3-Nano
+- ✅ cosmos3_omni_t2v                 [T2V] - Default: nvidia/Cosmos3-Nano
+- ✅ boogu_image_edit                 [IE2I] - Default: BOOGU-IMAGE/Boogu-Image-0.1-Edit
+- ✅ ernie_image                      [T2I] - Default: baidu/ERNIE-Image
+- ✅ ernie_image_turbo                [T2I] - Default: baidu/ERNIE-Image-Turbo
+- ✅ krea2                            [T2I] - Default: krea/Krea-2-Turbo
+- ✅ joy_image_edit                   [IE2I] - Default: jdopensource/JoyAI-Image-Edit-Diffusers
+- ✅ bria_fibo                        [T2I] - Default: briaai/FIBO
+- ✅ bria_fibo2                       [IE2I] - Default: briaai/Fibo-2.0-dev
+- ✅ bria_fibo2_turbo                 [IE2I] - Default: briaai/Fibo-2.0-edit-turbo
+- ✅ echo_t2va                        [T2VA] - Default: jdopensource/JoyAI-Echo
+- ✅ motif_video_t2v                  [T2V] - Default: Motif-Technologies/Motif-Video-2B
+- ✅ motif_video_i2v                  [I2V] - Default: Motif-Technologies/Motif-Video-2B
+- ✅ anyflow_t2v                      [T2V] - Default: nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers
+- ✅ minimax_h3                       [T2VA] - Default: MiniMaxAI/MiniMax-H3
+- ✅ minimax_h3_fl2va                 [FL2VA] - Default: MiniMaxAI/MiniMax-H3
+- ✅ minimax_h3_ref2va                [REF2VA] - Default: MiniMaxAI/MiniMax-H3
+- ✅ fasth3                           [T2VA] - Default: FastVideo/FastVideo-FastH3-4-step-Preview-v1-VSA-DataFree
+- ✅ fasth3_v2                        [T2VA] - Default: FastVideo/FastVideo-FastH3-8-Step-V2
+- ✅ anyflow_far                      [T2V] - Default: nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers
+- ✅ prx_pixel                        [T2I] - Default: Photoroom/prxpixel-t2i
+- ✅ anima                            [T2I] - Default: circlestone-labs/Anima-Base-v1.0-Diffusers
+- ✅ ideogram4                        [T2I] - Default: ideogram-ai/ideogram-4-fp8
+- ✅ moss_image_sft                   [T2I] - Default: OpenMOSS-Team/MOSS-Image-SFT
+- ✅ moss_image_base                  [T2I] - Default: OpenMOSS-Team/MOSS-Image-Base
+- ✅ ming_image_design                [T2I] - Default: inclusionAI/Ming-Image-0.1-Design
+- ✅ ming_image_design_layer          [IE2I] - Default: inclusionAI/Ming-Image-0.1-Design-Layer
+- ✅ hidream_o1_image                 [T2I] - Default: HiDream-ai/HiDream-O1-Image
+- ✅ nucleus_image                    [T2I] - Default: NucleusAI/Nucleus-Image
+- ✅ kandinsky6_ti2va                 [T2VA] - Default: kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers
+- ✅ longcat_audio_dit                [T2A] - Default: ruixiangma/LongCat-AudioDiT-1B-Diffusers
+- ✅ stable_audio_3                   [T2A] - Default: stabilityai/stable-audio-3-medium
+- ✅ sana_wm                          [I2V] - Default: Efficient-Large-Model/SANA-WM_bidirectional-diffusers
+- ✅ sana_video2                      [T2V] - Default: Efficient-Large-Model/SANA-Video_2.0_5B_720p
+- ✅ sana_video2_ti2v                 [I2V] - Default: Efficient-Large-Model/SANA-Video_2.0_5B_720p
+- ✅ wan_animate_2                    [ANIMATE] - Default: Wan-AI/Wan2.2-Animate-2-14B-Diffusers
+- ✅ wan_animate_2_distilled          [ANIMATE] - Default: Wan-AI/Wan2.2-Animate-2-14B-Distilled-Diffusers
+- ✅ lingbot_video                    [T2V] - Default: robbyant/lingbot-video-dense-1.3b
+- ✅ causvid_wan                      [T2V] - Default: tianweiy/CausVid
+- ✅ longlive2                        [T2V] - Default: Efficient-Large-Model/LongLive-2.0-5B
+- ✅ wan2.2_s2v                       [S2V] - Default: Wan-AI/Wan2.2-S2V-14B-Diffusers
   (speech-to-video: `--audio-path` + `--image-path`. The cache skips the audio injection on
   cached steps, so keep `--rdt` tighter than the Wan-T2V presets and prefer a small
   `--max-cached-steps`; `rdt=0.08` reaches 39.6 dB, `rdt=0.20` 38.7 dB at 480x832.)
-- ✅ sana_video                       - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
-- ✅ sana_video_i2v                   - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
-- ✅ longcat_video_avatar_a2v         - Default: meituan-longcat/LongCat-Video-Avatar-1.5
-- ✅ longcat_video_avatar_ai2v        - Default: meituan-longcat/LongCat-Video-Avatar-1.5
-- ✅ magi2_t2va                       - Default: sand-ai/MAGI-2-preview
-- ✅ magi2_i2va                       - Default: sand-ai/MAGI-2-preview
-- ✅ mova_360p                        - Default: openmoss/MOVA-360p
-- ✅ hy_nomas                         - Default: tencent/Hy-Nomas
-- ✅ pika_h3_flex                     - Default: Pika-Labs/Pika-H3-Flex
-- ✅ pika_h3_flex_vendored            - Default: Pika-Labs/Pika-H3-Flex
-- ✅ pika_h3_flex_fl2va               - Default: Pika-Labs/Pika-H3-Flex
-- ✅ pika_h3_flex_ref2va              - Default: Pika-Labs/Pika-H3-Flex
-- ✅ pika_h3_flex_fl2va_vendored      - Default: Pika-Labs/Pika-H3-Flex
-- ✅ pika_h3_flex_ref2va_vendored     - Default: Pika-Labs/Pika-H3-Flex
-- ✅ flux2_klein_fused                - Default: black-forest-labs/FLUX.2-klein-4B
-- ✅ minimax_h3_image                 - Default: MiniMaxAI/MiniMax-H3-Image
-- ✅ minimax_h3_image_edit            - Default: MiniMaxAI/MiniMax-H3-Image
-- ✅ ph3_image                        - Default: PrunaAI/P-H3-Image
-- ✅ ph3_image_edit                   - Default: PrunaAI/P-H3-Image
+- ✅ sana_video                       [T2V] - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
+- ✅ sana_video_i2v                   [I2V] - Default: Efficient-Large-Model/SANA-Video_2B_480p_diffusers
+- ✅ longcat_video_avatar_a2v         [S2V] - Default: meituan-longcat/LongCat-Video-Avatar-1.5
+- ✅ longcat_video_avatar_ai2v        [S2V] - Default: meituan-longcat/LongCat-Video-Avatar-1.5
+- ✅ magi2_t2va                       [T2VA] - Default: sand-ai/MAGI-2-preview
+- ✅ magi2_i2va                       [T2VA] - Default: sand-ai/MAGI-2-preview
+- ✅ mova_360p                        [T2VA] - Default: OpenMOSS-Team/MOVA-360p
+- ✅ hy_nomas                         [T2V] - Default: tencent/Hy-Nomas
+- ✅ pika_h3_flex                     [T2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ pika_h3_flex_vendored            [T2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ pika_h3_flex_fl2va               [FL2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ pika_h3_flex_ref2va              [REF2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ pika_h3_flex_fl2va_vendored      [FL2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ pika_h3_flex_ref2va_vendored     [REF2VA] - Default: Pika-Labs/Pika-H3-Flex
+- ✅ flux2_klein_fused                [T2I] - Default: black-forest-labs/FLUX.2-klein-4B
+- ✅ minimax_h3_image                 [T2I] - Default: MiniMaxAI/MiniMax-H3-Image
+- ✅ minimax_h3_image_edit            [IE2I] - Default: MiniMaxAI/MiniMax-H3-Image
+- ✅ ph3_image                        [T2I] - Default: PrunaAI/P-H3-Image
+- ✅ ph3_image_edit                   [IE2I] - Default: PrunaAI/P-H3-Image
 ```
 
 ## Single GPU Inference
@@ -182,7 +182,7 @@ python3 -m cache_dit.generate ltx2_i2v --cache --cpu-offload
 python3 -m cache_dit.generate ltx25_dfr --cache --cpu-offload   # DFR, schedules its own 8 sigmas
 python3 -m cache_dit.generate ltx25_t2v --cache --cpu-offload
 python3 -m cache_dit.generate skyreels_v2
-python3 -m cache_dit.generate wan2.2
+python3 -m cache_dit.generate wan2.2_t2v
 python3 -m cache_dit.generate zimage_turbo 
 python3 -m cache_dit.generate zimage_turbo_nunchaku 
 python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 
@@ -267,13 +267,39 @@ text async is much slower.
 
 ## Custom Model Path
 
-The default model path are the official model names on HuggingFace Hub. Users can set custom local model path by settig `--model-path`. For examples: 
+The default model paths are the official model names on HuggingFace Hub. Pass the model itself instead of the example name, and cache-dit matches the example from the model directory (or repo id); the directory name is compared with the registered model name, case-insensitively, and an HF cache checkout (`models--org--name/...`) is recognized as well:
+
+```bash
+# the example is matched from the model path
+python3 -m cache_dit.generate /PATH/TO/FLUX.1-dev
+python3 -m cache_dit.generate /PATH/TO/Z-Image-Turbo --cache
+python3 -m cache_dit.generate black-forest-labs/FLUX.1-dev   # repo id works too
+```
+
+When one model serves several examples, the default task is used (T2I for image models, then the video tasks) and `--task` picks another one; engine variants of the same task (`_fused`, `_modular`, ...) are reached by their example name:
+
+```bash
+python3 -m cache_dit.generate /PATH/TO/LTX-2                     # ltx2_t2v (T2V)
+python3 -m cache_dit.generate /PATH/TO/LTX-2 --task I2V          # ltx2_i2v
+python3 -m cache_dit.generate /PATH/TO/Qwen-Image-2.1 --task IE2I  # qwen_image_21_edit
+python3 -m cache_dit.generate qwen_image_21_fused --model-path /PATH/TO/Qwen-Image-2.1
+```
+
+For an example registered with LoRA / ControlNet / nunchaku weights rather than a full checkpoint (e.g. `flux_nunchaku`, `qwen_image_lightning`, `zimage_turbo_controlnet_2.1`), the path is those weights, i.e. it goes where `--transformer-path` / `--lora-path` / `--controlnet-path` would; `--model-path` then still moves the base checkpoint:
+
+```bash
+python3 -m cache_dit.generate /PATH/TO/nunchaku-flux.1-dev --model-path /PATH/TO/FLUX.1-dev  # flux_nunchaku
+```
+
+The example-name form keeps working, with `--model-path` for a custom checkpoint:
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev
 python3 -m cache_dit.generate zimage_turbo --model-path /PATH/TO/Z-Image-Turbo
-python3 -m cache_dit.generate qwem_image --model-path /PATH/TO/Qwen-Image
+python3 -m cache_dit.generate qwen_image --model-path /PATH/TO/Qwen-Image
 ```
+
+Run `python3 -m cache_dit.generate list` to see every example with its task and default model.
 
 ## Distributed Inference 
 
@@ -516,13 +542,13 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 python3 -m cache_dit.generate --help
 
 positional arguments:
-  {generate,list,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,flux2_klein_base_9b_edit,flux2_klein_base_4b_edit,flux2_klein_9b_edit,flux2_klein_4b_edit,flux3,flux3_fused,flux3_edit,flux2_klein_9b_kv_edit,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_21,qwen_image_21_fused,qwen_image_21_turbo_fused,qwen_image_21_turbo,qwen_image_21_edit,qwen_image_21_turbo_edit,qwen_image_21_modular,qwen_image_21_turbo_modular,qwen_image_21_modular_edit,qwen_image_21_turbo_modular_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,ltx25_t2v,ltx25_i2v,ltx25_dfr,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_turbo_nunchaku,zimage_turbo,zimage,zimage_turbo_controlnet_2.0,zimage_turbo_controlnet_2.1,longcat_image,longcat_image_edit,glm_image,glm_image_edit,firered_image_edit_1.1,firered_image_edit_1.0,helios_t2v,helios_t2v_distill,cosmos3_omni_t2i,cosmos3_omni_t2v,boogu_image_edit,ernie_image,ernie_image_turbo,krea2,joy_image_edit,bria_fibo,bria_fibo2,bria_fibo2_turbo,echo_t2va,motif_video_t2v,motif_video_i2v,anyflow_t2v,minimax_h3,minimax_h3_fl2va,minimax_h3_ref2va,fasth3,fasth3_v2,anyflow_far,prx_pixel,anima,ideogram4,moss_image_sft,moss_image_base,ming_image_design,ming_image_design_layer,hidream_o1_image,nucleus_image,kandinsky6_ti2va,longcat_audio_dit,stable_audio_3,sana_wm,sana_video2,sana_video2_ti2v,wan_animate_2,wan_animate_2_distilled,lingbot_video,causvid_wan,longlive2,wan2.2_s2v,sana_video,sana_video_i2v,longcat_video_avatar_a2v,longcat_video_avatar_ai2v,magi2_t2va,magi2_i2va,mova_360p,hy_nomas,pika_h3_flex,pika_h3_flex_vendored,pika_h3_flex_fl2va,pika_h3_flex_ref2va,pika_h3_flex_fl2va_vendored,pika_h3_flex_ref2va_vendored,flux2_klein_fused,minimax_h3_image,minimax_h3_image_edit,ph3_image,ph3_image_edit}
-                        The task to perform or example name to run. Use 'list'
-                        to list all available examples, or specify an example
-                        name directly (defaults to 'generate' task).
-  {None,flux_nunchaku,flux,flux_fill,flux2,flux2_klein_base_9b,flux2_klein_base_4b,flux2_klein_9b,flux2_klein_4b,flux2_klein_base_9b_edit,flux2_klein_base_4b_edit,flux2_klein_9b_edit,flux2_klein_4b_edit,flux3,flux3_fused,flux3_edit,flux2_klein_9b_kv_edit,qwen_image_lightning,qwen_image_2512,qwen_image,qwen_image_edit_2511_lightning,qwen_image_edit_2511,qwen_image_edit_lightning,qwen_image_edit,qwen_image_21,qwen_image_21_fused,qwen_image_21_turbo_fused,qwen_image_21_turbo,qwen_image_21_edit,qwen_image_21_turbo_edit,qwen_image_21_modular,qwen_image_21_turbo_modular,qwen_image_21_modular_edit,qwen_image_21_turbo_modular_edit,qwen_image_controlnet,qwen_image_layered,skyreels_v2,ltx2_t2v,ltx2_i2v,ltx25_t2v,ltx25_i2v,ltx25_dfr,wan2.2_t2v,wan2.1_t2v,wan2.2_i2v,wan2.1_i2v,wan2.2_vace,wan2.1_vace,ovis_image,zimage_turbo_nunchaku,zimage_turbo,zimage,zimage_turbo_controlnet_2.0,zimage_turbo_controlnet_2.1,longcat_image,longcat_image_edit,glm_image,glm_image_edit,firered_image_edit_1.1,firered_image_edit_1.0,helios_t2v,helios_t2v_distill,cosmos3_omni_t2i,cosmos3_omni_t2v,boogu_image_edit,ernie_image,ernie_image_turbo,krea2,joy_image_edit,bria_fibo,bria_fibo2,bria_fibo2_turbo,echo_t2va,motif_video_t2v,motif_video_i2v,anyflow_t2v,minimax_h3,minimax_h3_fl2va,minimax_h3_ref2va,fasth3,fasth3_v2,anyflow_far,prx_pixel,anima,ideogram4,moss_image_sft,moss_image_base,ming_image_design,ming_image_design_layer,hidream_o1_image,nucleus_image,kandinsky6_ti2va,longcat_audio_dit,stable_audio_3,sana_wm,sana_video2,sana_video2_ti2v,wan_animate_2,wan_animate_2_distilled,lingbot_video,causvid_wan,longlive2,wan2.2_s2v,sana_video,sana_video_i2v,longcat_video_avatar_a2v,longcat_video_avatar_ai2v,magi2_t2va,magi2_i2va,mova_360p,hy_nomas,pika_h3_flex,pika_h3_flex_vendored,pika_h3_flex_fl2va,pika_h3_flex_ref2va,pika_h3_flex_fl2va_vendored,pika_h3_flex_ref2va_vendored,flux2_klein_fused,minimax_h3_image,minimax_h3_image_edit,ph3_image,ph3_image_edit}
-                        Names of the examples to run. If not specified, skip
-                        running example.
+  task                  Run an example by three forms: `list` to list all
+                        available examples; an example name, e.g. `flux`; or a
+                        model directory / repo id, e.g. `/data/FLUX.1-dev` or
+                        `black-forest-labs/FLUX.1-dev`, whose example is
+                        matched from the model (defaults to 'generate' task).
+  example               Example to run, for the `generate <example>` form. If
+                        not specified, skip running.
 
 options:
   -h, --help            show this help message and exit
@@ -907,6 +933,11 @@ options:
                         the bf16 `randn` kernel.
   --saved-fps SAVED_FPS, --fps SAVED_FPS
                         Export generated video with specified fps
+  --task {T2V,T2VA,I2V,T2I,IE2I,FLF2V,VACE,FL2VA,REF2VA,T2A,ANIMATE,S2V}
+                        Task the example drives, e.g. T2I, T2V, I2V, IE2I.
+                        Only needed when a model path matches several
+                        examples; without it the model's default task is used
+                        (T2I for image models, then the video tasks).
   --example-summary, --esummary
                         Enable example summary logging
 ```

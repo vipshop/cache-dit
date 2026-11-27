@@ -216,6 +216,15 @@ _env_path_mapping = {
   "PIKA_H3_FLEX_DIR": "Pika-Labs/Pika-H3-Flex",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
+# Examples registered with LoRA / ControlNet / transformer weights rather than the base checkpoint,
+# whose factory does not thread `args` into the base checkpoint's `_path` call: name -> that base
+# checkpoint, so `--model-path` still moves it. A test runs every example to keep this exact.
+_MODEL_PATH_BASE_DEFAULTS = {
+  "flux_nunchaku": "black-forest-labs/FLUX.1-dev",
+  "qwen_image_controlnet": "Qwen/Qwen-Image",
+  "zimage_turbo_controlnet_2.0": "Tongyi-MAI/Z-Image-Turbo",
+  "zimage_turbo_controlnet_2.1": "Tongyi-MAI/Z-Image-Turbo",
+}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
 CACHE_DIT_DIR = os.environ.get("CACHE_DIT_DIR", None)
 CACHE_DIT_FORCE_USE_LOCAL_DATA = os.environ.get("CACHE_DIT_FORCE_USE_LOCAL_DATA",
@@ -230,15 +239,24 @@ def _path(
   controlnet: bool = False,
   transformer: bool = False,
 ) -> str:
+  active = ExampleRegister.active_example()
+  if args is None and active is not None:
+    active_args, active_name = active
+    # Examples that don't thread `args` through still honor the model paths, but only for the
+    # model they are registered with (and their base checkpoint): auxiliary models and sibling
+    # variants keep their defaults.
+    if default == ExampleRegister.get_default(active_name) or \
+        default == _MODEL_PATH_BASE_DEFAULTS.get(active_name):
+      args = active_args
   # Prefer command line argument if provided
   if args is not None:
-    model_path_arg = args.model_path
+    model_path_arg = getattr(args, "model_path", None)
     if lora:
-      model_path_arg = args.lora_path
+      model_path_arg = getattr(args, "lora_path", None)
     if controlnet:
-      model_path_arg = args.controlnet_path
+      model_path_arg = getattr(args, "controlnet_path", None)
     if transformer:
-      model_path_arg = args.transformer_path
+      model_path_arg = getattr(args, "transformer_path", None)
     if model_path_arg is not None:
       return model_path_arg
   # Next, check environment variable
@@ -762,7 +780,8 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     args=args,
     init_config=ExampleInitConfig(
       task_type=ExampleType.T2I,  # Text to Image
-      model_name_or_path=_path("Qwen/Qwen-Image"),
+      model_name_or_path=_path("Qwen/Qwen-Image-2512" if "2512" in
+                               args.example.lower() else "Qwen/Qwen-Image"),
       pipeline_class=QwenImagePipeline,
       scheduler=scheduler,
       bnb_4bit_components=["text_encoder", "transformer"],
@@ -1903,7 +1922,7 @@ def _zimage_turbo_steps_mask(args: argparse.Namespace, ) -> Optional[List[int]]:
 
 @ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image")
 @ExampleRegister.register("zimage_turbo", default="Tongyi-MAI/Z-Image-Turbo")
-@ExampleRegister.register("zimage_turbo_nunchaku", default="nunchaku/nunchaku-z-image-turbo")
+@ExampleRegister.register("zimage_turbo_nunchaku", default="nunchaku-tech/nunchaku-z-image-turbo")
 def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
   from diffusers import ZImagePipeline
 
@@ -3904,7 +3923,7 @@ def kandinsky6_ti2va_example(args: argparse.Namespace, **kwargs) -> Example:
   """
   from diffusers import Kandinsky6TI2VAPipeline
 
-  steps = _KANDINSKY6_CACHE_STEPS if args.num_inference_steps is None else args.num_inference_steps
+  steps = _KANDINSKY6_DEFAULT_STEPS if args.num_inference_steps is None else args.num_inference_steps
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -4589,7 +4608,9 @@ def causvid_wan_example(args: argparse.Namespace, **kwargs) -> Example:
   width = 832 if args.width is None else args.width
   num_frames = 81 if args.num_frames is None else args.num_frames
   base_root = _path(_CAUSVID_WAN_BASE, args)
-  ckpt_root = _path("tianweiy/CausVid", args)
+  # The distilled student lives in its own repo; it follows the transformer slot so `--model-path`
+  # only moves the Wan2.1 base.
+  ckpt_root = _path("tianweiy/CausVid", args, transformer=True)
 
   return Example(
     args=args,
@@ -5312,7 +5333,7 @@ def _mova_post_init_hook(pipe: Any) -> None:
   pipe.fps = 24.0
 
 
-@ExampleRegister.register("mova_360p", default="openmoss/MOVA-360p")
+@ExampleRegister.register("mova_360p", default="OpenMOSS-Team/MOVA-360p")
 def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
   """MOVA 360p image+text to video with audio example.
 

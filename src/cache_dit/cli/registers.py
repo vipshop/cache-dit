@@ -8,7 +8,7 @@ import importlib
 from PIL import Image
 from enum import Enum
 import numpy as np
-from typing import Dict, Any, Union, Optional, List, Callable, ClassVar
+from typing import Dict, Any, Union, Optional, List, Callable, ClassVar, Tuple
 from diffusers.utils import export_to_video, load_image
 from diffusers.schedulers import SchedulerMixin
 from diffusers import DiffusionPipeline, ModelMixin
@@ -1194,9 +1194,186 @@ class Example:
     return input_kwargs
 
 
+# Task of every registered example. The factories set the task inside `ExampleInitConfig`, so the
+# registry keeps its own copy to select an example from a model path and `--task`; a test keeps
+# this table in sync with the registry.
+EXAMPLE_TASK_TYPES: Dict[str, ExampleType] = {
+  "flux": ExampleType.T2I,
+  "flux_nunchaku": ExampleType.T2I,
+  "flux_fill": ExampleType.IE2I,
+  "flux2": ExampleType.T2I,
+  "flux2_klein_4b": ExampleType.T2I,
+  "flux2_klein_9b": ExampleType.T2I,
+  "flux2_klein_base_4b": ExampleType.T2I,
+  "flux2_klein_base_9b": ExampleType.T2I,
+  "flux2_klein_4b_edit": ExampleType.IE2I,
+  "flux2_klein_9b_edit": ExampleType.IE2I,
+  "flux2_klein_base_4b_edit": ExampleType.IE2I,
+  "flux2_klein_base_9b_edit": ExampleType.IE2I,
+  "flux3": ExampleType.T2I,
+  "flux3_fused": ExampleType.T2I,
+  "flux3_edit": ExampleType.IE2I,
+  "flux2_klein_9b_kv_edit": ExampleType.IE2I,
+  "qwen_image": ExampleType.T2I,
+  "qwen_image_2512": ExampleType.T2I,
+  "qwen_image_lightning": ExampleType.T2I,
+  "qwen_image_edit": ExampleType.IE2I,
+  "qwen_image_edit_lightning": ExampleType.IE2I,
+  "qwen_image_edit_2511": ExampleType.IE2I,
+  "qwen_image_edit_2511_lightning": ExampleType.IE2I,
+  "qwen_image_21": ExampleType.T2I,
+  "qwen_image_21_fused": ExampleType.T2I,
+  "qwen_image_21_turbo_fused": ExampleType.T2I,
+  "qwen_image_21_turbo": ExampleType.T2I,
+  "qwen_image_21_edit": ExampleType.IE2I,
+  "qwen_image_21_turbo_edit": ExampleType.IE2I,
+  "qwen_image_21_modular": ExampleType.T2I,
+  "qwen_image_21_turbo_modular": ExampleType.T2I,
+  "qwen_image_21_modular_edit": ExampleType.IE2I,
+  "qwen_image_21_turbo_modular_edit": ExampleType.IE2I,
+  "qwen_image_controlnet": ExampleType.T2I,
+  "qwen_image_layered": ExampleType.T2I,
+  "skyreels_v2": ExampleType.T2V,
+  "ltx2_t2v": ExampleType.T2V,
+  "ltx2_i2v": ExampleType.I2V,
+  "ltx25_t2v": ExampleType.T2VA,
+  "ltx25_i2v": ExampleType.I2V,
+  "ltx25_dfr": ExampleType.T2VA,
+  "wan2.1_t2v": ExampleType.T2V,
+  "wan2.2_t2v": ExampleType.T2V,
+  "wan2.1_i2v": ExampleType.I2V,
+  "wan2.2_i2v": ExampleType.I2V,
+  "wan2.1_vace": ExampleType.VACE,
+  "wan2.2_vace": ExampleType.VACE,
+  "ovis_image": ExampleType.T2I,
+  "zimage": ExampleType.T2I,
+  "zimage_turbo": ExampleType.T2I,
+  "zimage_turbo_nunchaku": ExampleType.T2I,
+  "zimage_turbo_controlnet_2.0": ExampleType.T2I,
+  "zimage_turbo_controlnet_2.1": ExampleType.T2I,
+  "longcat_image": ExampleType.T2I,
+  "longcat_image_edit": ExampleType.IE2I,
+  "glm_image": ExampleType.T2I,
+  "glm_image_edit": ExampleType.IE2I,
+  "firered_image_edit_1.0": ExampleType.IE2I,
+  "firered_image_edit_1.1": ExampleType.IE2I,
+  "helios_t2v": ExampleType.T2V,
+  "helios_t2v_distill": ExampleType.T2V,
+  # Omni model: text-to-image is the default task, `--task T2V` selects the video example.
+  "cosmos3_omni_t2v": ExampleType.T2V,
+  "cosmos3_omni_t2i": ExampleType.T2I,
+  "boogu_image_edit": ExampleType.IE2I,
+  "ernie_image": ExampleType.T2I,
+  "ernie_image_turbo": ExampleType.T2I,
+  "krea2": ExampleType.T2I,
+  "joy_image_edit": ExampleType.IE2I,
+  "bria_fibo": ExampleType.T2I,
+  "bria_fibo2": ExampleType.IE2I,
+  "bria_fibo2_turbo": ExampleType.IE2I,
+  "echo_t2va": ExampleType.T2VA,
+  "motif_video_t2v": ExampleType.T2V,
+  "motif_video_i2v": ExampleType.I2V,
+  "anyflow_t2v": ExampleType.T2V,
+  "minimax_h3": ExampleType.T2VA,
+  "minimax_h3_fl2va": ExampleType.FL2VA,
+  "minimax_h3_ref2va": ExampleType.REF2VA,
+  "fasth3": ExampleType.T2VA,
+  "fasth3_v2": ExampleType.T2VA,
+  "anyflow_far": ExampleType.T2V,
+  "prx_pixel": ExampleType.T2I,
+  "anima": ExampleType.T2I,
+  "ideogram4": ExampleType.T2I,
+  "moss_image_sft": ExampleType.T2I,
+  "moss_image_base": ExampleType.T2I,
+  "ming_image_design": ExampleType.T2I,
+  "ming_image_design_layer": ExampleType.IE2I,
+  "hidream_o1_image": ExampleType.T2I,
+  "nucleus_image": ExampleType.T2I,
+  "kandinsky6_ti2va": ExampleType.T2VA,
+  "longcat_audio_dit": ExampleType.T2A,
+  "stable_audio_3": ExampleType.T2A,
+  "sana_wm": ExampleType.I2V,
+  "sana_video2": ExampleType.T2V,
+  "sana_video2_ti2v": ExampleType.I2V,
+  "wan_animate_2": ExampleType.ANIMATE,
+  "wan_animate_2_distilled": ExampleType.ANIMATE,
+  "lingbot_video": ExampleType.T2V,
+  "causvid_wan": ExampleType.T2V,
+  "longlive2": ExampleType.T2V,
+  "wan2.2_s2v": ExampleType.S2V,
+  "sana_video": ExampleType.T2V,
+  "sana_video_i2v": ExampleType.I2V,
+  "longcat_video_avatar_a2v": ExampleType.S2V,
+  "longcat_video_avatar_ai2v": ExampleType.S2V,
+  # Both MAGI-2 examples drive the same task type; pick `magi2_i2va` by its example name.
+  "magi2_t2va": ExampleType.T2VA,
+  "magi2_i2va": ExampleType.T2VA,
+  "mova_360p": ExampleType.T2VA,
+  "hy_nomas": ExampleType.T2V,
+  "pika_h3_flex": ExampleType.T2VA,
+  "pika_h3_flex_vendored": ExampleType.T2VA,
+  "pika_h3_flex_fl2va": ExampleType.FL2VA,
+  "pika_h3_flex_ref2va": ExampleType.REF2VA,
+  "pika_h3_flex_fl2va_vendored": ExampleType.FL2VA,
+  "pika_h3_flex_ref2va_vendored": ExampleType.REF2VA,
+  "flux2_klein_fused": ExampleType.T2I,
+  "minimax_h3_image": ExampleType.T2I,
+  "minimax_h3_image_edit": ExampleType.IE2I,
+  "ph3_image": ExampleType.T2I,
+  "ph3_image_edit": ExampleType.IE2I,
+}
+
+# Default task of a model that serves several tasks when `--task` is not given: text-to-image
+# first, then the video tasks, then the conditioned ones.
+_DEFAULT_TASK_PRIORITY = (
+  ExampleType.T2I,
+  ExampleType.T2V,
+  ExampleType.T2VA,
+  ExampleType.T2A,
+  ExampleType.I2V,
+  ExampleType.IE2I,
+  ExampleType.FLF2V,
+  ExampleType.FL2VA,
+  ExampleType.REF2VA,
+  ExampleType.VACE,
+  ExampleType.S2V,
+  ExampleType.ANIMATE,
+)
+
+
+def same_model(model_path: str, repo_id: str) -> bool:
+  """Whether a model path or repo id denotes the model published as `repo_id`.
+
+  A local directory matches by its basename (case-insensitive), and an HF cache checkout by its
+  `models--org--name` directory. The path does not have to exist.
+
+  :param model_path: User supplied model directory, repo id, or HF cache path.
+  :param repo_id: Registered default, e.g. `black-forest-labs/FLUX.1-dev`.
+  :returns: True when both denote the same model.
+  """
+
+  path = os.path.expandvars(os.path.expanduser(model_path)).rstrip("/\\")
+  lowered = path.lower()
+  repo = repo_id.lower()
+  if lowered == repo or os.path.basename(lowered) == repo.rsplit("/", 1)[-1]:
+    return True
+  # HF cache layout: <cache>/models--org--name/{snapshots,blobs}/...
+  cache_dir = "models--" + repo.replace("/", "--")
+  current = path
+  while True:
+    if os.path.basename(current).lower() == cache_dir:
+      return True
+    parent = os.path.dirname(current)
+    if parent == current:
+      return False
+    current = parent
+
+
 class ExampleRegister:
   _example_registry: Dict[str, Callable[..., Example]] = {}
   _example_registry_defaults: Dict[str, str] = {}
+  # `(args, name)` of the example being built by `get_example`, for `_path` in `examples.py`.
+  _active_example: ClassVar[Optional[tuple]] = None
 
   @classmethod
   def register(cls, name: str, default: str = ""):
@@ -1215,7 +1392,17 @@ class ExampleRegister:
     if name not in cls._example_registry:
       raise ValueError(f"Example '{name}' is not registered.")
     example_func = cls._example_registry[name]
-    return example_func(args, **kwargs)
+    previous, cls._active_example = cls._active_example, (args, name)
+    try:
+      return example_func(args, **kwargs)
+    finally:
+      cls._active_example = previous
+
+  @classmethod
+  def active_example(cls) -> Optional[tuple]:
+    """Return `(args, name)` of the example being built, or None outside `get_example`."""
+
+    return cls._active_example
 
   @classmethod
   def list_examples(cls) -> List[str]:
@@ -1224,3 +1411,62 @@ class ExampleRegister:
   @classmethod
   def get_default(cls, name: str) -> str:
     return cls._example_registry_defaults.get(name, "")
+
+  @classmethod
+  def get_task(cls, name: str) -> ExampleType:
+    """Return the task type an example drives, e.g. `ExampleType.T2I` for `flux`."""
+
+    return EXAMPLE_TASK_TYPES[name]
+
+  @classmethod
+  def match_examples(cls, model_path: str) -> List[str]:
+    """List the examples whose default model is the one at `model_path`.
+
+    Exact repo id matches come first; within a group the registration order is kept.
+
+    :param model_path: Model directory, repo id, or HF cache path.
+    :returns: Matching example names, possibly empty.
+    """
+
+    exact, by_name = [], []
+    for name, default in cls._example_registry_defaults.items():
+      if model_path.rstrip("/\\").lower() == default.lower():
+        exact.append(name)
+      elif same_model(model_path, default):
+        by_name.append(name)
+    return exact + by_name
+
+  @classmethod
+  def select_example(
+    cls,
+    model_path: str,
+    task: Optional[ExampleType] = None,
+  ) -> Tuple[str, List[str]]:
+    """Pick the example to run for a model path.
+
+    :param model_path: Model directory, repo id, or HF cache path.
+    :param task: Task requested with `--task`; None uses the model's default task, the first
+        one in `_DEFAULT_TASK_PRIORITY` the model serves.
+    :returns: `(example name, every example matching the model path)`.
+    :raises KeyError: No example matches the model path.
+    :raises LookupError: No matching example drives `task`.
+    """
+
+    candidates = cls.match_examples(model_path)
+    if not candidates:
+      raise KeyError(f"No example matches model path '{model_path}'.")
+    if task is None:
+      for default_task in _DEFAULT_TASK_PRIORITY:
+        if any(EXAMPLE_TASK_TYPES[name] is default_task for name in candidates):
+          task = default_task
+          break
+      if task is None:
+        task = EXAMPLE_TASK_TYPES[candidates[0]]
+    matches = [name for name in candidates if EXAMPLE_TASK_TYPES[name] is task]
+    if not matches:
+      served = ", ".join(f"{name} ({EXAMPLE_TASK_TYPES[name].name})" for name in candidates)
+      raise LookupError(f"None of the examples for '{model_path}' drives task {task.name}; "
+                        f"available: {served}.")
+    # Engine variants of one task (`_fused`, `_modular`, `_vendored`, ...): the plain, i.e.
+    # shortest, name wins; `min` keeps the registration order on ties.
+    return min(matches, key=len), candidates
