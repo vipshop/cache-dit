@@ -9,6 +9,7 @@ Each skill is a `SKILL.md` router plus a `references/` folder, and works with an
 | Skill | What it covers |
 |:--|:--|
 | [`cache-dit-model-integration`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-model-integration) | Supporting a new DiT: BlockAdapter / ForwardPattern, Context Parallelism, Tensor Parallelism, TE-P, VAE-P, the `generate` CLI entry and the tests. Also runs the speed + PSNR/SSIM performance matrix for a model that is already supported. |
+| [`cache-dit-generate-cli`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-generate-cli) | Running and composing `cache_dit.generate`: the `--xxx-params` grammar and `--xxx-config` aliases, cache/calibrator, TorchAO and SVDQuant quantization, attention backends, parallel degrees (Ulysses/Ring/TP, TE-P/VAE-P/ControlNet-P), CPU offload, compile/CUDA Graph, steps masks, profiling, the multi-GPU launcher, validation errors and verified FLUX.1 recipes. |
 | [`cache-dit-quantization`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-quantization) | Choosing or extending quantization: TorchAO (fp8/int8/int4/nvfp4), cache-dit's own FP8 path, SVDQuant W4A4 PTQ and DQ, `QuantizeConfig`, regional quantize, precision plans and per-layer observers. |
 | [`cache-dit-custom-kernel`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-custom-kernel) | Operators under `csrc/kernels/`: the CUDA → pybind → Python → `torch.library` integration chain, ports from other projects, reproducible builds, profiling and optimization. |
 | [`cache-dit-cache-integration`](https://github.com/vipshop/cache-dit/tree/main/.agents/skills/cache-dit-cache-integration) | Deciding whether a new caching paper is worth integrating, and where it lands: the three-layer split (skip timing / skip granularity / replacement operator), the DBCache / `CalibratorBase` seams, the 12-point paper triage, the already-judged cases (HiCache / MagCache / SVD-Cache / DiCache), and the acceptance gate (raw-float PSNR, `cached_steps > 0`, bit-exact at `max_cached_steps=0`). |
@@ -32,6 +33,10 @@ gh skill install vipshop/cache-dit cache-dit-model-integration --allow-hidden-di
 
 # Quantize an existing model and report the accuracy drop.
 /cache-dit-quantization "Quantize FLUX.2-Klein with svdq nvfp4 r128 vs bf16."
+
+# Compose a generate CLI run.
+/cache-dit-generate-cli "Run FLUX.1-dev with DBCache + TaylorSeer + FP8 + compile on one GPU."
+/cache-dit-generate-cli "Run FLUX.1-dev on two cards with Ulysses=2 and bits=8 communication quantization."
 
 # Work on an operator.
 /cache-dit-custom-kernel "Speed up the SVDQ NVFP4 producer on sm120 (NCU)."
