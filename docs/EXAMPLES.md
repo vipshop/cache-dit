@@ -5,13 +5,13 @@ Minimal `cache_dit.generate` commands for the bundled examples. Single-GPU first
 ## Installation
 
 ```bash
-# PyPI, stable release.
-pip install -U cache-dit
+# PyPI, stable release. The quantization extra adds torchao/bitsandbytes for FP8/FP4/INT4/SVDQ.
+pip install -U "cache-dit[quantization]"
 # +cu13 wheel: CUDA extensions (SVDQuant, FP8 Ulysses communication).
-pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
 ```
 
-Other platforms, the `quantization` extra that `--quantize-config` needs, and source builds:
+Other platforms, extra dependencies and source builds:
 📘[Installation](https://cache-dit.readthedocs.io/en/latest/user_guide/INSTALL/).
 
 ## Single GPU

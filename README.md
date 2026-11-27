@@ -28,10 +28,10 @@ Cache-DiT is also compatible with torch.compile and fully integrates with [SGLan
 ## 🚀Quick Start
 
 ```bash
-# PyPI, stable release.
-pip install -U cache-dit
+# PyPI, stable release. The quantization extra adds torchao/bitsandbytes for FP8/FP4/INT4/SVDQ.
+pip install -U "cache-dit[quantization]"
 # +cu13 wheel: CUDA extensions (SVDQuant, FP8 Ulysses communication).
-pip install -U cache-dit --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
 ```
 
 ```bash
@@ -49,8 +49,7 @@ CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate \
 
 The CLI starts both workers itself (`--launcher auto`), so no external `torchrun` is needed. Drop
 `--parallel-config` and `--quant-communicate-config` for the single-GPU stack, and use
-`CUDA_VISIBLE_DEVICES=0,1` when the two cards are the first in the box. `--quantize-config` needs
-torchao (the `quantization` extra), and `--quant-communicate-config` needs the `+cu13` wheel.
+`CUDA_VISIBLE_DEVICES=0,1` when the two cards are the first in the box.
 `python3 -m cache_dit.generate list` prints every bundled example.
 
 More commands: 📘[Quick Examples](https://cache-dit.readthedocs.io/en/latest/EXAMPLES/). Other
