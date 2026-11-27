@@ -14,26 +14,22 @@ For a source install, optional kernels and platform packages, see
 ## Single GPU
 
 ```bash
-# baseline (FLUX.1-dev; set FLUX_DIR or pass --model-path)
-python3 -m cache_dit.generate flux --save-path flux.base.png
-
-# DBCache + compile
-python3 -m cache_dit.generate flux \
-  --cache-params 'type=DBCache' \
-  --compile \
-  --save-path flux.cache.png
-
-# FP8 + compile
-python3 -m cache_dit.generate flux \
-  --quantize-params 'quant_type=float8_per_row' \
-  --compile \
-  --save-path flux.fp8.png
+python3 -m cache_dit.generate \
+  /path/to/FLUX.1-dev \
+  --cache-config 'DBCache,rdt=0.12' \
+  --calibrator-config 'taylorseer,order=1' \
+  --quantize-config 'float8_per_row' \
+  --attn-config 'native' \
+  --compile
 ```
 
+This is the full single-card stack: DBCache + TaylorSeer + FP8 + native attention + compile. Drop the
+optimization flags for a plain baseline; use the `flux` example name with `FLUX_DIR` instead of the
+model path if preferred; add `--save-path` to control the output name.
+
 Common overrides: `--model-path`, `--prompt`, `--steps`, `--height`, `--width`, `--seed`,
-`--save-path`. A model directory or repo id can stand in for the example name, e.g.
-`python3 -m cache_dit.generate /path/to/FLUX.1-dev`; add `--task T2I` when the checkpoint serves
-several tasks.
+`--save-path`. A model directory or repo id can stand in for the example name; add `--task T2I` when
+the checkpoint serves several tasks.
 
 ## Multi GPU
 
@@ -41,27 +37,25 @@ The CLI starts the workers itself (`--launcher auto`), so no external `torchrun`
 product of the parallel degrees must equal the number of processes.
 
 ```bash
-# Ulysses 2 (2 cards)
-CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate flux \
-  --parallel-params 'ulysses=2' \
-  --cache-params 'type=DBCache' \
-  --save-path flux.ulysses2.png
-
-# TP2 + text-encoder parallelism
-CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate flux \
-  --parallel-params 'tp=2,text=true' \
-  --save-path flux.tp2.tep.png
-
-# Ulysses 2 x TP 2 (4 cards)
-CUDA_VISIBLE_DEVICES=4,5,6,7 python3 -m cache_dit.generate flux \
-  --parallel-params 'ulysses=2,tp=2' \
-  --compile \
-  --save-path flux.ulysses2.tp2.png
+CUDA_VISIBLE_DEVICES=4,5 python3 -m cache_dit.generate \
+  /path/to/FLUX.1-dev \
+  --parallel-config 'ulysses=2' \
+  --quant-communicate-config 'bits=8' \
+  --cache-config 'DBCache,rdt=0.12' \
+  --calibrator-config 'taylorseer,order=1' \
+  --quantize-config 'float8_per_row' \
+  --attn-config 'native' \
+  --compile
 ```
+
+This is the full two-card stack: Ulysses 2 + FP8 communication quantization + DBCache + TaylorSeer +
+FP8 weights + native attention + compile. Replace `'ulysses=2'` with `'tp=2'` for tensor parallelism,
+or `'ulysses=2,tp=2'` for the 4-card CP+TP hybrid, as long as the degrees multiply to the process
+count.
 
 `vae=true`, `text=true` and `controlnet=true` are modifiers: keep them in the same
 `--parallel-params` value as an active `ulysses` / `ring` / `tp` degree. A value with only a
-modifier is a no-op. `--quant-communicate-params 'bits=8'` additionally requires `ulysses > 1`.
+modifier is a no-op.
 
 ## Discover more
 
