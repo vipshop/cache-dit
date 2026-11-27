@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import types
 import torch
@@ -1026,6 +1027,15 @@ class Example:
 
   def run(self) -> None:
     self.check_valid()
+    # Pipeline loading also uses tqdm. In captured output every `\r` rewrite becomes a new line,
+    # so silence diffusers/transformers bars for the whole run when the streams are not terminals.
+    interactive = sys.stdout.isatty() and sys.stderr.isatty()
+    if not interactive:
+      from diffusers.utils import logging as diffusers_logging
+      from transformers.utils import logging as transformers_logging
+
+      diffusers_logging.disable_progress_bar()
+      transformers_logging.disable_progress_bar()
     # Inputs are built and validated before the model load: a bad combination should fail in a
     # second, not after 100+ GiB of weights are on the device.
     input_kwargs, extra_optimize_kwargs = self.prepare_input_data()
@@ -1035,7 +1045,10 @@ class Example:
 
     maybe_apply_optimization(self.args, pipe, **extra_optimize_kwargs)
 
-    pipe.set_progress_bar_config(disable=self.rank != 0)
+    # tqdm rewrites the bar with `\r`. In pipes, log files and notebook outputs each rewrite
+    # becomes its own line, so keep it only when both streams are real terminals and on rank 0.
+    interactive = sys.stdout.isatty() and sys.stderr.isatty()
+    pipe.set_progress_bar_config(disable=(self.rank != 0) or not interactive)
 
     # track memory if needed
     memory_tracker = MemoryTracker() if self.args.track_memory else None
