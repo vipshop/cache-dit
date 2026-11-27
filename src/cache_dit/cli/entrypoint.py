@@ -232,11 +232,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   # Cache specific settings
   parser.add_argument(
     "--cache-params",
+    "--cache-config",
     type=parse_cache_params,
     default=None,
     help="Enable Cache Acceleration; options as a comma separated key=value list whose optional "
     "'type' key selects the cache: DBCache (default), SeaCache (DBCache plus the SEA probe) or "
-    "SoftCache (SeaCache plus jump-step reuse). DBCache knobs: 'Fn=1', 'Bn=0', 'rdt=0.12', "
+    "SoftCache (SeaCache plus jump-step reuse). The type may also be the first bare entry, e.g. "
+    "'DBCache,rdt=0.2'. DBCache knobs: 'Fn=1', 'Bn=0', 'rdt=0.12', "
     "'ws=8' (max warmup steps), 'wi=1' (warmup interval), 'mc=-1' (max cached steps), 'mcc=3' "
     "(max continuous cached steps), 'scm=fast' (steps mask policy: slow|medium|fast|ultra), "
     "'steps_mask=true'. SeaCache: 'seacache=true', 'seacache_mode=flow|vp', "
@@ -254,11 +256,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--calibrator-params",
+    "--calibrator-config",
     type=parse_cli_calibrator_params,
     default=None,
     help="Enable a DBCache calibrator (requires --cache-params); "
     "options as a comma separated key=value "
-    "list whose 'type' key selects the calibrator: taylorseer, dmd, foca, svd (SVD-Cache), "
+    "list whose 'type' key selects the calibrator (it may also be the first bare entry): "
+    "taylorseer, dmd, foca, svd (SVD-Cache), "
     "hicache (damped-Hermite), brace (barycentric rational), bezicast (Bernstein/Bezier), or "
     "residual_motion (sigma secant, SoftCache). Long forms such as 'svd-calibrator' are accepted. "
     "e.g. 'type=svd,tau=0.9,beta=0.9' or 'type=svd,predictor=taylor,order=1' for svd, "
@@ -271,12 +275,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   # Quantization settings
   parser.add_argument(
     "--quantize-params",
+    "--quantize-config",
     type=pairs_parser("--quantize-params",
                       "'quant_type=float8_per_row,backend=cache_dit'",
-                      allow_empty=False),
+                      allow_empty=False,
+                      head_key="quant_type"),
     default=None,
     help="Quantize the transformer; options as a comma separated key=value list, e.g. "
-    "'quant_type=float8_per_row' (the default type when omitted), 'backend=cache_dit', "
+    "'quant_type=float8_per_row' (the default type when omitted; it may also be the first bare "
+    "entry, e.g. 'float8_per_row,backend=cache_dit'), 'backend=cache_dit', "
     "'exclude_layers=adaln_proj+norm_out', "
     "'text_encoder=float8_weight_only' (or 'true' to reuse quant_type; quantizes only the text "
     "encoder when it is the only key), "
@@ -285,6 +292,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--svdq-params",
+    "--svdq-config",
     type=pairs_parser("--svdq-params", "'smooth_strategy=few_shot,runtime_kernel=cute'"),
     default=None,
     help="SVDQuant options as a comma separated key=value list, requires an svdq_* quant_type. "
@@ -309,6 +317,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   # Parallelism settings
   parser.add_argument(
     "--parallel-params",
+    "--parallel-config",
     type=pairs_parser("--parallel-params", "'ulysses=2,ring=1,tp=1'", allow_empty=False),
     default=None,
     help="Enable parallelism; options as a comma separated key=value list. The degrees are "
@@ -327,10 +336,12 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--attn-params",
+    "--attn-config",
     type=parse_attn_params,
     default=None,
     help="Select the attention backend and its options as a comma separated key=value list whose "
-    "'type' key is the backend: flash, flash_varlen, _flash_3 (FlashAttention-3), native (SDPA), "
+    "'type' key is the backend (it may also be the first bare entry, e.g. 'native'): flash, "
+    "flash_varlen, _flash_3 (FlashAttention-3), native (SDPA), "
     "_native_cudnn, _sdpa_cudnn, sage, sage3, sol_attn, ffpa, ffpa_fp8, ffpa_fp4, "
     "ffpa_fp8_per_block, _native_npu, _npu_fia, _mindiesd_laser. e.g. 'type=flash'. Backends with "
     "options: sol_attn: tau, thresh_type (diag|exact), strict, sink_tokens; ffpa: hybrid, "
@@ -342,6 +353,9 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   # Ulysses context parallelism settings
   parser.add_argument(
     "--quant-communicate-params",
+    "--quant-communicate-config",
+    "--quant-comm-params",
+    "--quant-comm-config",
     type=parse_quant_communicate_params,
     default=None,
     help="Ulysses low-precision communication options as k=v pairs, e.g. "

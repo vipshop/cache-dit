@@ -238,11 +238,17 @@ class TestCalibratorCLI:
     with pytest.raises(ValueError, match="Unknown --calibrator-params key"):
       maybe_postprocess_args(args)
 
-  @pytest.mark.parametrize("params", ["type=nope", "type=", "tau=0.9", "svd"])
+  @pytest.mark.parametrize("params", ["type=nope", "type=", "tau=0.9"])
   def test_bad_type_is_rejected(self, params):
-    """Argparse rejects an unknown, empty or missing `type`."""
+    """Argparse rejects an unknown or empty `type`."""
     with pytest.raises(SystemExit):
       PARSER.parse_args(["--cache-params", "type=DBCache", "--calibrator-params", params])
+
+  def test_bare_type_is_accepted(self):
+    """The first bare entry is the calibrator type, so `--calibrator-params svd` works."""
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "svd"])
+    assert args.calibrator == "svd"
+    assert args.calibrator_fields == {}
 
   def test_type_only_uses_the_config_defaults(self):
     """`type` alone selects the calibrator and resolves to no option fields."""

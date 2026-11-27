@@ -140,7 +140,7 @@ def parse_cli_calibrator_params(value: str) -> Dict[str, str]:
   """
 
   example = "'type=svd,tau=0.9,beta=0.9'"
-  raw = parse_param_pairs(value, "--calibrator-params", example, allow_empty=False)
+  raw = parse_param_pairs(value, "--calibrator-params", example, allow_empty=False, head_key="type")
   if "type" not in raw:
     raise argparse.ArgumentTypeError(f"--calibrator-params needs a 'type' key, e.g. {example}.")
   # Fail here rather than after the model has been loaded.

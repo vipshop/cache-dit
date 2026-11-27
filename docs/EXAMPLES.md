@@ -544,6 +544,25 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
 # NOTE: DON'T forget to import this `flux_example` into __init__.py
 ```
 
+## Unified Acceleration Options
+
+Every acceleration option has a `--xxx-params` spelling and a `--xxx-config` alias; both take the
+same comma separated `k=v` list. Options with a `type` selector also accept it as the first bare
+entry, so these three are equivalent:
+
+```bash
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache,rdt=0.2'
+python3 -m cache_dit.generate flux --cache-config 'type=DBCache,rdt=0.2'
+python3 -m cache_dit.generate flux --cache-config 'DBCache,rdt=0.2'
+```
+
+The same shorthand works for `--calibrator-config 'taylorseer,order=1'`,
+`--quantize-config 'float8_per_row'` and `--attn-config 'native'`. The aliases are
+`--parallel-config`, `--quant-communicate-config`, `--cache-config`, `--calibrator-config`,
+`--quantize-config`, `--svdq-config`, `--attn-config` and `--quant-comm-params` /
+`--quant-comm-config` (short forms of `--quant-communicate-params` /
+`--quant-communicate-config`).
+
 ## More Usages about Examples
 
 ```bash
@@ -655,17 +674,19 @@ options:
   --save-path SAVE_PATH
                         Path to save the generated output, e.g., output.png or
                         output.mp4
-  --cache-params CACHE_PARAMS
+  --cache-params CACHE_PARAMS, --cache-config CACHE_PARAMS
                         Enable Cache Acceleration; options as a comma
                         separated key=value list whose optional 'type' key
                         selects the cache: DBCache (default), SeaCache
                         (DBCache plus the SEA probe) or SoftCache (SeaCache
-                        plus jump-step reuse). DBCache knobs: 'Fn=1', 'Bn=0',
-                        'rdt=0.12', 'ws=8' (max warmup steps), 'wi=1' (warmup
-                        interval), 'mc=-1' (max cached steps), 'mcc=3' (max
-                        continuous cached steps), 'scm=fast' (steps mask
-                        policy: slow|medium|fast|ultra), 'steps_mask=true'.
-                        SeaCache: 'seacache=true', 'seacache_mode=flow|vp',
+                        plus jump-step reuse). The type may also be the first
+                        bare entry, e.g. 'DBCache,rdt=0.2'. DBCache knobs:
+                        'Fn=1', 'Bn=0', 'rdt=0.12', 'ws=8' (max warmup steps),
+                        'wi=1' (warmup interval), 'mc=-1' (max cached steps),
+                        'mcc=3' (max continuous cached steps), 'scm=fast'
+                        (steps mask policy: slow|medium|fast|ultra),
+                        'steps_mask=true'. SeaCache: 'seacache=true',
+                        'seacache_mode=flow|vp',
                         'seacache_feature_shape=64x64' (H W, or F H W for
                         video), 'seacache_power_exp=2'. SoftCache:
                         'softcache=true', 'softcache_tau=0.5',
@@ -677,14 +698,15 @@ options:
                         accepted too.
   --cache-summary, --summary
                         Enable Cache Summary logging
-  --calibrator-params CALIBRATOR_PARAMS
+  --calibrator-params CALIBRATOR_PARAMS, --calibrator-config CALIBRATOR_PARAMS
                         Enable a DBCache calibrator (requires --cache-params);
                         options as a comma separated key=value list whose
-                        'type' key selects the calibrator: taylorseer, dmd,
-                        foca, svd (SVD-Cache), hicache (damped-Hermite), brace
-                        (barycentric rational), bezicast (Bernstein/Bezier),
-                        or residual_motion (sigma secant, SoftCache). Long
-                        forms such as 'svd-calibrator' are accepted. e.g.
+                        'type' key selects the calibrator (it may also be the
+                        first bare entry): taylorseer, dmd, foca, svd (SVD-
+                        Cache), hicache (damped-Hermite), brace (barycentric
+                        rational), bezicast (Bernstein/Bezier), or
+                        residual_motion (sigma secant, SoftCache). Long forms
+                        such as 'svd-calibrator' are accepted. e.g.
                         'type=svd,tau=0.9,beta=0.9' or
                         'type=svd,predictor=taylor,order=1' for svd,
                         'type=hicache,order=2,sigma=0.5' for hicache,
@@ -696,10 +718,12 @@ options:
                         'calibrator_cache_type=hidden_states,encoder=false'
                         may be added to any of them for the keys every
                         calibrator accepts.
-  --quantize-params QUANTIZE_PARAMS
+  --quantize-params QUANTIZE_PARAMS, --quantize-config QUANTIZE_PARAMS
                         Quantize the transformer; options as a comma separated
                         key=value list, e.g. 'quant_type=float8_per_row' (the
-                        default type when omitted), 'backend=cache_dit',
+                        default type when omitted; it may also be the first
+                        bare entry, e.g. 'float8_per_row,backend=cache_dit'),
+                        'backend=cache_dit',
                         'exclude_layers=adaln_proj+norm_out',
                         'text_encoder=float8_weight_only' (or 'true' to reuse
                         quant_type; quantizes only the text encoder when it is
@@ -707,7 +731,7 @@ options:
                         'per_tensor_fallback=false', 'verbose=true',
                         'fp8_fused_mlp=true', 'fp4_fused_mlp=true',
                         'mxfp4_quantize_device=cpu'.
-  --svdq-params SVDQ_PARAMS
+  --svdq-params SVDQ_PARAMS, --svdq-config SVDQ_PARAMS
                         SVDQuant options as a comma separated key=value list,
                         requires an svdq_* quant_type. Keys are the
                         svdq_kwargs fields: smooth_strategy,
@@ -726,7 +750,7 @@ options:
                         inherit --layerwise-* when omitted.
   --disable-per-row, --no-per-row
                         Disable per row quantization for transformer
-  --parallel-params PARALLEL_PARAMS
+  --parallel-params PARALLEL_PARAMS, --parallel-config PARALLEL_PARAMS
                         Enable parallelism; options as a comma separated
                         key=value list. The degrees are 'ulysses', 'ring' and
                         'tp' (each defaults to 1 and their product must equal
@@ -742,10 +766,11 @@ options:
                         torchrun: 'auto' uses Ray when installed and local
                         subprocesses otherwise, 'ray' requires Ray, 'local'
                         always spawns local processes.
-  --attn-params ATTN_PARAMS
+  --attn-params ATTN_PARAMS, --attn-config ATTN_PARAMS
                         Select the attention backend and its options as a
                         comma separated key=value list whose 'type' key is the
-                        backend: flash, flash_varlen, _flash_3
+                        backend (it may also be the first bare entry, e.g.
+                        'native'): flash, flash_varlen, _flash_3
                         (FlashAttention-3), native (SDPA), _native_cudnn,
                         _sdpa_cudnn, sage, sage3, sol_attn, ffpa, ffpa_fp8,
                         ffpa_fp4, ffpa_fp8_per_block, _native_npu, _npu_fia,
@@ -758,7 +783,7 @@ options:
                         hybrid_n_early, fp4_hadamard, fp4_pv_mm_type
                         (fp4|fp8), fp4_smooth_v. The non-default options are
                         reflected in the saved filename.
-  --quant-communicate-params QUANT_COMMUNICATE_PARAMS
+  --quant-communicate-params QUANT_COMMUNICATE_PARAMS, --quant-communicate-config QUANT_COMMUNICATE_PARAMS, --quant-comm-params QUANT_COMMUNICATE_PARAMS, --quant-comm-config QUANT_COMMUNICATE_PARAMS
                         Ulysses low-precision communication options as k=v
                         pairs, e.g.
                         'bits=6,quant_type=per_group_32,quantize_k=false'

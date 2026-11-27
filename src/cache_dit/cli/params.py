@@ -22,6 +22,7 @@ def parse_param_pairs(
   flag: str,
   example: str,
   allow_empty: bool = True,
+  head_key: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
   """Parse a ``k=v,k=v`` list into a raw key -> value mapping.
 
@@ -33,6 +34,8 @@ def parse_param_pairs(
   :param example: Example value quoted in the error message.
   :param allow_empty: Whether an empty value is accepted; turn it off for a flag that is itself the
     switch, so an empty shell variable cannot silently disable the feature.
+  :param head_key: When set, the first entry may omit ``key=``; it is then read as
+    ``head_key=<entry>`` (e.g. ``--cache-params 'DBCache,rdt=0.2'``).
   :returns: The raw mapping, or None for an empty value.
   """
 
@@ -41,10 +44,16 @@ def parse_param_pairs(
       return None
     raise argparse.ArgumentTypeError(f"{flag} needs at least one key=value pair, e.g. {example}.")
   params: Dict[str, str] = {}
+  head_pending = head_key is not None
   for item in value.split(","):
     item = item.strip()
     if not item:
       continue
+    if head_pending:
+      head_pending = False
+      if "=" not in item:
+        params[head_key] = item
+        continue
     key, sep, raw = item.partition("=")
     if sep == "" or key.strip() == "":
       raise argparse.ArgumentTypeError(
@@ -57,16 +66,18 @@ def pairs_parser(
   flag: str,
   example: str,
   allow_empty: bool = True,
+  head_key: Optional[str] = None,
 ) -> Callable[[str], Optional[Dict[str, str]]]:
   """Build the argparse ``type`` of one params flag.
 
   :param flag: Flag name used in error messages.
   :param example: Example value quoted in the error message.
   :param allow_empty: Whether an empty value is accepted, see `parse_param_pairs`.
+  :param head_key: Optional shorthand key for a bare first entry, see `parse_param_pairs`.
   :returns: A single-argument callable for ``add_argument(type=...)``.
   """
 
-  return lambda value: parse_param_pairs(value, flag, example, allow_empty)
+  return lambda value: parse_param_pairs(value, flag, example, allow_empty, head_key)
 
 
 def _as_bool(text: str) -> bool:
@@ -258,7 +269,7 @@ def parse_attn_params(value: str) -> Dict[str, str]:
   """
 
   example = "'type=ffpa_fp8,fp8_hadamard=true'"
-  raw = parse_param_pairs(value, "--attn-params", example, allow_empty=False)
+  raw = parse_param_pairs(value, "--attn-params", example, allow_empty=False, head_key="type")
   if "type" not in raw:
     raise argparse.ArgumentTypeError(f"--attn-params needs a 'type' key, e.g. {example}.")
   if raw["type"].lower() not in ATTN_BACKENDS:
@@ -421,7 +432,7 @@ def parse_cache_params(value: str) -> Dict[str, str]:
   """
 
   example = "'rdt=0.12,Fn=1,scm=fast'"
-  raw = parse_param_pairs(value, "--cache-params", example, allow_empty=False)
+  raw = parse_param_pairs(value, "--cache-params", example, allow_empty=False, head_key="type")
   if "type" in raw and raw["type"].lower() not in CACHE_TYPES:
     raise argparse.ArgumentTypeError(f"Invalid --cache-params 'type={raw['type']}'. Expected one "
                                      f"of {[name for name in CACHE_TYPES]}.")
