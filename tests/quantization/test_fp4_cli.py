@@ -14,8 +14,8 @@ requires_native_fp4 = pytest.mark.skipif(not cuda_ext_is_available(),
 
 
 def test_fp4_fused_mlp_cli_defaults_off() -> None:
-  args = cli_utils.get_args(parse=False).parse_args([])
-  assert args.fp4_fused_mlp is False
+  args = cli_utils.maybe_postprocess_args(cli_utils.get_args(parse=False).parse_args([]))
+  assert args.quantize_fields == {}
 
 
 @requires_native_fp4

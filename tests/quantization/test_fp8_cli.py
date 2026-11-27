@@ -26,8 +26,8 @@ def _parser():
 
 def test_quantize_backend_defaults_to_auto(monkeypatch) -> None:
   monkeypatch.setattr("sys.argv", ["cache-dit-generate"])
-  args = _parser().parse_args([])
-  assert args.quantize_backend is None
+  args = cli_utils.maybe_postprocess_args(_parser().parse_args([]))
+  assert args.quantize_fields == {}
   assert cli_utils._resolve_cli_quantize_backend(args) == QuantizeBackend.AUTO
 
 

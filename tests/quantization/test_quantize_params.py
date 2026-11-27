@@ -69,20 +69,22 @@ def test_quantize_type_param() -> None:
 
 
 @pytest.mark.parametrize(
-  "text, attr, expected",
+  "text, key, expected",
   [
-    ("backend=cache_dit", "quantize_backend", "cache_dit"),
-    ("regional_quantize=false", "disable_regional_quantize", True),
-    ("per_tensor_fallback=off", "disable_per_tensor_fallback", True),
-    ("exclude_layers=adaln_proj+norm_out", "quantize_exclude_layers", ["adaln_proj", "norm_out"]),
-    ("verbose=true", "quantize_verbose", True),
+    ("backend=cache_dit", "backend", "cache_dit"),
+    ("regional_quantize=false", "regional_quantize", False),
+    ("per_tensor_fallback=off", "per_tensor_fallback", False),
+    ("exclude_layers=adaln_proj+norm_out", "exclude_layers", ["adaln_proj", "norm_out"]),
+    ("verbose=true", "verbose", True),
     ("fp8_fused_mlp=1", "fp8_fused_mlp", True),
     ("mxfp4_quantize_device=cpu", "mxfp4_quantize_device", "cpu"),
   ],
 )
-def test_quantize_params_are_resolved(text, attr, expected) -> None:
+def test_quantize_params_are_resolved(text, key, expected) -> None:
   args = resolve(["--quantize", "--quantize-params", text])
-  assert getattr(args, attr) == expected
+  assert args.quantize_fields[key] == expected
+  if key == "exclude_layers":
+    assert args.quantize_exclude_layers == expected
 
 
 def test_quantize_params_reject_unknown_keys_and_bad_values() -> None:
@@ -99,15 +101,14 @@ def test_quantize_params_require_quantize_except_text_encoder() -> None:
     resolve(["--quantize-params", "quant_type=float8_per_row"])
   args = resolve(["--quantize-params", "text_encoder=bitsandbytes_4bit"])
   assert args.quantize is False
-  assert args.quantize_text_encoder is True
-  assert args.quantize_text_type == "bitsandbytes_4bit"
+  assert args.quantize_fields["text_encoder"] == "bitsandbytes_4bit"
 
 
 def test_text_encoder_param() -> None:
   args = resolve(["--quantize", "--quantize-params", "text_encoder=true"])
-  assert args.quantize_text_type == "float8_per_row"
+  assert args.quantize_fields["text_encoder"] == "float8_per_row"
   args = resolve(["--quantize", "--quantize-params", "text_encoder=int8_per_row"])
-  assert args.quantize_text_type == "int8_per_row"
+  assert args.quantize_fields["text_encoder"] == "int8_per_row"
   with pytest.raises(ValueError, match="'text_encoder=true' requires --quantize"):
     resolve(["--quantize-params", "text_encoder=true"])
   with pytest.raises(ValueError, match="Invalid --quantize-params 'text_encoder=nvfp4'"):
@@ -189,17 +190,36 @@ def test_build_quantize_config_uses_the_resolved_options() -> None:
   assert config.get_svdq_kwargs()["few_shot_relax_factor"] == 2.0
 
 
-def test_deprecated_flags_still_work_and_conflict_with_params() -> None:
-  old = resolve(
-    ["--svdq-nvfp4-r32-dq", "--svdq-runtime", "cute", "--quantize", "--quantize-verbose"])
-  new = resolve([
-    "--quantize",
-    "--quantize-params",
-    "quant_type=svdq_nvfp4_r32_dq,verbose=true",
-    "--svdq-params",
-    "runtime_kernel=cute",
-  ])
-  assert (old.quantize_type, old.svdq_kwargs,
-          old.quantize_verbose) == (new.quantize_type, new.svdq_kwargs, new.quantize_verbose)
-  with pytest.raises(ValueError, match="mutually exclusive"):
-    resolve(["--svdq-int4-r32-dq", "--quantize-params", "quant_type=float8_per_row"])
+@pytest.mark.parametrize(
+  "flag",
+  [
+    "--svdq-nvfp4-r32-dq",
+    "--svdq-r32",
+    "--float8",
+    "--float8-per-tensor",
+    "--nvfp4",
+    "--mxfp4",
+    "--quantize-type",
+    "--q-type",
+    "--quantize-backend",
+    "--disable-regional-quantize",
+    "--quantize-exclude-layers",
+    "--disable-per-tensor-fallback",
+    "--quantize-text-encoder",
+    "--quantize-text-type",
+    "--quantize-controlnet",
+    "--quantize-verbose",
+    "--svdq-smooth-strategy",
+    "--svdq-runtime",
+    "--svdq-lora-layout",
+    "--svdq-few-shot-steps",
+    "--svdq-layerwise-offload",
+    "--svdq-layerwise-async-transfer",
+    "--svdq-fused-mlp",
+    "--fp8-fused-mlp",
+    "--fp4-fused-mlp",
+  ],
+)
+def test_removed_quantization_flags_are_rejected(flag) -> None:
+  with pytest.raises(SystemExit):
+    parser.parse_args([flag])

@@ -47,9 +47,7 @@ from ..quantization import quantize, QuantizeConfig
 from ..quantization.backend import QuantizeBackend
 from ..quantization.config import DEFAULT_EXCLUDE_LAYERS
 from ..quantization.config import _resolve_svdq_kwargs
-from ..quantization.config import _SVDQ_PACKED_A4_RANKS
 from ..quantization.config import TEXT_ENCODER_QUANT_TYPES
-from ..quantization.config import TRANSFORMER_QUANT_TYPES
 from .params import (
   pairs_parser,
   parse_param_pairs,
@@ -734,469 +732,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Disable per row quantization for transformer",
   )
-  # float8, float8_weight_only, int8, int8_weight_only, int4, int4_weight_only
-  parser.add_argument(
-    "--quantize-type",
-    "--q-type",
-    type=str,
-    default=None,
-    choices=[None, *TRANSFORMER_QUANT_TYPES],
-  )
-  parser.add_argument(
-    "--quantize-backend",
-    "--q-backend",
-    type=str,
-    default=None,
-    choices=[None, "torchao", "cache_dit"],
-    help=("Quantization backend. Default None keeps AUTO routing: svdq* uses cache-dit "
-          "SVDQuant and every other type uses TorchAO. Pass cache_dit with one of the three "
-          "float8 types to use cache-dit's own FP8 kernels."),
-  )
-  parser.add_argument(
-    "--disable-regional-quantize",
-    "--disable-regional",
-    "--no-regional",
-    action="store_true",
-    default=False,
-    help="Disable quantization for repeated blocks in transformer",
-  )
-  parser.add_argument(
-    "--quantize-exclude-layers",
-    nargs="+",
-    default=None,
-    help=("Layer names (substring match) to leave out of transformer quantization, e.g. "
-          "`--quantize-exclude-layers adaln_proj norm_out` for MiniMax-H3, whose per-block AdaLN "
-          "tables are shared by every token at every step and whose quantization error would add "
-          "up coherently over the trajectory."),
-  )
-  parser.add_argument(
-    "--disable-per-tensor-fallback",
-    "--no-per-tensor-fallback",
-    action="store_true",
-    default=False,
-    help="Disable (float8 only) per-tensor fallback quantization for transformer",
-  )
-  # some quick start flags for transformer quantization.
-  parser.add_argument(
-    "--float8-per-row",
-    "--float8",
-    action="store_true",
-    default=False,
-    help="Enable float8 per-row quantization for transformer",
-  )
-  parser.add_argument(
-    "--float8-per-tensor",
-    action="store_true",
-    default=False,
-    help="Enable float8 per-tensor quantization for transformer",
-  )
-  parser.add_argument(
-    "--float8-per-block",
-    action="store_true",
-    default=False,
-    help="Enable float8 per-block quantization for transformer",
-  )
-  parser.add_argument(
-    "--float8-weight-only",
-    "--float8-wo",
-    action="store_true",
-    default=False,
-    help="Enable float8 weight-only quantization for transformer",
-  )
-  parser.add_argument(
-    "--float8-blockwise",
-    "--float8-bw",
-    action="store_true",
-    default=False,
-    help="Enable float8 blockwise quantization for transformer",
-  )
-  parser.add_argument(
-    "--int8-per-row",
-    "--int8",
-    action="store_true",
-    default=False,
-    help="Enable int8 per-row quantization for transformer",
-  )
-  parser.add_argument(
-    "--int8-per-tensor",
-    action="store_true",
-    default=False,
-    help="Enable int8 per-tensor quantization for transformer",
-  )
-  parser.add_argument(
-    "--int8-weight-only",
-    "--int8-wo",
-    action="store_true",
-    default=False,
-    help="Enable int8 weight-only quantization for transformer",
-  )
-  parser.add_argument(
-    "--int4-weight-only",
-    "--int4-wo",
-    action="store_true",
-    default=False,
-    help="Enable int4 weight-only quantization for transformer",
-  )
-  parser.add_argument(
-    "--nvfp4",
-    action="store_true",
-    default=False,
-    help="Enable NVFP4 dynamic activation and weight quantization for transformer",
-  )
-  parser.add_argument(
-    "--nvfp4-weight-only",
-    action="store_true",
-    default=False,
-    help="Enable TorchAO NVFP4 weight-only quantization for transformer",
-  )
-  parser.add_argument(
-    "--mxfp4",
-    action="store_true",
-    default=False,
-    help=("Enable native MXFP4 (OCP E2M1 + E8M0 group-32) weight-only quantization for "
-          "transformer; alias of --mxfp4-weight-only"),
-  )
-  parser.add_argument(
-    "--mxfp4-weight-only",
-    "--mxfp4-wo",
-    action="store_true",
-    default=False,
-    help="Enable native MXFP4 weight-only quantization for transformer",
-  )
-  parser.add_argument(
-    "--mxfp4-quantize-device",
-    type=str,
-    default="auto",
-    choices=["auto", "cpu", "cuda"],
-    help=("Device used for the one-time MXFP4 weight packing. The default 'auto' packs on the "
-          "accelerator when available, so CPU-resident models still quantize fast before the "
-          "final move to the GPU."),
-  )
-  parser.add_argument(
-    "--svdq-int4-r32-dq",
-    "--svdq-r32",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ INT4 dynamic quantization with rank 32 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-int4-r64-dq",
-    "--svdq-r64",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ INT4 dynamic quantization with rank 64 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-int4-r128-dq",
-    "--svdq-r128",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ INT4 dynamic quantization with rank 128 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-int4-r256-dq",
-    "--svdq-r256",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ INT4 dynamic quantization with rank 256 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-nvfp4-r32-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ NVFP4 dynamic quantization with rank 32 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-nvfp4-r64-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ NVFP4 dynamic quantization with rank 64 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-nvfp4-r128-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ NVFP4 dynamic quantization with rank 128 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-nvfp4-r256-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ NVFP4 dynamic quantization with rank 256 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp8-r32-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-FP8 dynamic quantization with rank 32 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp8-r64-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-FP8 dynamic quantization with rank 64 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp8-r128-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-FP8 dynamic quantization with rank 128 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-w4a8-r32-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-W4A8 dynamic quantization with rank 32 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-w4a8-r64-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-W4A8 dynamic quantization with rank 64 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-w4a8-r128-dq",
-    action="store_true",
-    default=False,
-    help="Enable SVDQ-W4A8 dynamic quantization with rank 128 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp6-r32-dq",
-    action="store_true",
-    default=False,
-    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 32 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp6-r64-dq",
-    action="store_true",
-    default=False,
-    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 64 for transformer",
-  )
-  parser.add_argument(
-    "--svdq-fp6-r128-dq",
-    action="store_true",
-    default=False,
-    help="Enable block-scaled SVDQ-W6A6 dynamic quantization with rank 128 for transformer",
-  )
-  for bits in (1, 2, 3):
-    ranks = _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"]
-    for rank in ranks:
-      if rank == 0:
-        continue
-      parser.add_argument(
-        f"--svdq-w{bits}a4-r{rank}-dq",
-        action="store_true",
-        default=False,
-        help=f"Enable packed SVDQ-W{bits}A4 dynamic quantization with rank {rank} for transformer",
-      )
-  # quantization for extra modules: text encoder, vae, controlnet, etc.
-  parser.add_argument(
-    "--quantize-text-encoder",
-    "--q-text",
-    action="store_true",
-    default=False,
-    help="Enable quantization for text encoder",
-  )
-  parser.add_argument(
-    "--quantize-text-type",
-    "--q-text-type",
-    type=str,
-    default=None,
-    choices=[None, *TEXT_ENCODER_QUANT_TYPES],
-  )
-  parser.add_argument(
-    "--quantize-controlnet",
-    "--q-controlnet",
-    action="store_true",
-    default=False,
-    help="Enable quantization for ControlNet",
-  )
-  parser.add_argument(
-    "--quantize-controlnet-type",
-    "--q-controlnet-type",
-    type=str,
-    default=None,
-    choices=[
-      None,
-      "float8_per_row",
-      "float8_per_tensor",
-      "float8_per_block",
-      "float8_weight_only",
-      "int8_per_row",
-      "int8_per_tensor",
-      "int8_weight_only",
-      "int4_weight_only",
-      "bitsandbytes_4bit",
-    ],
-  )
-  parser.add_argument(
-    "--quantize-verbose",
-    "--q-verbose",
-    action="store_true",
-    default=False,
-    help="Print the verbose logs of the quantization process",
-  )
-  parser.add_argument(
-    "--svdq-smooth-strategy",
-    "--svdq-smooth",
-    type=str,
-    default="identity",
-    choices=["identity", "weight", "weight_inv", "few_shot"],
-    help="Smooth strategy for SVDQ DQ quantization. Default: identity.",
-  )
-  parser.add_argument(
-    "--svdq-calibrate-precision",
-    "--svdq-calib",
-    type=str,
-    default="low",
-    choices=["low", "medium", "high"],
-    help="Calibration / decomposition precision for SVDQ quantization. Default: low.",
-  )
-  parser.add_argument(
-    "--svdq-packed-a4-stages",
-    type=int,
-    default=None,
-    choices=[2, 3],
-    help="Weight scale stages for packed W1A4/W2A4/W3A4. W1/W2 default to 3 because their "
-    "2/4-level codebooks need the extra exponent for usable precision; W3's 3-bit codebook "
-    "is accurate enough, so it defaults to 2. W3 stage 3 adds a per-8 one-bit table selector.",
-  )
-  parser.add_argument(
-    "--svdq-packed-a4-inner-group",
-    type=int,
-    default=None,
-    choices=[2, 4],
-    help="Elements sharing one three-stage exponent. Default: 4; pass 2 for finer refinement.",
-  )
-  parser.add_argument(
-    "--svdq-runtime",
-    "--svdq-runtime-kernel",
-    type=str,
-    default=None,
-    choices=["native", "cute", "flashinfer", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120"],
-    help=("SVDQ GEMM family. Default: auto (native for INT4 and NVFP4). The flashinfer runtimes "
-          "run FlashInfer's own NVFP4 SVDQuant chain on a pack derived from the checkpoint; they "
-          "are comparison runtimes, not a drop-in replacement. Bare 'flashinfer' maps to "
-          "'flashinfer+cutlass-sm120' (fused prefix, ranks 32/64); use 'flashinfer+cute-dsl' for "
-          "the shape-pinned CuTe chain, which covers every rank."),
-  )
-  parser.add_argument(
-    "--svdq-lora-layout",
-    type=str,
-    default=None,
-    choices=["native", "row_major"],
-    help=("Layout of the LoRA-down activation D. Default: auto (row_major for CuTe, native "
-          "otherwise). 'row_major' requires --svdq-runtime cute. The gated-MLP fusion needs "
-          "'native'."),
-  )
-  parser.add_argument(
-    "--svdq-few-shot-steps",
-    type=int,
-    default=1,
-    help=("How many transformer/module forwards to observe before materializing SVDQ few-shot "
-          "quantization. This counts cumulative root-module forwards on the armed transformer, not "
-          "pipeline invocations."),
-  )
-  parser.add_argument(
-    "--svdq-few-shot-relax-factor",
-    type=float,
-    default=1.5,
-    help=
-    ("Maximum few-shot relax factor applied to activation spans before smooth-scale recomputation. "
-     "Must be >= 1.0 so the observed activation span is preserved or amplified, never reduced. "
-     "Values above about 3.0 are often too aggressive and may oversmooth outputs; try 1.5-2.5 first."
-     ),
-  )
-  parser.add_argument(
-    "--svdq-few-shot-relax-top-ratio",
-    type=float,
-    default=0.25,
-    help="Fraction of the largest few-shot activation spans used to define the relax threshold.",
-  )
-  parser.add_argument(
-    "--svdq-few-shot-relax-strategy",
-    type=str,
-    default="auto",
-    choices=["fixed", "top", "auto", "stable_auto", "power", "log", "rank", "top_q4"],
-    help=(
-      "How few-shot relax factors are assigned over activation spans. 'fixed' keeps the original "
-      "activation span unchanged; 'top' keeps channels below the threshold unchanged; 'auto' uses "
-      "a linear ramp; 'stable_auto' bucketizes that ramp for better run-to-run stability; "
-      "'power', 'log', and 'rank' use stronger monotonic curves; 'top_q4' is accepted as an "
-      "alias of 'top'."),
-  )
-  parser.add_argument(
-    "--svdq-quantize-device",
-    type=str,
-    default="cuda",
-    choices=["auto", "cpu", "cuda"],
-    help=("Device used for SVDQ decomposition and packing math. The example CLI defaults to 'cuda' "
-          "so CPU-resident models can still quantize layer-by-layer on GPU before the final move."),
-  )
-  parser.add_argument(
-    "--svdq-offload-quantized-layers-to-cpu",
-    dest="svdq_offload_quantized_layers_to_cpu",
-    action="store_true",
-    default=False,
-    help=(
-      "After each SVDQ linear layer is quantized, move it back to CPU immediately. This reduces "
-      "peak memory during quantization and is forced on when --svdq-layerwise-offload is active."),
-  )
-  parser.add_argument(
-    "--svdq-keep-quantized-layers-on-device",
-    dest="svdq_offload_quantized_layers_to_cpu",
-    action="store_false",
-    help=(
-      "Keep newly quantized SVDQ layers on the quantization device instead of offloading them to "
-      "CPU. Ignored when --svdq-layerwise-offload is active."),
-  )
-  parser.add_argument(
-    "--svdq-layerwise-offload",
-    action="store_true",
-    default=False,
-    help=("Enable cache-dit layerwise CPU offload for SVDQ PTQ calibration and DQ few-shot "
-          "activation collection when the root module is CPU-resident."),
-  )
-  parser.add_argument(
-    "--svdq-defer-final-to-cuda",
-    dest="svdq_defer_final_to_cuda",
-    action="store_true",
-    default=True,
-    help=(
-      "Defer the final pipeline move to CUDA until SVDQ few-shot runtime quantization finishes. "
-      "This only takes effect when quantized layers are offloaded during the few-shot flow."),
-  )
-  parser.add_argument(
-    "--svdq-no-defer-final-to-cuda",
-    dest="svdq_defer_final_to_cuda",
-    action="store_false",
-    help="Do not defer the final pipeline move when using SVDQ few-shot quantization.",
-  )
-  parser.add_argument(
-    "--svdq-few-shot-compile",
-    action="store_true",
-    default=False,
-    help="Compile the transformer only after SVDQ few-shot runtime quantization completes.",
-  )
-  parser.add_argument(
-    "--svdq-fused-mlp",
-    action="store_true",
-    default=False,
-    help=
-    "Fuse FeedForward GELU MLP blocks into a single fused kernel chain after SVDQ quantization.",
-  )
-  parser.add_argument(
-    "--fp8-fused-mlp",
-    action="store_true",
-    default=False,
-    help="Fuse supported GELU and SwiGLU MLP structures after native cache-dit FP8 quantization.",
-  )
-  parser.add_argument(
-    "--fp4-fused-mlp",
-    action="store_true",
-    default=False,
-    help="Fuse supported GELU and SwiGLU MLP structures after native cache-dit NVFP4 quantization.",
-  )
   # Parallelism settings
   parser.add_argument(
     "--parallel-type",
@@ -1457,13 +992,11 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-async-transfer",
-    "--svdq-layerwise-async-transfer",
-    "--svdq-async-transfer",
     action="store_true",
     default=False,
     help=("Enable CUDA-stream-based async_transfer for cache-dit layerwise CPU offload. This "
           "shared setting applies to both generic module layerwise offload and SVDQ layerwise "
-          "collection when --svdq-layerwise-offload is active."),
+          "collection when --svdq-params layerwise_offload=true is active."),
   )
   parser.add_argument(
     "--layerwise-text-async-transfer",
@@ -1482,8 +1015,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-transfer-buckets",
-    "--svdq-layerwise-transfer-buckets",
-    "--svdq-transfer-buckets",
     type=int,
     default=1,
     help=("Base async prefetch depth hint used to size layerwise copy-lane concurrency. "
@@ -1498,7 +1029,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-prefetch-limit",
-    "--svdq-layerwise-prefetch-limit",
     action="store_true",
     default=False,
     help=("Enable the conservative future-prefetch target-count limit for layerwise async "
@@ -1522,13 +1052,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-max-copy-streams",
-    "--svdq-layerwise-max-copy-streams",
     type=int,
     default=None,
-    help=("Maximum number of async CUDA copy streams used by cache-dit layerwise offload. This "
-          "shared setting applies to both generic module layerwise offload and SVDQ layerwise "
-          "collection when --svdq-layerwise-offload is active. When omitted, runtime derives "
-          "it from --layerwise-transfer-buckets and applies its internal safety cap."),
+    help=(
+      "Maximum number of async CUDA copy streams used by cache-dit layerwise offload. This "
+      "shared setting applies to both generic module layerwise offload and SVDQ layerwise "
+      "collection when --svdq-params layerwise_offload=true is active. When omitted, runtime derives "
+      "it from --layerwise-transfer-buckets and applies its internal safety cap."),
   )
   parser.add_argument(
     "--layerwise-text-max-copy-streams",
@@ -1539,14 +1069,14 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-max-inflight-prefetch-bytes",
-    "--svdq-layerwise-max-inflight-prefetch-bytes",
     type=_parse_byte_size_arg,
     default=None,
-    help=("Maximum total CUDA residency budget, in bytes, for in-flight layerwise future-target "
-          "prefetch. This shared setting applies to both generic module layerwise offload and "
-          "SVDQ layerwise collection when --svdq-layerwise-offload is active. Accepts raw bytes "
-          "or suffixes like 512MiB and 4GiB. When omitted, runtime leaves the byte-budget "
-          "limit disabled."),
+    help=(
+      "Maximum total CUDA residency budget, in bytes, for in-flight layerwise future-target "
+      "prefetch. This shared setting applies to both generic module layerwise offload and "
+      "SVDQ layerwise collection when --svdq-params layerwise_offload=true is active. Accepts raw bytes "
+      "or suffixes like 512MiB and 4GiB. When omitted, runtime leaves the byte-budget "
+      "limit disabled."),
   )
   parser.add_argument(
     "--layerwise-text-max-inflight-prefetch-bytes",
@@ -1558,13 +1088,13 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-persistent-buckets",
-    "--svdq-layerwise-persistent-buckets",
-    "--svdq-persistent-buckets",
     type=int,
     default=0,
-    help=("How many selected layerwise offload targets should stay resident on CUDA for the full "
-          "handle lifetime. This shared setting applies to both generic module layerwise offload "
-          "and SVDQ layerwise collection when --svdq-layerwise-offload is active. Default is 0."),
+    help=(
+      "How many selected layerwise offload targets should stay resident on CUDA for the full "
+      "handle lifetime. This shared setting applies to both generic module layerwise offload "
+      "and SVDQ layerwise collection when --svdq-params layerwise_offload=true is active. Default is 0."
+    ),
   )
   parser.add_argument(
     "--layerwise-text-persistent-buckets",
@@ -1575,16 +1105,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   parser.add_argument(
     "--layerwise-persistent-bins",
-    "--svdq-layerwise-persistent-bins",
-    "--svdq-persistent-bins",
     type=int,
     default=1,
-    help=("How many evenly distributed bins should be used when placing persistent layerwise "
-          "offload targets across the selected target list. A value of 1 keeps the original "
-          "prefix behavior. For example, with 32 targets, --layerwise-persistent-buckets 16 and "
-          "--layerwise-persistent-bins 4, runtime keeps [0:4), [8:12), [16:20), and [24:28) "
-          "resident. This shared setting applies to both generic module layerwise offload and "
-          "SVDQ layerwise collection when --svdq-layerwise-offload is active. Default is 1."),
+    help=(
+      "How many evenly distributed bins should be used when placing persistent layerwise "
+      "offload targets across the selected target list. A value of 1 keeps the original "
+      "prefix behavior. For example, with 32 targets, --layerwise-persistent-buckets 16 and "
+      "--layerwise-persistent-bins 4, runtime keeps [0:4), [8:12), [16:20), and [24:28) "
+      "resident. This shared setting applies to both generic module layerwise offload and "
+      "SVDQ layerwise collection when --svdq-params layerwise_offload=true is active. Default is 1."
+    ),
   )
   parser.add_argument(
     "--layerwise-text-persistent-bins",
@@ -1753,7 +1283,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Export generated video with specified fps",
   )
 
-  _mark_deprecated_quant_flags(parser)
   args_or_parser = parser.parse_args() if parse else parser
   if parse:
     return maybe_postprocess_args(args_or_parser)
@@ -1762,108 +1291,6 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
 
 def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentParser:
   return get_args(parse=parse)  # For future extension if needed
-
-
-# Deprecated quantization flags and their `--quantize-params` replacement: dest, key, parser
-# default, flag. `disable_*` flags hold the negation of their key; `svdq_defer_final_to_cuda`
-# defaults to True and is False only when `--svdq-no-defer-final-to-cuda` was passed.
-_DEPRECATED_QUANTIZE_FLAGS = (
-  ("quantize_type", "quant_type", None, "quantize-type"),
-  ("quantize_backend", "backend", None, "quantize-backend"),
-  ("disable_regional_quantize", "regional_quantize", False, "disable-regional-quantize"),
-  ("disable_per_tensor_fallback", "per_tensor_fallback", False, "disable-per-tensor-fallback"),
-  ("quantize_verbose", "verbose", False, "quantize-verbose"),
-  ("fp8_fused_mlp", "fp8_fused_mlp", False, "fp8-fused-mlp"),
-  ("fp4_fused_mlp", "fp4_fused_mlp", False, "fp4-fused-mlp"),
-  ("mxfp4_quantize_device", "mxfp4_quantize_device", "auto", "mxfp4-quantize-device"),
-)
-_NEGATED_DEPRECATED_FLAGS = {"disable_regional_quantize", "disable_per_tensor_fallback"}
-# Flags folded into `--quantize-params` by dedicated code paths; only their help is marked here.
-_DEPRECATED_MARK_ONLY = ("quantize_exclude_layers", "quantize_text_encoder", "quantize_text_type")
-# Deprecated shortcut flags: dest -> quant_type. Every transformer type has a shortcut whose dest is
-# the type itself; the two extra entries are shortcuts with a dest of their own.
-_DEPRECATED_QUANT_TYPE_SHORTCUTS = {
-  quant_type: quant_type
-  for quant_type in TRANSFORMER_QUANT_TYPES
-}
-_DEPRECATED_QUANT_TYPE_SHORTCUTS.update({
-  "mxfp4": "mxfp4_weight_only",
-  "float8_blockwise": "float8_per_block",
-})
-_DEPRECATED_SVDQ_FLAGS = (
-  ("svdq_smooth_strategy", "smooth_strategy", "identity", "svdq-smooth-strategy"),
-  ("svdq_calibrate_precision", "calibrate_precision", "low", "svdq-calibrate-precision"),
-  ("svdq_runtime", "runtime_kernel", None, "svdq-runtime"),
-  ("svdq_lora_layout", "lora_layout", None, "svdq-lora-layout"),
-  ("svdq_quantize_device", "quantize_device", "cuda", "svdq-quantize-device"),
-  ("svdq_few_shot_steps", "few_shot_steps", 1, "svdq-few-shot-steps"),
-  ("svdq_few_shot_relax_factor", "few_shot_relax_factor", 1.5, "svdq-few-shot-relax-factor"),
-  ("svdq_few_shot_relax_top_ratio", "few_shot_relax_top_ratio", 0.25,
-   "svdq-few-shot-relax-top-ratio"),
-  ("svdq_few_shot_relax_strategy", "few_shot_relax_strategy", "auto",
-   "svdq-few-shot-relax-strategy"),
-  ("svdq_packed_a4_stages", "packed_a4_stages", None, "svdq-packed-a4-stages"),
-  ("svdq_packed_a4_inner_group", "packed_a4_inner_group", None, "svdq-packed-a4-inner-group"),
-  ("svdq_fused_mlp", "fused_mlp", False, "svdq-fused-mlp"),
-  ("svdq_layerwise_offload", "layerwise_offload", False, "svdq-layerwise-offload"),
-  ("svdq_offload_quantized_layers_to_cpu", "offload_quantized_layers_to_cpu", False,
-   "svdq-offload-quantized-layers-to-cpu"),
-  ("svdq_few_shot_compile", "few_shot_auto_compile", False, "svdq-few-shot-compile"),
-  ("svdq_defer_final_to_cuda", "defer_move_to_execution_device", True,
-   "svdq-no-defer-final-to-cuda"),
-)
-_DEPRECATED_CONTROLNET_FLAGS = ("quantize_controlnet", "quantize_controlnet_type")
-
-
-def _fmt_param(value: Any) -> str:
-  if isinstance(value, bool):
-    return "true" if value else "false"
-  if isinstance(value, list):
-    return "+".join(value)
-  return str(value)
-
-
-def _mark_deprecated_quant_flags(parser: argparse.ArgumentParser) -> None:
-  """Prefix the help of every deprecated quantization flag with its replacement."""
-
-  # One action per flag, however many alias strings it has.
-  for action in {id(action): action for action in parser._option_string_actions.values()}.values():
-    if action.dest in _DEPRECATED_QUANT_TYPE_SHORTCUTS:
-      quant_type = _DEPRECATED_QUANT_TYPE_SHORTCUTS[action.dest]
-      action.help = (f"DEPRECATED, use '--quantize --quantize-params quant_type={quant_type}' "
-                     f"instead. {action.help}")
-    elif (action.dest in {dest
-                          for dest, *_ in _DEPRECATED_QUANTIZE_FLAGS}
-          or action.dest in _DEPRECATED_MARK_ONLY):
-      action.help = "DEPRECATED, use --quantize-params instead. " + (action.help or "")
-    elif action.dest in {dest for dest, *_ in _DEPRECATED_SVDQ_FLAGS}:
-      action.help = "DEPRECATED, use --svdq-params instead. " + (action.help or "")
-    elif action.dest in _DEPRECATED_CONTROLNET_FLAGS:
-      action.help = ("DEPRECATED and will be removed; quantize the controlnet with "
-                     "cache_dit.quantize(controlnet, QuantizeConfig(...)) instead. " +
-                     (action.help or ""))
-
-
-def _merge_deprecated(
-  target: Dict[str, Any],
-  key: str,
-  value: Any,
-  explicit: set,
-  flag: str,
-  params_flag: str,
-) -> None:
-  """Fold one deprecated flag into its params replacement; a conflicting key is an error."""
-
-  if key in explicit:
-    if target.get(key) != value:
-      raise ValueError(f"--{flag} and '{params_flag} {key}="
-                       f"{_fmt_param(target.get(key))}' are mutually exclusive; pass the option "
-                       "only once.")
-    return
-  target[key] = value
-  explicit.add(key)
-  logger.warning("--%s is deprecated; use '%s %s=%s' instead.", flag, params_flag, key,
-                 _fmt_param(value))
 
 
 def _base_svdq_kwargs(args) -> Dict[str, Any]:
@@ -1915,40 +1342,14 @@ def _derive_cli_svdq_kwargs(kwargs: Dict[str, Any], args, explicit: set) -> None
 
 
 def _resolve_cli_quantization(args) -> None:
-  """Resolve `--quantize-params` / `--svdq-params` and the deprecated flags into `args`.
+  """Resolve `--quantize-params` / `--svdq-params` into `args`.
 
-  `args.quantize_fields` and `args.svdq_kwargs` hold the resolved options; the per-option
-  attributes that the quantization helpers read (`quantize_type`, `quantize_backend`, ...) are
-  kept in sync with them.
+  `args.quantize_fields` and `args.svdq_kwargs` hold the resolved options and are what the
+  quantization helpers read; `quantize_type` and `quantize_exclude_layers` are also exposed as
+  plain attributes because examples set them programmatically.
   """
 
   fields = resolve_param_pairs(args.quantize_params, QUANTIZE_PARAM_SPECS, "--quantize-params")
-  explicit = set(fields)
-  for dest, quant_type in _DEPRECATED_QUANT_TYPE_SHORTCUTS.items():
-    if getattr(args, dest, False):
-      _merge_deprecated(fields, "quant_type", quant_type, explicit, dest.replace("_", "-"),
-                        "--quantize-params")
-      args.quantize = True
-  for dest, key, default, flag in _DEPRECATED_QUANTIZE_FLAGS:
-    value = getattr(args, dest)
-    if value == default:
-      continue
-    if dest in _NEGATED_DEPRECATED_FLAGS:
-      value = not value
-    _merge_deprecated(fields, key, value, explicit, flag, "--quantize-params")
-    if key in ("quant_type", "backend"):
-      args.quantize = True
-  if args.quantize_exclude_layers:
-    _merge_deprecated(fields, "exclude_layers", list(args.quantize_exclude_layers), explicit,
-                      "quantize-exclude-layers", "--quantize-params")
-  text_encoder = args.quantize_text_type if args.quantize_text_type is not None else (
-    True if args.quantize_text_encoder else None)
-  if text_encoder is not None:
-    _merge_deprecated(fields, "text_encoder", text_encoder, explicit, "quantize-text-encoder",
-                      "--quantize-params")
-  if args.quantize_controlnet:
-    logger.warning("--quantize-controlnet is deprecated and will be removed; quantize the "
-                   "controlnet with cache_dit.quantize(controlnet, QuantizeConfig(...)) instead.")
 
   transformer_keys = set(fields) - {"text_encoder"}
   if not args.quantize and transformer_keys:
@@ -1964,16 +1365,7 @@ def _resolve_cli_quantization(args) -> None:
         f"which is not a text encoder type: {TEXT_ENCODER_QUANT_TYPES}.")
     fields["text_encoder"] = args.quantize_type
 
-  args.quantize_backend = fields.get("backend")
-  args.disable_regional_quantize = fields.get("regional_quantize") is False
-  args.disable_per_tensor_fallback = fields.get("per_tensor_fallback") is False
   args.quantize_exclude_layers = fields.get("exclude_layers")
-  args.quantize_text_type = fields.get("text_encoder")
-  args.quantize_text_encoder = args.quantize_text_type is not None
-  args.quantize_verbose = bool(fields.get("verbose"))
-  args.fp8_fused_mlp = bool(fields.get("fp8_fused_mlp"))
-  args.fp4_fused_mlp = bool(fields.get("fp4_fused_mlp"))
-  args.mxfp4_quantize_device = fields.get("mxfp4_quantize_device", "auto")
   args.quantize_fields = fields
 
   is_svdq = args.quantize_type is not None and args.quantize_type.startswith("svdq")
@@ -1984,16 +1376,7 @@ def _resolve_cli_quantization(args) -> None:
   if is_svdq:
     kwargs = _base_svdq_kwargs(args)
     kwargs.update(resolve_param_pairs(raw_svdq, SVDQ_PARAM_SPECS, "--svdq-params"))
-    explicit_svdq = set(raw_svdq)
-    for dest, key, default, flag in _DEPRECATED_SVDQ_FLAGS:
-      value = getattr(args, dest)
-      if value == default:
-        continue
-      if dest in _NEGATED_DEPRECATED_FLAGS:
-        value = not value
-      _merge_deprecated(kwargs, key, value, explicit_svdq, flag, "--svdq-params")
-    _derive_cli_svdq_kwargs(kwargs, args, explicit_svdq)
-    args.svdq_offload_quantized_layers_to_cpu = kwargs["offload_quantized_layers_to_cpu"]
+    _derive_cli_svdq_kwargs(kwargs, args, set(raw_svdq))
     # Fail on a bad value here rather than after the model has been loaded.
     _resolve_svdq_kwargs(kwargs)
   args.svdq_kwargs = kwargs
@@ -2001,14 +1384,6 @@ def _resolve_cli_quantization(args) -> None:
 
 def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
   _resolve_cli_quantization(args)
-
-  # Force enable quantization for controlnet if quantize_controlnet_type is specified
-  if args.quantize_controlnet_type is not None:
-    args.quantize_controlnet = True
-  # Handle alias for quantize_controlnet_type
-  if args.quantize_controlnet and args.quantize_controlnet_type is None:
-    # default to same as quantize_type
-    args.quantize_controlnet_type = args.quantize_type
 
   if args.mask_policy is not None and not args.steps_mask:
     # Enable steps mask if mask_policy is specified
@@ -2698,14 +2073,24 @@ def _resolve_cli_quantize_exclude_layers(args) -> Optional[List[str]]:
   return merged
 
 
+def _quantize_fields(args) -> Dict[str, Any]:
+  """Return the resolved `--quantize-params`, or an empty mapping when post-processing was skipped.
+
+  :param args: Parsed CLI namespace.
+  :returns: The resolved options.
+  """
+
+  return getattr(args, "quantize_fields", None) or {}
+
+
 def _resolve_cli_quantize_backend(args) -> QuantizeBackend:
-  """Resolve the CLI backend flag, mapping an omitted value to AUTO.
+  """Resolve the quantization backend, mapping an omitted value to AUTO.
 
   :param args: Parsed CLI namespace.
   :returns: Resolved backend enum.
   """
 
-  value = getattr(args, "quantize_backend", None)
+  value = _quantize_fields(args).get("backend")
   return QuantizeBackend.AUTO if value is None else QuantizeBackend.from_str(value)
 
 
@@ -2722,18 +2107,19 @@ def build_quantize_config(args, **overrides) -> QuantizeConfig:
     # `quantize_type` was set after post-processing, so no SVDQ options were resolved yet.
     svdq_kwargs = _base_svdq_kwargs(args)
     _derive_cli_svdq_kwargs(svdq_kwargs, args, explicit=set())
+  fields = _quantize_fields(args)
   return QuantizeConfig(
     **{
       "backend": _resolve_cli_quantize_backend(args),
       "quant_type": args.quantize_type,
-      "regional_quantize": not args.disable_regional_quantize,
-      "per_tensor_fallback": not args.disable_per_tensor_fallback,
+      "regional_quantize": fields.get("regional_quantize", True),
+      "per_tensor_fallback": fields.get("per_tensor_fallback", True),
       "exclude_layers": _resolve_cli_quantize_exclude_layers(args),
       "svdq_kwargs": svdq_kwargs,
-      "fp8_fused_mlp": bool(args.fp8_fused_mlp),
-      "fp4_fused_mlp": bool(args.fp4_fused_mlp),
-      "mxfp4_quantize_device": args.mxfp4_quantize_device,
-      "verbose": args.quantize_verbose,
+      "fp8_fused_mlp": bool(fields.get("fp8_fused_mlp")),
+      "fp4_fused_mlp": bool(fields.get("fp4_fused_mlp")),
+      "mxfp4_quantize_device": fields.get("mxfp4_quantize_device", "auto"),
+      "verbose": bool(fields.get("verbose")),
       **overrides,
     })
 
@@ -2801,9 +2187,9 @@ def maybe_quantize_text_encoder(
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
   # Quantize text encoder by default if quantize_text_encoder is enabled
-  if args.quantize_text_encoder:
-    backend = _resolve_cli_quantize_backend(args)
-    if args.quantize_text_type in ("bitsandbytes_4bit", "bnb_4bit"):
+  text_encoder_type = _quantize_fields(args).get("text_encoder")
+  if text_encoder_type is not None:
+    if text_encoder_type in ("bitsandbytes_4bit", "bnb_4bit"):
       logger.debug("bitsandbytes_4bit quantization should be handled by"
                    " PipelineQuantizationConfig in from_pretrained.")
       return pipe_or_adapter
@@ -2819,15 +2205,16 @@ def maybe_quantize_text_encoder(
       text_encoder_cls_name = text_encoder.__class__.__name__
       if isinstance(text_encoder, torch.nn.Module):
         logger.info(f"Quantizing text encoder module: {name}:{text_encoder_cls_name} to"
-                    f" {args.quantize_text_type} ...")
+                    f" {text_encoder_type} ...")
         text_encoder = quantize(
           text_encoder,
-          quantize_config=QuantizeConfig(
-            backend=backend,
-            quant_type=args.quantize_text_type,
-            regional_quantize=not args.disable_regional_quantize,
-            per_tensor_fallback=not args.disable_per_tensor_fallback,
-            verbose=args.quantize_verbose,
+          quantize_config=build_quantize_config(
+            args,
+            quant_type=text_encoder_type,
+            svdq_kwargs=None,
+            fp8_fused_mlp=False,
+            fp4_fused_mlp=False,
+            exclude_layers=list(DEFAULT_EXCLUDE_LAYERS),
           ),
         )
         setattr(pipe, name, text_encoder)
@@ -2839,56 +2226,12 @@ def maybe_quantize_text_encoder(
   return pipe_or_adapter
 
 
-def maybe_quantize_controlnet(
-  args,
-  pipe_or_adapter: DiffusionPipeline | BlockAdapter,
-) -> DiffusionPipeline | BlockAdapter:
-  # Quantize controlnet by default if quantize_controlnet is enabled
-  if args.quantize_controlnet:
-    backend = _resolve_cli_quantize_backend(args)
-    if args.quantize_controlnet_type in ("bitsandbytes_4bit", "bnb_4bit"):
-      logger.debug("bitsandbytes_4bit quantization should be handled by"
-                   " PipelineQuantizationConfig in from_pretrained.")
-      return pipe_or_adapter
-
-    if isinstance(pipe_or_adapter, BlockAdapter):
-      pipe = pipe_or_adapter.pipe
-      assert pipe is not None, "Please quantize controlnet manually if pipe is None."
-    else:
-      pipe = pipe_or_adapter
-
-    if hasattr(pipe, "controlnet"):
-      controlnet = getattr(pipe, "controlnet", None)
-      if controlnet is not None:
-        controlnet_cls_name = controlnet.__class__.__name__
-        if isinstance(controlnet, torch.nn.Module):
-          logger.info(f"Quantizing controlnet module: {controlnet_cls_name} to"
-                      f" {args.quantize_controlnet_type} ...")
-          controlnet = quantize(
-            controlnet,
-            quantize_config=QuantizeConfig(
-              backend=backend,
-              quant_type=args.quantize_controlnet_type,
-              regional_quantize=not args.disable_regional_quantize,
-              per_tensor_fallback=not args.disable_per_tensor_fallback,
-              verbose=args.quantize_verbose,
-            ),
-          )
-          setattr(pipe, "controlnet", controlnet)
-        else:
-          logger.warning(f"Cannot quantize controlnet module: {controlnet_cls_name} Not a"
-                         " torch.nn.Module.")
-      setattr(pipe, "controlnet", controlnet)
-    else:
-      logger.warning("quantize_controlnet is set but no controlnet found in the pipeline.")
-  return pipe_or_adapter
-
-
 def pipe_quant_bnb_4bit_config(
   args,
   components_to_quantize: Optional[List[str]] = ["text_encoder"],
 ) -> Optional[PipelineQuantizationConfig]:
-  if not args.quantize_text_encoder and not args.quantize:
+  text_encoder_type = _quantize_fields(args).get("text_encoder")
+  if text_encoder_type is None and not args.quantize:
     return None
 
   if components_to_quantize:
@@ -2898,7 +2241,7 @@ def pipe_quant_bnb_4bit_config(
         components_to_quantize.remove("transformer")
       if "transformer_2" in components_to_quantize:
         components_to_quantize.remove("transformer_2")
-    if args.quantize_text_type != "bitsandbytes_4bit":
+    if text_encoder_type != "bitsandbytes_4bit":
       if "text_encoder" in components_to_quantize:
         components_to_quantize.remove("text_encoder")
       if "text_encoder_2" in components_to_quantize:
@@ -2920,7 +2263,7 @@ def pipe_quant_bnb_4bit_config(
         "bnb_4bit_compute_dtype": torch.bfloat16,
       },
       components_to_quantize=components_to_quantize,
-    )) if args.quantize or args.quantize_text_encoder else None)
+    )) if args.quantize or text_encoder_type is not None else None)
   else:
     quantization_config = None
 
@@ -3733,7 +3076,6 @@ def maybe_apply_optimization(
   if quantize_config is None:
     maybe_quantize_transformer(args, pipe_or_adapter)
     maybe_quantize_text_encoder(args, pipe_or_adapter)
-    maybe_quantize_controlnet(args, pipe_or_adapter)
 
   # VAE Tiling or Slicing
   maybe_vae_tiling_or_slicing(args, pipe_or_adapter)

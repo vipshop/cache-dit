@@ -75,31 +75,6 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     "'smooth_strategy=weight_inv,runtime_kernel=cute'.",
   )
   parser.add_argument(
-    "--svdq-smooth-strategy",
-    type=str,
-    default=None,
-    choices=("identity", "weight", "weight_inv", "few_shot"),
-    help="DEPRECATED, use --svdq-params instead. SVDQ DQ smooth strategy. Defaults to 'identity' "
-    "when not set.",
-  )
-  parser.add_argument(
-    "--svdq-calibrate-precision",
-    type=str,
-    default="low",
-    choices=("low", "medium", "high"),
-    help="DEPRECATED, use --svdq-params instead. Precision plan for SVDQ calibration math and "
-    "low-rank decomposition.",
-  )
-  parser.add_argument(
-    "--svdq-runtime-kernel",
-    type=str,
-    default=None,
-    choices=("native", "cute", "flashinfer", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120"),
-    help="DEPRECATED, use --svdq-params instead. SVDQ GEMM family. Default: auto (native for INT4 "
-    "and NVFP4). The flashinfer runtimes are comparison runtimes that derive their pack from the "
-    "checkpoint at load time; bare 'flashinfer' maps to 'flashinfer+cutlass-sm120'.",
-  )
-  parser.add_argument(
     "--verbose",
     action="store_true",
     default=False,
@@ -165,20 +140,6 @@ def entrypoint(argv: list[str] | None = None) -> None:
   except ValueError as e:
     logger.error("%s", e)
     sys.exit(1)
-  svdq_kwargs.setdefault("calibrate_precision", args.svdq_calibrate_precision)
-  for flag, key, value in (
-    ("svdq-smooth-strategy", "smooth_strategy", args.svdq_smooth_strategy),
-    ("svdq-runtime-kernel", "runtime_kernel", args.svdq_runtime_kernel),
-  ):
-    if value is None:
-      continue
-    if key in svdq_kwargs:
-      if svdq_kwargs[key] != value:
-        logger.error("--%s conflicts with --svdq-params '%s=%s'.", flag, key, svdq_kwargs[key])
-        sys.exit(1)
-      continue
-    svdq_kwargs[key] = value
-    logger.warning("--%s is deprecated; use --svdq-params '%s=%s' instead.", flag, key, value)
 
   save_dir = os.path.abspath(args.save_dir)
   config = QuantizeConfig(
