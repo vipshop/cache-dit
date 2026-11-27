@@ -469,7 +469,7 @@ Dynamo fails on the per-step `module.to()` with `RuntimeError: Polyfill handler 
 traceable function`. Use fp8+compile or fp8+offload, not both.
 ### 7.3 SVDQuant NVFP4 (`svdq_nvfp4_r32_dq`)
 
-`--quantize --quantize-type svdq_nvfp4_r32_dq` (CLI uses the underscore spelling; the converter also
+`--quantize --quantize-params quant_type=svdq_nvfp4_r32_dq` (CLI uses the underscore spelling; the converter also
 accepts `svdq-nvfp4-r32-dq`). The `_dq` suffix selects **dynamic** quantization: no calibration set,
 no `serialize_to`, the low-rank decomposition + packing run on the fly during load (~60 s for the
 168 quantized layers) with `smooth_strategy="identity"`. NVFP4 requires

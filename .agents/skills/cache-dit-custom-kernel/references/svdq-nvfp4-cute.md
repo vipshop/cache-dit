@@ -629,8 +629,9 @@ class 重构后按“scale 融合 -> 地址复用”顺序验证，均保持 94 
 
 ```bash
 export FLUX_DIR="<flux-dir>"
-python -m cache_dit.generate flux --compile --svdq-nvfp4-r32-dq --save-path native.png
-python -m cache_dit.generate flux --compile --svdq-nvfp4-r32-dq --svdq-runtime cute --save-path cute.png
+python -m cache_dit.generate flux --compile --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq --save-path native.png
+python -m cache_dit.generate flux --compile --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=cute --save-path cute.png
 python -m cache_dit.generate flux --save-path base.png
 ```
 
@@ -1151,7 +1152,7 @@ native 对照（NCU）：D 的 tensor ops 与 HMMA 条数与 cute **完全相同
 
 建议的下一步（CDK-8 实施路径）：在 host 侧用同一套 CuTe 布局代数把 `tScA` 与 `tScC_rc` 的坐标对全部枚举出来，生成 128 项的 `constexpr int8_t` 置换表（-1 表示该值不在本 lane），kernel 里只做 `tCrA(i) = tCrC_bf16(table[i][kk])`。这样既删掉 smem 回读，又不会触发编译期搜索。
 
-e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--svdq-nvfp4-r32-dq`）：
+e2e（FLUX.1-dev 1024²/28 步，两跑取均值；`--quantize-params quant_type=svdq_nvfp4_r32_dq`）：
 
 | 臂 | eager | compile |
 |---|---:|---:|

@@ -106,7 +106,7 @@ SVDQ 当前缺少：
 
 ### P0-4. 命中统计与 fail-fast
 
-当前零命中只写 `debug`，用户打开 `--svdq-fused-mlp` 后可能完全没生效。应：
+当前零命中只写 `debug`，用户打开 `--svdq-params fused_mlp=true` 后可能完全没生效。应：
 
 - 给 root module 记录 `_svdq_fused_mlp_targets`（按 gelu_mlp/gelu_proj/swiglu 分类）；
 - 每个 pass 记录 applied/skipped reason；

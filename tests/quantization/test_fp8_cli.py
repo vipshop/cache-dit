@@ -38,27 +38,18 @@ def test_quantize_backend_defaults_to_auto(monkeypatch) -> None:
     ("cache_dit", QuantizeBackend.CACHE_DIT),
   ],
 )
-def test_quantize_backend_cli_flag(value: str, expected: QuantizeBackend) -> None:
-  args = cli_utils.maybe_postprocess_args(_parser().parse_args([
-    "--quantize-type",
-    "float8_per_row",
-    "--quantize-backend",
-    value,
-  ]))
+def test_quantize_backend_param(value: str, expected: QuantizeBackend) -> None:
+  args = cli_utils.maybe_postprocess_args(_parser().parse_args(
+    ["--quantize", "--quantize-params", f"backend={value}"]))
   assert args.quantize is True
   assert args.quantize_type == "float8_per_row"
   assert cli_utils._resolve_cli_quantize_backend(args) == expected
 
 
-def test_quantize_backend_alone_defaults_the_type() -> None:
-  args = cli_utils.maybe_postprocess_args(_parser().parse_args(["--quantize-backend", "cache_dit"]))
-  assert args.quantize is True
-  assert args.quantize_type == "float8_per_row"
-
-
 def test_invalid_quantize_backend_is_rejected() -> None:
-  with pytest.raises(SystemExit):
-    _parser().parse_args(["--quantize-backend", "nope"])
+  with pytest.raises(ValueError, match="Invalid --quantize-params 'backend=nope'"):
+    cli_utils.maybe_postprocess_args(_parser().parse_args(
+      ["--quantize", "--quantize-params", "backend=nope"]))
 
 
 @requires_native_fp8
@@ -80,10 +71,9 @@ def test_transformer_cli_passes_backend_to_config(monkeypatch, quant_type: str) 
 
   monkeypatch.setattr(cli_utils, "quantize", fake_quantize)
   args = cli_utils.maybe_postprocess_args(_parser().parse_args([
-    "--quantize-type",
-    quant_type,
-    "--quantize-backend",
-    "cache_dit",
+    "--quantize",
+    "--quantize-params",
+    f"quant_type={quant_type},backend=cache_dit",
     "--steps",
     "1",
   ]))
@@ -110,10 +100,9 @@ def test_torchao_backend_is_passed_explicitly(monkeypatch) -> None:
       self.proj = nn.Linear(2, 2)
 
   args = cli_utils.maybe_postprocess_args(_parser().parse_args([
-    "--quantize-type",
-    "float8_per_row",
-    "--quantize-backend",
-    "torchao",
+    "--quantize",
+    "--quantize-params",
+    "backend=torchao",
   ]))
   cli_utils.maybe_quantize_transformer(args, SimpleNamespace(transformer=_Toy()))
   assert captured[0].backend == QuantizeBackend.TORCHAO
@@ -133,10 +122,9 @@ def test_fp8_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
       self.proj = nn.Linear(2, 2)
 
   args = cli_utils.maybe_postprocess_args(_parser().parse_args([
-    "--float8",
-    "--quantize-backend",
-    "cache_dit",
-    "--fp8-fused-mlp",
+    "--quantize",
+    "--quantize-params",
+    "backend=cache_dit,fp8_fused_mlp=true",
     "--steps",
     "1",
   ]))

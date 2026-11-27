@@ -618,18 +618,25 @@ def test_inner_group_two_requires_three_stage_w1_w2() -> None:
                    })
 
 
-def test_packed_a4_cli_shortcuts() -> None:
-  from cache_dit.cli.utils import get_args
+def test_packed_a4_cli_params() -> None:
+  from cache_dit.cli.utils import get_args, maybe_postprocess_args
 
   parser = get_args(parse=False)
-  args = parser.parse_args(
-    ["--svdq-w2a4-r256-dq", "--svdq-packed-a4-stages", "3", "--svdq-packed-a4-inner-group", "2"])
-  assert args.svdq_w2a4_r256_dq
-  assert args.svdq_packed_a4_stages == 3
-  assert args.svdq_packed_a4_inner_group == 2
-  defaults = parser.parse_args([])
-  assert defaults.svdq_packed_a4_stages is None
-  assert defaults.svdq_packed_a4_inner_group is None
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize",
+      "--quantize-params",
+      "quant_type=svdq_w2a4_r256_dq",
+      "--svdq-params",
+      "packed_a4_stages=3,packed_a4_inner_group=2",
+    ]))
+  assert args.quantize_type == "svdq_w2a4_r256_dq"
+  assert args.svdq_kwargs["packed_a4_stages"] == 3
+  assert args.svdq_kwargs["packed_a4_inner_group"] == 2
+  defaults = maybe_postprocess_args(
+    parser.parse_args(["--quantize", "--quantize-params", "quant_type=svdq_w2a4_r256_dq"]))
+  assert "packed_a4_stages" not in defaults.svdq_kwargs
+  assert "packed_a4_inner_group" not in defaults.svdq_kwargs
 
 
 @pytest.mark.parametrize("rank", [144, 512])

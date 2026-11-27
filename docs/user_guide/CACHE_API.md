@@ -942,7 +942,7 @@ FoCA has no algorithm-specific hyper-parameters — the prediction formula adapt
 
 **<span style="color:#c77dff;">SVD-Cache</span>** is a **subspace-split** calibrator: instead of extrapolating the whole cached tensor, it decomposes it in the **token × channel plane** into a low-rank principal part and a high-frequency residual, smooths the principal part across steps, and freezes the residual. It needs no training and — unlike most subspace caching methods — **no offline calibration file**: the basis is estimated at run time from the first full-compute feature of the current inference. [arXiv:2601.07396](https://arxiv.org/abs/2601.07396)
 
-> **Naming note**: SVD-Cache is a **caching** calibrator. It is unrelated to **SVDQuant** (`--quantize-type svdq_*`), which is a weight-quantization backend. On the command line SVD-Cache is spelled `--calibrator svd` (or `--calibrator svd-calibrator`).
+> **Naming note**: SVD-Cache is a **caching** calibrator. It is unrelated to **SVDQuant** (`--quantize-params quant_type=svdq_*`), which is a weight-quantization backend. On the command line SVD-Cache is spelled `--calibrator svd` (or `--calibrator svd-calibrator`).
 
 > ⚠️ **Measured status (FLUX.1-dev, 1024², 28 steps, seed 0, RTX PRO 5000, 2 prompts, torch 2.15.0, 2026-11-17)**: on this harness **neither predictor beats the plain-reuse baseline often enough to recommend it**, so treat SVD-Cache as reproduction/experimental support:
 >

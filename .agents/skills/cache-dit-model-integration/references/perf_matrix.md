@@ -8,7 +8,7 @@ Stop and go back to `../SKILL.md` GATE CHECK if the model still has no `BlockAda
 `cdit.generate` example, or no CP/TP planner — that is an **integration** task, and its per-phase
 numbers live in `./testing.md`.
 
-量化行的类型选择、`--quantize-exclude-layers` / precision plan / observer 的用法，以及"精度掉了是量化还是接入的锅"这类归因，都去 `cache-dit-quantization`；本文件只规定跑哪些行、怎么出数、门槛多少。
+量化行的类型选择、`--quantize-params exclude_layers=` / precision plan / observer 的用法，以及"精度掉了是量化还是接入的锅"这类归因，都去 `cache-dit-quantization`；本文件只规定跑哪些行、怎么出数、门槛多少。
 
 Run order (do not reorder):
 
@@ -52,8 +52,8 @@ Rules:
 | [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache` | hits > 0 on a 30+ step model; record the real `_R` value |
 | [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache --rdt <hi>` | required when the default caches 0 steps (distilled models) |
 | [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache --rdt <hi> --compile` | fastest cache entry |
-| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize-type float8_per_row` | ~26 dB |
-| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-exclude-layers` if a gate layer has `min(in, out) < rank` |
+| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize --quantize-params quant_type=float8_per_row` | ~26 dB |
+| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-params exclude_layers=` if a gate layer has `min(in, out) < rank` |
 | [ ] | layerwise offload (sync) | `U1_C0_Q0_OFF` | `--layerwise-offload` | **PSNR inf** (bit-exact) |
 | [ ] | layerwise offload + async | `U1_C0_Q0_OFFA` | `--layerwise-offload --layerwise-async-transfer` | inf, and faster than the sync row |
 | [ ] | offload + compile | `U1_C1_Q0_OFF` | `--layerwise-offload --compile` | compile-tier drift (≈32 dB), **not** inf |
@@ -62,8 +62,8 @@ Rules:
 | [ ] | TP2 + compile | `TP2_C1_Q0_NONE` | `--parallel tp --compile` | |
 | [ ] | CP2 | `U2_C0_Q0_NONE` | `--parallel ulysses` | ≈30 dB; the real latency lever |
 | [ ] | CP2 + compile | `U2_C1_Q0_NONE` | `--parallel ulysses --compile` | |
-| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel ulysses --compile --quantize-type float8_per_row` | |
-| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel ulysses --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot` | |
+| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel ulysses --compile --quantize --quantize-params quant_type=float8_per_row` | |
+| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel ulysses --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` | |
 | [ ] | TE-P (run-only) | `TP2_C0_Q0_TEP` | `--parallel tp --parallel-text` | runs, ≈30 dB |
 | [ ] | VAE-P (run-only) | `TP2_C0_Q0_VAEP` | `--parallel tp --parallel-vae` | runs, ≈30 dB |
 
@@ -88,7 +88,7 @@ Rules:
 | [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel ulysses --cache` |
 | [ ] | **TP2 + CP2 (Ulysses)** | `U2T2_C0_Q0_NONE` | `--parallel ulysses_tp` |
 | [ ] | TP2 + CP2 + compile | `U2T2_C1_Q0_NONE` | `--parallel ulysses_tp --compile` |
-| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize-type float8_per_row` |
+| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize --quantize-params quant_type=float8_per_row` |
 
 ### Tier C checklist (8 GPUs, on request)
 
@@ -103,7 +103,7 @@ Rules:
 | [ ] | TP2 + CP4 + compile | `U4T2_C1_Q0_NONE` | `--parallel ulysses_tp --compile` |
 | [ ] | **TP4 + CP2 (TP first)** | `T4U2_C0_Q0_NONE` | `--parallel tp_ulysses` |
 | [ ] | TP4 + CP2 + compile | `T4U2_C1_Q0_NONE` | `--parallel tp_ulysses --compile` |
-| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize-type float8_per_row` |
+| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize --quantize-params quant_type=float8_per_row` |
 | [ ] | optional: USP+TP | `U2R2T2_C0_Q0_NONE` | `--parallel usp_tp` (8 ranks only) |
 
 ## 2. Fixed conditions — every row must share them
@@ -159,7 +159,7 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
   carry the actual peak (`- Memory Usage: X.XXGiB`), which is what tells the next person whether TP2
   is mandatory or merely nice to have.
 - Quantization for the same class of model: keep the modulation tables out of it
-  (`--quantize-exclude-layers adaln_proj norm_out`), since their error is shared by every token at
+  (`--quantize-params exclude_layers=adaln_proj+norm_out`), since their error is shared by every token at
   every step and accumulates coherently over the trajectory.
 
 ## 3. Distributed size mapping and preflight
@@ -258,8 +258,8 @@ run U1_C1_Q0_NONE            --compile
 run U1_C0_Q0_DB              --cache                          # read the effective _R from the tag
 run U1_C0_Q0_DB_HI           --cache --rdt 0.20               # distilled models need the raised one
 run U1_C1_Q0_DB_HI           --cache --rdt 0.20 --compile
-run U1_C1_FP8_NONE           --compile --quantize-type float8_per_row
-run U1_C1_W4A4_NONE          --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot
+run U1_C1_FP8_NONE           --compile --quantize --quantize-params quant_type=float8_per_row
+run U1_C1_W4A4_NONE          --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run U1_C0_Q0_OFF             --layerwise-offload
 run U1_C0_Q0_OFFA            --layerwise-offload --layerwise-async-transfer
 run U1_C1_Q0_OFF             --layerwise-offload --compile
@@ -273,19 +273,19 @@ run TP2_C0_Q0_NONE           --parallel tp
 run TP2_C1_Q0_NONE           --parallel tp --compile
 run U2_C0_Q0_NONE            --parallel ulysses
 run U2_C1_Q0_NONE            --parallel ulysses --compile
-run U2_C1_FP8_NONE           --parallel ulysses --compile --quantize-type float8_per_row
-run U2_C1_W4A4_NONE          --parallel ulysses --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot
+run U2_C1_FP8_NONE           --parallel ulysses --compile --quantize --quantize-params quant_type=float8_per_row
+run U2_C1_W4A4_NONE          --parallel ulysses --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run TP2_C0_Q0_TEP            --parallel tp --parallel-text     # run-only
 run TP2_C0_Q0_VAEP           --parallel tp --parallel-vae      # run-only
 ```
 
 Notes on the quantization flags:
 
-- `--svdq-smooth-strategy few_shot` matters on pixel-space / few-shot-calibrated models — the
+- `--svdq-params smooth_strategy=few_shot` matters on pixel-space / few-shot-calibrated models — the
   default `identity` can garble the image while PSNR still reads ~28 (SKILL.md pitfall #11).
 - **Check the gate layers first**: `svdq_*_r64_dq` aborts with `rank 64 exceeds the maximum
   supported rank 32` on a `Linear` whose `min(in, out) < rank`. DFR needs
-  `--quantize-exclude-layers to_gate_logits`; any model with a similar `heads`-sized gate needs its
+  `--quantize-params exclude_layers=to_gate_logits`; any model with a similar `heads`-sized gate needs its
   own exclusion list. This is per-model, so it cannot be baked into the template.
 - `fp8_per_row` only pays off together with `--compile`; measuring it eager is a wasted row.
 - sm_89 cards (L20/L40S) → `svdq_int4_r64_dq`; sm_120 (RTX PRO 5000) → `svdq_nvfp4_r64_dq`.
@@ -302,7 +302,7 @@ run U4_C1_Q0_NONE    --parallel ulysses --compile
 run U4_C0_Q0_DB      --parallel ulysses --cache
 run U2T2_C0_Q0_NONE  --parallel ulysses_tp
 run U2T2_C1_Q0_NONE  --parallel ulysses_tp --compile
-run U2T2_C1_FP8_NONE --parallel ulysses_tp --compile --quantize-type float8_per_row
+run U2T2_C1_FP8_NONE --parallel ulysses_tp --compile --quantize --quantize-params quant_type=float8_per_row
 ```
 
 Tier C (8 GPUs):
@@ -319,7 +319,7 @@ run U4T2_C0_Q0_NONE   --parallel ulysses_tp      # TP2 + CP4, Ulysses first
 run U4T2_C1_Q0_NONE   --parallel ulysses_tp --compile
 run T4U2_C0_Q0_NONE   --parallel tp_ulysses      # TP4 + CP2, TP first
 run T4U2_C1_Q0_NONE   --parallel tp_ulysses --compile
-run U4T2_C1_FP8_NONE  --parallel ulysses_tp --compile --quantize-type float8_per_row
+run U4T2_C1_FP8_NONE  --parallel ulysses_tp --compile --quantize --quantize-params quant_type=float8_per_row
 run U2R2T2_C0_Q0_NONE --parallel usp_tp          # optional
 ```
 
@@ -365,7 +365,7 @@ card count, and reusing them as "the expected level" is how wrong conclusions st
 a finished table must still carry:
 
 - the workload (resolution / frames / steps), the card count and the layout (`tp2`, `u2`, `u2t2`, ...);
-- the flags that changed behaviour: excluded quant layers, `--svdq-smooth-strategy`, `--ulysses-anything`,
+- the flags that changed behaviour: excluded quant layers, `--svdq-params smooth_strategy=`, `--ulysses-anything`,
   effective cache threshold;
 - the determinism baseline (`inf` or `X dB`) — it sets the floor for every other row;
 - whether offload was a win or a loss **on this hardware**: on a card that already holds the weights
@@ -490,7 +490,7 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
   offload + compile is *not* bit-exact, judge it against the compile tier. On a model whose reference
   row already runs under offload (§2), these rows stop being extras: the baseline *is* an offload row,
   so the caption must state that and the speedups are relative to it.
-- Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-smooth-strategy`,
+- Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-params smooth_strategy=`,
   UAA requirement, hybrid head divisibility). A number that needs a hidden flag is a trap for the
   next person.
 - End with a **recommended entry** and the reason: "at equal speed pick the higher quality"

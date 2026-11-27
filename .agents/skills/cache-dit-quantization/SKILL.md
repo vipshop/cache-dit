@@ -85,7 +85,7 @@ restored = cache_dit.load(module, "path/to/checkpoint")      # 仅 CACHE_DIT（S
 | `observer` | `QuantizationObserverConfig`，默认 `None` = 关闭 |
 | `verbose` | 打印逐层量化信息 |
 
-CLI：`--quantize` / `--quantize-type` / `--quantize-backend torchao|cache_dit`（省略 = AUTO）/ 预设（如 `--svdq-int4-r32-dq`、`--svdq-nvfp4-r32-dq`）/ `--quantize-exclude-layers` / `--quantize-text-encoder` / `--quantize-text-type` / `--quantize-controlnet` / `--quantize-controlnet-type` / `--quantize-verbose`。转换独立模型用 `cache-dit-convert`（§5.4）。
+CLI：`--quantize`（纯开关，不带 `quant_type` 时默认 `float8_per_row`）/ `--quantize-params "k=v,k=v"`（`quant_type`、`backend torchao|cache_dit`（省略 = AUTO）、`regional_quantize`、`per_tensor_fallback`、`exclude_layers=a+b`、`text_encoder=<type>|true`、`verbose`、`fp8_fused_mlp`、`fp4_fused_mlp`、`mxfp4_quantize_device`；除 `text_encoder` 外都需要 `--quantize`）/ `--svdq-params "k=v,k=v"`（键 = `svdq_kwargs` 字段，仅 `svdq_*` 类型；layerwise 键不写则继承 `--layerwise-*`）。类型快捷开关、`--quantize-type`、`--quantize-backend` 等逐项 flag 已废弃。转换独立模型用 `cache-dit-convert --svdq-params`（§5.4）。
 
 ## 4. TorchAO online 路径
 

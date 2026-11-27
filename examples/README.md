@@ -185,9 +185,10 @@ torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp --parallel-text
 
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize-type float8_per_row --compile
+  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize --compile
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --svdq-nvfp4-r64-dq --compile
+  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize \
+  --quantize-params quant_type=svdq_nvfp4_r64_dq --compile
 python3 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design \
   --layerwise-offload --layerwise-async-transfer --no-layerwise-text-async-transfer --compile
@@ -251,14 +252,14 @@ cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥t
 
 ```bash
 # please also enable torch.compile if the quantation is using.
-python3 -m cache_dit.generate flux --cache --quantize-type float8 --compile
+python3 -m cache_dit.generate flux --cache --quantize --compile
 # cache-dit's own FP8 kernels (sm100+), instead of the default TorchAO backend
-python3 -m cache_dit.generate flux --cache --quantize-type float8_per_row \
-  --quantize-backend cache_dit --compile
-python3 -m cache_dit.generate flux --cache --quantize-type int8 --compile
-python3 -m cache_dit.generate flux --cache --quantize-type float8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize-type int8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize-type bnb_4bit --compile # w4a16
+python3 -m cache_dit.generate flux --cache --quantize \
+  --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
+python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=int8_per_row --compile
+python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=float8_weight_only --compile
+python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=int8_weight_only --compile
+python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=bitsandbytes_4bit --compile # w4a16
 python3 -m cache_dit.generate flux_nunchaku --cache --compile # w4a4 SVDQ
 ```
 
@@ -273,18 +274,18 @@ python3 -m cache_dit.generate flux --cache --scm fast --calibrator taylorseer --
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn _sdpa_cudnn --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
+         --calibrator-params order=1 --quantize --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn sage --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize-type float8 --warmup 2 --repeat 5 --compile
+         --calibrator-params order=1 --quantize --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
          --parallel ulysses --ulysses-anything --parallel-text \
-         --quantize-type float8_weight_only --steps 4 --track-memory --compile
+         --quantize --quantize-params quant_type=float8_weight_only --steps 4 --track-memory --compile
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
-         --parallel tp --parallel-text --quantize-type float8_weight_only \
+         --parallel tp --parallel-text --quantize --quantize-params quant_type=float8_weight_only \
          --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel ulysses \
@@ -350,8 +351,8 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
             task_type=ExampleType.T2I,  # Text to Image
             model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
             pipeline_class=FluxPipeline,
-            # `text_encoder_2` will be quantized when `--quantize-type` 
-            # is set to `bnb_4bit`.
+            # `text_encoder_2` will be quantized when `--quantize-params`
+            # `quant_type` is set to `bitsandbytes_4bit`.
             bnb_4bit_components=["text_encoder_2"],
         ),
         input_data=ExampleInputData(
@@ -464,36 +465,36 @@ options:
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy
   --quantize, --q       Enable quantization for transformer
+  --quantize-params QUANTIZE_PARAMS
+                        Quantization options as a comma separated key=value
+                        list, e.g. 'quant_type=float8_per_row' (default when
+                        omitted), 'backend=cache_dit',
+                        'exclude_layers=adaln_proj+norm_out',
+                        'text_encoder=float8_weight_only' (or 'true' to reuse
+                        quant_type; usable without --quantize),
+                        'regional_quantize=false',
+                        'per_tensor_fallback=false', 'verbose=true',
+                        'fp8_fused_mlp=true', 'fp4_fused_mlp=true',
+                        'mxfp4_quantize_device=cpu'.
+  --svdq-params SVDQ_PARAMS
+                        SVDQuant options as a comma separated key=value list,
+                        requires an svdq_* quant_type. Keys are the
+                        svdq_kwargs fields: smooth_strategy,
+                        calibrate_precision, runtime_kernel, lora_layout,
+                        quantize_device, offload_quantized_layers_to_cpu,
+                        layerwise_offload, async_transfer, transfer_buckets,
+                        prefetch_limit, max_copy_streams,
+                        max_inflight_prefetch_bytes, persistent_buckets,
+                        persistent_bins, defer_move_to_execution_device,
+                        few_shot_steps, few_shot_relax_factor,
+                        few_shot_relax_top_ratio, few_shot_relax_strategy,
+                        few_shot_auto_compile, fused_mlp, svd_refine_iters,
+                        packed_a4_stages, packed_a4_inner_group, streaming,
+                        activation_buffer_flush_sample_count,
+                        activation_buffer_flush_cpu_bytes. The layerwise keys
+                        inherit --layerwise-* when omitted.
   --disable-per-row, --no-per-row
                         Disable per row quantization for transformer
-  --quantize-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
-  --disable-regional-quantize, --disable-regional, --no-regional
-                        Disable quantization for repeated blocks in transformer
-  --disable-per-tensor-fallback, --no-per-tensor-fallback
-                        Disable (float8 only) per-tensor fallback quantization for transformer
-  --float8-per-row, --float8
-                        Enable float8 per-row quantization for transformer
-  --float8-per-tensor   Enable float8 per-tensor quantization for transformer
-  --float8-per-block    Enable float8 per-block quantization for transformer
-  --float8-weight-only, --float8-wo
-                        Enable float8 weight-only quantization for transformer
-  --float8-blockwise, --float8-bw
-                        Enable float8 blockwise quantization for transformer
-  --int8-per-row, --int8
-                        Enable int8 per-row quantization for transformer
-  --int8-per-tensor     Enable int8 per-tensor quantization for transformer
-  --int8-weight-only, --int8-wo
-                        Enable int8 weight-only quantization for transformer
-  --int4-weight-only, --int4-wo
-                        Enable int4 weight-only quantization for transformer
-  --quantize-text-encoder, --q-text
-                        Enable quantization for text encoder
-  --quantize-text-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-text-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
-  --quantize-controlnet, --q-controlnet
-                        Enable quantization for ControlNet
-  --quantize-controlnet-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}, --q-controlnet-type {None,float8_per_row,float8_per_tensor,float8_per_block,float8_weight_only,int8_per_row,int8_per_tensor,int8_weight_only,int4_weight_only,bitsandbytes_4bit}
-  --quantize-verbose, --q-verbose
-                        Print the verbose logs of the quantization process
   --parallel-type {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}, --parallel {None,tp,ulysses,ring,usp,ulysses_tp,ring_tp,tp_ulysses,tp_ring,usp_tp}
   --parallel-vae        Enable VAE parallelism if applicable.
   --parallel-text-encoder, --parallel-text
