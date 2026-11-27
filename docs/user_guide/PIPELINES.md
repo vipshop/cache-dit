@@ -88,7 +88,7 @@ from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Pipeline
 from cache_dit.models.pipelines.flux3_klein.transformer_flux3_klein import upgrade_transformer
 ```
 
-Each of them is a normal pipeline object: `from_pretrained(...)`, `enable_cache(...)`, then call it with the model's own arguments. Cache, parallelism, quantization, offload and compile are supported for all of them — see the [supported matrix](../supported_matrix/NVIDIA_GPU.md) for per-model coverage, and `docs/EXAMPLES.md` for the model-specific cache presets.
+Each of them is a normal pipeline object: `from_pretrained(...)`, `enable_cache(...)`, then call it with the model's own arguments. Cache, parallelism, quantization, offload and compile are supported for all of them — see the [supported matrix](../supported_matrix/NVIDIA_GPU.md) for per-model coverage, and [`docs/EXAMPLES.md`](../EXAMPLES.md) for the minimal single- and multi-GPU commands.
 
 `python3 -m cache_dit.generate list` prints the CLI example name and default checkpoint of every supported model, e.g.
 

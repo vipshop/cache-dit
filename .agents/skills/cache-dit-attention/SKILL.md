@@ -119,7 +119,7 @@ tests/api/test_<name>_backend.py                 # 新文件
 | `docs/user_guide/INSTALL.md` | 可选依赖安装命令（**不要**给 vendor 包加 `pyproject` extra，现有 flash/sage/ffpa/sol_attn 都没加） |
 | `docs/user_guide/API_DOCS.md` | `attention_backend` 的候选名单 |
 | `docs/user_guide/CONTEXT_PARALLEL.md` | CP 限制（如"只能纯 Ulysses"） |
-| `docs/EXAMPLES.md` | 有代表性的 `--attn-params type=X` 示例命令 |
+| `docs/EXAMPLES.md` | 最小单卡/多卡命令（attention 细节以 `docs/user_guide/ATTENTION.md` 为准） |
 | `docs/developer_guide/AGENTS.md` | 只有**新增/删除 skill** 时才动，不要为单个 backend 改 |
 
 ## 7. 先例速查（完整分析见 `references/precedents.md`）

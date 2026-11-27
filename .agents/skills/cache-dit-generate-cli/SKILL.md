@@ -243,11 +243,11 @@ C1_DBCache_F1B0_W8I1M0MC3_R0.2_CFG0_T1O1_Ulysses2_UF8K_G16_float8_per_row_native
 | `src/cache_dit/cli/compile.py` | compile / CUDA Graph / fullgraph |
 | `src/cache_dit/cli/offload.py` | CPU offload 与 AdaLN 相关约束 |
 | `src/cache_dit/cli/registers.py` | `Example.run`、进度条、计时与 summary |
-| `docs/EXAMPLES.md` | 权威用户示例；`--help` 捕获块必须与当前输出逐字节一致 |
+| `docs/EXAMPLES.md` | 最小单卡/多卡命令；完整选项、默认值与别名的权威来源是 `--help` |
 
 修改 CLI 后：
 
-1. 同步更新 `docs/EXAMPLES.md` 的 help 块与命令示例；
+1. 同步更新 `docs/EXAMPLES.md` 的快速示例；
 2. 同步本 skill 的 recipe 和 `references/options.md`；
 3. 跑 `python3 -m cache_dit.generate --help` 和一条 tiny smoke；
 4. 跑 `pytest tests/api/test_parallel_params.py tests/quantization/test_quantize_params.py tests/api/test_attn_params.py`。
