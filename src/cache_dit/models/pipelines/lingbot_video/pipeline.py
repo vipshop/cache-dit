@@ -267,7 +267,7 @@ class LingBotVideoPipeline(DiffusionPipeline):
     inference_dtype, vae_dtype = _resolve_dtypes(torch_dtype if torch_dtype is not None else dtype)
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize LingBot-Video through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if device_map is not None:
       raise NotImplementedError(
         "LingBot-Video does not support `--device-map-balance`: the CLI skips `pipe.to(device)` for "

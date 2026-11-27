@@ -121,7 +121,7 @@ def quantize_fp8(module: nn.Module, quantize_config: QuantizeConfig) -> nn.Modul
   capability = torch.cuda.get_device_capability()
   if capability < (10, 0):
     raise RuntimeError(f"cache-dit FP8 kernels require sm100 or newer, got sm{capability[0]}"
-                       f"{capability[1]}. Use --quantize-backend torchao on this device.")
+                       f"{capability[1]}. Use --quantize-params backend=torchao on this device.")
 
   from ...utils import check_quantized
 

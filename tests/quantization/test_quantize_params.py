@@ -18,7 +18,7 @@ from cache_dit.quantization.config import (
 
 parser = cli_utils.get_args(parse=False)
 
-SVDQ = ("--quantize", "--quantize-params", "quant_type=svdq_int4_r32_dq", "--svdq-params")
+SVDQ = ("--quantize-params", "quant_type=svdq_int4_r32_dq", "--svdq-params")
 
 
 def resolve(argv):
@@ -40,7 +40,7 @@ def test_svdq_dq_quant_types_parse() -> None:
 
 @pytest.mark.parametrize("quant_type", [*ONLINE_QUANT_TYPES, *SVDQ_DQ_QUANT_TYPES])
 def test_quantize_type_param_accepts_every_listed_type(quant_type) -> None:
-  args = resolve(["--quantize", "--quantize-params", f"quant_type={quant_type.replace('_', '-')}"])
+  args = resolve(["--quantize-params", f"quant_type={quant_type.replace('_', '-')}"])
   assert args.quantize_type == quant_type
 
 
@@ -52,20 +52,34 @@ def test_parse_param_pairs_syntax() -> None:
       parse_param_pairs(bad, "--f", "'a=1'")
 
 
-def test_quantize_is_a_bare_switch_with_a_default_type() -> None:
-  args = resolve(["--quantize"])
-  assert args.quantize is True
-  assert args.quantize_type == "float8_per_row"
+def test_no_quantize_params_disables_quantization() -> None:
+  args = resolve([])
+  assert args.quantize is False
+  assert args.quantize_type is None
   assert args.quantize_fields == {}
   assert args.svdq_kwargs is None
 
 
+def test_quantize_params_turn_on_transformer_quantization() -> None:
+  args = resolve(["--quantize-params", "backend=cache_dit"])
+  assert args.quantize is True
+  assert args.quantize_type == "float8_per_row"
+  assert args.quantize_fields == {"backend": "cache_dit"}
+  args = resolve(["--quantize-params", "quant_type=float8_per_row"])
+  assert args.quantize is True
+  assert args.quantize_fields == {"quant_type": "float8_per_row"}
+  with pytest.raises(SystemExit):
+    parser.parse_args(["--quantize"])
+  with pytest.raises(SystemExit):
+    parser.parse_args(["--q"])
+
+
 def test_quantize_type_param() -> None:
   for text in ("svdq-nvfp4-r64-dq", "svdq_nvfp4_r64_dq"):
-    args = resolve(["--quantize", "--quantize-params", f"quant_type={text}"])
+    args = resolve(["--quantize-params", f"quant_type={text}"])
     assert args.quantize_type == "svdq_nvfp4_r64_dq"
   with pytest.raises(ValueError, match="Invalid --quantize-params 'quant_type=nope'"):
-    resolve(["--quantize", "--quantize-params", "quant_type=nope"])
+    resolve(["--quantize-params", "quant_type=nope"])
 
 
 @pytest.mark.parametrize(
@@ -81,7 +95,7 @@ def test_quantize_type_param() -> None:
   ],
 )
 def test_quantize_params_are_resolved(text, key, expected) -> None:
-  args = resolve(["--quantize", "--quantize-params", text])
+  args = resolve(["--quantize-params", text])
   assert args.quantize_fields[key] == expected
   if key == "exclude_layers":
     assert args.quantize_exclude_layers == expected
@@ -89,35 +103,52 @@ def test_quantize_params_are_resolved(text, key, expected) -> None:
 
 def test_quantize_params_reject_unknown_keys_and_bad_values() -> None:
   with pytest.raises(ValueError, match="Unknown --quantize-params keys \\['nope'\\]"):
-    resolve(["--quantize", "--quantize-params", "nope=1"])
+    resolve(["--quantize-params", "nope=1"])
   with pytest.raises(ValueError, match="Invalid --quantize-params 'regional_quantize=maybe'"):
-    resolve(["--quantize", "--quantize-params", "regional_quantize=maybe"])
+    resolve(["--quantize-params", "regional_quantize=maybe"])
   with pytest.raises(ValueError, match="Invalid --quantize-params 'backend=nonsense'"):
-    resolve(["--quantize", "--quantize-params", "backend=nonsense"])
+    resolve(["--quantize-params", "backend=nonsense"])
 
 
-def test_quantize_params_require_quantize_except_text_encoder() -> None:
-  with pytest.raises(ValueError, match="require --quantize"):
-    resolve(["--quantize-params", "quant_type=float8_per_row"])
+def test_text_encoder_alone_only_quantizes_the_text_encoder() -> None:
   args = resolve(["--quantize-params", "text_encoder=bitsandbytes_4bit"])
   assert args.quantize is False
+  assert args.quantize_type is None
   assert args.quantize_fields["text_encoder"] == "bitsandbytes_4bit"
+  # The text encoder config is built with a `quant_type` override while `args.quantize_type`
+  # is None.
+  args = resolve(["--quantize-params", "text_encoder=int8_per_row"])
+  config = cli_utils.build_quantize_config(args,
+                                           quant_type="int8_per_row",
+                                           svdq_kwargs=None,
+                                           fp8_fused_mlp=False,
+                                           fp4_fused_mlp=False)
+  assert config.quant_type == "int8_per_row"
+  assert config.svdq_kwargs is None
+
+
+def test_empty_quantize_params_is_rejected() -> None:
+  # The flag is the switch now, so an empty shell variable must not silently skip quantization.
+  for empty in ("", " "):
+    with pytest.raises(SystemExit):
+      parser.parse_args(["--quantize-params", empty])
 
 
 def test_text_encoder_param() -> None:
-  args = resolve(["--quantize", "--quantize-params", "text_encoder=true"])
+  args = resolve(["--quantize-params", "quant_type=float8_per_row,text_encoder=true"])
+  assert args.quantize is True
   assert args.quantize_fields["text_encoder"] == "float8_per_row"
-  args = resolve(["--quantize", "--quantize-params", "text_encoder=int8_per_row"])
+  args = resolve(["--quantize-params", "text_encoder=int8_per_row"])
   assert args.quantize_fields["text_encoder"] == "int8_per_row"
-  with pytest.raises(ValueError, match="'text_encoder=true' requires --quantize"):
+  with pytest.raises(ValueError, match="'text_encoder=true' needs a transformer quant_type"):
     resolve(["--quantize-params", "text_encoder=true"])
   with pytest.raises(ValueError, match="Invalid --quantize-params 'text_encoder=nvfp4'"):
-    resolve(["--quantize", "--quantize-params", "text_encoder=nvfp4"])
+    resolve(["--quantize-params", "text_encoder=nvfp4"])
 
 
 def test_svdq_params_require_an_svdq_type_and_known_keys() -> None:
   with pytest.raises(ValueError, match="--svdq-params requires an svdq_\\* quant_type"):
-    resolve(["--quantize", "--svdq-params", "smooth_strategy=few_shot"])
+    resolve(["--svdq-params", "smooth_strategy=few_shot"])
   with pytest.raises(ValueError, match="Unknown --svdq-params keys \\['nope'\\]"):
     resolve([*SVDQ, "nope=1"])
 
@@ -144,14 +175,13 @@ def test_svdq_params_bad_values_fail_at_postprocess() -> None:
 
 
 def test_svdq_layerwise_keys_inherit_and_override_layerwise_flags() -> None:
-  kwargs = resolve([
-    "--quantize", "--quantize-params", "quant_type=svdq_int4_r32_dq",
-    "--layerwise-transfer-buckets", "4"
-  ]).svdq_kwargs
+  kwargs = resolve(
+    ["--quantize-params", "quant_type=svdq_int4_r32_dq", "--layerwise-transfer-buckets",
+     "4"]).svdq_kwargs
   assert kwargs["transfer_buckets"] == 4
   kwargs = resolve([
-    "--quantize", "--quantize-params", "quant_type=svdq_int4_r32_dq",
-    "--layerwise-transfer-buckets", "4", "--svdq-params", "transfer_buckets=2"
+    "--quantize-params", "quant_type=svdq_int4_r32_dq", "--layerwise-transfer-buckets", "4",
+    "--svdq-params", "transfer_buckets=2"
   ]).svdq_kwargs
   assert kwargs["transfer_buckets"] == 2
 
@@ -174,7 +204,6 @@ def test_svdq_cli_derivations_and_explicit_keys_win() -> None:
 
 def test_build_quantize_config_uses_the_resolved_options() -> None:
   args = resolve([
-    "--quantize",
     "--quantize-params",
     "quant_type=svdq_int4_r32_dq,exclude_layers=adaln_proj,regional_quantize=false,verbose=true",
     "--svdq-params",
@@ -193,6 +222,8 @@ def test_build_quantize_config_uses_the_resolved_options() -> None:
 @pytest.mark.parametrize(
   "flag",
   [
+    "--quantize",
+    "--q",
     "--svdq-nvfp4-r32-dq",
     "--svdq-r32",
     "--float8",

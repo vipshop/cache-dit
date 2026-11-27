@@ -236,7 +236,7 @@ class MOVAPipeline(DiffusionPipeline):
       import logging
 
       logging.getLogger(__name__).warning(
-        "Ignoring quantization_config: quantize MOVA through cache-dit's `--quantize-type` flags so "
+        "Ignoring quantization_config: quantize MOVA through cache-dit's `--quantize-params` so "
         "the fused blocks are discovered.")
     if device_map is not None:
       raise NotImplementedError(

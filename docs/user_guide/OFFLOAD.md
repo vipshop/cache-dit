@@ -164,7 +164,7 @@ which are `torch.compiler.disable`d, so each streamed block becomes a graph brea
 compiles around it (measured 1.10–1.13× instead of the 1.18–1.59× a resident transformer gets).
 `--compile-full-graph` and `--cuda-graph` are rejected while the tables are streamed — `fullgraph`
 refuses the break by construction, and a CUDA graph would replay the stale device pointers the host
-mirror rebinds every block. A quantized (`--quantize`) or tensor-parallel (`--parallel tp`) run
+mirror rebinds every block. A transformer-quantized (`--quantize-params` with a transformer key) or tensor-parallel (`--parallel tp`) run
 keeps the transformer resident, so only the text encoder is streamed and all three knobs compose.
 `--device-map-balance` is rejected outright.
 

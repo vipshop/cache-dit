@@ -280,7 +280,7 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
       model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
       pipeline_class=FluxPipeline,
       transformer=transformer,  # maybe use Nunchaku Flux transformer
-      # `text_encoder_2` will be quantized when `--quantize-type`
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder`
       # is set to `bnb_4bit`. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
@@ -311,7 +311,7 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
       task_type=ExampleType.IE2I,  # Image Editing to Image
       model_name_or_path=_path("black-forest-labs/FLUX.1-Fill-dev"),
       pipeline_class=FluxFillPipeline,
-      # `text_encoder_2` will be quantized when `--quantize-type`
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder`
       # is set to `bnb_4bit`. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
@@ -4172,7 +4172,7 @@ def sana_video2_example(args: argparse.Namespace, **kwargs) -> Example:
 
   W4A4 note: `attn.beta_proj` is a `Linear(2560, 20)` gate, so a 64-rank SVDQ checkpoint cannot fit
   it and its 4-bit error lands straight in `sigmoid`. Quantize with
-  `--quantize-exclude-layers beta_proj attn_res` (the acceptance matrix uses exactly that).
+  `--quantize-params exclude_layers=beta_proj+attn_res` (the acceptance matrix uses exactly that).
 
   Caching note: the model aggregates depth representations every 8 layers, so a cached step reuses
   the group residuals of the skipped groups. Keep `--Fn` on a multiple of 8: `--Fn 16 --rdt 0.20`
@@ -5532,7 +5532,7 @@ def _pika_h3_flex_init_hook(model_path: str, weight_name: str, workflow: str, fu
 
   Fusing here is not an optimization. With `peft.tuners.lora.Linear` still in place, every
   `ColwiseParallel` / `RowwiseParallel` shard of the six target linears misses its key, and
-  `--quantize-exclude-layers` substring matching sees the PEFT wrapper names instead of the diffusers
+  `--quantize-params exclude_layers` substring matching sees the PEFT wrapper names instead of the diffusers
   ones. Both fail without an exception, so the hook asserts the end state instead of trusting it.
 
   :param model_path: Checkpoint root the adapter lives under.
@@ -6037,7 +6037,7 @@ def _minimax_h3_image_quantize_exclusions(args: argparse.Namespace) -> None:
   """Install the MiniMax-H3-Image default quantization exclusions on ``args``.
 
   `token_refiner` is deliberately kept: it only sees the text stream and is a small share of the
-  weights. Pass `--quantize-exclude-layers` with `token_refiner` appended to trade speed for
+  weights. Pass `--quantize-params exclude_layers` with `token_refiner` appended to trade speed for
   accuracy if a checkpoint turns out to be sensitive there.
 
   :param args: CLI arguments, updated in place when the user did not pass the flag.

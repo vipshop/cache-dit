@@ -99,6 +99,7 @@ Available examples:
 - ✅ helios_t2v_distill               - Default: BestWishYsh/Helios-Distilled
 - ✅ cosmos3_omni_t2i                 - Default: nvidia/Cosmos3-Nano
 - ✅ cosmos3_omni_t2v                 - Default: nvidia/Cosmos3-Nano
+- ✅ boogu_image_edit                 - Default: BOOGU-IMAGE/Boogu-Image-0.1-Edit
 - ✅ ernie_image                      - Default: baidu/ERNIE-Image
 - ✅ ernie_image_turbo                - Default: baidu/ERNIE-Image-Turbo
 - ✅ krea2                            - Default: krea/Krea-2-Turbo
@@ -246,9 +247,9 @@ torchrun --nproc_per_node=2 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design --parallel tp --parallel-text
 
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize --compile
+  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize-params quant_type=float8_per_row --compile
 python3 -m cache_dit.generate ming_image_design \
-  --model-path /PATH/TO/Ming-Image-0.1-Design --quantize \
+  --model-path /PATH/TO/Ming-Image-0.1-Design \
   --quantize-params quant_type=svdq_nvfp4_r64_dq --compile
 python3 -m cache_dit.generate ming_image_design \
   --model-path /PATH/TO/Ming-Image-0.1-Design \
@@ -345,7 +346,7 @@ torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --
 
 # VAE parallelism + quantization
 torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel tp --parallel-vae
-python3 -m cache_dit.generate lingbot_video --quantize --compile --cache
+python3 -m cache_dit.generate lingbot_video --quantize-params quant_type=float8_per_row --compile --cache
 
 # cheaper functional check (short clip, small canvas)
 python3 -m cache_dit.generate lingbot_video --num-frames 9 --height 256 --width 256 --steps 20 --cache
@@ -391,14 +392,14 @@ cache-dit is designed to work seamlessly with torch.compile, Quantization (🔥t
 
 ```bash
 # please also enable torch.compile if the quantation is using.
-python3 -m cache_dit.generate flux --cache --quantize --compile
+python3 -m cache_dit.generate flux --cache --quantize-params quant_type=float8_per_row --compile
 # cache-dit's own FP8 kernels (sm100+), instead of the default TorchAO backend
-python3 -m cache_dit.generate flux --cache --quantize \
+python3 -m cache_dit.generate flux --cache \
   --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
-python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=int8_per_row --compile
-python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=float8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=int8_weight_only --compile
-python3 -m cache_dit.generate flux --cache --quantize --quantize-params quant_type=bitsandbytes_4bit --compile # w4a16
+python3 -m cache_dit.generate flux --cache --quantize-params quant_type=int8_per_row --compile
+python3 -m cache_dit.generate flux --cache --quantize-params quant_type=float8_weight_only --compile
+python3 -m cache_dit.generate flux --cache --quantize-params quant_type=int8_weight_only --compile
+python3 -m cache_dit.generate flux --cache --quantize-params quant_type=bitsandbytes_4bit --compile # w4a16
 python3 -m cache_dit.generate flux_nunchaku --cache --compile # w4a4 SVDQ
 ```
 
@@ -413,12 +414,14 @@ python3 -m cache_dit.generate flux --cache --scm fast --calibrator taylorseer --
 # + FP8 quantization + FP8 All2All comm + CUDNN Attention (--attn _sdpa_cudnn)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn _sdpa_cudnn --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize --warmup 2 --repeat 5 --compile
+         --calibrator-params order=1 --quantize-params quant_type=float8_per_row \
+         --warmup 2 --repeat 5 --compile
 # DBCache + SCM + Taylorseer + Context Parallelism + Text Encoder Parallelism + Compile 
 # + FP8 quantization + FP8 All2All comm + FP8 SageAttention (--attn sage)
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --quant-communicate-params bits=8 \
          --attn sage --parallel-text --cache --scm fast --calibrator taylorseer \
-         --calibrator-params order=1 --quantize --warmup 2 --repeat 5 --compile
+         --calibrator-params order=1 --quantize-params quant_type=float8_per_row \
+         --warmup 2 --repeat 5 --compile
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
          --parallel ulysses --ulysses-anything --parallel-text \
@@ -675,15 +678,14 @@ options:
   --steps-mask          Enable steps mask for CacheDiT
   --mask-policy {None,slow,s,medium,m,fast,f,ultra,u}, --scm {None,slow,s,medium,m,fast,f,ultra,u}
                         Pre-defined steps computation mask policy
-  --quantize, --q       Enable quantization for transformer
   --quantize-params QUANTIZE_PARAMS
-                        Quantization options as a comma separated key=value
-                        list, e.g. 'quant_type=float8_per_row' (default when
-                        omitted), 'backend=cache_dit',
+                        Quantize the transformer; options as a comma separated
+                        key=value list, e.g. 'quant_type=float8_per_row' (the
+                        default type when omitted), 'backend=cache_dit',
                         'exclude_layers=adaln_proj+norm_out',
                         'text_encoder=float8_weight_only' (or 'true' to reuse
-                        quant_type; usable without --quantize),
-                        'regional_quantize=false',
+                        quant_type; quantizes only the text encoder when it is
+                        the only key), 'regional_quantize=false',
                         'per_tensor_fallback=false', 'verbose=true',
                         'fp8_fused_mlp=true', 'fp4_fused_mlp=true',
                         'mxfp4_quantize_device=cpu'.
@@ -758,11 +760,11 @@ options:
                         weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it
                         cuts both the resident footprint and the per-step
                         host-to-device traffic. While the AdaLN tables are
-                        actually streamed (i.e. without `--quantize` or
-                        `--parallel tp`) each per-block copy is a graph break,
-                        so `--compile` still works but pays a smaller speedup;
-                        `--compile-full-graph` and `--cuda-graph` are rejected
-                        in that case.
+                        actually streamed (i.e. without transformer
+                        quantization or `--parallel tp`) each per-block copy
+                        is a graph break, so `--compile` still works but pays
+                        a smaller speedup; `--compile-full-graph` and `--cuda-
+                        graph` are rejected in that case.
   --adaln-online        Precompute the AdaLN modulation tables of a MiniMax-H3
                         transformer for the checkpoint's fixed sampling grid,
                         keep the small results on the device and park the 24

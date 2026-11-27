@@ -727,7 +727,6 @@ def test_svdq_dq_cli_runtime_kernel_choices() -> None:
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -737,7 +736,6 @@ def test_svdq_dq_cli_runtime_kernel_choices() -> None:
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_nvfp4_r32_dq",
       "--svdq-params",
@@ -749,7 +747,6 @@ def test_svdq_dq_cli_runtime_kernel_choices() -> None:
     with pytest.raises(ValueError, match="runtime_kernel"):
       maybe_postprocess_args(
         parser.parse_args([
-          "--quantize",
           "--quantize-params",
           "quant_type=svdq_int4_r32_dq",
           "--svdq-params",
@@ -774,7 +771,6 @@ def test_svdq_dq_cli_few_shot_options(relax_strategy: str) -> None:
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -789,7 +785,6 @@ def test_svdq_dq_cli_few_shot_options(relax_strategy: str) -> None:
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -870,7 +865,6 @@ def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization(
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -899,7 +893,6 @@ def test_svdq_dq_cli_weight_inv_strategy_is_applied_during_transformer_quantizat
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -929,7 +922,6 @@ def test_svdq_dq_cli_quantization_runs_from_cpu_root_and_keeps_quantized_layers_
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
     ]))
@@ -956,7 +948,6 @@ def test_svdq_dq_cli_layerwise_offload_forces_quantized_layers_back_to_cpu() -> 
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -987,7 +978,6 @@ def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization(
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -1600,7 +1590,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
   )
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
-    parser.parse_args(["--quantize", "--quantize-params", "quant_type=svdq_int4_r32_dq", *extra]))
+    parser.parse_args(["--quantize-params", "quant_type=svdq_int4_r32_dq", *extra]))
   holder = SimpleNamespace(transformer=model)
   compile_calls: list[str] = []
 
@@ -1644,7 +1634,6 @@ def test_svdq_dq_few_shot_layerwise_offload_defers_full_pipeline_move_until_afte
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -1698,7 +1687,6 @@ def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> N
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",
@@ -1756,7 +1744,6 @@ def test_svdq_dq_few_shot_without_layerwise_offload_moves_pipe_to_cuda_eagerly()
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_int4_r32_dq",
       "--svdq-params",

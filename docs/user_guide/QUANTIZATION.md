@@ -31,19 +31,18 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 
 ### Command Line
 
-The `cache_dit.generate` CLI takes one switch and two `key=value` lists:
+The `cache_dit.generate` CLI takes two `key=value` lists; any `--quantize-params` key other than `text_encoder` turns on transformer quantization:
 
 | Option | Meaning |
 |:---|:---|
-| `--quantize` | Quantize the transformer. Without a `quant_type` key the type is `float8_per_row`. |
-| `--quantize-params "k=v,k=v"` | Generic options: `quant_type`, `backend` (`torchao`\|`cache_dit`, omitted = `AUTO`), `regional_quantize`, `per_tensor_fallback`, `exclude_layers` (`+`-separated), `text_encoder` (a text encoder type, or `true` to reuse `quant_type`; usable without `--quantize`), `verbose`, `fp8_fused_mlp`, `fp4_fused_mlp`, `mxfp4_quantize_device`. |
+| `--quantize-params "k=v,k=v"` | Generic options: `quant_type` (without it the type is `float8_per_row`), `backend` (`torchao`\|`cache_dit`, omitted = `AUTO`), `regional_quantize`, `per_tensor_fallback`, `exclude_layers` (`+`-separated), `text_encoder` (a text encoder type, or `true` to reuse `quant_type`; quantizes only the text encoder when it is the only key), `verbose`, `fp8_fused_mlp`, `fp4_fused_mlp`, `mxfp4_quantize_device`. |
 | `--svdq-params "k=v,k=v"` | SVDQuant options for an `svdq_*` type; the keys are the `svdq_kwargs` fields (`smooth_strategy`, `calibrate_precision`, `runtime_kernel`, `lora_layout`, `few_shot_*`, `packed_a4_*`, ...). The layerwise keys inherit `--layerwise-*` when omitted. |
 
 ```bash
-python3 -m cache_dit.generate flux --quantize --compile
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=float8_per_row --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r64_dq \
   --svdq-params smooth_strategy=few_shot --compile
-python3 -m cache_dit.generate flux --quantize \
+python3 -m cache_dit.generate flux \
   --quantize-params quant_type=float8_per_row,backend=cache_dit,exclude_layers=adaln_proj+norm_out
 ```
 
@@ -1608,7 +1607,7 @@ The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automaticall
 
 ```bash
 # Add --svdq-params fused_mlp=true to any SVDQ generate command:
-python -m cache_dit.generate longcat_image_edit --quantize \
+python -m cache_dit.generate longcat_image_edit \
   --quantize-params quant_type=svdq_int4_r128_dq --svdq-params fused_mlp=true
 
 [06-09 02:56:25] [Cache-DiT] No caching or parallelism is applied.

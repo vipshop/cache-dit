@@ -671,7 +671,7 @@ class QuantizeConfig:
         raise ValueError(
           "The cache-dit quantization backend supports SVDQuant, three FP8 types and NVFP4; "
           f"supported types are {sorted(_CACHE_DIT_ONLINE_TYPES)} (MXFP4 is weight-only). "
-          f"Got {self.quant_type!r}. Use --quantize-backend torchao for other quantization "
+          f"Got {self.quant_type!r}. Use --quantize-params backend=torchao for other quantization "
           "types.")
       if self.calibrate_fn is not None or self.serialize_to is not None:
         raise ValueError("cache-dit native FP8/NVFP4 is online-only; calibrate_fn and serialize_to "

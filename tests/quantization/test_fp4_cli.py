@@ -33,7 +33,6 @@ def test_fp4_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
 
   args = cli_utils.maybe_postprocess_args(
     cli_utils.get_args(parse=False).parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=nvfp4,backend=cache_dit,fp4_fused_mlp=true",
       "--steps",

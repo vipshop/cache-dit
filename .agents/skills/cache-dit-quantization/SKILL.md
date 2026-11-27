@@ -30,7 +30,7 @@ user-invocable: true
 | `src/cache_dit/quantization/svdquant/` | SVDQuant：`ptq.py`（校准 + 序列化 + load）、`quantizer.py`（DQ/PTQ 量化数学）、`linear.py`/`fused.py`（运行模块）、`packing.py`/`lowrank.py`/`passes.py`/`dtensor.py` |
 | `src/cache_dit/quantization/observers.py` | 逐层精度观察器（默认关闭） |
 | `src/cache_dit/quantization/converter.py` | 独立转换 CLI（`cache-dit-convert`，只支持 SVDQ `_dq`） |
-| `src/cache_dit/cli/utils.py` | CLI 参数与 `maybe_quantize_transformer`（`--quantize-*` → `QuantizeConfig`） |
+| `src/cache_dit/cli/utils.py` | CLI 参数与 `maybe_quantize_transformer`（`--quantize-params` / `--svdq-params` → `QuantizeConfig`） |
 | `docs/user_guide/QUANTIZATION.md` | 用户文档：类型总表、各路径示例、observer 与 converter |
 | `tests/quantization/` | 配置、observer、torchao、SVDQ（ptq/dq/quantizer/compile/padding/imports/offload）测试 |
 
@@ -85,7 +85,7 @@ restored = cache_dit.load(module, "path/to/checkpoint")      # 仅 CACHE_DIT（S
 | `observer` | `QuantizationObserverConfig`，默认 `None` = 关闭 |
 | `verbose` | 打印逐层量化信息 |
 
-CLI：`--quantize`（纯开关，不带 `quant_type` 时默认 `float8_per_row`）/ `--quantize-params "k=v,k=v"`（`quant_type`、`backend torchao|cache_dit`（省略 = AUTO）、`regional_quantize`、`per_tensor_fallback`、`exclude_layers=a+b`、`text_encoder=<type>|true`、`verbose`、`fp8_fused_mlp`、`fp4_fused_mlp`、`mxfp4_quantize_device`；除 `text_encoder` 外都需要 `--quantize`）/ `--svdq-params "k=v,k=v"`（键 = `svdq_kwargs` 字段，仅 `svdq_*` 类型；layerwise 键不写则继承 `--layerwise-*`）。类型快捷开关、`--quantize-type`、`--quantize-backend` 等逐项 flag 已废弃。转换独立模型用 `cache-dit-convert --svdq-params`（§5.4）。
+CLI：`--quantize-params "k=v,k=v"`（`quant_type`（省略时默认 `float8_per_row`）、`backend torchao|cache_dit`（省略 = AUTO）、`regional_quantize`、`per_tensor_fallback`、`exclude_layers=a+b`、`text_encoder=<type>|true`、`verbose`、`fp8_fused_mlp`、`fp4_fused_mlp`、`mxfp4_quantize_device`；除 `text_encoder` 外的任意键都会开启 transformer 量化，`text_encoder` 单独出现时只量化文本编码器）/ `--svdq-params "k=v,k=v"`（键 = `svdq_kwargs` 字段，仅 `svdq_*` 类型；layerwise 键不写则继承 `--layerwise-*`）。`--quantize` 开关、类型快捷开关、`--quantize-type`、`--quantize-backend` 等逐项 flag 已移除。转换独立模型用 `cache-dit-convert --svdq-params`（§5.4）。
 
 ## 4. TorchAO online 路径
 

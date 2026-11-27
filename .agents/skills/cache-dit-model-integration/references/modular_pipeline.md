@@ -392,7 +392,8 @@ stream); pick TP when the weights dominate. `parallelism_config` also allows com
 
 ### 7.1 Quantization: fp8 per-row + compile
 
-`python3 -m cache_dit.generate flux3 --quantize --compile [--cache]` (`--quantize` defaults to
+`python3 -m cache_dit.generate flux3 --quantize-params quant_type=float8_per_row --compile [--cache]`
+(an omitted `quant_type` defaults to
 torchao `float8_per_row`, i.e. `Float8DynamicActivationFloat8WeightConfig`). Regional quantization
 covers the 4 block stacks only: 258 linear layers (`43 blocks x 6`), 0 skipped.
 
@@ -457,14 +458,16 @@ Four things had to be modular-pipeline aware:
 4. **Async transfer must not silently skip those targets.** `_schedule_target_onload` /
    `_schedule_target_offload` only know how to stage mirror entries, so the forward hooks now route
    mirror-less targets through `_ensure_target_on_onload_device` / `_release_target_to_offload_device`
-   (whole-module moves). Before that fix, `--quantize --module-layerwise-cpu-offload
-   --layerwise-async-transfer` reported "with async transfer" but kept every weight on the GPU.
+   (whole-module moves). Before that fix, `--quantize-params quant_type=float8_per_row
+   --module-layerwise-cpu-offload --layerwise-async-transfer` reported "with async transfer" but
+   kept every weight on the GPU.
 
 `--layerwise-async-transfer` trades memory for overlap: it keeps a prefetch window of targets
 resident (11.4 GiB instead of 3.1 GiB for bf16) for a small latency gain (7.91 s vs 8.07 s).
 
 Offload composes with cache and CP without changing their numerics (bit-identical to the
-non-offload run). `--compile --quantize fp8 --module-layerwise-cpu-offload` does **not** work yet:
+non-offload run). `--compile --quantize-params quant_type=float8_per_row --module-layerwise-cpu-offload`
+does **not** work yet:
 Dynamo fails on the per-step `module.to()` with `RuntimeError: Polyfill handler ... does not have a
 traceable function`. Use fp8+compile or fp8+offload, not both.
 ### 7.3 SVDQuant NVFP4 (`svdq_nvfp4_r32_dq`)

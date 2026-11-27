@@ -152,7 +152,7 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
   `--sequential-cpu-offload` / `--module-layerwise-cpu-offload`, rejected with `--device-map-balance`,
   and `--compile-full-graph` / `--cuda-graph` are rejected while the tables actually stream (each
   per-block copy is a graph break, so `--compile` still works but pays a smaller speedup).
-- Under `--quantize` or `--parallel tp` the AdaLN tables are **not** streamed (quantized weights fit;
+- Under transformer quantization (`--quantize-params` with a transformer key) or `--parallel tp` the AdaLN tables are **not** streamed (quantized weights fit;
   a sharded table is a DTensor the host mirror cannot rebind per tensor) — only the text encoder
   streams, so the flag composes with those runs but then buys no transformer memory.
 - Keep `--track-memory` on for both the crashed resident run and the offloaded one: the caption should

@@ -285,7 +285,7 @@ class SVDCalibratorConfig(CalibratorConfig):
   Splits the cached block tensor in the token x channel plane into a rank-k principal part and a
   high-frequency residual, EMA-smooths the principal stream, freezes the residual, and reuses their
   sum for the cached steps. NOTE: this is SVD-Cache (arXiv 2601.07396), not SVDQuant — the latter is
-  a weight-quantization backend selected with `--quantize-type svdq_*`.
+  a weight-quantization backend selected with `--quantize-params quant_type=svdq_*`.
   """
 
   # enable_calibrator (`bool`, *required*,  defaults to True):

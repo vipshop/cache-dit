@@ -503,7 +503,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
       raise ValueError(f"HiDream-O1-Image only supports bfloat16, got {resolved_dtype}.")
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize HiDream-O1-Image through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if device_map is not None:
       raise NotImplementedError(
         "HiDream-O1-Image does not support `--device-map-balance`: the CLI skips `pipe.to(device)` "

@@ -1,7 +1,7 @@
 """Shared `k=v,k=v` parsing for CLI params flags.
 
 Syntax is validated while argparse runs; keys are resolved once the flag that scopes them
-(`--quantize`, `--svdq-params`, ...) is known, mirroring `--calibrator-params`.
+(`--quantize-params`, `--svdq-params`, ...) is known, mirroring `--calibrator-params`.
 """
 
 import argparse
@@ -21,6 +21,7 @@ def parse_param_pairs(
   value: str,
   flag: str,
   example: str,
+  allow_empty: bool = True,
 ) -> Optional[Dict[str, str]]:
   """Parse a ``k=v,k=v`` list into a raw key -> value mapping.
 
@@ -30,11 +31,15 @@ def parse_param_pairs(
   :param value: Raw argument value.
   :param flag: Flag name used in error messages.
   :param example: Example value quoted in the error message.
+  :param allow_empty: Whether an empty value is accepted; turn it off for a flag that is itself the
+    switch, so an empty shell variable cannot silently disable the feature.
   :returns: The raw mapping, or None for an empty value.
   """
 
   if value is None or value.strip() == "":
-    return None
+    if allow_empty:
+      return None
+    raise argparse.ArgumentTypeError(f"{flag} needs at least one key=value pair, e.g. {example}.")
   params: Dict[str, str] = {}
   for item in value.split(","):
     item = item.strip()
@@ -48,15 +53,20 @@ def parse_param_pairs(
   return params
 
 
-def pairs_parser(flag: str, example: str) -> Callable[[str], Optional[Dict[str, str]]]:
+def pairs_parser(
+  flag: str,
+  example: str,
+  allow_empty: bool = True,
+) -> Callable[[str], Optional[Dict[str, str]]]:
   """Build the argparse ``type`` of one params flag.
 
   :param flag: Flag name used in error messages.
   :param example: Example value quoted in the error message.
+  :param allow_empty: Whether an empty value is accepted, see `parse_param_pairs`.
   :returns: A single-argument callable for ``add_argument(type=...)``.
   """
 
-  return lambda value: parse_param_pairs(value, flag, example)
+  return lambda value: parse_param_pairs(value, flag, example, allow_empty)
 
 
 def _as_bool(text: str) -> bool:

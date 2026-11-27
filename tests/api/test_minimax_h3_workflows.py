@@ -559,6 +559,7 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     "CPU",
     "--no-profile-with-stack",
   ])
+  profile_run.maybe_postprocess_args(args)
   args.image_path = args.last_image_path = _write_image(tmp_path, "provided.png")
   args.reference_image_path = [args.image_path]
   args.example = ("flux" if workflow == "flux" else

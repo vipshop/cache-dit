@@ -693,20 +693,16 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
   )
   # Quantization settings
   parser.add_argument(
-    "--quantize",
-    "--q",
-    action="store_true",
-    default=False,
-    help="Enable quantization for transformer",
-  )
-  parser.add_argument(
     "--quantize-params",
-    type=pairs_parser("--quantize-params", "'quant_type=float8_per_row,backend=cache_dit'"),
+    type=pairs_parser("--quantize-params",
+                      "'quant_type=float8_per_row,backend=cache_dit'",
+                      allow_empty=False),
     default=None,
-    help="Quantization options as a comma separated key=value list, e.g. "
-    "'quant_type=float8_per_row' (default when omitted), 'backend=cache_dit', "
+    help="Quantize the transformer; options as a comma separated key=value list, e.g. "
+    "'quant_type=float8_per_row' (the default type when omitted), 'backend=cache_dit', "
     "'exclude_layers=adaln_proj+norm_out', "
-    "'text_encoder=float8_weight_only' (or 'true' to reuse quant_type; usable without --quantize), "
+    "'text_encoder=float8_weight_only' (or 'true' to reuse quant_type; quantizes only the text "
+    "encoder when it is the only key), "
     "'regional_quantize=false', 'per_tensor_fallback=false', 'verbose=true', "
     "'fp8_fused_mlp=true', 'fp4_fused_mlp=true', 'mxfp4_quantize_device=cpu'.",
   )
@@ -884,14 +880,15 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     dest="adaln_host_residency",
     action="store_true",
     default=False,
-    help=("Keep the transformer resident on the device but stream its AdaLN modulation tables "
-          "(`adaln_proj`) from a pinned host mirror, and stream the text encoder as usual. "
-          "Intended for joint video + audio models whose AdaLN tables are a large share of the "
-          "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
-          "resident footprint and the per-step host-to-device traffic. While the AdaLN tables are "
-          "actually streamed (i.e. without `--quantize` or `--parallel tp`) each per-block copy is "
-          "a graph break, so `--compile` still works but pays a smaller speedup; "
-          "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
+    help=(
+      "Keep the transformer resident on the device but stream its AdaLN modulation tables "
+      "(`adaln_proj`) from a pinned host mirror, and stream the text encoder as usual. "
+      "Intended for joint video + audio models whose AdaLN tables are a large share of the "
+      "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
+      "resident footprint and the per-step host-to-device traffic. While the AdaLN tables are "
+      "actually streamed (i.e. without transformer quantization or `--parallel tp`) each per-block "
+      "copy is a graph break, so `--compile` still works but pays a smaller speedup; "
+      "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
   )
   offload_group.add_argument(
     "--adaln-online",
@@ -1259,21 +1256,22 @@ def _derive_cli_svdq_kwargs(kwargs: Dict[str, Any], args, explicit: set) -> None
 def _resolve_cli_quantization(args) -> None:
   """Resolve `--quantize-params` / `--svdq-params` into `args`.
 
-  `args.quantize_fields` and `args.svdq_kwargs` hold the resolved options and are what the
-  quantization helpers read; `quantize_type` and `quantize_exclude_layers` are also exposed as
-  plain attributes because examples set them programmatically.
+  Any `--quantize-params` key other than `text_encoder` turns on transformer quantization, so
+  `args.quantize` is derived here. `args.quantize_fields` and `args.svdq_kwargs` hold the
+  resolved options and are what the quantization helpers read; `quantize_type` and
+  `quantize_exclude_layers` are also exposed as plain attributes because examples set them
+  programmatically.
   """
 
   fields = resolve_param_pairs(args.quantize_params, QUANTIZE_PARAM_SPECS, "--quantize-params")
 
-  transformer_keys = set(fields) - {"text_encoder"}
-  if not args.quantize and transformer_keys:
-    raise ValueError("--quantize-params keys other than 'text_encoder' require --quantize, got "
-                     f"{sorted(transformer_keys)}.")
+  # `text_encoder` on its own only quantizes the text encoder.
+  args.quantize = bool(set(fields) - {"text_encoder"})
   args.quantize_type = (fields.get("quant_type") or "float8_per_row") if args.quantize else None
   if fields.get("text_encoder") is True:
     if args.quantize_type is None:
-      raise ValueError("--quantize-params 'text_encoder=true' requires --quantize.")
+      raise ValueError("--quantize-params 'text_encoder=true' needs a transformer quant_type, "
+                       "e.g. 'quant_type=float8_per_row,text_encoder=true'.")
     if args.quantize_type not in TEXT_ENCODER_QUANT_TYPES:
       raise ValueError(
         f"--quantize-params 'text_encoder=true' got quant_type {args.quantize_type}, "
@@ -1922,7 +1920,7 @@ def maybe_compile_vae(
 
 
 def _resolve_cli_quantize_exclude_layers(args) -> Optional[List[str]]:
-  """Merge `--quantize-exclude-layers` with the default exclusion table.
+  """Merge `--quantize-params exclude_layers` with the default exclusion table.
 
   The flag adds patterns instead of replacing the table: the defaults guard embeddings and
   modulation tables, which cost far more accuracy than the memory they save, and a model-specific
@@ -1970,7 +1968,8 @@ def build_quantize_config(args, **overrides) -> QuantizeConfig:
   """
 
   svdq_kwargs = getattr(args, "svdq_kwargs", None)
-  if args.quantize_type.startswith("svdq") and svdq_kwargs is None:
+  # `quantize_type` is None when only the text encoder is quantized (`text_encoder` override below).
+  if (args.quantize_type or "").startswith("svdq") and svdq_kwargs is None:
     # `quantize_type` was set after post-processing, so no SVDQ options were resolved yet.
     svdq_kwargs = _base_svdq_kwargs(args)
     _derive_cli_svdq_kwargs(svdq_kwargs, args, explicit=set())
@@ -2670,11 +2669,12 @@ def maybe_adaln_host_residency(
     # CUDA Graph capture bakes the parameter pointers into the graph, and the host mirror rebinds
     # `parameter.data` on every block, so the capture would replay stale device buffers.
     raise ValueError("--adaln-host-residency cannot be combined with --cuda-graph unless the "
-                     "transformer stays resident (`--quantize` or `--parallel tp`).")
+                     "transformer stays resident (transformer quantization or `--parallel tp`).")
   if getattr(args, "compile_full_graph", False) and not keep_transformer_resident:
     # `fullgraph=True` refuses the graph break the streaming hook causes by construction.
-    raise ValueError("--adaln-host-residency cannot be combined with --compile-full-graph unless "
-                     "the transformer stays resident (`--quantize` or `--parallel tp`).")
+    raise ValueError(
+      "--adaln-host-residency cannot be combined with --compile-full-graph unless "
+      "the transformer stays resident (transformer quantization or `--parallel tp`).")
   if getattr(args, "compile", False) and online:
     logger.info(
       "Compiling the repeated blocks with the AdaLN plans on the device: keying a plan is "

@@ -36,7 +36,7 @@ def test_nvfp4_config_and_cli() -> None:
   parser = get_args(parse=False)
   for quant_type in ("nvfp4", "nvfp4_weight_only"):
     args = maybe_postprocess_args(
-      parser.parse_args(["--quantize", "--quantize-params", f"quant_type={quant_type}"]))
+      parser.parse_args(["--quantize-params", f"quant_type={quant_type}"]))
     assert args.quantize is True
     assert args.quantize_type == quant_type
 

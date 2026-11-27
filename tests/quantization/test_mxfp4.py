@@ -36,15 +36,14 @@ def test_mxfp4_config_and_cli() -> None:
     QuantizeConfig(quant_type=MXFP4_TYPE, mxfp4_block_size=64)
 
   parser = get_args(parse=False)
-  args = maybe_postprocess_args(
-    parser.parse_args(["--quantize", "--quantize-params", f"quant_type={MXFP4_TYPE}"]))
+  args = maybe_postprocess_args(parser.parse_args(["--quantize-params",
+                                                   f"quant_type={MXFP4_TYPE}"]))
   assert args.quantize is True
   assert args.quantize_type == MXFP4_TYPE
 
   # ``mxfp4`` is no longer a quant type.
   with pytest.raises(ValueError, match="Invalid --quantize-params 'quant_type=mxfp4'"):
-    maybe_postprocess_args(
-      parser.parse_args(["--quantize", "--quantize-params", "quant_type=mxfp4"]))
+    maybe_postprocess_args(parser.parse_args(["--quantize-params", "quant_type=mxfp4"]))
 
 
 def test_mxfp4_config_rejects_bad_quantize_device() -> None:

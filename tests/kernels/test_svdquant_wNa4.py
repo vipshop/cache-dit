@@ -624,7 +624,6 @@ def test_packed_a4_cli_params() -> None:
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize",
       "--quantize-params",
       "quant_type=svdq_w2a4_r256_dq",
       "--svdq-params",
@@ -634,7 +633,7 @@ def test_packed_a4_cli_params() -> None:
   assert args.svdq_kwargs["packed_a4_stages"] == 3
   assert args.svdq_kwargs["packed_a4_inner_group"] == 2
   defaults = maybe_postprocess_args(
-    parser.parse_args(["--quantize", "--quantize-params", "quant_type=svdq_w2a4_r256_dq"]))
+    parser.parse_args(["--quantize-params", "quant_type=svdq_w2a4_r256_dq"]))
   assert "packed_a4_stages" not in defaults.svdq_kwargs
   assert "packed_a4_inner_group" not in defaults.svdq_kwargs
 

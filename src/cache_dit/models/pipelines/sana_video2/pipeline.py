@@ -191,7 +191,7 @@ class SanaVideo2Pipeline(DiffusionPipeline):
         "for that flag, which would leave the whole pipeline on CPU.")
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize SANA-Video 2.0 through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if trust_remote_code:
       logger.debug("trust_remote_code is not needed: the SANA-Video 2.0 code is built into "
                    "cache-dit.")
