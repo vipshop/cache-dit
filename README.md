@@ -34,7 +34,7 @@ pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.githu
 ```
 
 ```bash
-# FLUX.1-dev on two GPUs: DBCache + TaylorSeer + FP8 weights + FP8 Ulysses + compile.
+# FLUX.1-dev on two GPUs: DBCache + TaylorSeer + FP8 Quantization + FP8 Ulysses + compile.
 CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate \
   black-forest-labs/FLUX.1-dev \
   --parallel-config 'ulysses=2' \
