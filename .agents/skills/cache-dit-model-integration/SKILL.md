@@ -621,7 +621,7 @@ All paths are relative to the cache-dit repository root.
 | NPU support matrix      | `docs/supported_matrix/ASCEND_NPU.md`       | Same matrix for Ascend NPU — update only after the model is actually validated on NPU |
 | Developer guide         | `docs/developer_guide/SUPPORT_NEW_MODEL.md` | Official step-by-step integration guide                                          |
 | CLI examples            | `examples/README.md`                        | Comprehensive CLI usage examples (single-GPU, distributed, quantization, hybrid) |
-| Pipeline usage examples | `examples/generate.py`                      | Programmatic pipeline usage examples                                             |
+| Pipeline usage examples | `examples/api/`                             | Programmatic pipeline usage: cache refresh, steps mask, transformer-only         |
 | **User Guide**    | **`docs/user_guide/`**                | **Complete user documentation covering all features:**                     |
 |                         | `docs/user_guide/OVERVIEWS.md`              | Feature overview and architecture                                                |
 |                         | `docs/user_guide/INSTALL.md`                | Installation guide                                                               |
