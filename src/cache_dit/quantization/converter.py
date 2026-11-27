@@ -23,6 +23,7 @@ import sys
 import torch
 
 from ..logger import init_logger
+from ..cli.params import pairs_parser, resolve_param_pairs, SVDQ_PARAM_SPECS
 from ..utils import assign_transformer, resolve_transformer
 
 logger = init_logger(__name__)
@@ -67,27 +68,36 @@ def _get_args(argv: list[str] | None = None) -> argparse.Namespace:
     help="Device to run quantization on.",
   )
   parser.add_argument(
+    "--svdq-params",
+    type=pairs_parser("--svdq-params", "'smooth_strategy=weight_inv'"),
+    default=None,
+    help="SVDQuant options as a comma separated key=value list, e.g. "
+    "'smooth_strategy=weight_inv,runtime_kernel=cute'.",
+  )
+  parser.add_argument(
     "--svdq-smooth-strategy",
     type=str,
     default=None,
     choices=("identity", "weight", "weight_inv", "few_shot"),
-    help="SVDQ DQ smooth strategy. Defaults to 'identity' when not set.",
+    help="DEPRECATED, use --svdq-params instead. SVDQ DQ smooth strategy. Defaults to 'identity' "
+    "when not set.",
   )
   parser.add_argument(
     "--svdq-calibrate-precision",
     type=str,
     default="low",
     choices=("low", "medium", "high"),
-    help="Precision plan for SVDQ calibration math and low-rank decomposition.",
+    help="DEPRECATED, use --svdq-params instead. Precision plan for SVDQ calibration math and "
+    "low-rank decomposition.",
   )
   parser.add_argument(
     "--svdq-runtime-kernel",
     type=str,
     default=None,
     choices=("native", "cute", "flashinfer", "flashinfer+cute-dsl", "flashinfer+cutlass-sm120"),
-    help=("SVDQ GEMM family. Default: auto (native for INT4 and NVFP4). The flashinfer runtimes "
-          "are comparison runtimes that derive their pack from the checkpoint at load time; bare "
-          "'flashinfer' maps to 'flashinfer+cutlass-sm120'."),
+    help="DEPRECATED, use --svdq-params instead. SVDQ GEMM family. Default: auto (native for INT4 "
+    "and NVFP4). The flashinfer runtimes are comparison runtimes that derive their pack from the "
+    "checkpoint at load time; bare 'flashinfer' maps to 'flashinfer+cutlass-sm120'.",
   )
   parser.add_argument(
     "--verbose",
@@ -150,12 +160,25 @@ def entrypoint(argv: list[str] | None = None) -> None:
   logger.info("Pipeline loaded: %s", type(pipe).__name__)
 
   # --- Build quantization config ---
-  svdq_kwargs = {
-    "calibrate_precision": args.svdq_calibrate_precision,
-    "runtime_kernel": args.svdq_runtime_kernel,
-  }
-  if args.svdq_smooth_strategy is not None:
-    svdq_kwargs["smooth_strategy"] = args.svdq_smooth_strategy
+  try:
+    svdq_kwargs = resolve_param_pairs(args.svdq_params, SVDQ_PARAM_SPECS, "--svdq-params")
+  except ValueError as e:
+    logger.error("%s", e)
+    sys.exit(1)
+  svdq_kwargs.setdefault("calibrate_precision", args.svdq_calibrate_precision)
+  for flag, key, value in (
+    ("svdq-smooth-strategy", "smooth_strategy", args.svdq_smooth_strategy),
+    ("svdq-runtime-kernel", "runtime_kernel", args.svdq_runtime_kernel),
+  ):
+    if value is None:
+      continue
+    if key in svdq_kwargs:
+      if svdq_kwargs[key] != value:
+        logger.error("--%s conflicts with --svdq-params '%s=%s'.", flag, key, svdq_kwargs[key])
+        sys.exit(1)
+      continue
+    svdq_kwargs[key] = value
+    logger.warning("--%s is deprecated; use --svdq-params '%s=%s' instead.", flag, key, value)
 
   save_dir = os.path.abspath(args.save_dir)
   config = QuantizeConfig(

@@ -46,7 +46,17 @@ from ..offload import remove_layerwise_offload
 from ..quantization import quantize, QuantizeConfig
 from ..quantization.backend import QuantizeBackend
 from ..quantization.config import DEFAULT_EXCLUDE_LAYERS
+from ..quantization.config import _resolve_svdq_kwargs
 from ..quantization.config import _SVDQ_PACKED_A4_RANKS
+from ..quantization.config import TEXT_ENCODER_QUANT_TYPES
+from ..quantization.config import TRANSFORMER_QUANT_TYPES
+from .params import (
+  pairs_parser,
+  parse_param_pairs,
+  resolve_param_pairs,
+  QUANTIZE_PARAM_SPECS,
+  SVDQ_PARAM_SPECS,
+)
 
 from ..summary import strify as summary_strify
 from ..utils import is_modular_pipeline
@@ -234,20 +244,7 @@ def parse_calibrator_params(value: str) -> Optional[Dict[str, str]]:
   :returns: The raw string mapping, or None for an empty value.
   """
 
-  if value is None or value.strip() == "":
-    return None
-  params: Dict[str, str] = {}
-  for item in value.split(","):
-    item = item.strip()
-    if not item:
-      continue
-    key, sep, raw = item.partition("=")
-    if sep == "" or key.strip() == "":
-      raise argparse.ArgumentTypeError(
-        f"Invalid --calibrator-params entry '{item}'. Expected 'key=value' pairs, "
-        f"e.g. 'tau=0.9,beta=0.9'.")
-    params[key.strip().lower()] = raw.strip()
-  return params
+  return parse_param_pairs(value, "--calibrator-params", "'tau=0.9,beta=0.9'")
 
 
 def parse_quant_communicate_params(value: str) -> Optional[Dict[str, str]]:
@@ -256,20 +253,7 @@ def parse_quant_communicate_params(value: str) -> Optional[Dict[str, str]]:
   :param value: Raw argument value.
   :returns: Raw string options, or None for an empty value.
   """
-  if value is None or value.strip() == "":
-    return None
-  params: Dict[str, str] = {}
-  for item in value.split(","):
-    item = item.strip()
-    if not item:
-      continue
-    key, sep, raw = item.partition("=")
-    if sep == "" or key.strip() == "":
-      raise argparse.ArgumentTypeError(
-        f"Invalid --quant-communicate-params entry '{item}'. Expected 'key=value' pairs, "
-        "e.g. 'bits=6,quant_type=per_group_32'.")
-    params[key.strip().lower()] = raw.strip()
-  return params
+  return parse_param_pairs(value, "--quant-communicate-params", "'bits=6,quant_type=per_group_32'")
 
 
 def _coerce_calibrator_param(field: str, caster: Any, text: str) -> Any:
@@ -716,6 +700,32 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     default=False,
     help="Enable quantization for transformer",
   )
+  parser.add_argument(
+    "--quantize-params",
+    type=pairs_parser("--quantize-params", "'quant_type=float8_per_row,backend=cache_dit'"),
+    default=None,
+    help="Quantization options as a comma separated key=value list, e.g. "
+    "'quant_type=float8_per_row' (default when omitted), 'backend=cache_dit', "
+    "'exclude_layers=adaln_proj+norm_out', "
+    "'text_encoder=float8_weight_only' (or 'true' to reuse quant_type; usable without --quantize), "
+    "'regional_quantize=false', 'per_tensor_fallback=false', 'verbose=true', "
+    "'fp8_fused_mlp=true', 'fp4_fused_mlp=true', 'mxfp4_quantize_device=cpu'.",
+  )
+  parser.add_argument(
+    "--svdq-params",
+    type=pairs_parser("--svdq-params", "'smooth_strategy=few_shot,runtime_kernel=cute'"),
+    default=None,
+    help="SVDQuant options as a comma separated key=value list, requires an svdq_* quant_type. "
+    "Keys are the svdq_kwargs fields: smooth_strategy, calibrate_precision, runtime_kernel, "
+    "lora_layout, quantize_device, offload_quantized_layers_to_cpu, layerwise_offload, "
+    "async_transfer, transfer_buckets, prefetch_limit, max_copy_streams, "
+    "max_inflight_prefetch_bytes, persistent_buckets, persistent_bins, "
+    "defer_move_to_execution_device, few_shot_steps, few_shot_relax_factor, "
+    "few_shot_relax_top_ratio, few_shot_relax_strategy, few_shot_auto_compile, fused_mlp, "
+    "svd_refine_iters, packed_a4_stages, packed_a4_inner_group, streaming, "
+    "activation_buffer_flush_sample_count, activation_buffer_flush_cpu_bytes. "
+    "The layerwise keys inherit --layerwise-* when omitted.",
+  )
   # per row quantization
   parser.add_argument(
     "--disable-per-row",
@@ -730,42 +740,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--q-type",
     type=str,
     default=None,
-    choices=[
-      None,
-      "float8_per_row",
-      "float8_per_tensor",
-      "float8_per_block",
-      "float8_weight_only",
-      "nvfp4",
-      "nvfp4_weight_only",
-      "mxfp4_weight_only",
-      "int8_per_row",
-      "int8_per_tensor",
-      "int8_weight_only",
-      "int4_weight_only",
-      "svdq_int4_r32_dq",
-      "svdq_int4_r64_dq",
-      "svdq_int4_r128_dq",
-      "svdq_int4_r256_dq",
-      "svdq_nvfp4_r32_dq",
-      "svdq_nvfp4_r64_dq",
-      "svdq_nvfp4_r128_dq",
-      "svdq_nvfp4_r256_dq",
-      "svdq_fp8_r32_dq",
-      "svdq_fp8_r64_dq",
-      "svdq_fp8_r128_dq",
-      "svdq_w4a8_r32_dq",
-      "svdq_w4a8_r64_dq",
-      "svdq_w4a8_r128_dq",
-      "svdq_fp6_r32_dq",
-      "svdq_fp6_r64_dq",
-      "svdq_fp6_r128_dq",
-      *[
-        f"svdq_w{bits}a4_r{rank}_dq" for bits in (1, 2, 3)
-        for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank
-      ],
-      "bitsandbytes_4bit",
-    ],
+    choices=[None, *TRANSFORMER_QUANT_TYPES],
   )
   parser.add_argument(
     "--quantize-backend",
@@ -1027,18 +1002,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "--q-text-type",
     type=str,
     default=None,
-    choices=[
-      None,
-      "float8_per_row",
-      "float8_per_tensor",
-      "float8_per_block",
-      "float8_weight_only",
-      "int8_per_row",
-      "int8_per_tensor",
-      "int8_weight_only",
-      "int4_weight_only",
-      "bitsandbytes_4bit",
-    ],
+    choices=[None, *TEXT_ENCODER_QUANT_TYPES],
   )
   parser.add_argument(
     "--quantize-controlnet",
@@ -1789,6 +1753,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Export generated video with specified fps",
   )
 
+  _mark_deprecated_quant_flags(parser)
   args_or_parser = parser.parse_args() if parse else parser
   if parse:
     return maybe_postprocess_args(args_or_parser)
@@ -1799,67 +1764,238 @@ def get_base_args(parse: bool = True) -> argparse.Namespace | argparse.ArgumentP
   return get_args(parse=parse)  # For future extension if needed
 
 
-def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
-  # Force enable quantization if quantize_type is specified
-  quantize_shortcuts = [
-    ("float8_per_row", args.float8_per_row),
-    ("float8_per_tensor", args.float8_per_tensor),
-    ("float8_per_block", args.float8_per_block),
-    ("float8_weight_only", args.float8_weight_only),
-    ("int8_per_row", args.int8_per_row),
-    ("int8_per_tensor", args.int8_per_tensor),
-    ("int8_weight_only", args.int8_weight_only),
-    ("int4_weight_only", args.int4_weight_only),
-    ("nvfp4", args.nvfp4),
-    ("nvfp4_weight_only", args.nvfp4_weight_only),
-    ("mxfp4_weight_only", args.mxfp4 or args.mxfp4_weight_only),
-    ("svdq_int4_r32_dq", args.svdq_int4_r32_dq),
-    ("svdq_int4_r64_dq", args.svdq_int4_r64_dq),
-    ("svdq_int4_r128_dq", args.svdq_int4_r128_dq),
-    ("svdq_int4_r256_dq", args.svdq_int4_r256_dq),
-    ("svdq_nvfp4_r32_dq", args.svdq_nvfp4_r32_dq),
-    ("svdq_nvfp4_r64_dq", args.svdq_nvfp4_r64_dq),
-    ("svdq_nvfp4_r128_dq", args.svdq_nvfp4_r128_dq),
-    ("svdq_nvfp4_r256_dq", args.svdq_nvfp4_r256_dq),
-    ("svdq_fp8_r32_dq", args.svdq_fp8_r32_dq),
-    ("svdq_fp8_r64_dq", args.svdq_fp8_r64_dq),
-    ("svdq_fp8_r128_dq", args.svdq_fp8_r128_dq),
-    ("svdq_w4a8_r32_dq", args.svdq_w4a8_r32_dq),
-    ("svdq_w4a8_r64_dq", args.svdq_w4a8_r64_dq),
-    ("svdq_w4a8_r128_dq", args.svdq_w4a8_r128_dq),
-    ("svdq_fp6_r32_dq", args.svdq_fp6_r32_dq),
-    ("svdq_fp6_r64_dq", args.svdq_fp6_r64_dq),
-    ("svdq_fp6_r128_dq", args.svdq_fp6_r128_dq),
-    *[(f"svdq_w{bits}a4_r{rank}_dq", getattr(args, f"svdq_w{bits}a4_r{rank}_dq"))
-      for bits in (1, 2, 3) for rank in _SVDQ_PACKED_A4_RANKS[f"w{bits}a4"] if rank],
-  ]
-  selected_shortcuts = [quant_type for quant_type, enabled in quantize_shortcuts if enabled]
-  if len(selected_shortcuts) > 1:
-    raise ValueError(f"Quantization shortcuts are mutually exclusive, got {selected_shortcuts}.")
-  if selected_shortcuts:
-    selected_quant_type = selected_shortcuts[0]
-    if args.quantize_type is not None and args.quantize_type != selected_quant_type:
+# Deprecated quantization flags and their `--quantize-params` replacement: dest, key, parser
+# default, flag. `disable_*` flags hold the negation of their key; `svdq_defer_final_to_cuda`
+# defaults to True and is False only when `--svdq-no-defer-final-to-cuda` was passed.
+_DEPRECATED_QUANTIZE_FLAGS = (
+  ("quantize_type", "quant_type", None, "quantize-type"),
+  ("quantize_backend", "backend", None, "quantize-backend"),
+  ("disable_regional_quantize", "regional_quantize", False, "disable-regional-quantize"),
+  ("disable_per_tensor_fallback", "per_tensor_fallback", False, "disable-per-tensor-fallback"),
+  ("quantize_verbose", "verbose", False, "quantize-verbose"),
+  ("fp8_fused_mlp", "fp8_fused_mlp", False, "fp8-fused-mlp"),
+  ("fp4_fused_mlp", "fp4_fused_mlp", False, "fp4-fused-mlp"),
+  ("mxfp4_quantize_device", "mxfp4_quantize_device", "auto", "mxfp4-quantize-device"),
+)
+_NEGATED_DEPRECATED_FLAGS = {"disable_regional_quantize", "disable_per_tensor_fallback"}
+# Deprecated shortcut flags: dest -> quant_type. Every transformer type has a shortcut whose dest is
+# the type itself; the two extra entries are shortcuts with a dest of their own.
+_DEPRECATED_QUANT_TYPE_SHORTCUTS = {
+  quant_type: quant_type
+  for quant_type in TRANSFORMER_QUANT_TYPES
+}
+_DEPRECATED_QUANT_TYPE_SHORTCUTS.update({
+  "mxfp4": "mxfp4_weight_only",
+  "float8_blockwise": "float8_per_block",
+})
+_DEPRECATED_SVDQ_FLAGS = (
+  ("svdq_smooth_strategy", "smooth_strategy", "identity", "svdq-smooth-strategy"),
+  ("svdq_calibrate_precision", "calibrate_precision", "low", "svdq-calibrate-precision"),
+  ("svdq_runtime", "runtime_kernel", None, "svdq-runtime"),
+  ("svdq_lora_layout", "lora_layout", None, "svdq-lora-layout"),
+  ("svdq_quantize_device", "quantize_device", "cuda", "svdq-quantize-device"),
+  ("svdq_few_shot_steps", "few_shot_steps", 1, "svdq-few-shot-steps"),
+  ("svdq_few_shot_relax_factor", "few_shot_relax_factor", 1.5, "svdq-few-shot-relax-factor"),
+  ("svdq_few_shot_relax_top_ratio", "few_shot_relax_top_ratio", 0.25,
+   "svdq-few-shot-relax-top-ratio"),
+  ("svdq_few_shot_relax_strategy", "few_shot_relax_strategy", "auto",
+   "svdq-few-shot-relax-strategy"),
+  ("svdq_packed_a4_stages", "packed_a4_stages", None, "svdq-packed-a4-stages"),
+  ("svdq_packed_a4_inner_group", "packed_a4_inner_group", None, "svdq-packed-a4-inner-group"),
+  ("svdq_fused_mlp", "fused_mlp", False, "svdq-fused-mlp"),
+  ("svdq_layerwise_offload", "layerwise_offload", False, "svdq-layerwise-offload"),
+  ("svdq_offload_quantized_layers_to_cpu", "offload_quantized_layers_to_cpu", False,
+   "svdq-offload-quantized-layers-to-cpu"),
+  ("svdq_few_shot_compile", "few_shot_auto_compile", False, "svdq-few-shot-compile"),
+  ("svdq_defer_final_to_cuda", "defer_move_to_execution_device", True,
+   "svdq-no-defer-final-to-cuda"),
+)
+_DEPRECATED_CONTROLNET_FLAGS = ("quantize_controlnet", "quantize_controlnet_type")
+
+
+def _fmt_param(value: Any) -> str:
+  if isinstance(value, bool):
+    return "true" if value else "false"
+  if isinstance(value, list):
+    return "+".join(value)
+  return str(value)
+
+
+def _mark_deprecated_quant_flags(parser: argparse.ArgumentParser) -> None:
+  """Prefix the help of every deprecated quantization flag with its replacement."""
+
+  for option, action in parser._option_string_actions.items():
+    if action.dest in _DEPRECATED_QUANT_TYPE_SHORTCUTS:
+      quant_type = _DEPRECATED_QUANT_TYPE_SHORTCUTS[action.dest]
+      action.help = (f"DEPRECATED, use '--quantize --quantize-params quant_type={quant_type}' "
+                     f"instead. {action.help}")
+    elif action.dest in {dest for dest, *_ in _DEPRECATED_QUANTIZE_FLAGS}:
+      action.help = "DEPRECATED, use --quantize-params instead. " + (action.help or "")
+    elif action.dest in {dest for dest, *_ in _DEPRECATED_SVDQ_FLAGS}:
+      action.help = "DEPRECATED, use --svdq-params instead. " + (action.help or "")
+    elif action.dest in _DEPRECATED_CONTROLNET_FLAGS:
+      action.help = ("DEPRECATED and will be removed; quantize the controlnet with "
+                     "cache_dit.quantize(controlnet, QuantizeConfig(...)) instead. " +
+                     (action.help or ""))
+
+
+def _merge_deprecated(
+  target: Dict[str, Any],
+  key: str,
+  value: Any,
+  explicit: set,
+  flag: str,
+  params_flag: str,
+) -> None:
+  """Fold one deprecated flag into its params replacement; a conflicting key is an error."""
+
+  if key in explicit:
+    if target.get(key) != value:
+      raise ValueError(f"--{flag} and '{params_flag} {key}="
+                       f"{_fmt_param(target.get(key))}' are mutually exclusive; pass the option "
+                       "only once.")
+    return
+  target[key] = value
+  explicit.add(key)
+  logger.warning("--%s is deprecated; use '%s %s=%s' instead.", flag, params_flag, key,
+                 _fmt_param(value))
+
+
+def _base_svdq_kwargs(args) -> Dict[str, Any]:
+  """SVDQ kwargs inherited from the generic `--layerwise-*` flags and the CLI defaults."""
+
+  return {
+    "smooth_strategy": "identity",
+    "calibrate_precision": "low",
+    "runtime_kernel": None,
+    "lora_layout": None,
+    "quantize_device": "cuda",
+    "offload_quantized_layers_to_cpu": False,
+    "layerwise_offload": False,
+    "async_transfer": args.layerwise_async_transfer,
+    "transfer_buckets": args.layerwise_transfer_buckets,
+    "prefetch_limit": args.layerwise_prefetch_limit,
+    "max_copy_streams": args.layerwise_max_copy_streams,
+    "max_inflight_prefetch_bytes": args.layerwise_max_inflight_prefetch_bytes,
+    "persistent_buckets": args.layerwise_persistent_buckets,
+    "persistent_bins": args.layerwise_persistent_bins,
+    "defer_move_to_execution_device": False,
+    "few_shot_steps": 1,
+    "few_shot_relax_factor": 1.5,
+    "few_shot_relax_top_ratio": 0.25,
+    "few_shot_relax_strategy": "auto",
+    "few_shot_auto_compile": False,
+    "fused_mlp": False,
+  }
+
+
+def _derive_cli_svdq_kwargs(kwargs: Dict[str, Any], args, explicit: set) -> None:
+  """Apply the CLI rules that tie SVDQ options to each other and to `--compile`.
+
+  A key the user passed explicitly always wins over the derived value.
+
+  :param kwargs: Resolved SVDQ kwargs, updated in place.
+  :param args: Parsed CLI namespace.
+  :param explicit: Keys the user passed on the command line.
+  """
+
+  if kwargs["layerwise_offload"]:
+    kwargs["offload_quantized_layers_to_cpu"] = True
+  few_shot = kwargs["smooth_strategy"] == "few_shot"
+  if "few_shot_auto_compile" not in explicit and few_shot and args.compile:
+    kwargs["few_shot_auto_compile"] = True
+  if ("defer_move_to_execution_device" not in explicit and few_shot
+      and kwargs["offload_quantized_layers_to_cpu"]):
+    kwargs["defer_move_to_execution_device"] = True
+
+
+def _resolve_cli_quantization(args) -> None:
+  """Resolve `--quantize-params` / `--svdq-params` and the deprecated flags into `args`.
+
+  `args.quantize_fields` and `args.svdq_kwargs` hold the resolved options; the per-option
+  attributes that the quantization helpers read (`quantize_type`, `quantize_backend`, ...) are
+  kept in sync with them.
+  """
+
+  fields = resolve_param_pairs(args.quantize_params, QUANTIZE_PARAM_SPECS, "--quantize-params")
+  explicit = set(fields)
+  for dest, quant_type in _DEPRECATED_QUANT_TYPE_SHORTCUTS.items():
+    if getattr(args, dest, False):
+      _merge_deprecated(fields, "quant_type", quant_type, explicit, dest.replace("_", "-"),
+                        "--quantize-params")
+      args.quantize = True
+  for dest, key, default, flag in _DEPRECATED_QUANTIZE_FLAGS:
+    value = getattr(args, dest)
+    if value == default:
+      continue
+    if dest in _NEGATED_DEPRECATED_FLAGS:
+      value = not value
+    _merge_deprecated(fields, key, value, explicit, flag, "--quantize-params")
+    if key in ("quant_type", "backend"):
+      args.quantize = True
+  if args.quantize_exclude_layers:
+    _merge_deprecated(fields, "exclude_layers", list(args.quantize_exclude_layers), explicit,
+                      "quantize-exclude-layers", "--quantize-params")
+  text_encoder = args.quantize_text_type if args.quantize_text_type is not None else (
+    True if args.quantize_text_encoder else None)
+  if text_encoder is not None:
+    _merge_deprecated(fields, "text_encoder", text_encoder, explicit, "quantize-text-encoder",
+                      "--quantize-params")
+  if args.quantize_controlnet:
+    logger.warning("--quantize-controlnet is deprecated and will be removed; quantize the "
+                   "controlnet with cache_dit.quantize(controlnet, QuantizeConfig(...)) instead.")
+
+  transformer_keys = set(fields) - {"text_encoder"}
+  if not args.quantize and transformer_keys:
+    raise ValueError("--quantize-params keys other than 'text_encoder' require --quantize, got "
+                     f"{sorted(transformer_keys)}.")
+  args.quantize_type = (fields.get("quant_type") or "float8_per_row") if args.quantize else None
+  if fields.get("text_encoder") is True:
+    if args.quantize_type is None:
+      raise ValueError("--quantize-params 'text_encoder=true' requires --quantize.")
+    if args.quantize_type not in TEXT_ENCODER_QUANT_TYPES:
       raise ValueError(
-        f"--quantize-type {args.quantize_type} conflicts with --{selected_quant_type.replace('_', '-')}."
-      )
-    args.quantize_type = selected_quant_type
+        f"--quantize-params 'text_encoder=true' got quant_type {args.quantize_type}, "
+        f"which is not a text encoder type: {TEXT_ENCODER_QUANT_TYPES}.")
+    fields["text_encoder"] = args.quantize_type
 
-  if args.quantize_type is not None:
-    args.quantize = True
-  if getattr(args, "quantize_backend", None) is not None:
-    args.quantize = True
+  args.quantize_backend = fields.get("backend")
+  args.disable_regional_quantize = fields.get("regional_quantize") is False
+  args.disable_per_tensor_fallback = fields.get("per_tensor_fallback") is False
+  args.quantize_exclude_layers = fields.get("exclude_layers")
+  args.quantize_text_type = fields.get("text_encoder")
+  args.quantize_text_encoder = args.quantize_text_type is not None
+  args.quantize_verbose = bool(fields.get("verbose"))
+  args.fp8_fused_mlp = bool(fields.get("fp8_fused_mlp"))
+  args.fp4_fused_mlp = bool(fields.get("fp4_fused_mlp"))
+  args.mxfp4_quantize_device = fields.get("mxfp4_quantize_device", "auto")
+  args.quantize_fields = fields
 
-  # Handle alias for quantize_type
-  if args.quantize and args.quantize_type is None:
-    args.quantize_type = "float8_per_row"  # default type
+  is_svdq = args.quantize_type is not None and args.quantize_type.startswith("svdq")
+  raw_svdq = args.svdq_params or {}
+  if raw_svdq and not is_svdq:
+    raise ValueError(f"--svdq-params requires an svdq_* quant_type, got {args.quantize_type!r}.")
+  kwargs = None
+  if is_svdq:
+    kwargs = _base_svdq_kwargs(args)
+    kwargs.update(resolve_param_pairs(raw_svdq, SVDQ_PARAM_SPECS, "--svdq-params"))
+    explicit_svdq = set(raw_svdq)
+    for dest, key, default, flag in _DEPRECATED_SVDQ_FLAGS:
+      value = getattr(args, dest)
+      if value == default:
+        continue
+      if dest in _NEGATED_DEPRECATED_FLAGS:
+        value = not value
+      _merge_deprecated(kwargs, key, value, explicit_svdq, flag, "--svdq-params")
+    _derive_cli_svdq_kwargs(kwargs, args, explicit_svdq)
+    args.svdq_offload_quantized_layers_to_cpu = kwargs["offload_quantized_layers_to_cpu"]
+    # Fail on a bad value here rather than after the model has been loaded.
+    _resolve_svdq_kwargs(kwargs)
+  args.svdq_kwargs = kwargs
 
-  # Force enable quantization for text encoder if quantize_text_type is specified
-  if args.quantize_text_type is not None:
-    args.quantize_text_encoder = True
-  # Handle alias for quantize_text_type
-  if args.quantize_text_encoder and args.quantize_text_type is None:
-    # default to same as quantize_type
-    args.quantize_text_type = args.quantize_type
+
+def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
+  _resolve_cli_quantization(args)
 
   # Force enable quantization for controlnet if quantize_controlnet_type is specified
   if args.quantize_controlnet_type is not None:
@@ -1958,9 +2094,6 @@ def maybe_postprocess_args(args: argparse.Namespace) -> argparse.Namespace:
       raise ValueError("--ffpa-fp8-smooth-v requires --attn ffpa_fp8 or ffpa_fp8_per_block.")
     from ..attention.backends.ffpa import set_ffpa_fp8_smooth_v
     set_ffpa_fp8_smooth_v(True)
-
-  if getattr(args, "svdq_layerwise_offload", False):
-    args.svdq_offload_quantized_layers_to_cpu = True
 
   if args.seacache and not args.cache:
     raise ValueError("--seacache requires --cache.")
@@ -2569,72 +2702,39 @@ def _resolve_cli_quantize_backend(args) -> QuantizeBackend:
   return QuantizeBackend.AUTO if value is None else QuantizeBackend.from_str(value)
 
 
+def build_quantize_config(args, **overrides) -> QuantizeConfig:
+  """Build the transformer `QuantizeConfig` from the resolved CLI quantization options.
+
+  :param args: Parsed CLI namespace, post-processed or with `quantize_type` set directly.
+  :param overrides: Fields that replace the CLI values.
+  :returns: The validated config.
+  """
+
+  svdq_kwargs = getattr(args, "svdq_kwargs", None)
+  if args.quantize_type.startswith("svdq") and svdq_kwargs is None:
+    # `quantize_type` was set after post-processing, so no SVDQ options were resolved yet.
+    svdq_kwargs = _base_svdq_kwargs(args)
+    _derive_cli_svdq_kwargs(svdq_kwargs, args, explicit=set())
+  return QuantizeConfig(
+    **{
+      "backend": _resolve_cli_quantize_backend(args),
+      "quant_type": args.quantize_type,
+      "regional_quantize": not args.disable_regional_quantize,
+      "per_tensor_fallback": not args.disable_per_tensor_fallback,
+      "exclude_layers": _resolve_cli_quantize_exclude_layers(args),
+      "svdq_kwargs": svdq_kwargs,
+      "fp8_fused_mlp": bool(args.fp8_fused_mlp),
+      "fp4_fused_mlp": bool(args.fp4_fused_mlp),
+      "mxfp4_quantize_device": args.mxfp4_quantize_device,
+      "verbose": args.quantize_verbose,
+      **overrides,
+    })
+
+
 def maybe_quantize_transformer(
   args,
   pipe_or_adapter: DiffusionPipeline | BlockAdapter,
 ) -> DiffusionPipeline | BlockAdapter:
-
-  def _resolve_cli_svdq_kwargs() -> Optional[Dict[str, Any]]:
-    if args.quantize_type is None or not args.quantize_type.startswith("svdq"):
-      return None
-    few_shot_auto_compile = bool(args.svdq_few_shot_compile)
-    if args.svdq_smooth_strategy == "few_shot" and args.compile:
-      few_shot_auto_compile = True
-    offload_quantized_layers_to_cpu = bool(args.svdq_offload_quantized_layers_to_cpu)
-    defer_move_to_execution_device = bool(args.svdq_defer_final_to_cuda
-                                          and args.svdq_smooth_strategy == "few_shot"
-                                          and offload_quantized_layers_to_cpu)
-    return {
-      "smooth_strategy":
-      args.svdq_smooth_strategy,
-      "calibrate_precision":
-      args.svdq_calibrate_precision,
-      "runtime_kernel":
-      args.svdq_runtime,
-      "lora_layout":
-      args.svdq_lora_layout,
-      "quantize_device":
-      args.svdq_quantize_device,
-      "offload_quantized_layers_to_cpu":
-      offload_quantized_layers_to_cpu,
-      "layerwise_offload":
-      args.svdq_layerwise_offload,
-      "async_transfer":
-      args.layerwise_async_transfer,
-      "transfer_buckets":
-      args.layerwise_transfer_buckets,
-      "prefetch_limit":
-      args.layerwise_prefetch_limit,
-      "max_copy_streams":
-      args.layerwise_max_copy_streams,
-      "max_inflight_prefetch_bytes":
-      args.layerwise_max_inflight_prefetch_bytes,
-      "persistent_buckets":
-      args.layerwise_persistent_buckets,
-      "persistent_bins":
-      args.layerwise_persistent_bins,
-      "defer_move_to_execution_device":
-      defer_move_to_execution_device,
-      "few_shot_steps":
-      args.svdq_few_shot_steps,
-      "few_shot_relax_factor":
-      args.svdq_few_shot_relax_factor,
-      "few_shot_relax_top_ratio":
-      args.svdq_few_shot_relax_top_ratio,
-      "few_shot_relax_strategy":
-      args.svdq_few_shot_relax_strategy,
-      "few_shot_auto_compile":
-      few_shot_auto_compile,
-      "fused_mlp":
-      bool(args.svdq_fused_mlp),
-      **({
-        "packed_a4_stages": args.svdq_packed_a4_stages
-      } if args.svdq_packed_a4_stages is not None else {}),
-      **({
-        "packed_a4_inner_group": args.svdq_packed_a4_inner_group
-      } if args.svdq_packed_a4_inner_group is not None else {}),
-    }
-
   # Quantize transformer by default if quantization is enabled
   if args.quantize:
     backend = _resolve_cli_quantize_backend(args)
@@ -2672,18 +2772,7 @@ def maybe_quantize_transformer(
                   backend.name)
       transformer = quantize(
         transformer,
-        quantize_config=QuantizeConfig(
-          backend=backend,
-          quant_type=args.quantize_type,
-          regional_quantize=not args.disable_regional_quantize,
-          per_tensor_fallback=not args.disable_per_tensor_fallback,
-          exclude_layers=_resolve_cli_quantize_exclude_layers(args),
-          svdq_kwargs=_resolve_cli_svdq_kwargs(),
-          fp8_fused_mlp=bool(args.fp8_fused_mlp),
-          fp4_fused_mlp=bool(args.fp4_fused_mlp),
-          mxfp4_quantize_device=args.mxfp4_quantize_device,
-          verbose=args.quantize_verbose,
-        ),
+        quantize_config=build_quantize_config(args),
       )
       assign_transformer(pipe, transformer, name=transformer_name)
 
@@ -2693,18 +2782,7 @@ def maybe_quantize_transformer(
                   secondary.__class__.__name__, args.quantize_type, backend.name)
       secondary = quantize(
         secondary,
-        quantize_config=QuantizeConfig(
-          backend=backend,
-          quant_type=args.quantize_type,
-          regional_quantize=not args.disable_regional_quantize,
-          per_tensor_fallback=not args.disable_per_tensor_fallback,
-          exclude_layers=_resolve_cli_quantize_exclude_layers(args),
-          svdq_kwargs=_resolve_cli_svdq_kwargs(),
-          fp8_fused_mlp=bool(args.fp8_fused_mlp),
-          fp4_fused_mlp=bool(args.fp4_fused_mlp),
-          mxfp4_quantize_device=args.mxfp4_quantize_device,
-          verbose=args.quantize_verbose,
-        ),
+        quantize_config=build_quantize_config(args),
       )
       assign_transformer(pipe, secondary, name=secondary_name)
 
