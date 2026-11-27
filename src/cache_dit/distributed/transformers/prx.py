@@ -205,7 +205,7 @@ class PrxContextParallelismPlanner(ContextParallelismPlanner):
   tokens are split at the first block and gathered at ``final_layer``.
 
   Ring is not supported: the pipeline always passes a text padding mask, and the native
-  backend rejects ``attn_mask`` together with the LSE Ring requires. ``--ulysses-anything`` is
+  backend rejects ``attn_mask`` together with the LSE Ring requires. ``ulysses_anything=true`` is
   rejected too, because the joint mask is rebuilt from equipartitioned text chunks.
   """
 
@@ -221,10 +221,11 @@ class PrxContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "PRX / PRXPixel Context Parallelism does not support Ring attention: the pipeline "
         "always passes a text padding mask, and Ring needs `return_lse`, which the native "
-        "backend rejects together with a mask. Use Ulysses (`--parallel ulysses`) instead.")
+        "backend rejects together with a mask. Use Ulysses (`--parallel-params ulysses=N`) instead."
+      )
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "PRX / PRXPixel Context Parallelism does not support `--ulysses-anything`: the joint "
+        "PRX / PRXPixel Context Parallelism does not support `ulysses_anything=true`: the joint "
         "text+image key mask is rebuilt from equipartitioned text chunks. Use the default "
         "Ulysses partition.")
     assert isinstance(

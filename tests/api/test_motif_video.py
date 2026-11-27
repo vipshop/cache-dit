@@ -373,5 +373,5 @@ def test_cp_planner_rejects_ulysses_anything():
     ulysses_anything=True,
     ulysses_async=False,
   )
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     planner._apply(transformer, parallelism_config)

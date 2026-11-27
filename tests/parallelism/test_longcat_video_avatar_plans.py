@@ -43,7 +43,7 @@ def test_cp_rejects_ring_and_uneven_ulysses():
   with pytest.raises(NotImplementedError, match="Ring"):
     planner._apply(transformer=_transformer(), parallelism_config=_config(ring_size=2))
 
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     planner._apply(
       transformer=_transformer(),
       parallelism_config=_config(ulysses_anything=True),

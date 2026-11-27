@@ -293,8 +293,8 @@ def async_ulysses_is_active() -> bool:
 
   `async_ulysses/flux2.py` patches `Flux2AttnProcessor.__call__` and
   `Flux2ParallelSelfAttnProcessor.__call__` **on the class**. A fused subclass overrides that
-  method, so it would silently run the synchronous path under `--ulysses-async`: nothing would
-  fail, the overlap would just disappear.
+  method, so it would silently run the synchronous path under
+  `--parallel-params ulysses_async=true`: nothing would fail, the overlap would just disappear.
 
   :returns: `True` when either stock processor carries the async wrapper.
   """

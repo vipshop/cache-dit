@@ -381,8 +381,7 @@ CP restores the complete token geometry with the existing CP mesh before FFT, in
 The official FLUX implementation probes the first block's modulated input. Its reference code implements the paper's radial response as a separable per-axis product, which this module follows. The cache-dit integration filters the existing Fn residual/hidden-state probe and retains DBCache scheduling; it is an adaptation of the SEA metric, not a reproduction of the official whole-step execution path.
 
 ```bash
-python3 -m cache_dit.generate flux --cache --seacache \
-  --seacache-mode flow --seacache-feature-shape 64 64 --seacache-power-exp 2.0
+python3 -m cache_dit.generate flux --cache-params 'type=SeaCache,seacache_mode=flow,seacache_feature_shape=64x64,seacache_power_exp=2.0'
 ```
 
 A FLUX.1-dev probe (1024², 28 steps, seed 0, compile+F1B0+warmup 8, RTX PRO 5000) produced:
@@ -428,9 +427,8 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache --seacache --seacache-feature-shape 64 64 \
-  --softcache --softcache-tau 0.5 --calibrator residual_motion --max-warmup-steps 1 \
-  --max-cached-steps -1 --max-continuous-cached-steps -1
+python3 -m cache_dit.generate flux --cache-params 'type=SoftCache,ws=1,mc=-1,mcc=-1,seacache_feature_shape=64x64,softcache_tau=0.5' \
+    --calibrator-params type=residual_motion
 ```
 
 Scope:
@@ -559,8 +557,8 @@ cache_dit.enable_cache(
 The same selection from the CLI:
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator hicache \
-  --calibrator-params order=2,sigma=0.5
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
+  --calibrator-params type=hicache,order=2,sigma=0.5
 ```
 
 Two facts change how the paper's numbers transfer, and they are not implementation details:
@@ -580,7 +578,7 @@ Measured (FLUX.1-dev, 1024², 28 steps, prompt "A cat holding a sign that says h
 | + HiCache (order 2, σ=1/√2) | 32.44 | 0.9770 | 9.88s |
 | + HiCache (order 2, σ=1.0) | 24.99 | 0.9280 | 9.89s |
 
-Two readings: the **damping is what carries the gain** — the undamped basis (σ=1) collapses to 25 dB, the same direction as the paper's σ ablation, which is the cheapest proof that the basis is wired and not silently falling back to TaylorSeer; and within this probe **order 1 is already enough at ~1.7×**. A mask-pinned pair (`--steps-mask --mask-policy medium`, 9 cached steps, schedule independent of the forecast) keeps the ordering (TaylorSeer 27.77 dB vs HiCache 29.36 dB), so the gap comes from the basis rather than from a shifted hit sequence. The `+ compile` row lands at 27.5-28.2 dB and differs run to run, as with every calibrator under `torch.compile`.
+Two readings: the **damping is what carries the gain** — the undamped basis (σ=1) collapses to 25 dB, the same direction as the paper's σ ablation, which is the cheapest proof that the basis is wired and not silently falling back to TaylorSeer; and within this probe **order 1 is already enough at ~1.7×**. A mask-pinned pair (`--cache-params scm=medium,steps_mask=true`, 9 cached steps, schedule independent of the forecast) keeps the ordering (TaylorSeer 27.77 dB vs HiCache 29.36 dB), so the gap comes from the basis rather than from a shifted hit sequence. The `+ compile` row lands at 27.5-28.2 dB and differs run to run, as with every calibrator under `torch.compile`.
 
 <details markdown="1">
 <summary>📖 HiCache Config Parameters</summary>
@@ -626,8 +624,8 @@ cache_dit.enable_cache(
 The same selection from the CLI:
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator brace \
-  --calibrator-params capacity=3,gamma=0.7
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
+  --calibrator-params type=brace,capacity=3,gamma=0.7
 ```
 
 cache-dit ports only the predictor. DBCache still owns the adaptive cache decision and block granularity; the paper's fixed refresh interval and per-layer cache are not reproduced. Logical step indices replace scheduler timesteps because the calibrator interface has no scheduler input. This supports non-uniform anchor spacing, but it is not the same coordinate system as a non-uniform scheduler's raw timesteps. Predictions never enter the FIFO, so repeated queries within one step are idempotent.
@@ -684,8 +682,8 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator bezicast \
-  --calibrator-params history=6,control_points=4,ridge=0.5,guardrail=false
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
+  --calibrator-params type=bezicast,history=6,control_points=4,ridge=0.5,guardrail=false
 ```
 
 The optional equivalent-weight guardrail implements the paper's risk score, Euclidean probability-simplex projection, and soft blending:
@@ -754,7 +752,7 @@ cache_dit.enable_cache(
 ```
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator residual_motion --calibrator-params beta=1.0
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --calibrator-params type=residual_motion,beta=1.0
 ```
 
 FLUX.1-dev, 1024², 50 steps, guidance 3.5, 8 DPG prompts, A100-40GB, bf16, no compile, DBCache F1B0 with the default warmup. PSNR / SSIM / LPIPS are against the uncached 50-step image.
@@ -942,7 +940,7 @@ FoCA has no algorithm-specific hyper-parameters — the prediction formula adapt
 
 **<span style="color:#c77dff;">SVD-Cache</span>** is a **subspace-split** calibrator: instead of extrapolating the whole cached tensor, it decomposes it in the **token × channel plane** into a low-rank principal part and a high-frequency residual, smooths the principal part across steps, and freezes the residual. It needs no training and — unlike most subspace caching methods — **no offline calibration file**: the basis is estimated at run time from the first full-compute feature of the current inference. [arXiv:2601.07396](https://arxiv.org/abs/2601.07396)
 
-> **Naming note**: SVD-Cache is a **caching** calibrator. It is unrelated to **SVDQuant** (`--quantize-type svdq_*`), which is a weight-quantization backend. On the command line SVD-Cache is spelled `--calibrator svd` (or `--calibrator svd-calibrator`).
+> **Naming note**: SVD-Cache is a **caching** calibrator. It is unrelated to **SVDQuant** (`--quantize-params quant_type=svdq_*`), which is a weight-quantization backend. On the command line SVD-Cache is selected by `--calibrator-params "type=svd,..."` (the long form `type=svd-calibrator` is also accepted).
 
 > ⚠️ **Measured status (FLUX.1-dev, 1024², 28 steps, seed 0, RTX PRO 5000, 2 prompts, torch 2.15.0, 2026-11-17)**: on this harness **neither predictor beats the plain-reuse baseline often enough to recommend it**, so treat SVD-Cache as reproduction/experimental support:
 >
@@ -962,7 +960,7 @@ FoCA has no algorithm-specific hyper-parameters — the prediction formula adapt
 > | + SVD-Cache `ema` β 0.9 / β 0.5 | 4.13s | 15.04 / 15.89 | 0.5446 / 0.6006 |
 > | + SVD-Cache `taylor` order 1 / order 2 | 4.12s | 15.56 / 15.71 | 0.5881 / 0.5832 |
 >
-> Reading it: (a) the **EMA** path is a convex blend of two real anchors, so it can only relax reuse — it never extrapolates, and `svd_beta → 0` reproduces plain reuse exactly (measured 15.89 vs 15.95 dB); (b) the **Taylor** path does extrapolate and recovers most of that loss (+2.8 dB at 1.9x), but still trails the plain `TaylorSeer` calibrator while costing ~0.6 s more per image; (c) the loss is **caused by freezing the residual**, not by the predictor: raising τ from 0.9 (k=5, residual ≈10% energy) to 0.999 (k≈1100) recovers +0.43 dB, and the same feature is what the plain `TaylorSeer` calibrator extrapolates instead of freezing. The measured rank at τ=0.9 is tiny (4–5/3072 for hidden states, 2/512 for encoder), matching the paper's claim. **For production use `--calibrator taylorseer` (or `dmd`).**
+> Reading it: (a) the **EMA** path is a convex blend of two real anchors, so it can only relax reuse — it never extrapolates, and `svd_beta → 0` reproduces plain reuse exactly (measured 15.89 vs 15.95 dB); (b) the **Taylor** path does extrapolate and recovers most of that loss (+2.8 dB at 1.9x), but still trails the plain `TaylorSeer` calibrator while costing ~0.6 s more per image; (c) the loss is **caused by freezing the residual**, not by the predictor: raising τ from 0.9 (k=5, residual ≈10% energy) to 0.999 (k≈1100) recovers +0.43 dB, and the same feature is what the plain `TaylorSeer` calibrator extrapolates instead of freezing. The measured rank at τ=0.9 is tiny (4–5/3072 for hidden states, 2/512 for encoder), matching the paper's claim. **For production use `--calibrator-params type=taylorseer` (or `type=dmd`).**
 
 ### Mathematical Principle
 
@@ -1011,10 +1009,10 @@ cache_dit.enable_cache(
 Or from the command line:
 
 ```bash
-python3 -m cache_dit.generate flux --cache --calibrator svd \
-        --calibrator-params "tau=0.9,beta=0.9" --save-path flux.cache.svd.png
-python3 -m cache_dit.generate flux --cache --calibrator svd \
-        --calibrator-params "predictor=taylor,order=1,tau=0.9" --save-path flux.cache.svd.taylor.png
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
+        --calibrator-params "type=svd,tau=0.9,beta=0.9" --save-path flux.cache.svd.png
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' \
+        --calibrator-params "type=svd,predictor=taylor,order=1,tau=0.9" --save-path flux.cache.svd.taylor.png
 ```
 
 <details markdown="1">

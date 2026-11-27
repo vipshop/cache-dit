@@ -173,21 +173,25 @@ The easiest way to enable hybrid cache acceleration for DiTs with cache-dit is t
 
 ```bash
 # use default model path, e.g, "black-forest-labs/FLUX.1-dev"
-python3 -m cache_dit.generate flux --attn _native_npu
-python3 -m cache_dit.generate qwen_image --attn _native_npu
-python3 -m cache_dit.generate flux --cache --attn _native_npu
-python3 -m cache_dit.generate qwen_image --cache --attn _native_npu
+python3 -m cache_dit.generate flux --attn-params type=_native_npu
+python3 -m cache_dit.generate qwen_image --attn-params type=_native_npu
+python3 -m cache_dit.generate flux --cache-params 'type=DBCache' --attn-params type=_native_npu
+python3 -m cache_dit.generate qwen_image --cache-params 'type=DBCache' --attn-params type=_native_npu
 ```
 
 ### Distributed Inference 
 
 cache-dit is designed to work Context Parallelism, Tensor Parallelism. For examples:
 
+These runs keep `torchrun` on purpose: the built-in launcher counts devices through
+`CUDA_VISIBLE_DEVICES` / `torch.cuda`, while Ascend selects devices with `ASCEND_RT_VISIBLE_DEVICES`,
+so the ranks are started explicitly here.
+
 ```bash
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --attn _native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --attn _native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel ulysses --attn _native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel ulysses --cache --attn _native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel ulysses --cache --attn _native_npu
-torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel ulysses --cache --attn _native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel-params 'ulysses=4' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysses=4' --cache-params 'type=DBCache' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate zimage --parallel-params 'ulysses=4' --cache-params 'type=DBCache' --attn-params type=_native_npu
+torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image --parallel-params 'ulysses=4' --cache-params 'type=DBCache' --attn-params type=_native_npu
 ```

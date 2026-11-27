@@ -649,105 +649,6 @@ def test_svdq_dq_skips_calibrator_registration(monkeypatch) -> None:
   assert isinstance(quantized_model.block.to_q, SVDQW4A4Linear)
 
 
-def test_svdq_dq_cli_flags_map_to_quantize_type() -> None:
-  parser = get_args(parse=False)
-
-  args = maybe_postprocess_args(parser.parse_args(["--svdq-int4-r32-dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "identity"
-  assert args.svdq_calibrate_precision == "low"
-  assert args.svdq_runtime is None
-  assert args.svdq_quantize_device == "cuda"
-  assert args.svdq_offload_quantized_layers_to_cpu is False
-  assert args.svdq_defer_final_to_cuda is True
-
-  args = maybe_postprocess_args(parser.parse_args(["--svdq-int4-r128-dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r128_dq"
-  assert args.svdq_smooth_strategy == "identity"
-
-  args = maybe_postprocess_args(parser.parse_args(["--svdq-nvfp4-r32-dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_nvfp4_r32_dq"
-  assert args.svdq_smooth_strategy == "identity"
-  assert args.svdq_calibrate_precision == "low"
-  assert args.svdq_runtime is None
-
-  args = maybe_postprocess_args(parser.parse_args(["--svdq-nvfp4-r128-dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_nvfp4_r128_dq"
-  assert args.svdq_smooth_strategy == "identity"
-
-  args = maybe_postprocess_args(parser.parse_args(["--quantize-type", "svdq_int4_r32_dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-
-  args = maybe_postprocess_args(parser.parse_args(["--quantize-type", "svdq_nvfp4_r32_dq"]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_nvfp4_r32_dq"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "weight",
-    ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "weight"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-    ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "few_shot"
-  assert args.svdq_few_shot_steps == 1
-  assert args.svdq_few_shot_relax_factor == 1.5
-  assert args.svdq_few_shot_relax_top_ratio == 0.25
-  assert args.svdq_few_shot_relax_strategy == "auto"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-quantize-device",
-      "auto",
-      "--svdq-layerwise-offload",
-      "--svdq-layerwise-async-transfer",
-      "--svdq-layerwise-transfer-buckets",
-      "2",
-      "--svdq-layerwise-prefetch-limit",
-      "--svdq-layerwise-max-copy-streams",
-      "1",
-      "--svdq-layerwise-max-inflight-prefetch-bytes",
-      "4096",
-      "--svdq-layerwise-persistent-buckets",
-      "1",
-      "--svdq-layerwise-persistent-bins",
-      "2",
-      "--svdq-keep-quantized-layers-on-device",
-      "--svdq-no-defer-final-to-cuda",
-    ]))
-  assert args.svdq_quantize_device == "auto"
-  assert args.svdq_layerwise_offload is True
-  assert args.layerwise_async_transfer is True
-  assert args.layerwise_transfer_buckets == 2
-  assert args.layerwise_prefetch_limit is True
-  assert args.layerwise_max_copy_streams == 1
-  assert args.layerwise_max_inflight_prefetch_bytes == 4096
-  assert args.layerwise_persistent_buckets == 1
-  assert args.layerwise_persistent_bins == 2
-  assert args.svdq_offload_quantized_layers_to_cpu is True
-  assert args.svdq_defer_final_to_cuda is False
-
-
 def test_generic_module_offload_cli_is_mutually_exclusive_with_diffusers_offload() -> None:
   parser = get_args(parse=False)
 
@@ -826,34 +727,31 @@ def test_svdq_dq_cli_runtime_kernel_choices() -> None:
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "weight_inv",
-      "--svdq-calib",
-      "high",
-      "--svdq-runtime",
-      "native",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "runtime_kernel=native",
     ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "weight_inv"
-  assert args.svdq_calibrate_precision == "high"
-  assert args.svdq_runtime == "native"
+  assert args.svdq_kwargs["runtime_kernel"] == "native"
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_nvfp4_r32_dq",
-      "--svdq-runtime",
-      "cute",
+      "--quantize-params",
+      "quant_type=svdq_nvfp4_r32_dq",
+      "--svdq-params",
+      "runtime_kernel=cute",
     ]))
-  assert args.svdq_runtime == "cute"
+  assert args.svdq_kwargs["runtime_kernel"] == "cute"
 
   for deprecated in ("v1", "v2"):
-    with pytest.raises(SystemExit) as excinfo:
-      parser.parse_args(["--svdq-runtime", deprecated])
-    assert excinfo.value.code == 2
+    with pytest.raises(ValueError, match="runtime_kernel"):
+      maybe_postprocess_args(
+        parser.parse_args([
+          "--quantize-params",
+          "quant_type=svdq_int4_r32_dq",
+          "--svdq-params",
+          f"runtime_kernel={deprecated}",
+        ]))
 
 
 def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
@@ -866,65 +764,38 @@ def test_layerwise_max_inflight_prefetch_bytes_cli_accepts_gib_suffix() -> None:
     ]))
   assert args.layerwise_max_inflight_prefetch_bytes == 4 * 1024 ** 3
 
+
+@pytest.mark.parametrize("relax_strategy",
+                         ["fixed", "stable_auto", "auto", "top", "power", "log", "rank"])
+def test_svdq_dq_cli_few_shot_options(relax_strategy: str) -> None:
+  parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--svdq-layerwise-max-inflight-prefetch-bytes",
-      "0.5GiB",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      f"smooth_strategy=few_shot,few_shot_relax_strategy={relax_strategy}",
     ]))
-  assert args.layerwise_max_inflight_prefetch_bytes == 512 * 1024 ** 2
+  kwargs = args.svdq_kwargs
+  assert kwargs["smooth_strategy"] == "few_shot"
+  assert kwargs["few_shot_relax_strategy"] == relax_strategy
+  assert kwargs["few_shot_steps"] == 1
+  assert kwargs["few_shot_relax_factor"] == 1.5
+  assert kwargs["few_shot_relax_top_ratio"] == 0.25
 
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-relax-strategy",
-      "fixed",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=few_shot,few_shot_steps=3,few_shot_relax_factor=2.5,"
+      "few_shot_relax_top_ratio=0.5,few_shot_auto_compile=true",
     ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "few_shot"
-  assert args.svdq_few_shot_relax_strategy == "fixed"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-relax-strategy",
-      "stable_auto",
-    ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "few_shot"
-  assert args.svdq_few_shot_relax_strategy == "stable_auto"
-
-  args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-steps",
-      "3",
-      "--svdq-few-shot-relax-factor",
-      "2.5",
-      "--svdq-few-shot-relax-top-ratio",
-      "0.5",
-      "--svdq-few-shot-relax-strategy",
-      "auto",
-      "--svdq-few-shot-compile",
-    ]))
-  assert args.quantize
-  assert args.quantize_type == "svdq_int4_r32_dq"
-  assert args.svdq_smooth_strategy == "few_shot"
-  assert args.svdq_few_shot_steps == 3
-  assert args.svdq_few_shot_relax_factor == 2.5
-  assert args.svdq_few_shot_relax_top_ratio == 0.5
-  assert args.svdq_few_shot_relax_strategy == "auto"
-  assert args.svdq_few_shot_compile is True
+  kwargs = args.svdq_kwargs
+  assert kwargs["few_shot_steps"] == 3
+  assert kwargs["few_shot_relax_factor"] == 2.5
+  assert kwargs["few_shot_relax_top_ratio"] == 0.5
+  assert kwargs["few_shot_auto_compile"] is True
 
 
 def test_generic_module_offload_uses_text_specific_layerwise_overrides(
@@ -953,16 +824,16 @@ def test_generic_module_offload_uses_text_specific_layerwise_overrides(
   )
   captured: dict[str, dict[str, object]] = {}
 
-  monkeypatch.setattr("cache_dit.cli.utils.get_rank_device", lambda: (0, torch.device("cuda", 0)))
-  monkeypatch.setattr("cache_dit.cli.utils.remove_layerwise_offload", lambda _module: 0)
-  monkeypatch.setattr("cache_dit.cli.utils._find_offload_related_hf_hook", lambda _module: None)
+  monkeypatch.setattr("cache_dit.cli.offload.get_rank_device", lambda: (0, torch.device("cuda", 0)))
+  monkeypatch.setattr("cache_dit.cli.offload.remove_layerwise_offload", lambda _module: 0)
+  monkeypatch.setattr("cache_dit.cli.offload._find_offload_related_hf_hook", lambda _module: None)
 
   def _capture_handle(module: nn.Module, **kwargs):
     module_name = next(name for name, candidate in vars(pipe).items() if candidate is module)
     captured[module_name] = kwargs
     return SimpleNamespace(remove=lambda **_kwargs: None)
 
-  monkeypatch.setattr("cache_dit.cli.utils.layerwise_cpu_offload", _capture_handle)
+  monkeypatch.setattr("cache_dit.cli.offload.layerwise_cpu_offload", _capture_handle)
 
   assert maybe_generic_module_offload(args, pipe) is True
   assert captured["transformer"]["async_transfer"] is True
@@ -994,10 +865,10 @@ def test_svdq_dq_cli_smooth_strategy_is_applied_during_transformer_quantization(
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "weight",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=weight",
     ]))
 
   holder = SimpleNamespace(transformer=model)
@@ -1022,12 +893,10 @@ def test_svdq_dq_cli_weight_inv_strategy_is_applied_during_transformer_quantizat
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "weight_inv",
-      "--svdq-calibrate-precision",
-      "medium",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=weight_inv,calibrate_precision=medium",
     ]))
 
   holder = SimpleNamespace(transformer=model)
@@ -1051,10 +920,11 @@ def test_svdq_dq_cli_quantization_runs_from_cpu_root_and_keeps_quantized_layers_
     dtype=dtype,
   )
   parser = get_args(parse=False)
-  args = maybe_postprocess_args(parser.parse_args([
-    "--quantize-type",
-    "svdq_int4_r32_dq",
-  ]))
+  args = maybe_postprocess_args(
+    parser.parse_args([
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+    ]))
 
   holder = SimpleNamespace(transformer=model)
   maybe_quantize_transformer(args, holder)
@@ -1078,10 +948,10 @@ def test_svdq_dq_cli_layerwise_offload_forces_quantized_layers_back_to_cpu() -> 
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-layerwise-offload",
-      "--svdq-keep-quantized-layers-on-device",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "layerwise_offload=true",
     ]))
 
   holder = SimpleNamespace(transformer=model)
@@ -1108,11 +978,10 @@ def test_svdq_dq_cli_runtime_kernel_is_applied_during_transformer_quantization(
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-runtime",
-      runtime_kernel,
-      "--svdq-keep-quantized-layers-on-device",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      f"runtime_kernel={runtime_kernel}",
     ]))
 
   holder = SimpleNamespace(transformer=model)
@@ -1700,10 +1569,16 @@ def test_svdq_dq_few_shot_extra_relax_strategies_scale_monotonically(strategy: s
     torch.isclose(sorted_ratios, torch.full_like(sorted_ratios, math.sqrt(2.5)), atol=1e-2))
 
 
-@pytest.mark.parametrize("compile_args", [["--svdq-few-shot-compile"], ["--compile"]])
+@pytest.mark.parametrize(
+  "extra",
+  [
+    ["--svdq-params", "smooth_strategy=few_shot,few_shot_steps=1,few_shot_auto_compile=true"],
+    ["--svdq-params", "smooth_strategy=few_shot,few_shot_steps=1", "--compile"],
+  ],
+)
 def test_svdq_dq_few_shot_deferred_compile_executes_once(
   monkeypatch: pytest.MonkeyPatch,
-  compile_args: list[str],
+  extra: list[str],
 ) -> None:
   dtype = runtime_dtype()
   model = make_toy_model(
@@ -1715,15 +1590,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
   )
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
-    parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-steps",
-      "1",
-      *compile_args,
-    ]))
+    parser.parse_args(["--quantize-params", "quant_type=svdq_int4_r32_dq", *extra]))
   holder = SimpleNamespace(transformer=model)
   compile_calls: list[str] = []
 
@@ -1731,7 +1598,7 @@ def test_svdq_dq_few_shot_deferred_compile_executes_once(
     compile_calls.append(name)
     return transformer
 
-  monkeypatch.setattr("cache_dit.cli.utils._compile_transformer_module",
+  monkeypatch.setattr("cache_dit.cli.compile._compile_transformer_module",
                       _fake_compile_transformer_module)
 
   maybe_quantize_transformer(args, holder)
@@ -1767,13 +1634,10 @@ def test_svdq_dq_few_shot_layerwise_offload_defers_full_pipeline_move_until_afte
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-steps",
-      "1",
-      "--svdq-layerwise-offload",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=few_shot,few_shot_steps=1,layerwise_offload=true",
     ]))
 
   move_calls: list[torch.device] = []
@@ -1823,13 +1687,10 @@ def test_svdq_dq_few_shot_falls_back_to_deferred_pipeline_move_on_failure() -> N
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-steps",
-      "1",
-      "--svdq-offload-quantized-layers-to-cpu",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=few_shot,few_shot_steps=1,offload_quantized_layers_to_cpu=true",
     ]))
 
   move_calls: list[torch.device] = []
@@ -1883,12 +1744,10 @@ def test_svdq_dq_few_shot_without_layerwise_offload_moves_pipe_to_cuda_eagerly()
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--quantize-type",
-      "svdq_int4_r32_dq",
-      "--svdq-smooth-strategy",
-      "few_shot",
-      "--svdq-few-shot-steps",
-      "1",
+      "--quantize-params",
+      "quant_type=svdq_int4_r32_dq",
+      "--svdq-params",
+      "smooth_strategy=few_shot,few_shot_steps=1",
     ]))
 
   move_calls: list[torch.device] = []

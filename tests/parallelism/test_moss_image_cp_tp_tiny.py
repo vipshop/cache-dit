@@ -23,7 +23,7 @@ _WIDTH = 4
 _LATENT_CHANNELS = 8
 _TEXT_DIM = 16
 _TEXT_TOKENS = 16  # H*W + text = 32, divisible by 2 for plain Ulysses
-_TEXT_TOKENS_ODD = 15  # odd joint length, only `--ulysses-anything` can split it
+_TEXT_TOKENS_ODD = 15  # odd joint length, only `ulysses_anything=true` can split it
 _REL_TOL = 2e-3
 _PORT = 29571
 
@@ -125,5 +125,5 @@ def test_moss_image_parallel_matches_single_rank(mode):
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 @pytest.mark.parametrize("mode", ["cp", "tp"])
 def test_moss_image_odd_joint_length(mode):
-  # An odd joint length needs `--ulysses-anything` for CP; TP never splits the sequence.
+  # An odd joint length needs `ulysses_anything=true` for CP; TP never splits the sequence.
   mp.spawn(_run_rank, args=(2, mode, _TEXT_TOKENS_ODD, mode == "cp"), nprocs=2, join=True)

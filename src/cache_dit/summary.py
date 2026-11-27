@@ -409,7 +409,8 @@ def supported_matrix() -> str | None:
       "MiniMaxH3Image",
       "PH3Image",
       # Pika H3 Flex is a MiniMax-H3 trunk behind a different pipeline name; CP2 is measured
-      # (`--parallel ulysses --ulysses-anything`) and the packed-sequence split is the H3 one.
+      # (`--parallel-params 'ulysses=N,ulysses_anything=true'`) and the packed-sequence split is
+      # the H3 one.
       "PikaH3Flex",
     ]
     _pipelines_supported_tensor_parallelism += [

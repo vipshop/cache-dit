@@ -240,7 +240,7 @@ probe: 首块 norm1 的调制后输入（经 temb 条件化），流程里逐 st
 
 ### 4.4 SVD-Cache 在 cache-dit 内的同 harness 实测（2026-11-17，FLUX.1-dev 1024²，28 步，seed 0，2 prompt，RTX PRO 5000，torch 2.15.0）
 
-行 = `--cache --ws 1`，psnr 用 `cache-dit-metrics --psnr-type skimage`（uint8 PNG 口径），全部 warmup 后计时：
+行 = `--cache-params ws=1`，psnr 用 `cache-dit-metrics --psnr-type skimage`（uint8 PNG 口径），全部 warmup 后计时：
 
 | 工作点 | 配置 | latency | 加速 | PSNR(dB) | SSIM |
 |---|---|---|---|---|---|
@@ -261,7 +261,7 @@ probe: 首块 norm1 的调制后输入（经 temb 条件化），流程里逐 st
 2. **`taylor` 是唯一有前向外推的分支**，但也只追回大部分差距（23.38 vs reuse 23.11、TaylorSeer 24.21），代价是 +0.6s/图（basis SVD + 每跳过步一次 `[M,k]@[k,D]` GEMM），而全张量 TaylorSeer 的额外成本是 O(1)。
 3. **损失来自冻结残差，不是 predictor。** 把 τ 从 0.9（k=5，残差占 ~10% 能量）抬到 0.999（k≈1100，残差≈0）就补回 +0.43dB（23.38→23.81）；剩下与 TaylorSeer 的 0.4dB 差距来自子空间截断本身。机理：**高频尾巴是逐步变化最快的分量**，把它冻结等于每步都注入一个过期误差——与论文「残差变化慢」的前提相反。
 
-→ 生产建议：`--calibrator taylorseer`（或 `dmd`）。SVD-Cache 保留为复现/实验能力，`svd.py` 顶部注释与 `docs/user_guide/CACHE_API.md` 都写明了这张表与机理。
+→ 生产建议：`--calibrator-params type=taylorseer`（或 `type=dmd`）。SVD-Cache 保留为复现/实验能力，`svd.py` 顶部注释与 `docs/user_guide/CACHE_API.md` 都写明了这张表与机理。
 
 ### 4.5 HiCache 在 cache-dit 内的同 harness 实测（2026-11-18，FLUX.1-dev 1024²，28 步，seed 0，rdt 0.12，RTX PRO 5000，torch 2.15.0，单 prompt）
 
@@ -332,7 +332,7 @@ FLUX.1-dev 1024²、28 步、seed 0、物理卡 2、compile+F1B0+rdt0.12。所�
 
 ### 4.9 SeaCache cache-dit 通用与分布式验收（2026-11-19）
 
-SeaCache 落在 DBCache 的可选 when 探针：`DBCacheConfig(enable_seacache=True)` 或 `--seacache`，不新增 CacheType。原 `similarity()` 函数体不变，SGLang 23 项集成测试通过；351 项相关回归、8 项行为探针及 pre-commit 通过。CP 等长/非等长、TP、CP+TP 和 CP+CFG 均以全量参照验证。
+SeaCache 落在 DBCache 的可选 when 探针：`DBCacheConfig(enable_seacache=True)` 或 `--cache-params type=SeaCache`，不新增 CacheType。原 `similarity()` 函数体不变，SGLang 23 项集成测试通过；351 项相关回归、8 项行为探针及 pre-commit 通过。CP 等长/非等长、TP、CP+TP 和 CP+CFG 均以全量参照验证。
 
 FLUX.1-dev 1024²、28 步、seed 0、compile+F1B0+warmup8+MCC3：
 
@@ -360,7 +360,7 @@ PSNR/SSIM 为**自算**（`data_range=1`），不是 `calculate_psnr`：
 
 ## 5. 复核用的原始出处
 
-- cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/utils.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
+- cache-dit：`src/cache_dit/caching/{cache_types.py,cache_contexts/,cache_blocks/,cache_adapters/}`、`cli/cache.py`、`cli/optimize.py`、`docs/benchmark/HYBRID_CACHE.md`、`docs/user_guide/CACHE_API.md`
 - HiCache：Algorithm 1/2/3（p.5、A.2）、Eq.(10)、Table 1（FLUX）、Table 4（σ 消融）、A.7 Listing 1
 - MagCache：Eq.(3)(4)(6)(7)(8)(9)(10)(11)、Sec 3.3、Table 1/2/3、A.3/A.4
 - SVD-Cache：Eq.(4)-(11)、Sec 3.3-3.5、Table 1/2/3、Fig 5(b)(c)(d)

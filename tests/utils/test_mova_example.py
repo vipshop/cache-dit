@@ -41,13 +41,13 @@ def test_env_path_mapping():
 
 
 def test_cache_config_is_disabled_without_the_flag():
-  """No `--cache` means no cache config, not a default one."""
+  """No `--cache-params` means no cache config, not a default one."""
 
   assert _mova_cache_config(_args(cache=False), steps=8) is None
 
 
 def test_cache_config_clamps_the_warmup():
-  """`--max-warmup-steps` covering every step must be clamped so a hit is still possible."""
+  """A `ws` value covering every step must be clamped so a hit is still possible."""
 
   config = _mova_cache_config(_args(max_warmup_steps=8), steps=8)
   assert config.max_warmup_steps == 7

@@ -37,7 +37,7 @@ cache-dit 的公共约定是 **diffusers 的 NHD `[B, N, H, D]`**，不是 Flash
 
 ## 3. dtype
 
-- 绝大多数 kernel 只吃 fp16 / bf16。`--attn` 是 pipeline 级设置，会落到跑 fp32 的组件（例如视频 VAE decoder），所以**必须处理非 fp16/bf16 输入**：
+- 绝大多数 kernel 只吃 fp16 / bf16。`--attn-params type=X` 是 pipeline 级设置，会落到跑 fp32 的组件（例如视频 VAE decoder），所以**必须处理非 fp16/bf16 输入**：
   - 首选：退 SDPA（`ffpa`），但**有 CP 时必须 raise**，因为 SDPA 只算本地分片，结果静默错。
   - 次选：显式 raise，让用户自己换 backend。
 - bf16 输入 + fp32 权重（autocast 关掉时）会导致 kernel 报错；不要靠 `torch.autocast` 兜底。
@@ -107,4 +107,4 @@ SDPA 语义：`bool` 时 `True` 表示参与，`float` 表示加性 bias。cache
 1. **eligibility 判定**（`_ineligible_reason`）：把每一条"不支持"写成字符串 reason，顺序固定、可测。
 2. **fallback 策略**：默认退 `_native_attention` 并 `_record_fallback(reason)`（计数 + 首次 warning），`strict=True` 时改成 raise。**fallback 必须可观测**，否则等于静默降级。
 3. **stats 接口**：`kernel_calls` / `fallback_calls` / `contiguous_copies` / `fallback_reasons`，供验收断言"真的走了 kernel"。
-4. **不做比做更好时的说明**：把精度限制写进 docstring 的 warning block（`sage3` 用一段 ASCII 数据流解释 FP4 P 只有 `{0,0.5,1}` 三档、cos≈0.03），并在 `ATTENTION.md` 里给出推荐替代（`--attn sage`）。
+4. **不做比做更好时的说明**：把精度限制写进 docstring 的 warning block（`sage3` 用一段 ASCII 数据流解释 FP4 P 只有 `{0,0.5,1}` 三档、cos≈0.03），并在 `ATTENTION.md` 里给出推荐替代（`--attn-params type=sage`）。

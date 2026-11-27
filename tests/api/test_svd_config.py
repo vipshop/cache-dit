@@ -160,23 +160,26 @@ class TestSVDConfigLoading:
 class TestCalibratorCLI:
 
   def test_unified_entry_builds_svd_config(self):
-    """--calibrator svd plus --calibrator-params fills the SVD fields."""
-    args = _cli(
-      ["--cache", "--calibrator", "svd", "--calibrator-params", "tau=0.85,beta=0.5,max_rank=8"])
+    """`type=svd` plus option keys fills the SVD fields."""
+    args = _cli([
+      "--cache-params", "type=DBCache", "--calibrator-params",
+      "type=svd,tau=0.85,beta=0.5,max_rank=8"
+    ])
     config = build_calibrator_config(args)
     assert isinstance(config, SVDCalibratorConfig)
     assert (config.svd_tau, config.svd_beta, config.svd_max_rank) == (0.85, 0.5, 8)
+    assert args.calibrator == "svd"
 
   def test_long_name_is_accepted(self):
     """The long 'svd-calibrator' spelling resolves to the same config."""
-    args = _cli(["--cache", "--calibrator", "svd-calibrator"])
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=svd-calibrator"])
     assert isinstance(build_calibrator_config(args), SVDCalibratorConfig)
 
   def test_common_params(self):
     """Common keys work for any calibrator."""
     args = _cli([
-      "--cache", "--calibrator", "svd", "--calibrator-params",
-      "calibrator_cache_type=hidden_states,encoder=false"
+      "--cache-params", "type=DBCache", "--calibrator-params",
+      "type=svd,calibrator_cache_type=hidden_states,encoder=false"
     ])
     config = build_calibrator_config(args)
     assert config.calibrator_cache_type == "hidden_states"
@@ -184,8 +187,9 @@ class TestCalibratorCLI:
 
   def test_taylor_predictor_params(self):
     """Predictor/order reach the config through the same entry point."""
-    args = _cli(
-      ["--cache", "--calibrator", "svd", "--calibrator-params", "predictor=taylor,order=2"])
+    args = _cli([
+      "--cache-params", "type=DBCache", "--calibrator-params", "type=svd,predictor=taylor,order=2"
+    ])
     config = build_calibrator_config(args)
     assert config.svd_predictor == "taylor"
     assert config.svd_order == 2
@@ -193,49 +197,78 @@ class TestCalibratorCLI:
   def test_invalid_predictor_is_rejected(self):
     """An unknown predictor value is validated instead of silently accepted."""
     with pytest.raises(ValueError, match="expects one of"):
-      _cli(["--cache", "--calibrator", "svd", "--calibrator-params", "predictor=cubic"])
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=svd,predictor=cubic"])
 
   def test_dmd_params(self):
     """DMD options go through the same entry point."""
-    args = _cli(
-      ["--cache", "--calibrator", "dmd", "--calibrator-params", "history=5,svd_precision=low"])
+    args = _cli([
+      "--cache-params", "type=DBCache", "--calibrator-params",
+      "type=dmd,history=5,svd_precision=low"
+    ])
     config = build_calibrator_config(args)
     assert isinstance(config, DMDCalibratorConfig)
     assert config.dmd_history == 5
     assert config.dmd_svd_precision == "low"
-    defaults = build_calibrator_config(_cli(["--cache", "--calibrator", "dmd"]))
+    defaults = build_calibrator_config(
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=dmd"]))
     assert (defaults.dmd_history, defaults.dmd_svd_precision) == (6, "medium")
 
   def test_taylorseer_params(self):
-    """TaylorSeer order uses --calibrator-params and defaults to one."""
-    args = _cli(["--cache", "--calibrator", "taylorseer", "--calibrator-params", "order=2"])
+    """TaylorSeer order is an option key and defaults to one."""
+    args = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=taylorseer,order=2"])
     config = build_calibrator_config(args)
     assert isinstance(config, TaylorSeerCalibratorConfig)
     assert config.taylorseer_order == 2
-    defaults = build_calibrator_config(_cli(["--cache", "--calibrator", "taylorseer"]))
+    defaults = build_calibrator_config(
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=taylorseer"]))
     assert defaults.taylorseer_order == 1
 
   def test_no_calibrator_builds_nothing(self):
-    """Without --calibrator the cache runs without a forecast layer."""
-    assert build_calibrator_config(_cli(["--cache"])) is None
+    """Without --calibrator-params the cache runs without a forecast layer."""
+    args = _cli(["--cache-params", "type=DBCache"])
+    assert build_calibrator_config(args) is None
+    assert args.calibrator is None
+    assert args.calibrator_fields is None
 
   def test_unknown_param_key_raises(self):
     """Unknown keys fail loudly instead of being silently ignored."""
-    args = _cli(["--cache", "--calibrator", "svd"])
-    args.calibrator_params = {"bogus": "1"}
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=svd"])
+    args.calibrator_params = {"type": "svd", "bogus": "1"}
     with pytest.raises(ValueError, match="Unknown --calibrator-params key"):
       maybe_postprocess_args(args)
 
-  def test_unknown_calibrator_is_rejected(self):
-    """Argparse rejects an unknown calibrator name."""
+  @pytest.mark.parametrize("params", ["type=nope", "type=", "tau=0.9"])
+  def test_bad_type_is_rejected(self, params):
+    """Argparse rejects an unknown or empty `type`."""
     with pytest.raises(SystemExit):
-      PARSER.parse_args(["--cache", "--calibrator", "nope"])
+      PARSER.parse_args(["--cache-params", "type=DBCache", "--calibrator-params", params])
 
-  @pytest.mark.parametrize("legacy_flag", ["--taylorseer", "--dmd", "--foca", "--svd", "--hicache"])
-  def test_legacy_selector_flags_are_rejected(self, legacy_flag):
-    """Calibrator selection has a single entry point: --calibrator."""
+  def test_bare_type_is_accepted(self):
+    """The first bare entry is the calibrator type, so `--calibrator-params svd` works."""
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "svd"])
+    assert args.calibrator == "svd"
+    assert args.calibrator_fields == {}
+
+  def test_type_only_uses_the_config_defaults(self):
+    """`type` alone selects the calibrator and resolves to no option fields."""
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=svd"])
+    assert args.calibrator == "svd"
+    assert args.calibrator_fields == {}
+    assert build_calibrator_config(args).svd_tau == 0.9
+
+  @pytest.mark.parametrize("empty", ["", " "])
+  def test_empty_params_is_rejected(self, empty):
+    """The flag is the switch, so an empty value must not silently disable the calibrator."""
     with pytest.raises(SystemExit):
-      PARSER.parse_args(["--cache", legacy_flag])
+      PARSER.parse_args(["--cache-params", "type=DBCache", "--calibrator-params", empty])
+
+  @pytest.mark.parametrize(
+    "legacy_flag", ["--calibrator", "--taylorseer", "--dmd", "--foca", "--svd", "--hicache"])
+  def test_legacy_selector_flags_are_rejected(self, legacy_flag):
+    """Calibrator selection has a single entry point: the `type` key of --calibrator-params."""
+    with pytest.raises(SystemExit):
+      PARSER.parse_args(["--cache-params", "type=DBCache", legacy_flag, "svd"])
 
   @pytest.mark.parametrize("legacy_argv", [
     ["--taylorseer-order", "1"],
@@ -248,26 +281,25 @@ class TestCalibratorCLI:
   def test_legacy_value_flags_are_rejected(self, legacy_argv):
     """Algorithm options are configured only through --calibrator-params."""
     with pytest.raises(SystemExit):
-      PARSER.parse_args(["--cache", *legacy_argv])
+      PARSER.parse_args(["--cache-params", "type=DBCache", *legacy_argv])
 
   def test_calibrator_requires_cache(self):
-    """--calibrator without --cache would be a silent no-op, so it fails."""
-    with pytest.raises(ValueError, match="requires --cache"):
-      _cli(["--calibrator", "svd"])
-
-  def test_params_require_calibrator(self):
-    """--calibrator-params alone has no target and fails."""
-    with pytest.raises(ValueError, match="requires --calibrator"):
-      _cli(["--cache", "--calibrator-params", "tau=0.9"])
+    """A calibrator without --cache would be a silent no-op, so it fails."""
+    with pytest.raises(ValueError, match="requires --cache-params"):
+      _cli(["--calibrator-params", "type=svd"])
 
   def test_config_path_conflict(self):
     """A config file already owns the calibrator settings."""
     with pytest.raises(ValueError, match="cannot be combined with --config-path"):
-      _cli(["--cache", "--config-path", "some.yaml", "--calibrator", "svd"])
+      _cli([
+        "--cache-params", "type=DBCache", "--config-path", "some.yaml", "--calibrator-params",
+        "type=svd"
+      ])
 
   def test_postprocess_is_idempotent(self):
     """Resolving the params must not consume them, so a second pass is a no-op."""
-    once = _cli(["--cache", "--calibrator", "svd", "--calibrator-params", "tau=0.85,beta=0.5"])
+    once = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=svd,tau=0.85,beta=0.5"])
     twice = maybe_postprocess_args(once)
     assert once.calibrator_fields == {"svd_tau": 0.85, "svd_beta": 0.5}
     assert twice.calibrator_fields == once.calibrator_fields
@@ -275,6 +307,6 @@ class TestCalibratorCLI:
 
   def test_out_of_range_param_is_rejected(self):
     """A numeric value outside the algorithm's domain fails before any inference."""
-    args = _cli(["--cache", "--calibrator", "svd", "--calibrator-params", "tau=1.5"])
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=svd,tau=1.5"])
     with pytest.raises(ValueError, match="tau must be in"):
       build_calibrator_config(args)

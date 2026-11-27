@@ -1,6 +1,6 @@
 ---
 name: cache-dit-distributed
-description: "Understand, extend or debug cache-dit's distributed module (src/cache_dit/distributed/): ParallelismConfig and ParallelismBackend selection, the CP plan DSL and split/gather hooks, Ring / Ulysses / USP attention and the all-to-all + P2P primitives (incl. FP4/FP6/FP8 Ulysses communication and async Ulysses), tensor parallelism planners and the CP+TP hybrid 3D mesh, and the text-encoder / VAE / ControlNet parallelism paths. Use when a --parallel / parallelism_config run fails or produces wrong output, when adding a CP or TP planner for a model, when choosing ulysses vs ring vs usp vs tp, when a cache plan and a CP plan interact (Bn_compute_blocks), when VAE-P tiles desync, or when reviewing such a PR. 触发词：distributed 模块、并行推理、CP/TP/USP 报错、UAA、ulysses、ring、TP planner、CP plan、VAE 并行、text encoder 并行、mesh 建错、all2all 通信。"
+description: "Understand, extend or debug cache-dit's distributed module (src/cache_dit/distributed/): ParallelismConfig and ParallelismBackend selection, the CP plan DSL and split/gather hooks, Ring / Ulysses / USP attention and the all-to-all + P2P primitives (incl. FP4/FP6/FP8 Ulysses communication and async Ulysses), tensor parallelism planners and the CP+TP hybrid 3D mesh, and the text-encoder / VAE / ControlNet parallelism paths. Use when a --parallel-params / parallelism_config run fails or produces wrong output, when adding a CP or TP planner for a model, when choosing ulysses vs ring vs usp vs tp, when a cache plan and a CP plan interact (Bn_compute_blocks), when VAE-P tiles desync, or when reviewing such a PR. 触发词：distributed 模块、并行推理、CP/TP/USP 报错、UAA、ulysses、ring、TP planner、CP plan、VAE 并行、text encoder 并行、mesh 建错、all2all 通信。"
 user-invocable: true
 ---
 
@@ -69,18 +69,11 @@ enable_cache(pipe, parallelism_config=...)
                     controlnet   → parallelize_controlnet（仅 CACHE_DIT CP）
 ```
 
-`--parallel` 的字符串在 `cli/utils.py::_prepare_distributed_size` 里折算成三元组（真实语义，容易记错）：
+`--parallel-params` 的度数就是各轴的真实度数（`ulysses` / `ring` / `tp`，默认 1，乘积必须等于进程数），没有旧的 `--parallel` 类型折算表；任意组合如 `ulysses=2,ring=2`、`tp=2,ulysses=2` 都直接给。
 
-| `--parallel` | 折算 |
-|---|---|
-| `ulysses` / `ring` / `tp` | 该维 = world_size |
-| `usp` | ulysses = world//2，ring = 余数 |
-| `ulysses_tp` | ulysses = world//2，tp = 余数（2 卡 = U1×T2，**纯 TP**） |
-| `tp_ulysses` | tp = world//2，ulysses = 余数（4 卡 = U2×T2） |
-| `ring_tp` / `tp_ring` | 同理，ring 与 tp 对半 |
-| `usp_tp` | 硬断言 world_size == 8，U2×R2×T2 |
+没有 torchrun 时 CLI 会按 `CUDA_VISIBLE_DEVICES` 自己拉起 worker：`cli/ray.py` 优先用 Ray（每个 task 占 1 张卡），Ray 未安装则用本地子进程；`--launcher auto|ray|local` 选择启动方式，度数乘积必须等于可见 GPU 数。torchrun 路径完全保留（`WORLD_SIZE` 已导出时跳过自启动）。
 
-`--parallel-text` / `--parallel-vae` / `--parallel-controlnet` **单独用是 no-op**：它们只在 `--parallel` 非空时被装进 `extra_parallel_modules`。
+`--parallel-params text=true` / `--parallel-params vae=true` / `--parallel-params controlnet=true` **单独用是 no-op**：它们只在 `--parallel-params` 带度数键（`ulysses` / `ring` / `tp`）时被装进 `extra_parallel_modules`。
 
 ## 3. 四个最常被问的问题
 
@@ -89,7 +82,7 @@ enable_cache(pipe, parallelism_config=...)
 | CP 与 TP 怎么选？ | 序列长、attention 占比高、显存不够但不想切权重 → CP；只想省权重显存、heads 能整除 → TP；两者都要 → hybrid（先 CP 后 TP，4 卡起） |
 | 为什么 CP 直接报错？ | 先看 `validate_context_parallel_attention_backend`：非 cache-dit 注册的后端或 non-CP 后端会在这里 raise；再看 mesh 大小与 `heads` 整除 |
 | 为什么 CP 输出错但形状对？ | 90% 是 split/gather 双份或缺失：hook 与模型内部手工切分只能二选一；其次看 UAA 是否越界（`tensor_split` 不整除） |
-| 为什么 VAE 并行没生效？ | `check_auto_encoder` 只认 `pipe.vae`；pipeline 把 VAE 挂在 `video_vae` 时 `--parallel-vae` 只 warning（"no VAE found"）不报错，需给 pipeline 加 `vae` 别名；另外 `--parallel-vae` 与 `--vae-tiling` / `--vae-slicing` 互斥（断言） |
+| 为什么 VAE 并行没生效？ | `check_auto_encoder` 只认 `pipe.vae`；pipeline 把 VAE 挂在 `video_vae` 时 `--parallel-params vae=true` 只 warning（"no VAE found"）不报错，需给 pipeline 加 `vae` 别名；另外 `--parallel-params vae=true` 与 `--vae-tiling` / `--vae-slicing` 互斥（断言） |
 
 ## 4. 高频坑（详细版在各 reference）
 
@@ -119,7 +112,7 @@ enable_cache(pipe, parallelism_config=...)
 
 | 文件 | 改什么 |
 |---|---|
-| `docs/user_guide/CONTEXT_PARALLEL.md` | 用户可见的 `--parallel` 组合、UAA / async / FP4-8 通信、Ring / USP 说明 |
+| `docs/user_guide/CONTEXT_PARALLEL.md` | 用户可见的 `--parallel-params` 组合、UAA / async / FP4-8 通信、Ring / USP 说明 |
 | `docs/user_guide/API_DOCS.md` | `ParallelismConfig` 字段语义 |
 | `docs/developer_guide/AGENTS.md` | 只有新增/删除 skill 时才动 |
 | `docs/EXAMPLES.md` | 代表性多卡命令 |

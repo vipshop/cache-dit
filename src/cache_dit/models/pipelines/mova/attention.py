@@ -4,8 +4,8 @@ Copied from OpenMOSS/MOVA ``mova/diffusion/models/wan_video_dit.py`` (Apache-2.0
 ways:
 
 * the four-way backend fallback (`flash_attn_3` / `flash_attn_2` / `sageattention` / SDPA) is replaced
-  by cache-dit's dispatcher, so ``--attn`` selects the kernel and context parallelism rides the same
-  call. The released code falls back to SDPA when none of the three optional packages is installed,
+  by cache-dit's dispatcher, so ``--attn-params`` selects the kernel and context parallelism rides
+  the same call. The released code falls back to SDPA when none of the three optional packages is
   which is also what the dispatcher's native backend runs;
 * every projection is a plain ``nn.Linear`` and the QK norms are ``torch.nn.RMSNorm``, exactly as
   upstream, so the state-dict keys are unchanged. ``head_dim`` is *not* divided by tensor

@@ -97,7 +97,7 @@ def test_cp_plan_refuses_ring_attention():
 
 
 def test_cp_plan_refuses_ulysses_anything():
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     CausVidContextParallelismPlanner()._apply(
       transformer=_tiny_transformer(),
       parallelism_config=_ulysses(ulysses_anything=True),

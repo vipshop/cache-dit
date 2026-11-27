@@ -25,6 +25,31 @@ Cache-DiT is also compatible with torch.compile and fully integrates with [SGLan
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
+## 🚀Quick Start
+
+```bash
+pip install -U "cache-dit[quantization]" # quantization: torchao, etc.
+# +cu13 wheel: CUDA extensions (SVDQuant, FP8 Ulysses communication, etc).
+pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
+```
+
+```bash
+# FLUX.1-dev on two GPUs: DBCache + TaylorSeer + FP8 Quantization + FP8 Ulysses + compile.
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate \
+  black-forest-labs/FLUX.1-dev \
+  --parallel-config 'ulysses=2' \
+  --quant-communicate-config 'bits=8' \
+  --cache-config 'DBCache,rdt=0.12' \
+  --calibrator-config 'taylorseer,order=1' \
+  --quantize-config 'float8_per_row' \
+  --attn-config 'native' \
+  --compile
+```
+
+More commands: 📘[Quick Examples](https://cache-dit.readthedocs.io/en/latest/EXAMPLES/). Other
+platforms, the source build and the full install matrix:
+📘[Installation](https://cache-dit.readthedocs.io/en/latest/user_guide/INSTALL/).
+
 ## 🌐Community Integration
 
 - 🎉[xDiT x Cache-DiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit)

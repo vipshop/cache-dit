@@ -36,7 +36,8 @@ Note:
     fills would stay on the meta device and crash on the first `.to(device)`.
   * Only the transformer is owned here. The text encoder, both VAEs and the schedulers stay
     diffusers classes, because cache-dit detects encoders by module path (`_is_auto_encoder`,
-    `_is_text_encoder`); vendoring them would silently disable `--parallel-vae` / `--parallel-text`.
+    `_is_text_encoder`); vendoring them would silently disable `--parallel-params vae=true` /
+    `--parallel-params text=true`.
 """
 
 from __future__ import annotations

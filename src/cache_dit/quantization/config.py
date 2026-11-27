@@ -17,6 +17,48 @@ _SVDQ_PACKED_A4_RANKS = {
   "w2a4": (0, 32, 64, 128, 256, 512),
   "w3a4": (0, 32, 64, 128),
 }
+# Ranks exposed by the example CLI for each SVDQ DQ family; PTQ types are not offered on the CLI.
+_SVDQ_DQ_RANKS = {
+  "int4": (32, 64, 128, 256),
+  "nvfp4": (32, 64, 128, 256),
+  "fp8": (32, 64, 128),
+  "w4a8": (32, 64, 128),
+  "fp6": (32, 64, 128),
+}
+SVDQ_DQ_QUANT_TYPES = tuple(
+  [f"svdq_{precision}_r{rank}_dq" for precision, ranks in _SVDQ_DQ_RANKS.items()
+   for rank in ranks] + [
+     f"svdq_{precision}_r{rank}_dq" for precision, ranks in _SVDQ_PACKED_A4_RANKS.items()
+     for rank in ranks if rank
+   ])
+# Online (TorchAO or cache-dit native) types that need no SVDQuant extension.
+ONLINE_QUANT_TYPES = (
+  "float8_per_row",
+  "float8_per_tensor",
+  "float8_per_block",
+  "float8_weight_only",
+  "nvfp4",
+  "nvfp4_weight_only",
+  "mxfp4_weight_only",
+  "int8_per_row",
+  "int8_per_tensor",
+  "int8_weight_only",
+  "int4_weight_only",
+)
+TRANSFORMER_QUANT_TYPES = ONLINE_QUANT_TYPES + SVDQ_DQ_QUANT_TYPES + ("bitsandbytes_4bit", )
+# Text encoders are quantized online after loading (or by bitsandbytes at load time); low-bit and
+# SVDQ runtimes are transformer-only.
+TEXT_ENCODER_QUANT_TYPES = (
+  "float8_per_row",
+  "float8_per_tensor",
+  "float8_per_block",
+  "float8_weight_only",
+  "int8_per_row",
+  "int8_per_tensor",
+  "int8_weight_only",
+  "int4_weight_only",
+  "bitsandbytes_4bit",
+)
 _SVDQ_CALIBRATE_PRECISIONS = ("low", "medium", "high")
 _SVDQ_RUNTIME_KERNELS = ("native", "cute", "flashinfer", "flashinfer+cute-dsl",
                          "flashinfer+cutlass-sm120")
@@ -629,7 +671,7 @@ class QuantizeConfig:
         raise ValueError(
           "The cache-dit quantization backend supports SVDQuant, three FP8 types and NVFP4; "
           f"supported types are {sorted(_CACHE_DIT_ONLINE_TYPES)} (MXFP4 is weight-only). "
-          f"Got {self.quant_type!r}. Use --quantize-backend torchao for other quantization "
+          f"Got {self.quant_type!r}. Use --quantize-params backend=torchao for other quantization "
           "types.")
       if self.calibrate_fn is not None or self.serialize_to is not None:
         raise ValueError("cache-dit native FP8/NVFP4 is online-only; calibrate_fn and serialize_to "

@@ -203,11 +203,11 @@ class QwenImage21ContextParallelismPlanner(ContextParallelismPlanner):
     if parallelism_config.ring_size is not None and parallelism_config.ring_size > 1:
       raise NotImplementedError(
         "Ring attention is not supported for Qwen-Image 2.1: it would split the block-causal mask. "
-        "Use `--parallel ulysses` instead.")
+        "Use `--parallel-params ulysses=N` instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
         "ulysses_anything is not supported for Qwen-Image 2.1: use the standard padded Ulysses "
-        "path with `--parallel ulysses` instead.")
+        "path with `--parallel-params ulysses=N` instead.")
     flex_blocks = [
       block for block in transformer.transformer_blocks
       if isinstance(block.attn.processor, QwenImage21FlexAttnProcessor)

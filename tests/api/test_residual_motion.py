@@ -211,7 +211,8 @@ def test_other_calibrators_do_not_bind_a_scheduler():
 def test_cli_and_yaml_options():
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
-    parser.parse_args(["--cache", "--calibrator", "rm", "--calibrator-params", "beta=0.5"]))
+    parser.parse_args(["--cache-params", "type=DBCache", "--calibrator-params",
+                       "type=rm,beta=0.5"]))
   config = build_calibrator_config(args)
   assert isinstance(config, ResidualMotionCalibratorConfig)
   assert config.residual_motion_beta == 0.5

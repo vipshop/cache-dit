@@ -319,7 +319,7 @@ def test_cache_config_is_a_six_step_single_forward_ladder():
 
 def test_cache_config_passes_the_block_counts_through():
   config = _pika_h3_flex_cache_config(_cache_args(Fn_compute_blocks=2, Bn_compute_blocks=4), "t2va")
-  # Hardcoding these would make the threshold sweep silently ignore `--Fn` / `--Bn`.
+  # Hardcoding these would make the threshold sweep silently ignore the `Fn` / `Bn` keys.
   assert config.Fn_compute_blocks == 2
   assert config.Bn_compute_blocks == 4
 

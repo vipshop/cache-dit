@@ -36,9 +36,10 @@ class AutoencoderKLQwenImage21DataParallelismPlanner(AutoencoderKLQwenImageDataP
     assert isinstance(auto_encoder, AutoencoderKLQwenImage21), (
       "AutoencoderKLQwenImage21DataParallelismPlanner can only be applied to AutoencoderKLQwenImage21"
     )
-    assert getattr(auto_encoder.config, "patch_size", None) is None, (
-      "Tiled data-parallel VAE decoding does not implement patch_size; disable --parallel-vae "
-      "for this checkpoint.")
+    assert getattr(
+      auto_encoder.config, "patch_size",
+      None) is None, ("Tiled data-parallel VAE decoding does not implement patch_size; disable "
+                      "`--parallel-params vae=true` for this checkpoint.")
     dp_mesh = self.mesh(parallelism_config=parallelism_config)
     auto_encoder = self.parallelize_tiling(
       auto_encoder=auto_encoder,

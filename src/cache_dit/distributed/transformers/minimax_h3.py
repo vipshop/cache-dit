@@ -73,8 +73,8 @@ class MiniMaxH3ContextParallelismPlanner(ContextParallelismPlanner):
   their shapes against the full sequence and uses them for the global scatter.
 
   The packed sequence is `video_rows + audio_rows + text_rows`, and the text length follows the
-  prompt, so it rarely divides by the CP size — prefer `--ulysses-anything` unless the length is
-  known to divide.
+  prompt, so it rarely divides by the CP size — prefer `ulysses_anything=true` in
+  `--parallel-params` unless the length is known to divide.
   """
 
   def _apply(
@@ -84,9 +84,9 @@ class MiniMaxH3ContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> dict:
     if getattr(parallelism_config, "ulysses_async", False):
-      raise ValueError("Async Ulysses (`--ulysses-async`) is not supported for "
-                       "MiniMaxH3Transformer3DModel: the async registry has no patch for its "
-                       "attention processor. Drop the flag or use another model.")
+      raise ValueError("Async Ulysses (`ulysses_async=true` in `--parallel-params`) is not "
+                       "supported for MiniMaxH3Transformer3DModel: the async registry has no patch "
+                       "for its attention processor. Drop the flag or use another model.")
 
     ulysses_size = parallelism_config.ulysses_size or 1
     ring_size = parallelism_config.ring_size or 1
@@ -103,13 +103,13 @@ class MiniMaxH3ContextParallelismPlanner(ContextParallelismPlanner):
           f"MiniMaxH3Transformer3DModel has {heads} attention heads, i.e. {local_heads} per rank "
           f"after tp_size={tp_size}, which is not divisible by ulysses_size={ulysses_size}. "
           "Ulysses shards heads, so pick a combination that divides, e.g. tp2+cp2 (28 heads) or "
-          "tp4+cp2 (14 heads), or enable --ulysses-anything.")
+          "tp4+cp2 (14 heads), or enable `ulysses_anything=true` in `--parallel-params`.")
 
     if (ulysses_size > 1 or ring_size > 1) and not parallelism_config.ulysses_anything:
       logger.warning(
         "MiniMaxH3Transformer3DModel packs text + audio + video rows into one sequence whose length "
         "follows the prompt, so it rarely divides by the context-parallel size; pass "
-        "--ulysses-anything unless that length is known to divide.")
+        "`ulysses_anything=true` in `--parallel-params` unless that length is known to divide.")
 
     return {
       # `rope` computes one row of angles per row of the packed sequence.

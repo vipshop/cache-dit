@@ -182,7 +182,7 @@ outputs) is then already local.
 frames, so `rotary_embed(hidden_states, T_local)` would restart positions at 0 and every rank would
 share rank 0's positions. Keep the module but make it return the **full table**, and slice
 `[offset : offset + local_len]` inside the processors (`offset = rank * local_len` for an
-equipartition split, the prefix sum of all gathered sizes for `--ulysses-anything`; cache that
+equipartition split, the prefix sum of all gathered sizes for `--parallel-params ulysses_anything=true`; cache that
 prefix sum **keyed by the whole size vector** — a local length alone is ambiguous, 17 frames and 16
 frames both give rank 1 a length of 8).
 
@@ -217,7 +217,7 @@ the TP group and slice the weight with the same chunking. Every `_shard_attentio
 `q_norm` and `k_norm`, for self-attn and cross-attn alike.
 
 Tiny-model parity is the cheapest proof (a single forward, no denoising): divisible CP is **bit-exact**
-(`max_abs_diff = 0`), `--ulysses-anything` on 17 frames is `O(1e-5)` relative, TP is `O(1e-6)`
+(`max_abs_diff = 0`), `--parallel-params ulysses_anything=true` on 17 frames is `O(1e-5)` relative, TP is `O(1e-6)`
 relative. The parity script and the assertions live in
 `tests/parallelism/test_longcat_audio_dit_cp_tp_tiny.py`; record its printed numbers in the report.
 
@@ -359,7 +359,7 @@ and state which metric decided the recommendation.
 7. **Reusing an image `attention_mask` path under CP.** The all-True duration mask must be dropped
    (assert it), not sharded.
 8. **Choosing a test duration that is not divisible by `cp_size`.** 10 s = 117 frames is odd; either
-   use `--ulysses-anything` (slightly larger drift) or a divisible duration (5 s = 58, 6 s = 70) when
+   use `--parallel-params ulysses_anything=true` (slightly larger drift) or a divisible duration (5 s = 58, 6 s = 70) when
    the point is to prove CP correctness.
 9. **Promising a parallel speedup.** 58–351 tokens are launch-bound; report the negative result.
 10. **Writing a VAE-P planner without measuring.** The decoder is 2 % of the run; document N/A.
@@ -438,7 +438,7 @@ softmax normalization changes — the run stays plausible and wrong. Two more po
 Ring attention is rejected (only Ulysses is wired and measured), `transformer._cp_requires_min_bn_blocks
 = 1` is mandatory (the gather lives on the last block), and
 `64 + T` must be divisible by `cp_size`: 10 s = 172 (÷2, ÷4), but **30 s = 387 is odd** — either use
-`--ulysses-anything` or a duration whose token count is even. Note that `Fn_compute_blocks >= 1` is a
+`--parallel-params ulysses_anything=true` or a duration whose token count is even. Note that `Fn_compute_blocks >= 1` is a
 global cache-dit constraint (not specific to this plan), and the plain (non-UAA) sharder asserts the
 divisibility, so an odd token count surfaces as a sharder assertion rather than a friendly message.
 
@@ -468,12 +468,12 @@ device. `_default_module_filter` now refuses to select state holders without a `
 |---|---|---|---|---|---|---|
 | single GPU bf16 | 0.26 s | 1.00× | – | 1.000 | – | yes (bit-exact rerun) |
 | + compile | 0.09 s | 2.89× | 33.00 / 29.53 | 0.877 / 0.798 | 16.6 / 11.8 | **no** (per-process) |
-| + cache rdt 0.30 (`--max-warmup-steps 1`) | 0.21 s | 1.24× | 20.52 | 0.512 | −0.36 | yes |
+| + cache rdt 0.30 (`--cache-params ws=1`) | 0.21 s | 1.24× | 20.52 | 0.512 | −0.36 | yes |
 | + cache rdt 0.30 (`W2`) | 0.24 s | 1.08× | 26.14 | 0.691 | 8.67 | yes |
 | + cache + compile | 0.08 s | 3.25× | 20.56 | 0.488 | −2.56 | **no** |
 | float8_per_row (+compile) | 0.52 / 0.12 s | 0.50 / 2.17× | 22.63 / 30.75 | 0.530 / 0.828 | −0.8 / 11.6 | **no** |
 | CP2 Ulysses | 0.51 s | 0.51× | 30.15 | 0.798 | 12.16 | yes |
-| CP2 + cache (`--Bn 1`) | 0.40 s | 0.65× | 23.60 | 0.657 | 8.78 | yes |
+| CP2 + cache (`--cache-params Bn=1`) | 0.40 s | 0.65× | 23.60 | 0.657 | 8.78 | yes |
 | CP2 + compile | 0.20 s | 1.30× | 32.48 | 0.867 | 17.83 | **no** |
 | TP2 / TP2+TE-P / TP2+compile | 0.67 / 0.70 / 0.15 s | 0.39 / 0.37 / 1.73× | 30.22 / 22.09 / 29.06 | 0.799 / 0.460 / 0.793 | 13.2 / −3.1 / 12.1 | TP2 yes, compile no |
 | layerwise offload (sync / async) | 0.82 / 1.15 s | 0.32 / 0.23× | inf | 1.000 | inf | yes (bit-exact) |

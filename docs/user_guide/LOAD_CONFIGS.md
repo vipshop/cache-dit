@@ -342,6 +342,8 @@ cd cache-dit/examples/configs # Preset yaml configs for quick test.
 
 python3 -m cache_dit.generate flux --config cache.yaml
 python3 -m cache_dit.generate flux --config quantize.yaml --compile
+# The launcher reads the degrees from --parallel-params, so configs that carry
+# their own parallelism_config still need torchrun to start the workers.
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config hybrid.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel.yaml
 torchrun --nproc_per_node=4 -m cache_dit.generate flux --config parallel_2d.yaml

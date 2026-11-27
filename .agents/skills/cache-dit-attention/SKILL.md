@@ -1,6 +1,6 @@
 ---
 name: cache-dit-attention
-description: "Add, fix, or review a cache-dit attention backend under src/cache_dit/attention/: the _AttnBackend enum, _AttnBackendRegistry registration and signature filtering, the NHD dispatch contract, the templated-CP forward/backward ops (Ulysses / Ring / USP), the diffusers bridge, set_attn_backend and ParallelismConfig.attention_backend wiring, the --attn CLI choices, torch.compile-safe torch.library wrapping, and the acceptance matrix. Use when integrating a vendor attention kernel (ffpa-attn, SageAttention-2/3, Sol-Attn, FlashAttention, flash-varlen, a sparse or quantized attention), when --attn appears to do nothing or silently falls back to SDPA, when context parallelism rejects or corrupts a backend, or when reviewing such a PR. 触发词：新增 attention backend、接入 attention 后端、--attn 不生效、attention 静默回退、CP 不支持 attention、attention backend 注册."
+description: "Add, fix, or review a cache-dit attention backend under src/cache_dit/attention/: the _AttnBackend enum, _AttnBackendRegistry registration and signature filtering, the NHD dispatch contract, the templated-CP forward/backward ops (Ulysses / Ring / USP), the diffusers bridge, set_attn_backend and ParallelismConfig.attention_backend wiring, the --attn-params type=<backend> CLI choices, torch.compile-safe torch.library wrapping, and the acceptance matrix. Use when integrating a vendor attention kernel (ffpa-attn, SageAttention-2/3, Sol-Attn, FlashAttention, flash-varlen, a sparse or quantized attention), when --attn-params type=<backend> appears to do nothing or silently falls back to SDPA, when context parallelism rejects or corrupts a backend, or when reviewing such a PR. 触发词：新增 attention backend、接入 attention 后端、--attn-params type=<backend> 不生效、attention 静默回退、CP 不支持 attention、attention backend 注册."
 user-invocable: true
 ---
 
@@ -37,13 +37,13 @@ user-invocable: true
 | `src/cache_dit/attention/diffusers_bridge.py` | 把 cache-dit 的 backend 注入 diffusers 的 `AttentionBackendName` / `_AttentionBackendRegistry`（含枚举成员动态注入） |
 | `src/cache_dit/attention/interface.py` | `set_attn_backend`：diffusers `ModelMixin` 走 `set_attention_backend`，普通 `nn.Module` 走 `processor._attention_backend` |
 | `src/cache_dit/attention/backend_selector.py` | 平台自动选择（目前只有 NPU） |
-| `src/cache_dit/cli/utils.py` | `--attn` 的 `choices` + 每个 backend 专属 flag 的交叉校验 |
+| `src/cache_dit/cli/params.py` | `--attn-params` 的 `type` 取值（`ATTN_BACKENDS`）+ 每个 backend 专属 key 的交叉校验 |
 | `src/cache_dit/distributed/dispatch.py` | 并行入口：`ParallelismConfig.attention_backend` → `set_attn_backend` |
 
 调用链：
 
 ```text
---attn X
+--attn-params type=X
   → CLI choices 校验 / set_*_config 全局配置
   → set_attn_backend(module, "X") 或 parallelism_config.attention_backend="X"
   → 模块及其 processor 上写入 _attention_backend = "X"
@@ -58,7 +58,7 @@ src/cache_dit/attention/backends/register.py     # 1 行 enum 成员
 src/cache_dit/attention/backends/<name>.py       # 新文件：注册 + 调用体
 src/cache_dit/attention/backends/__init__.py     # 1 行 import
 src/cache_dit/attention/__init__.py              # 显式 import 列表加一个名字
-src/cache_dit/cli/utils.py                       # choices（+ 专属 flag 校验）
+src/cache_dit/cli/params.py                      # choices（+ 专属 flag 校验）
 docs/user_guide/ATTENTION.md                     # 表格一行 + 专节
 tests/api/test_<name>_backend.py                 # 新文件
 ```
@@ -69,7 +69,7 @@ tests/api/test_<name>_backend.py                 # 新文件
 4. **写形状/语义门**：`constraints=` 平时是空列表且只在 `CACHE_DIT_ATTN_CHECKS=1` 时执行，所以**门要写在调用体里**（`_require_supported_cuda` / `_ineligible_reason` 就是先例），`constraints` 只作可选加固。
 5. **CP**：声明 `supports_context_parallel=True` 并写 `forward_op` / `backward_op`，最后走 `_context_parallel_attention`。没有 LSE 就只能纯 Ulysses（Ring 强制 `return_lse=True`）。
 6. **编译安全**：vendor 是 Triton 或被 dynamo trace 会碎图的，用 `torch.library.define` + CUDA impl + `register_fake` 包成黑盒（`sol_attn` / `sage3` 先例），并补 `opcheck` + `fullgraph=True` 用例。
-7. **对外接线**：CLI `choices=[...]`；backend 专属 flag 必须校验"只有对应 `--attn` 才能用"；需要全局旋钮的写 `set_<name>_config()`（在 compile 之前调用）；`docs/user_guide/ATTENTION.md` 补行与专节。
+7. **对外接线**：CLI `choices=[...]`；backend 专属 flag 必须校验"只有对应 `--attn-params type=<backend>` 才能用"；需要全局旋钮的写 `set_<name>_config()`（在 compile 之前调用）；`docs/user_guide/ATTENTION.md` 补行与专节。
 
 ## 3. 契约决定工作量
 
@@ -93,7 +93,7 @@ tests/api/test_<name>_backend.py                 # 新文件
 4. **CP + mask**：`_context_parallel_attention` 的 mask allowlist 按 `forward_op.__name__` 匹配（目前只有 native / cudnn / flash_varlen / npu / npu_fia），新 backend 默认不支持 mask+CP，请显式 raise，不要指望上游拒绝。
 5. **Ring 需要 LSE**：无法返回 `[B,N,H]` LSE 的 backend 只能声明纯 Ulysses；`sol_attn` 直接在 `ring_degree>1` 时 `NotImplementedError`。
 6. **`enable_gqa` 只在 torch>=2.5 透传**：签名里有也未必收得到，默认值必须是安全语义（通常 `False`）。
-7. **fp32 组件也会命中**：`--attn` 是模块级设置，会落到目标 transformer 上所有注意力模块，包括跑 fp32 的投影/子模块（ffpa 的注释点名 MiniMax-H3 的 fp32 投影与视频 VAE decoder）。ffpa 的做法是"非 fp16/bf16 退 SDPA，但有 CP 就直接报错"，因为 CP 下 SDPA 只会算本地分片。
+7. **fp32 组件也会命中**：`--attn-params type=<backend>` 是模块级设置，会落到目标 transformer 上所有注意力模块，包括跑 fp32 的投影/子模块（ffpa 的注释点名 MiniMax-H3 的 fp32 投影与视频 VAE decoder）。ffpa 的做法是"非 fp16/bf16 退 SDPA，但有 CP 就直接报错"，因为 CP 下 SDPA 只会算本地分片。
 8. **diffusers-only 名字**：`_native_cudnn` 不在 cache-dit enum 里，diffusers 模型能设、非 diffusers 模块会直接 `ValueError`。新增 backend 若只打算给 diffusers 用，走 `_maybe_register_diffusers_backend_proxy`，不要塞进 enum。
 9. **compile 碎图**：直接调 vendor Triton kernel 会被 dynamo trace 进去，inductor 重编译常失败（`tl.arange` 非 2 的幂等）。先包 `torch.library`。
 10. **性能归因错位**：attention 占比决定收益上限（1024² 图像模型 attn 只占 18–25%，长视频序列才高），不要用 FLOPs 推；必须同 recipe、同 seed、CUDA event 计时。
@@ -119,7 +119,7 @@ tests/api/test_<name>_backend.py                 # 新文件
 | `docs/user_guide/INSTALL.md` | 可选依赖安装命令（**不要**给 vendor 包加 `pyproject` extra，现有 flash/sage/ffpa/sol_attn 都没加） |
 | `docs/user_guide/API_DOCS.md` | `attention_backend` 的候选名单 |
 | `docs/user_guide/CONTEXT_PARALLEL.md` | CP 限制（如"只能纯 Ulysses"） |
-| `docs/EXAMPLES.md` | 有代表性的 `--attn X` 示例命令 |
+| `docs/EXAMPLES.md` | 最小单卡/多卡命令（attention 细节以 `docs/user_guide/ATTENTION.md` 为准） |
 | `docs/developer_guide/AGENTS.md` | 只有**新增/删除 skill** 时才动，不要为单个 backend 改 |
 
 ## 7. 先例速查（完整分析见 `references/precedents.md`）

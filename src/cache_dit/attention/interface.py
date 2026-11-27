@@ -111,14 +111,15 @@ def _set_attn_backend_impl(
         raise ValueError("Non-diffusers modules only support cache-dit attention backends. "
                          f"Got unsupported backend: {attention_backend}.")
       if not _set_backend_locally(module, resolved_cache_dit_backend):
-        logger.warning("--attn was provided but module does not expose local attention backend "
-                       f"state: {module.__class__.__name__}.")
+        logger.warning(
+          "--attn-params was provided but module does not expose local attention backend "
+          f"state: {module.__class__.__name__}.")
         return
       logger.info("Set local cache-dit attention backend to "
                   f"<{resolved_cache_dit_backend}> for module: {module.__class__.__name__}.")
       return
 
-    logger.warning("--attn was provided but module does not support set_attention_backend: "
+    logger.warning("--attn-params was provided but module does not support set_attention_backend: "
                    f"{module.__class__.__name__}.")
 
   def _apply() -> None:

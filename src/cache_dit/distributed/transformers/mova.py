@@ -81,7 +81,7 @@ class MOVAContextParallelismPlanner(ContextParallelismPlanner):
         "all-gathers the projected keys/values, which assumes the plain Ulysses equipartition.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "MOVA context parallelism does not support `--ulysses-anything`: the key/value gather "
+        "MOVA context parallelism does not support `ulysses_anything=true`: the key/value gather "
         "assumes equally sized shards.")
 
     ulysses_size = parallelism_config.ulysses_size or 1
@@ -105,7 +105,8 @@ class MOVAContextParallelismPlanner(ContextParallelismPlanner):
       raise ValueError(
         f"The active attention backend ({backend.value}) does not implement context parallelism; "
         "cache-dit would silently drop the CP config and every rank would attend only its own "
-        "shard. Use `--attn native` (or another CP-capable backend) with `--parallel ulysses`.")
+        "shard. Use `--attn-params type=native` (or another CP-capable backend) with "
+        "`--parallel-params ulysses=N`.")
 
     blocks = transformer.blocks
     last_index = len(blocks) - 1

@@ -343,20 +343,30 @@ def test_transformer_only_infers_request_length_from_ab_schedule():
 
 
 def test_cli_seacache_validation_and_options():
-  """The generic CLI exposes SeaCache only as an explicit DBCache option."""
+  """The generic CLI selects SeaCache and SoftCache with the --cache-params type."""
 
   parser = get_args(parse=False)
   args = maybe_postprocess_args(
     parser.parse_args([
-      "--cache", "--seacache", "--seacache-mode", "flow", "--seacache-feature-shape", "64", "64",
-      "--seacache-power-exp", "2.0"
+      "--cache-params",
+      "type=SeaCache,seacache_mode=flow,seacache_feature_shape=64x64,seacache_power_exp=2.0"
     ]))
   assert args.seacache is True
+  assert args.softcache is False
   assert args.seacache_feature_shape == [64, 64]
-  with pytest.raises(ValueError, match="requires --cache"):
-    maybe_postprocess_args(parser.parse_args(["--seacache"]))
-  with pytest.raises(ValueError, match="requires --seacache"):
-    maybe_postprocess_args(parser.parse_args(["--cache", "--seacache-feature-shape", "64", "64"]))
+
+  args = maybe_postprocess_args(parser.parse_args(["--cache-params", "type=SoftCache"]))
+  assert (args.cache, args.seacache, args.softcache) == (True, True, True)
+  assert args.softcache_tau == 0.5
+
+  with pytest.raises(ValueError, match="requires a SeaCache"):
+    maybe_postprocess_args(parser.parse_args(["--cache-params", "seacache_feature_shape=64x64"]))
   with pytest.raises(ValueError, match="positive"):
     maybe_postprocess_args(
-      parser.parse_args(["--cache", "--seacache", "--seacache-feature-shape", "0", "64"]))
+      parser.parse_args(["--cache-params", "type=SeaCache,seacache_feature_shape=0x64"]))
+  with pytest.raises(ValueError, match="requires SeaCache"):
+    maybe_postprocess_args(parser.parse_args(["--cache-params", "softcache=true"]))
+  with pytest.raises(ValueError, match="seacache_mode=flow"):
+    maybe_postprocess_args(parser.parse_args(["--cache-params", "type=SoftCache,seacache_mode=vp"]))
+  with pytest.raises(ValueError, match="must be positive"):
+    maybe_postprocess_args(parser.parse_args(["--cache-params", "type=SoftCache,softcache_tau=0"]))

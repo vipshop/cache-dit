@@ -12,7 +12,7 @@ the checkpoint partition a workflow loads. The silent failure modes covered here
    conditioning frames.
 4. The conditioning workflows pin their conditioning rows every step, which dilutes the residual
    mean DBCache compares against; their threshold preset must differ from `t2va` while an explicit
-   `--residual-diff-threshold` still wins.
+   `--cache-params rdt=...` still wins.
 """
 import argparse
 import importlib
@@ -421,12 +421,13 @@ def test_ref2va_defaults_skip_the_demo_media_when_overridden(tmp_path, monkeypat
 
 def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
   """`ref2va` has no `transformer`, so a compile that only looks for one would silently no-op."""
+  from cache_dit.cli import compile as compile_mod
   from cache_dit.cli import utils as utils_mod
 
   compiled = []
-  monkeypatch.setattr(utils_mod, "set_compile_configs", lambda **kwargs: None)
-  monkeypatch.setattr(utils_mod, "_should_defer_few_shot_compile", lambda args, module: False)
-  monkeypatch.setattr(utils_mod, "_compile_transformer_module",
+  monkeypatch.setattr(compile_mod, "set_compile_configs", lambda **kwargs: None)
+  monkeypatch.setattr(compile_mod, "_should_defer_few_shot_compile", lambda args, module: False)
+  monkeypatch.setattr(compile_mod, "_compile_transformer_module",
                       lambda args, pipe, module, name: compiled.append(name))
 
   transformer_ref = torch.nn.Linear(2, 2)
@@ -443,6 +444,7 @@ def test_compile_targets_the_partition_the_pipeline_actually_has(monkeypatch):
 
 def test_quantize_targets_the_partition_the_pipeline_actually_has(monkeypatch):
   """`ref2va` has no `transformer`; quantizing must not silently leave it bf16."""
+  from cache_dit.cli import quantize as quantize_mod
   from cache_dit.cli import utils as utils_mod
 
   quantized = []
@@ -452,7 +454,7 @@ def test_quantize_targets_the_partition_the_pipeline_actually_has(monkeypatch):
     quantized.append(module)
     return marker
 
-  monkeypatch.setattr(utils_mod, "quantize", _fake_quantize)
+  monkeypatch.setattr(quantize_mod, "quantize", _fake_quantize)
   args = utils_mod.get_base_args(parse=False).parse_args([])
   args.quantize = True
   args.quantize_type = "float8_per_row"
@@ -559,6 +561,7 @@ def profiled_workflow(request, monkeypatch, tmp_path):
     "CPU",
     "--no-profile-with-stack",
   ])
+  profile_run.maybe_postprocess_args(args)
   args.image_path = args.last_image_path = _write_image(tmp_path, "provided.png")
   args.reference_image_path = [args.image_path]
   args.example = ("flux" if workflow == "flux" else

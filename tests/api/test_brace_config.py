@@ -167,10 +167,10 @@ class TestBRACEConfigLoading:
 class TestBRACECLI:
 
   def test_unified_entry_builds_brace_config(self):
-    """--calibrator brace and short params populate the BRACE config."""
+    """`type=brace` and short params populate the BRACE config."""
     args = _cli([
-      "--cache", "--calibrator", "brace", "--calibrator-params",
-      "capacity=2,gamma=0.6,encoder=false"
+      "--cache-params", "type=DBCache", "--calibrator-params",
+      "type=brace,capacity=2,gamma=0.6,encoder=false"
     ])
     config = build_calibrator_config(args)
     assert isinstance(config, BRACECalibratorConfig)
@@ -179,12 +179,13 @@ class TestBRACECLI:
 
   def test_defaults_without_params(self):
     """No params selects C=3 and gamma=0.7."""
-    config = build_calibrator_config(_cli(["--cache", "--calibrator", "brace"]))
+    config = build_calibrator_config(
+      _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=brace"]))
     assert (config.brace_capacity, config.brace_gamma) == (3, 0.7)
 
   def test_long_name_is_accepted(self):
     """The long brace-calibrator spelling resolves to BRACE."""
-    args = _cli(["--cache", "--calibrator", "brace-calibrator"])
+    args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", "type=brace-calibrator"])
     assert isinstance(build_calibrator_config(args), BRACECalibratorConfig)
 
   @pytest.mark.parametrize("params",
@@ -192,22 +193,26 @@ class TestBRACECLI:
   def test_out_of_range_param_is_rejected(self, params):
     """Invalid CLI values fail before model inference starts."""
     with pytest.raises(ValueError):
-      args = _cli(["--cache", "--calibrator", "brace", "--calibrator-params", params])
+      args = _cli(["--cache-params", "type=DBCache", "--calibrator-params", f"type=brace,{params}"])
       build_calibrator_config(args)
 
   def test_requires_cache(self):
     """BRACE without --cache is rejected instead of becoming a silent no-op."""
-    with pytest.raises(ValueError, match="requires --cache"):
-      _cli(["--calibrator", "brace"])
+    with pytest.raises(ValueError, match="requires --cache-params"):
+      _cli(["--calibrator-params", "type=brace"])
 
   def test_config_path_conflict(self):
-    """A config file and unified calibrator flags cannot both own the settings."""
+    """A config file and unified calibrator params cannot both own the settings."""
     with pytest.raises(ValueError, match="cannot be combined with --config-path"):
-      _cli(["--cache", "--config-path", "some.yaml", "--calibrator", "brace"])
+      _cli([
+        "--cache-params", "type=DBCache", "--config-path", "some.yaml", "--calibrator-params",
+        "type=brace"
+      ])
 
   def test_postprocess_is_idempotent(self):
     """Resolving BRACE params twice preserves the same config fields."""
-    once = _cli(["--cache", "--calibrator", "brace", "--calibrator-params", "capacity=2,gamma=0.6"])
+    once = _cli(
+      ["--cache-params", "type=DBCache", "--calibrator-params", "type=brace,capacity=2,gamma=0.6"])
     twice = maybe_postprocess_args(once)
     assert once.calibrator_fields == {"brace_capacity": 2, "brace_gamma": 0.6}
     assert twice.calibrator_fields == once.calibrator_fields

@@ -130,13 +130,18 @@ while any((rows_per_chunk * packed) % 16 != 0 for rows_per_chunk in all_split_ro
 
 ## 4. K FP8
 
-`ulysses_float8_k=False` is the default.
+> Historical: the `ulysses_float8*` config fields and `--ulysses-float8*` CLI flags were removed.
+> The current entry point is `quant_communicate_kwargs` / `--quant-communicate-params` (see §10);
+> K quantization is now `quantize_k` inside that option.
 
-- It requires `ulysses_float8=True`; otherwise configuration raises `ValueError`.
-- When enabled, K uses the same QKV FP8 implementation as Q/V.
+Historically, `ulysses_float8_k=False` was the default.
+
+- It required `ulysses_float8=True`; otherwise configuration raised `ValueError`.
+- When enabled, K used the same QKV FP8 implementation as Q/V.
 - LSE always remains BF16.
-- CLI: `--ulysses-float8-k` / `--ufp8k`.
-- Parallel config suffix: `UF8K_` (UAA: `F8K_`) so e2e output names do not collide.
+- The old CLI was `--ulysses-float8-k` / `--ufp8k`; the current equivalent is
+  `--quant-communicate-params 'bits=8,quantize_k=true'`.
+- The `UF8K_` / `F8K_` output-name suffixes are gone with those options.
 
 ## 5. Measured results
 
@@ -395,9 +400,12 @@ Artifacts:
 ## 9. Per-group FP8 scales (2026-11-25)
 
 Status: implemented and validated on `dev` with torch 2.15.0+cu132, RTX PRO 5000 sm120a,
-GPU 4-7. The public config is `ulysses_float8_quant_type`; the CLI is
-`--ulysses-float8-quant-type {per-token,per-group-16,per-group-32}`. The default remains
-`per-token`, including the original output suffix and bit-exact kernel path.
+GPU 4-7. Historical: this was exposed as `ulysses_float8_quant_type` with
+`--ulysses-float8-quant-type {per-token,per-group-16,per-group-32}`, both removed; the current CLI is
+`--quant-communicate-params 'bits=8,quant_type=...'`. The removed option defaulted to `per-token`,
+which also kept the original output suffix and bit-exact kernel path; the current
+`--quant-communicate-params` defaults to `per_group_16` (see §10.1), so pass `quant_type=per_token`
+explicitly to reproduce the old path.
 
 ### 9.1 Contract
 

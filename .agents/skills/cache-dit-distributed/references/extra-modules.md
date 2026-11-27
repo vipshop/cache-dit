@@ -14,8 +14,8 @@ for module in extra_parallel_modules:
 - 传模块时按 `_is_text_encoder` / `_is_auto_encoder` / `_is_controlnet`（模块路径判定）分类；传 pipeline 时只看属性名 `text_encoder` / `vae` / `controlnet`。
 - 三个 `check_*` 对**已是模块**的入参不会去 pipeline 里找同名属性，所以直接传 `pipe.vae` 是最稳的用法。
 - `cache_interface.py` 在调 `enable_parallelism` 前用 `parse_extra_modules(pipe, names)` 把名字解析成模块：名字找不到只 warning 跳过；`text_encoder` 默认会被替换成**参数量最大**的编码器（FLUX 的 `text_encoder_2`），需要原样时用 `skip_text_encoder_override=True`。
-- CLI 侧 `cli/utils.py::prepare_extra_parallel_modules` 写的属性名是 `text_encoder` / `vae` / `controlnet`；pipeline 把 VAE 挂在 `video_vae` 这类别名上时只打一条 warning（`parallel-vae is set but no VAE found in the pipeline`）就继续跑，给 pipeline 补 `vae` 别名是标准修法。
-- 另外两个断言：`--parallel-vae` 与 `--vae-tiling` / `--vae-slicing` 互斥（VAE-P 自己接管 tile 循环，不能与 diffusers 的 tiling/slicing 叠加）。
+- CLI 侧 `cli/parallel.py::prepare_extra_parallel_modules` 写的属性名是 `text_encoder` / `vae` / `controlnet`；pipeline 把 VAE 挂在 `video_vae` 这类别名上时只打一条 warning（`parallel-vae is set but no VAE found in the pipeline`）就继续跑，给 pipeline 补 `vae` 别名是标准修法。
+- 另外两个断言：`--parallel-params vae=true` 与 `--vae-tiling` / `--vae-slicing` 互斥（VAE-P 自己接管 tile 循环，不能与 diffusers 的 tiling/slicing 叠加）。
 
 ## 2. TE-P（`text_encoders/`）
 
@@ -57,7 +57,7 @@ for module in extra_parallel_modules:
 
 | 症状 | 原因 |
 |---|---|
-| `--parallel-vae` 无效果 | pipeline 没有 `pipe.vae` 属性（见 §1） |
+| `--parallel-params vae=true` 无效果 | pipeline 没有 `pipe.vae` 属性（见 §1） |
 | decode 阶段挂死 / 600s NCCL 超时 | 两 rank 消息数不一致（某 rank 提前 return）、或 dtype 不一致 |
 | `SymIntArrayRef ... concrete integers` | 用了 `TileBatchedP2PComm` 跑多 tile decode |
 | 图像出现十字接缝 | tile 几何被改（overlap 太小/为 0）；不要为了速度去掉 overlap |

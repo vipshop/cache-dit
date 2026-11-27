@@ -219,7 +219,7 @@ AttributeError: 'NoneType' object has no attribute 'apply_chat_template'
   )
   ```
 
-  Gate it behind an explicit flag and report its cost separately: `--parallel-text` only covers the
+  Gate it behind an explicit flag and report its cost separately: `--parallel-params text=true` only covers the
   pipeline's `text_encoder`, so a `prompt_upsampler` stays replicated on every rank, and layerwise
   offload only streams what `components` exposes (it does offload it, but as another slow stage).
 
@@ -290,7 +290,7 @@ Two **engine** limitations had to be fixed first — both hit any modular model,
    `CachedAdapter.mock_transformer`.
 
 Non-divisible stream lengths (e.g. `H/16 x W/16` odd, so `1089 % cp_size != 0`) need
-`--ulysses-anything`; without it the split fails with "Tensor size along dimension to be sharded
+`--parallel-params ulysses_anything=true`; without it the split fails with "Tensor size along dimension to be sharded
 must be divisible by mesh size".
 
 TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
@@ -320,9 +320,9 @@ TP planner notes for a FLUX.3-like FFN (`Flux3FeedForward`):
       (proves the per-inference context reset works for the modular pipe)
 - [ ] I2I path (reference image) with the same adapter
 - [ ] cache_dit.summary(pipe) / --cache-summary prints the stats
-- [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache
-- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel ulysses
-      (and a non-divisible resolution with --ulysses-anything)
+- [ ] CLI: python3 -m cache_dit.generate <name> list entry, baseline + --cache-params 'type=DBCache'
+- [ ] CP: torchrun --nproc_per_node=2 -m cache_dit.generate <name> --parallel-params 'ulysses=2'
+      (and a non-divisible resolution with --parallel-params ulysses_anything=true)
 - [ ] offload: --module-layerwise-cpu-offload (and --cpu-offload, which must fall back to it)
       -> peak memory drops, image stays bit-exact vs baseline
 - [ ] optional prompt-rewrite stage: policy decided and recorded (pop for benchmarks, inject for
@@ -388,11 +388,12 @@ tighter than the 1-GPU fp8+compile case. It costs 4–5 dB against the non-compi
 On 2 GPUs CP and TP land at a similar throughput (1.53–1.66× vs 1.62×). Pick CP when the token
 streams dominate memory (it shards the sequence of all three streams, including the long text
 stream); pick TP when the weights dominate. `parallelism_config` also allows combining them
-(`--parallel ulysses_tp` / `ring_tp`), which is untested for FLUX.3.
+(`--parallel-params 'ulysses=2,tp=2'`), which is untested for FLUX.3.
 
 ### 7.1 Quantization: fp8 per-row + compile
 
-`python3 -m cache_dit.generate flux3 --quantize --compile [--cache]` (`--quantize` defaults to
+`python3 -m cache_dit.generate flux3 --quantize-params quant_type=float8_per_row --compile [--cache-params 'type=DBCache']`
+(an omitted `quant_type` defaults to
 torchao `float8_per_row`, i.e. `Float8DynamicActivationFloat8WeightConfig`). Regional quantization
 covers the 4 block stacks only: 258 linear layers (`43 blocks x 6`), 0 skipped.
 
@@ -446,7 +447,7 @@ Four things had to be modular-pipeline aware:
    'enable_model_cpu_offload'`). They now log the fallback and stream the components with cache-dit's
    own layerwise offload (shared `_apply_layerwise_cpu_offload(args, pipe)`), which also keeps
    `pipe.to(device)` skipped afterwards. Pass the resolved pipe, never the `BlockAdapter`, or the
-   offloaded set would depend on whether `--cache` is on.
+   offloaded set would depend on whether `--cache-params` is on.
 3. **Quantized / wrapper-subclass weights cannot use the pinned CPU mirror.** The mirror rebinds
    tensors with `parameter.data = <tensor on another device>`; torchao `Float8Tensor` has no
    `aten.empty_like` during packing and its `.data` rejects the cross-device swap (*"Attempted to set
@@ -457,19 +458,21 @@ Four things had to be modular-pipeline aware:
 4. **Async transfer must not silently skip those targets.** `_schedule_target_onload` /
    `_schedule_target_offload` only know how to stage mirror entries, so the forward hooks now route
    mirror-less targets through `_ensure_target_on_onload_device` / `_release_target_to_offload_device`
-   (whole-module moves). Before that fix, `--quantize --module-layerwise-cpu-offload
-   --layerwise-async-transfer` reported "with async transfer" but kept every weight on the GPU.
+   (whole-module moves). Before that fix, `--quantize-params quant_type=float8_per_row
+   --module-layerwise-cpu-offload --layerwise-async-transfer` reported "with async transfer" but
+   kept every weight on the GPU.
 
 `--layerwise-async-transfer` trades memory for overlap: it keeps a prefetch window of targets
 resident (11.4 GiB instead of 3.1 GiB for bf16) for a small latency gain (7.91 s vs 8.07 s).
 
 Offload composes with cache and CP without changing their numerics (bit-identical to the
-non-offload run). `--compile --quantize fp8 --module-layerwise-cpu-offload` does **not** work yet:
+non-offload run). `--compile --quantize-params quant_type=float8_per_row --module-layerwise-cpu-offload`
+does **not** work yet:
 Dynamo fails on the per-step `module.to()` with `RuntimeError: Polyfill handler ... does not have a
 traceable function`. Use fp8+compile or fp8+offload, not both.
 ### 7.3 SVDQuant NVFP4 (`svdq_nvfp4_r32_dq`)
 
-`--quantize --quantize-type svdq_nvfp4_r32_dq` (CLI uses the underscore spelling; the converter also
+`--quantize-params quant_type=svdq_nvfp4_r32_dq` (CLI uses the underscore spelling; the converter also
 accepts `svdq-nvfp4-r32-dq`). The `_dq` suffix selects **dynamic** quantization: no calibration set,
 no `serialize_to`, the low-rank decomposition + packing run on the fly during load (~60 s for the
 168 quantized layers) with `smooth_strategy="identity"`. NVFP4 requires

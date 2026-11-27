@@ -120,7 +120,8 @@ CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH=src \
 python -m torch.distributed.run --standalone --nproc_per_node=2 \
     bench/profile/run.py minimax_h3 --example-factory model.minimax_h3:create_example \
     --model-path /path/to/MiniMax-H3 \
-    --parallel tp --parallel-text --cache --compile --attn native --vae-tiling \
+    --parallel-params 'tp=2,text=true' --cache-params 'type=DBCache' --compile \
+    --attn-params type=native --vae-tiling \
     --steps 50 --height 448 --width 768 --num-frames 124 --seed 42 \
     --warmup 1 --warmup-num-inference-steps 50 --repeat 1 \
     --profile --profile-ranges 0-2,8-10 --no-profile-with-stack \
@@ -138,7 +139,8 @@ nsys profile --trace=cuda,nvtx --cuda-flush-interval=100 --sample=none --cpuctxs
     python -m torch.distributed.run --standalone --nproc_per_node=2 \
         bench/profile/run.py minimax_h3 --example-factory model.minimax_h3:create_example \
         --model-path /path/to/MiniMax-H3 \
-        --parallel tp --parallel-text --cache --compile --attn native --vae-tiling \
+        --parallel-params 'tp=2,text=true' --cache-params 'type=DBCache' --compile \
+        --attn-params type=native --vae-tiling \
         --steps 50 --height 448 --width 768 --num-frames 124 --seed 42 \
         --warmup 1 --warmup-num-inference-steps 50 --repeat 1 \
         --profile --profile-collector nsys --profile-ranges 0-2,8-10 --layerwise-nvtx

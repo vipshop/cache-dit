@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, MemoryTracker
+from cache_dit.cli.utils import MemoryTracker, get_args, maybe_postprocess_args, strify
 from cache_dit import (
   BlockAdapter,
   ForwardPattern,
@@ -25,18 +25,12 @@ parser.add_argument(
   help="Disable BlockAdapter or not",
 )
 parser.add_argument(
-  "--summary",
-  action="store_true",
-  default=False,
-  help="Print summary of the model after each inference",
-)
-parser.add_argument(
   "--refresh-use-cache-config",
   action="store_true",
   default=False,
   help="Use the cache config during cache refreshing",
 )
-args = parser.parse_args()
+args = maybe_postprocess_args(parser.parse_args())
 print(args)
 
 pipe = FluxPipeline.from_pretrained(
@@ -48,6 +42,7 @@ pipe = FluxPipeline.from_pretrained(
 ).to(current_platform.device_type)
 
 if args.cache:
+  single_block_rdt = args.residual_diff_threshold * 3
 
   assert isinstance(pipe.transformer, FluxTransformer2DModel)
 
@@ -65,23 +60,24 @@ if args.cache:
     ) if not args.no_adapt else pipe.transformer),
     cache_config=(
       DBCacheConfig(
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
+        Fn_compute_blocks=args.Fn_compute_blocks,
+        Bn_compute_blocks=args.Bn_compute_blocks,
         max_warmup_steps=args.max_warmup_steps,
         max_cached_steps=args.max_cached_steps,
         max_continuous_cached_steps=args.max_continuous_cached_steps,
-        residual_diff_threshold=args.rdt,
+        residual_diff_threshold=args.residual_diff_threshold,
         # NOTE: num_inference_steps can be None here, we will
         # set it properly during cache refreshing.
         num_inference_steps=None,
       ) if args.cache else None),
     params_modifiers=[
-      ParamsModifier(cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt, ), ),
+      ParamsModifier(cache_config=DBCacheConfig().reset(
+        residual_diff_threshold=args.residual_diff_threshold, ), ),
       ParamsModifier(
         # NOTE: single_transformer_blocks should have higher
         # residual_diff_threshold because of the precision error
         # accumulation from previous transformer_blocks
-        cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3, ), ),
+        cache_config=DBCacheConfig().reset(residual_diff_threshold=single_block_rdt, ), ),
     ],
   )
 
@@ -136,7 +132,7 @@ for i in range(len(steps)):
   save_path = f"flux.steps{steps[i]}.{strify(args, pipe.transformer)}.png"
   image.save(save_path)
 
-  if args.summary:
+  if args.cache_summary:
     cache_dit.summary(pipe.transformer)
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving image to {save_path}")

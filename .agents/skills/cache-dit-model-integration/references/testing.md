@@ -62,33 +62,33 @@ export <NEW_MODEL>_DIR=/workspace/dev/vipdev/hf_models/<your-model-dir>
 python3 -m cache_dit.generate <new_model> --save-path .tmp/{task}/<new_model>_base.png
 
 # === 2. Cache acceleration ===
-python3 -m cache_dit.generate <new_model> --cache --summary \
+python3 -m cache_dit.generate <new_model> --cache-params 'type=DBCache' --summary \
     --save-path .tmp/{task}/<new_model>_cache.png
 
 # === 3. Context Parallelism: Ulysses (2 GPUs) ===
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <new_model> \
-    --parallel ulysses --save-path .tmp/{task}/<new_model>_ulysses2.png
+ -m cache_dit.generate <new_model> \
+ --parallel-params 'ulysses=2' --save-path .tmp/{task}/<new_model>_ulysses2.png
 
 # === 4. Context Parallelism: Ring (2 GPUs) ===
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <new_model> \
-    --parallel ring --save-path .tmp/{task}/<new_model>_ring2.png
+ -m cache_dit.generate <new_model> \
+ --parallel-params 'ring=2' --save-path .tmp/{task}/<new_model>_ring2.png
 
 # === 5. Tensor Parallelism (2 GPUs) ===
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <new_model> \
-    --parallel tp --save-path .tmp/{task}/<new_model>_tp2.png
+ -m cache_dit.generate <new_model> \
+ --parallel-params 'tp=2' --save-path .tmp/{task}/<new_model>_tp2.png
 
 # === 6. TP + Text Encoder Parallelism ===
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <new_model> \
-    --parallel tp --parallel-text --save-path .tmp/{task}/<new_model>_tp2_tep2.png
+ -m cache_dit.generate <new_model> \
+ --parallel-params 'tp=2,text=true' --save-path .tmp/{task}/<new_model>_tp2_tep2.png
 
 # === 7. TP + VAE Parallelism ===
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <new_model> \
-    --parallel tp --parallel-vae --save-path .tmp/{task}/<new_model>_tp2_vaep2.png
+ -m cache_dit.generate <new_model> \
+ --parallel-params 'tp=2,vae=true' --save-path .tmp/{task}/<new_model>_tp2_vaep2.png
 ```
 
 > The commands above are **smoke-level**: none of them passes `--warmup/--repeat`, so their latency
@@ -115,7 +115,7 @@ cache-dit-metrics psnr ssim -i1 .tmp/{task}/<new_model>_base.png -i2 .tmp/{task}
 
 **Acceptance criteria:**
 
-- **Cache**: PSNR > 25 dB, SSIM > 0.90 (lossy optimization; exact values depend on `--rdt` threshold).
+- **Cache**: PSNR > 25 dB, SSIM > 0.90 (lossy optimization; exact values depend on the `--cache-params rdt=...` threshold).
 - **CP/TP/VAE-P**: PSNR > 35 dB, SSIM > 0.90.  These should be numerically near-identical to baseline; the SSIM threshold is set lower than 0.999 to accommodate real-world models like Boogu-Image where CP/TP are verified at ~0.994–0.997.
 - **⚠️ Garbled-image red flag**: If PSNR is "reasonable" (e.g., 28 dB) but SSIM is below 0.5, the image is almost certainly visually corrupted. **Do not accept the result** — investigate the root cause (common culprits: missing/wrong `shard_div_attr`, DTensor placement mismatch, incorrect GQA handling).
 - Always **visually inspect** at least one output image per configuration.
@@ -185,12 +185,12 @@ a band is a finding to report, not a threshold to lower.
 
 **Tier B / Tier C** — 4 GPUs / 8 GPUs, run **only when the user explicitly asks**:
 
-- Tier B must include the hybrid **TP2+CP2** row (`--parallel ulysses_tp`); Tier C must include both
+- Tier B must include the hybrid **TP2+CP2** row (`--parallel-params 'tp=2'`); Tier C must include both
   hybrid rows (**TP2+CP4** = `ulysses_tp`, **TP4+CP2** = `tp_ulysses`), each ± `--compile`, plus one
   quantized hybrid row. Rows, tags, commands: [`./perf_matrix.md`](./perf_matrix.md) §1/§4.
 - Same gates, with preflight checks that must pass **before** a failure is called a bug:
   `ulysses_size * tp_size == world_size`, `heads % tp_size == 0`, and post-TP head divisibility
-  `(heads // tp_size) % ulysses_size == 0` (or `--ulysses-anything` when the model accepts it) —
+  `(heads // tp_size) % ulysses_size == 0` (or `--parallel-params ulysses_anything=true` when the model accepts it) —
   [`./perf_matrix.md`](./perf_matrix.md) §3.
 
 ### 7.7 Debugging Tips
@@ -199,7 +199,7 @@ a band is a finding to report, not a threshold to lower.
 2. **BlockAdapter not activating**: Check that `check_forward_pattern=True` and verify the block forward signature matches the declared pattern.
 3. **CP/TP errors**: Verify the transformer class name matches exactly what `@ContextParallelismPlannerRegister.register(...)` expects. Check `transformer.__class__.__name__`.
 4. **Image corruption with TP**: Ensure `shard_div_attr(block.attn, "heads", tp_mesh.size())` is called for each attention block.
-5. **Cache producing identical output to baseline**: The cache warmup may not have completed. Increase `--max-warmup-steps` or decrease `--residual-diff-threshold`.
+5. **Cache producing identical output to baseline**: The cache warmup may not have completed. Increase `--cache-params ws=...` or decrease `--cache-params rdt=...`.
 
 ---
 

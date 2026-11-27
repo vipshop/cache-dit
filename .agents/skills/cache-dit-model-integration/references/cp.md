@@ -8,8 +8,8 @@ When to read this: read this file when implementing CP planners, choosing hook-b
 
 Context Parallelism splits the **sequence dimension** of hidden states across multiple GPUs. Each GPU computes attention over a local chunk, then gathers results. cache-dit supports two CP strategies:
 
-- **Ulysses** (`--parallel ulysses`): All-to-all communication. Better for shorter sequences or when combined with TP. **Always prefer Ulysses over Ring** — it is more mature, better tested, and supports `--ulysses-anything` (UAA) for non-divisible head counts and sequence lengths.
-- **Ring** (`--parallel ring`): Peer-to-peer communication in a ring topology. Better for very long sequences. Only consider Ring if Ulysses is proven inadequate for your use case.
+- **Ulysses** (`--parallel-params ulysses=2`): All-to-all communication. Better for shorter sequences or when combined with TP. **Always prefer Ulysses over Ring** — it is more mature, better tested, and supports `--parallel-params ulysses_anything=true` (UAA) for non-divisible head counts and sequence lengths.
+- **Ring** (`--parallel-params ring=2`): Peer-to-peer communication in a ring topology. Better for very long sequences. Only consider Ring if Ulysses is proven inadequate for your use case.
 
 ### 2.2 Two Implementation Approaches
 
@@ -382,14 +382,16 @@ MyModelContextParallelismPlanner = _safe_import(
 1. **Head count not divisible by `cp_size`** — e.g., `num_kv_heads=7` with `cp_size=2`.
 2. **Sequence length not divisible by `cp_size`** — uneven sequence splits.
 
-UAA is enabled via the `--ulysses-anything` CLI flag:
+UAA is enabled by adding `ulysses_anything=true` to the same `--parallel-params` value that sets the
+CP degree — e.g. `--parallel-params 'ulysses=2,ulysses_anything=true'`. A value with only
+`ulysses_anything` builds no parallel config and is a silent no-op:
 
 ```bash
 # task: task name for logging and output organization
 CUDA_VISIBLE_DEVICES=6,7 torchrun --nproc_per_node=2 \
-    -m cache_dit.generate <model_name> \
-    --parallel ulysses --ulysses-anything \
-    --save-path .tmp/{task}/<model_name>_ulysses_uaa.png
+ -m cache_dit.generate <model_name> \
+ --parallel-params 'ulysses=2,ulysses_anything=true' \
+ --save-path .tmp/{task}/<model_name>_ulysses_uaa.png
 ```
 
 **How it works:** UAA internally pads K/V heads and/or sequence lengths to the nearest divisible size before the all-to-all communication, then strips the padding after. The padding is transparent — no model code changes are needed. The all-to-all primitives (`_all_to_all_single_any_qkv_async` / `_all_to_all_single_any_o_async` in `src/cache_dit/distributed/communicate/primitives.py`) handle the padding logic automatically.

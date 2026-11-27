@@ -34,20 +34,11 @@ def test_nvfp4_config_and_cli() -> None:
   assert weight_only_torchao_config.use_dynamic_per_tensor_scale is True
 
   parser = get_args(parse=False)
-  args = maybe_postprocess_args(parser.parse_args(["--nvfp4"]))
-  assert args.quantize is True
-  assert args.quantize_type == "nvfp4"
-
-  args = maybe_postprocess_args(parser.parse_args(["--quantize-type", "nvfp4"]))
-  assert args.quantize is True
-  assert args.quantize_type == "nvfp4"
-
-  args = maybe_postprocess_args(parser.parse_args(["--nvfp4-weight-only"]))
-  assert args.quantize is True
-  assert args.quantize_type == "nvfp4_weight_only"
-
-  with pytest.raises(ValueError, match="mutually exclusive"):
-    maybe_postprocess_args(parser.parse_args(["--nvfp4", "--svdq-nvfp4-r128-dq"]))
+  for quant_type in ("nvfp4", "nvfp4_weight_only"):
+    args = maybe_postprocess_args(
+      parser.parse_args(["--quantize-params", f"quant_type={quant_type}"]))
+    assert args.quantize is True
+    assert args.quantize_type == quant_type
 
 
 def _require_nvfp4_device() -> None:

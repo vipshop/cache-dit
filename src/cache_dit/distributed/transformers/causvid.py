@@ -49,7 +49,7 @@ class CausVidContextParallelismPlanner(ContextParallelismPlanner):
 
   Ring attention is rejected: the KV cache is addressed by global token coordinates and every rank
   must see the whole chunk it writes, so a rotating KV ring has no consistent slot mapping. Head
-  counts and chunk lengths must divide by the Ulysses size; `--ulysses-anything` is rejected because
+  counts and chunk lengths must divide by the Ulysses size; `ulysses_anything=true` is rejected because
   the padded rows would land inside the KV slots.
   """
 
@@ -66,10 +66,10 @@ class CausVidContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "CausVid-Wan context parallelism does not support Ring attention: the causal KV cache is "
         "addressed by global token coordinates, so every rank must hold the complete chunk it "
-        "writes. Use `--parallel ulysses` instead.")
+        "writes. Use `--parallel-params ulysses=N` instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "CausVid-Wan does not support `--ulysses-anything`: padding the chunk to a divisible length "
+        "CausVid-Wan does not support `ulysses_anything=true`: padding the chunk to a divisible length "
         "would write padded rows into the causal KV slots and corrupt every later chunk. Choose a "
         "`--num-frames` whose chunk token count divides by the Ulysses size instead.")
 

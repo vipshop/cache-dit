@@ -101,7 +101,7 @@ def _run_ulysses(rank, world_size, port):
 ## 2. 假绿清单（这些都是"测试全绿但 backend 没生效"）
 
 1. **走了 fallback**：数值与 SDPA 完全一致（rel-L2 恰好 0）反而是可疑信号。必须断言 `kernel_calls > 0 and fallback_calls == 0`，或 spy vendor 调用次数。
-2. **`--attn` 没落到模块上**：非 diffusers 模型若没有 `_attention_backend` 属性，`set_attn_backend` 只 warning。验收时读回 `processor._attention_backend`。
+2. **`--attn-params type=X` 没落到模块上**：非 diffusers 模型若没有 `_attention_backend` 属性，`set_attn_backend` 只 warning。验收时读回 `processor._attention_backend`。
 3. **CP 路径没被走到**：`cp_config=None` 时永远走单卡分支。CP 测试必须真的传 `_ContextParallelConfig` 并 `dist.init_process_group`。
 4. **mask 被丢弃**：签名漏 `attn_mask` 时 dispatcher 静默过滤，输出看起来"没报错"。用 `attn_mask` 全 `-inf` / 全 False 的极端 mask 断言输出变化。
 5. **compile 没编译**：`TORCH_LOGS=graph_breaks` 打 0 条不代表没跑 dynamo；判据是 `torch._dynamo.utils.counters["stats"]["unique_graphs"]`。
@@ -113,7 +113,7 @@ def _run_ulysses(rank, world_size, port):
 - 同 recipe、同 seed、同分辨率，比较 **attention 段耗时**与端到端；attention 占比决定收益上限：
   - 1024² 图像模型 attn 通常只占 18–25% ⇒ 端到端 1.03–1.05x 是正常结果；
   - 长视频 / 长序列（H3 类 56%+）才有明显收益。
-- 与 `--compile`、`--cache`、量化叠加时，各行独立报，不要用一个加速比概括（cache 会减少前向次数，直接放大或稀释 attention 的绝对收益）。
+- 与 `--compile`、`--cache-params`、量化叠加时，各行独立报，不要用一个加速比概括（cache 会减少前向次数，直接放大或稀释 attention 的绝对收益）。
 - 报告必须写清实际生效档位（backend 名 + 精度档 + 硬件 capability），因为同一 backend 名在不同卡上走的是不同 kernel 家族。
 
 ## 4. 精度口径

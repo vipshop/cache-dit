@@ -23,7 +23,7 @@ from cache_dit.models.pipelines.hidream_o1_image.pipeline import (
 
 _IMAGE_LEN = 4  # 2x2 patches of a 64x64 image
 _TEXT_TOKENS_EVEN = 6  # joint length 10, divisible by 2 for plain Ulysses
-_TEXT_TOKENS_ODD = 7  # joint length 11, only `--ulysses-anything` can split it
+_TEXT_TOKENS_ODD = 7  # joint length 11, only `ulysses_anything=true` can split it
 _TMS_TOKEN_ID = 100
 # CP is bit-exact in fp32 (measured 0.0) and stays under 2e-3 in bf16. TP runs the same sharded
 # matmuls through several bf16 all-reduces on this deliberately tiny random-init model, which lands
@@ -144,5 +144,5 @@ def test_hidream_o1_image_parallel_matches_single_rank(mode):
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="needs two GPUs")
 @pytest.mark.parametrize("mode", ["cp", "tp"])
 def test_hidream_o1_image_odd_joint_length(mode):
-  # An odd joint length needs `--ulysses-anything` for CP; TP never splits the sequence.
+  # An odd joint length needs `ulysses_anything=true` for CP; TP never splits the sequence.
   mp.spawn(_run_rank, args=(2, mode, _TEXT_TOKENS_ODD, mode == "cp"), nprocs=2, join=True)

@@ -27,7 +27,7 @@ Why this is required:
 - `_dispatch_attention_fn` resolves backends through `_AttnBackendRegistry`, including cache-dit backends such as FFPA, SageAttention, FlashAttention, and native SDPA.
 - It applies backend-specific argument filtering and constraints. Calling a backend directly bypasses these checks.
 - It accepts either the active backend (`backend=None`) or an explicit backend selected by cache-dit.
-- Calling diffusers' dispatcher in a patched cache-dit processor can silently make `--attn` and programmatic backend selection ineffective.
+- Calling diffusers' dispatcher in a patched cache-dit processor can silently make `--attn-params type=X` and programmatic backend selection ineffective.
 
 Keeping an unmodified upstream processor as the fallback for an unarmed, non-cache-dit path is fine. Do not patch diffusers itself. The requirement applies to new cache-dit dispatch sites.
 
@@ -76,7 +76,7 @@ Passing the active CP config in this case communicates twice: once in the model-
 For a two-phase model such as prefix-KV-cache prefill/decode:
 
 - Prefill may use model-specific block-causal segments and an explicit backend choice required by that path.
-- Cached/decode attention should normally forward `self._attention_backend`, so `--attn` remains effective.
+- Cached/decode attention should normally forward `self._attention_backend`, so `--attn-params type=X` remains effective.
 - Global masks and segment indices must describe the sequence after any all-to-all or all-gather, not the local input shard.
 - Remove sequence padding before attention, or explicitly mask every padded key. Trim padded outputs only after restoring the communication layout required by the inverse collective.
 

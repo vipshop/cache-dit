@@ -18,7 +18,7 @@ Architecture notes that the cache-dit wiring depends on:
   support) and it is passed to every block unchanged.
 * **No VAE and no text encoder.** Raw RGB patches go in through `x_embedder`, `final_layer2` emits
   `patch_size * patch_size * 3` values per token, and the token ids are embedded by this module's own
-  `embed_tokens`. `--parallel-vae` / `--parallel-text` therefore do not apply.
+  `embed_tokens`. `vae=true` / `text=true` in `--parallel-params` therefore do not apply.
 * **GQA is widened before attention.** `num_key_value_heads=8` vs `num_attention_heads=32`; K/V are
   repeated to the query head count and attention runs as MHA with `enable_gqa=False`, because
   cache-dit's templated context-parallel attention rejects `enable_gqa=True`.

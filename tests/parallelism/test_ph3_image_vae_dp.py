@@ -1,4 +1,4 @@
-"""CPU-only guards for the P-H3-Image VAE data-parallel planner (`--parallel-vae`).
+"""CPU-only guards for the P-H3-Image VAE data-parallel planner (`vae=true` in `--parallel-params`).
 
 The planner is a tile distributor: `AutoencoderKLPH3Image` lays 256-pixel tiles with a 64-pixel
 overlap and stitches them back, so a tile is the only independent unit of work. Three things can go

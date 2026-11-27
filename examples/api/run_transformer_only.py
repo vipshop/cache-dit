@@ -6,7 +6,7 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, MemoryTracker
+from cache_dit.cli.utils import MemoryTracker, get_args, maybe_postprocess_args, strify
 import cache_dit
 from cache_dit.platforms import current_platform
 
@@ -17,7 +17,7 @@ parser.add_argument(
   default=False,
   help="Disable BlockAdapter or not",
 )
-args = parser.parse_args()
+args = maybe_postprocess_args(parser.parse_args())
 print(args)
 
 pipe = FluxPipeline.from_pretrained(
@@ -29,6 +29,7 @@ pipe = FluxPipeline.from_pretrained(
 ).to(current_platform.device_type)
 
 if args.cache:
+  single_block_rdt = args.residual_diff_threshold * 3
   from cache_dit import (
     BlockAdapter,
     ForwardPattern,
@@ -58,22 +59,23 @@ if args.cache:
       ) if not args.no_adapt else pipe.transformer),
     cache_config=(
       DBCacheConfig(
-        Fn_compute_blocks=args.Fn,
-        Bn_compute_blocks=args.Bn,
+        Fn_compute_blocks=args.Fn_compute_blocks,
+        Bn_compute_blocks=args.Bn_compute_blocks,
         max_warmup_steps=args.max_warmup_steps,
         max_cached_steps=args.max_cached_steps,
         max_continuous_cached_steps=args.max_continuous_cached_steps,
-        residual_diff_threshold=args.rdt,
+        residual_diff_threshold=args.residual_diff_threshold,
         # NOTE: num_inference_steps is required for Transformer-only interface
-        num_inference_steps=28 if args.steps is None else args.steps,
+        num_inference_steps=28 if args.num_inference_steps is None else args.num_inference_steps,
       ) if args.cache else None),
     params_modifiers=[
-      ParamsModifier(cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt, ), ),
+      ParamsModifier(cache_config=DBCacheConfig().reset(
+        residual_diff_threshold=args.residual_diff_threshold, ), ),
       ParamsModifier(
         # NOTE: single_transformer_blocks should have higher
         # residual_diff_threshold because of the precision error
         # accumulation from previous transformer_blocks
-        cache_config=DBCacheConfig().reset(residual_diff_threshold=args.rdt * 3, ), ),
+        cache_config=DBCacheConfig().reset(residual_diff_threshold=single_block_rdt, ), ),
     ],
   )
 
@@ -88,7 +90,7 @@ def run_pipe():
     prompt,
     height=1024 if args.height is None else args.height,
     width=1024 if args.width is None else args.width,
-    num_inference_steps=28 if args.steps is None else args.steps,
+    num_inference_steps=28 if args.num_inference_steps is None else args.num_inference_steps,
     generator=torch.Generator("cpu").manual_seed(0),
   ).images[0]
   return image

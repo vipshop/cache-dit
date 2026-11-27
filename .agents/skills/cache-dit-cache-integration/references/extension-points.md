@@ -41,7 +41,7 @@ src/cache_dit/caching/
 | 1 | `calibrators/<name>.py`（新增） | 继承 `CalibratorBase`，实现 `reset_cache/approximate/mark_step_begin/update`（**`reset_cache` 不是 `reset`**，基类是普通类，写错只会延迟到第一次推理才 `NotImplementedError`） |
 | 2 | `calibrators/__init__.py` | `_supported_calibrators` 加名字 + 工厂 `if` 分支；参数走 `calibrator_kwargs` 透传（**不需要新 dataclass**） |
 | 3 | `load_configs.py` | `enable_<name>` 开关 + 与 taylorseer/dmd/foca 的互斥校验 |
-| 4 | `cli/utils.py` | `--<name>` 及参数 flag；组装 `CalibratorConfig(...)` |
+| 4 | `cli/cache.py` | `--calibrator-params` 的 `type` 及参数 key；组装 `CalibratorConfig(...)` |
 
 骨架（2 空格缩进，相对导入；照 `taylorseer.py` 的形状写）：
 
@@ -147,7 +147,7 @@ for gamma in ratios:
 | block 分派 | `cache_blocks/__init__.py` | `UnifiedBlocks.__new__` / `CachedBlocks.__new__` 两层 `if/elif` |
 | block 执行 | `pattern_base.py` **和** `pattern_3_4_5.py` | 两套模板都要写 |
 | stats | `pattern_utils.py`、`summary.py` | `apply_stats/remove_stats` + `CacheStats` + `strify` 三处分支 |
-| CLI | `cli/utils.py` | 现在硬编码 `DBCacheConfig(...)` 且**没有 `--cache-type`** |
+| CLI | `cli/optimize.py` | 现在硬编码 `DBCacheConfig(...)`；`--cache-params` 的 `type` 只认 DBCache/SeaCache/SoftCache |
 | docs | `docs/user_guide/CACHE_API.md`、`docs/README.md` | 新算法要进文档（根 `README.md` 已最简化，不写算法说明） |
 
 ## 7. 与其它特性的交互
@@ -176,8 +176,8 @@ for gamma in ratios:
 
 ## 9. 已知坑
 
-- `--warmup` 是 perf 预热，不是 cache warmup；cache warmup 是 `--max-warmup-steps`/`--ws`（默认 8）。少步模型配 `ws=8` 会全程 warmup ⇒ 零缓存。
+- `--warmup` 是 perf 预热，不是 cache warmup；cache warmup 是 `--cache-params ws=...`（默认 8）。少步模型配 `ws=8` 会全程 warmup ⇒ 零缓存。
 - `rdt >= 1.0` 是"永远命中"的短路分支，不是"放宽阈值"，不能拿来证明 cache 有效。
 - `--compile` 会改变命中序列（数值扰动变了决策），所以 compile 行与非 compile 行不能共用同一工作点。
 - **`residual_diffs` 里有 sentinel**：`-0.0`（阈值关闭）/`-1.0`（永远命中）/`-2.0`（shape 不匹配）都会写进同一个 dict。统计 diff 均值/画曲线前必须过滤负值，否则得到无意义的数。
-- 行号/默认值有 2 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `--rdt` 默认 0.12 而 dataclass 默认 0.08。
+- 行号/默认值有 2 处文档与代码不一致，**一律以代码为准**：`max_warmup_steps` 文档说 0 实际 8；CLI `rdt` 默认 0.12 而 dataclass 默认 0.08。

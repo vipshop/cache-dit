@@ -1,4 +1,5 @@
-"""Ordering regression for `TileSafeP2PComm`, the transport behind `--parallel-vae`.
+"""Ordering regression for `TileSafeP2PComm`, the transport behind `vae=true` in `--parallel-
+params`.
 
 The class moves two kinds of message between the same pair of ranks: a five-element int64 shape and the
 payload it describes. `nccl` gives one FIFO per peer and **ignores `tag`** (measured: an `isend` with

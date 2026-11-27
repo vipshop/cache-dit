@@ -152,10 +152,10 @@ class Ideogram4ContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "Ideogram-4 context parallelism does not support Ring attention: the segment mask is "
         "always passed to attention, and Ring needs `return_lse`, which the native backend "
-        "rejects together with a mask. Use Ulysses (`--parallel ulysses`) instead.")
+        "rejects together with a mask. Use Ulysses (`--parallel-params ulysses=N`) instead.")
     if parallelism_config.ulysses_anything:
       raise NotImplementedError(
-        "Ideogram-4 context parallelism does not support `--ulysses-anything`: the "
+        "Ideogram-4 context parallelism does not support `ulysses_anything=true`: the "
         "`(B, 1, L, L)` segment mask describes the equipartitioned global key axis, so uneven "
         "shards would desynchronize the mask length from the all-to-all layout. Choose a "
         "cp_size that divides both the packed conditional length and the image-only "
@@ -164,7 +164,7 @@ class Ideogram4ContextParallelismPlanner(ContextParallelismPlanner):
     if backend not in (None, "native", "_sdpa_cudnn"):
       raise NotImplementedError(
         f"Ideogram-4 context parallelism requires a mask-capable native backend, got {backend!r}."
-        " Use `--attn native`.")
+        " Use `--attn-params type=native`.")
 
     _patch_attention_processor_for_cp()
 

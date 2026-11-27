@@ -56,7 +56,8 @@ class SanaWMContextParallelismPlanner(ContextParallelismPlanner):
       "bidirectional GDN recurrence along the temporal axis plus a cross-frame temporal "
       "convolution (`GLUMBConvTemp`), so a sequence shard would need per-frame state and halo "
       "exchange between ranks, which neither Ulysses nor Ring provides. Use tensor parallelism "
-      "(`--parallel tp`) for the multi-GPU run instead; vllm-omni and sglang made the same call.")
+      "(`--parallel-params tp=N`) for the multi-GPU run instead; vllm-omni and sglang made the "
+      "same call.")
 
 
 def _refuse_refiner(transformer: torch.nn.Module, what: str) -> None:

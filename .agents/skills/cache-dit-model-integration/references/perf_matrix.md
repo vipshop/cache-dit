@@ -8,13 +8,13 @@ Stop and go back to `../SKILL.md` GATE CHECK if the model still has no `BlockAda
 `cdit.generate` example, or no CP/TP planner — that is an **integration** task, and its per-phase
 numbers live in `./testing.md`.
 
-量化行的类型选择、`--quantize-exclude-layers` / precision plan / observer 的用法，以及"精度掉了是量化还是接入的锅"这类归因，都去 `cache-dit-quantization`；本文件只规定跑哪些行、怎么出数、门槛多少。
+量化行的类型选择、`--quantize-params exclude_layers=` / precision plan / observer 的用法，以及"精度掉了是量化还是接入的锅"这类归因，都去 `cache-dit-quantization`；本文件只规定跑哪些行、怎么出数、门槛多少。
 
 Run order (do not reorder):
 
 1. `./perf_analysis.md` — FLOPs budget (attention vs GEMM share). It decides **in advance** which
    optimizations can pay off, so a flat fp8 number later is not misdiagnosed as an integration bug.
-   An attention-dominated model additionally needs the `--attn ffpa_fp8` / `ffpa_fp4` rows (§1 note),
+   An attention-dominated model additionally needs the `--attn-params type=ffpa_fp8` / `ffpa_fp4` rows (§1 note),
    because GEMM-only quantization is capped by its GEMM share.
 2. Tier A 1-GPU rows, starting with the baseline **and** the determinism baseline (§2).
 3. Tier A 2-GPU rows.
@@ -25,20 +25,19 @@ Run order (do not reorder):
 
 | Tier | GPUs | When | Distribution |
 |---|---|---|---|
-| **A** | 1 and 2 | **Default, always.** Every model-support task ends with a Tier A table. | single card, `--parallel tp`, `--parallel ulysses` |
-| **B** | 4 | Only when the user asks to extend to 4 cards. | `tp4`, `ulysses4`, hybrid TP2+CP2 (`--parallel ulysses_tp`) |
-| **C** | 8 | Only when the user asks to extend to 8 cards. | `tp8`, `ulysses8`, hybrid TP2+CP4 (`ulysses_tp`) / TP4+CP2 (`tp_ulysses`), optional `usp_tp` |
+| **A** | 1 and 2 | **Default, always.** Every model-support task ends with a Tier A table. | single card (no `--parallel-params`), `--parallel-params tp=2`, `--parallel-params ulysses=2` |
+| **B** | 4 | Only when the user asks to extend to 4 cards. | `tp=4`, `ulysses=4`, hybrid TP2+CP2 (`--parallel-params 'tp=2,ulysses=2'`) |
+| **C** | 8 | Only when the user asks to extend to 8 cards. | `tp=8`, `ulysses=8`, hybrid TP2+CP4 (`--parallel-params 'tp=2,ulysses=4'`) / TP4+CP2 (`'tp=4,ulysses=2'`), optional USP+TP (`'ulysses=2,ring=2,tp=2'`) |
 
 Rules:
 
 - **Never open Tier B/C on your own.** An 8-card video row costs hours; the user decides.
 - A machine with a single card still produces a valid Tier A table: drop the 2-GPU rows and say so
   in the caption.
-- 4 cards **cannot** run TP2+CP4 (that needs 8 processes). On 4 cards `CP4` is pure `--parallel
-  ulysses`, and the only hybrid layout is TP2+CP2.
-- On 4 cards `--parallel ulysses_tp` and `--parallel tp_ulysses` resolve to the **same** layout
-  (U2×T2) — run one of them, not both. The 8-card tier is the only place where "Ulysses first" and
-  "TP first" differ, which is exactly why Tier C keeps both.
+- 4 cards **cannot** run TP2+CP4 (that needs 8 processes). On 4 cards `CP4` is pure Ulysses
+  (`--parallel-params 'ulysses=4'`), and the only hybrid layout is TP2+CP2.
+- On 4 cards `--parallel-params ulysses=2,tp=2` and `--parallel-params tp=2,ulysses=2` are the
+  **same** layout (U2×T2) — run one of them, not both; the degree of each axis is all that matters.
 - Card assignment: 1–2 GPU rows use the cache-dit cards assigned by the user (this workspace: 4 and
   5); Tier B/C need more cards, so use the block the user assigns. **Within one table, every row
   must run on the same physical cards** — cross-tier comparison inherits clock/temperature noise.
@@ -49,62 +48,62 @@ Rules:
 |---|---|---|---|---|
 | [ ] | single-GPU bf16 reference | `U1_C0_Q0_NONE_a` / `_b` | – | the reference itself; run it **twice** for the determinism baseline (§2) |
 | [ ] | single-GPU + compile | `U1_C1_Q0_NONE` | `--compile` | ≈30 dB (bf16 is not bit-exact under compile) |
-| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache` | hits > 0 on a 30+ step model; record the real `_R` value |
-| [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache --rdt <hi>` | required when the default caches 0 steps (distilled models) |
-| [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache --rdt <hi> --compile` | fastest cache entry |
-| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize-type float8_per_row` | ~26 dB |
-| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-exclude-layers` if a gate layer has `min(in, out) < rank` |
+| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache-params 'type=DBCache'` | hits > 0 on a 30+ step model; record the real `_R` value |
+| [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache-params rdt=<hi>` | required when the default caches 0 steps (distilled models) |
+| [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache-params rdt=<hi> --compile` | fastest cache entry |
+| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize-params quant_type=float8_per_row` | ~26 dB |
+| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-params exclude_layers=` if a gate layer has `min(in, out) < rank` |
 | [ ] | layerwise offload (sync) | `U1_C0_Q0_OFF` | `--layerwise-offload` | **PSNR inf** (bit-exact) |
 | [ ] | layerwise offload + async | `U1_C0_Q0_OFFA` | `--layerwise-offload --layerwise-async-transfer` | inf, and faster than the sync row |
 | [ ] | offload + compile | `U1_C1_Q0_OFF` | `--layerwise-offload --compile` | compile-tier drift (≈32 dB), **not** inf |
 | [ ] | offload + async + compile | `U1_C1_Q0_OFFA` | `--layerwise-offload --layerwise-async-transfer --compile` | fastest offload entry |
-| [ ] | TP2 | `TP2_C0_Q0_NONE` | `--parallel tp` | ≈30 dB; usually a *memory* win, not a latency win |
-| [ ] | TP2 + compile | `TP2_C1_Q0_NONE` | `--parallel tp --compile` | |
-| [ ] | CP2 | `U2_C0_Q0_NONE` | `--parallel ulysses` | ≈30 dB; the real latency lever |
-| [ ] | CP2 + compile | `U2_C1_Q0_NONE` | `--parallel ulysses --compile` | |
-| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel ulysses --compile --quantize-type float8_per_row` | |
-| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel ulysses --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot` | |
-| [ ] | TE-P (run-only) | `TP2_C0_Q0_TEP` | `--parallel tp --parallel-text` | runs, ≈30 dB |
-| [ ] | VAE-P (run-only) | `TP2_C0_Q0_VAEP` | `--parallel tp --parallel-vae` | runs, ≈30 dB |
+| [ ] | TP2 | `TP2_C0_Q0_NONE` | `--parallel-params 'tp=2'` | ≈30 dB; usually a *memory* win, not a latency win |
+| [ ] | TP2 + compile | `TP2_C1_Q0_NONE` | `--parallel-params 'tp=2' --compile` | |
+| [ ] | CP2 | `U2_C0_Q0_NONE` | `--parallel-params 'ulysses=2'` | ≈30 dB; the real latency lever |
+| [ ] | CP2 + compile | `U2_C1_Q0_NONE` | `--parallel-params 'ulysses=2' --compile` | |
+| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel-params 'ulysses=2' --compile --quantize-params quant_type=float8_per_row` | |
+| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel-params 'ulysses=2' --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` | |
+| [ ] | TE-P (run-only) | `TP2_C0_Q0_TEP` | `--parallel-params 'tp=2,text=true' ` | runs, ≈30 dB |
+| [ ] | VAE-P (run-only) | `TP2_C0_Q0_VAEP` | `--parallel-params 'tp=2,vae=true' ` | runs, ≈30 dB |
 
 - TE-P / VAE-P are **run-only** rows (user requirement: 跑通就行): record pass/fail + PSNR/SSIM,
   never quote them as a speedup.
-- `--parallel-text` / `--parallel-vae` are **no-ops without `--parallel`** — `parallelism_config` is
-  only built when `--parallel` is set (`cli/utils.py::maybe_apply_optimization`), so always hang
-  them under `--parallel tp`.
+- `--parallel-params text=true` / `--parallel-params vae=true` are **no-ops without a degree key** — `parallelism_config` is
+  only built when `--parallel-params` has `ulysses` / `ring` / `tp` greater than 1 (`cli/optimize.py::maybe_apply_optimization`), so always hang
+  them under `--parallel-params tp=2`.
 - **Attention-dominated models** (long video sequences, see `./perf_analysis.md`): the GEMM-side rows
   above have a hard ceiling of the model's GEMM share. Add two single-GPU rows
-  `A1_C1_Q0_ATTN8` (`--attn ffpa_fp8`) and, if acceptable, `A1_C1_Q0_ATTN4` (`--attn ffpa_fp4`), each
-  ± `--cache`. Without them the table under-reports the ceiling by 2× on such models.
+  `A1_C1_Q0_ATTN8` (`--attn-params type=ffpa_fp8`) and, if acceptable, `A1_C1_Q0_ATTN4` (`--attn-params type=ffpa_fp4`), each
+  ± `--cache-params`. Without them the table under-reports the ceiling by 2× on such models.
 
 ### Tier B checklist (4 GPUs, on request)
 
 | | Configuration | tag | flags |
 |---|---|---|---|
-| [ ] | TP4 | `TP4_C0_Q0_NONE` | `--parallel tp` |
-| [ ] | TP4 + compile | `TP4_C1_Q0_NONE` | `--parallel tp --compile` |
-| [ ] | CP4 | `U4_C0_Q0_NONE` | `--parallel ulysses` |
-| [ ] | CP4 + compile | `U4_C1_Q0_NONE` | `--parallel ulysses --compile` |
-| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel ulysses --cache` |
-| [ ] | **TP2 + CP2 (Ulysses)** | `U2T2_C0_Q0_NONE` | `--parallel ulysses_tp` |
-| [ ] | TP2 + CP2 + compile | `U2T2_C1_Q0_NONE` | `--parallel ulysses_tp --compile` |
-| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize-type float8_per_row` |
+| [ ] | TP4 | `TP4_C0_Q0_NONE` | `--parallel-params 'tp=4'` |
+| [ ] | TP4 + compile | `TP4_C1_Q0_NONE` | `--parallel-params 'tp=4' --compile` |
+| [ ] | CP4 | `U4_C0_Q0_NONE` | `--parallel-params 'ulysses=4'` |
+| [ ] | CP4 + compile | `U4_C1_Q0_NONE` | `--parallel-params 'ulysses=4' --compile` |
+| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel-params 'ulysses=4' --cache-params 'type=DBCache'` |
+| [ ] | **TP2 + CP2 (Ulysses)** | `U2T2_C0_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2'` |
+| [ ] | TP2 + CP2 + compile | `U2T2_C1_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile` |
+| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile --quantize-params quant_type=float8_per_row` |
 
 ### Tier C checklist (8 GPUs, on request)
 
 | | Configuration | tag | flags |
 |---|---|---|---|
-| [ ] | TP8 | `TP8_C0_Q0_NONE` | `--parallel tp` |
-| [ ] | TP8 + compile | `TP8_C1_Q0_NONE` | `--parallel tp --compile` |
-| [ ] | CP8 | `U8_C0_Q0_NONE` | `--parallel ulysses` |
-| [ ] | CP8 + compile | `U8_C1_Q0_NONE` | `--parallel ulysses --compile` |
-| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel ulysses --cache` |
-| [ ] | **TP2 + CP4 (Ulysses first)** | `U4T2_C0_Q0_NONE` | `--parallel ulysses_tp` |
-| [ ] | TP2 + CP4 + compile | `U4T2_C1_Q0_NONE` | `--parallel ulysses_tp --compile` |
-| [ ] | **TP4 + CP2 (TP first)** | `T4U2_C0_Q0_NONE` | `--parallel tp_ulysses` |
-| [ ] | TP4 + CP2 + compile | `T4U2_C1_Q0_NONE` | `--parallel tp_ulysses --compile` |
-| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel ulysses_tp --compile --quantize-type float8_per_row` |
-| [ ] | optional: USP+TP | `U2R2T2_C0_Q0_NONE` | `--parallel usp_tp` (8 ranks only) |
+| [ ] | TP8 | `TP8_C0_Q0_NONE` | `--parallel-params 'tp=8'` |
+| [ ] | TP8 + compile | `TP8_C1_Q0_NONE` | `--parallel-params 'tp=8' --compile` |
+| [ ] | CP8 | `U8_C0_Q0_NONE` | `--parallel-params 'ulysses=8'` |
+| [ ] | CP8 + compile | `U8_C1_Q0_NONE` | `--parallel-params 'ulysses=8' --compile` |
+| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel-params 'ulysses=8' --cache-params 'type=DBCache'` |
+| [ ] | **TP2 + CP4** | `U4T2_C0_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2'` |
+| [ ] | TP2 + CP4 + compile | `U4T2_C1_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile` |
+| [ ] | **TP4 + CP2** | `T4U2_C0_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2'` |
+| [ ] | TP4 + CP2 + compile | `T4U2_C1_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2' --compile` |
+| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile --quantize-params quant_type=float8_per_row` |
+| [ ] | optional: USP+TP | `U2R2T2_C0_Q0_NONE` | `--parallel-params 'ulysses=2,ring=2,tp=2'` (8 ranks only) |
 
 ## 2. Fixed conditions — every row must share them
 
@@ -115,7 +114,7 @@ Rules:
   a compiled row measured without warmup is garbage.
 - Flag disambiguation — these three are different things:
   - `--warmup N` / `--repeat N`: **timing** warmup / repeats.
-  - `--ws` / `--max-warmup-steps`: **cache** warmup steps.
+  - `--cache-params ws=...`: **cache** warmup steps.
   - `--warmup-steps`: inference steps used inside each warmup run.
 - **One reference for everything**: the single-GPU bf16 output of the same seed (`U1_C0_Q0_NONE_a`).
   Every row's PSNR/SSIM is computed against it, never against another accelerated row. If that row
@@ -152,32 +151,35 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
   `--sequential-cpu-offload` / `--module-layerwise-cpu-offload`, rejected with `--device-map-balance`,
   and `--compile-full-graph` / `--cuda-graph` are rejected while the tables actually stream (each
   per-block copy is a graph break, so `--compile` still works but pays a smaller speedup).
-- Under `--quantize` or `--parallel tp` the AdaLN tables are **not** streamed (quantized weights fit;
+- Under transformer quantization (`--quantize-params` with a transformer key) or `--parallel-params tp=2` the AdaLN tables are **not** streamed (quantized weights fit;
   a sharded table is a DTensor the host mirror cannot rebind per tensor) — only the text encoder
   streams, so the flag composes with those runs but then buys no transformer memory.
 - Keep `--track-memory` on for both the crashed resident run and the offloaded one: the caption should
   carry the actual peak (`- Memory Usage: X.XXGiB`), which is what tells the next person whether TP2
   is mandatory or merely nice to have.
 - Quantization for the same class of model: keep the modulation tables out of it
-  (`--quantize-exclude-layers adaln_proj norm_out`), since their error is shared by every token at
+  (`--quantize-params exclude_layers=adaln_proj+norm_out`), since their error is shared by every token at
   every step and accumulates coherently over the trajectory.
 
 ## 3. Distributed size mapping and preflight
 
-`--parallel` is resolved into (ulysses, ring, tp) sizes by
-`cli/utils.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
+`--parallel-params` takes the real degree of each axis (`ulysses`, `ring`, `tp`; default 1) and
+`cli/optimize.py::_prepare_distributed_size()` passes them to the mesh; their product must equal the
+process count. There is no `--parallel` type table:
 
-| `--parallel` | ws=2 | ws=4 | ws=8 | notes |
+| axes | ws=2 | ws=4 | ws=8 | notes |
 |---|---|---|---|---|
-| `tp` | T2 | T4 | T8 | shards weights; all-gather in every block |
-| `ulysses` | U2 | U4 | U8 | CP; the latency lever |
-| `ring` | R2 | R4 | R8 | CP; rotates KV, fp32 by default |
-| `usp` | U1×R2 (= pure Ring2) | U2×R2 | U4×R2 | Ulysses + Ring |
-| `ulysses_tp` | U1×T2 (= **pure TP2**) | U2×T2 | U4×T2 | Ulysses first |
-| `tp_ulysses` | T1×U2 (= **pure CP2**) | T2×U2 | T4×U2 | TP first; same as `ulysses_tp` at ws=4 |
-| `ring_tp` | R1×T2 (= pure TP2) | R2×T2 | R4×T2 | Ring first |
-| `tp_ring` | T1×R2 (= pure CP2) | T2×R2 | T4×R2 | TP first |
-| `usp_tp` | assert | assert | U2×R2×T2 | asserts `world_size == 8` (plain `assert`, skipped under `python -O`) |
+| `tp=T` | T2 | T4 | T8 | shards weights; all-gather in every block |
+| `ulysses=U` | U2 | U4 | U8 | CP; the latency lever |
+| `ring=R` | R2 | R4 | R8 | CP; rotates KV, fp32 by default |
+| `ulysses=U,ring=R` | U1×R2 | U2×R2 | U4×R2 | USP (Ulysses + Ring) |
+| `ulysses=U,tp=T` | U1×T2 | U2×T2 | U4×T2 | order is irrelevant, only the degrees matter |
+| `ring=R,tp=T` | R1×T2 | R2×T2 | R4×T2 | |
+| `ulysses=2,ring=2,tp=2` | — | — | U2×R2×T2 | product must equal 8 |
+
+An axis whose degree is 1 is not built (inactive axes stay `None`). A lone degree of 1
+(`--parallel-params tp=1`) still initializes a process group, so only use it under
+`torchrun --nproc_per_node=1`; a plain single-card run passes no parallel flag at all.
 
 Preflight before blaming a crash on the integration:
 
@@ -190,7 +192,7 @@ Preflight before blaming a crash on the integration:
    a suggestion (MiniMax-H3, Kandinsky 6.0). 56 heads → `tp2+cp2` (28), `tp2+cp4` (14), `tp4+cp2`
    (14) all work; 12 heads → **neither** 8-card hybrid works, so record that combination as
    "unsupported by model shape", not as a bug.
-4. If (3) fails, `--ulysses-anything` (`--uaa`) is the escape hatch — unless the model rejects UAA
+4. If (3) fails, `--parallel-params ulysses_anything=true` is the escape hatch — unless the model rejects UAA
    outright (Kandinsky 6.0 raises `NotImplementedError`, and it also refuses Ring CP entirely), in
    which case the combination is simply not supported.
 5. The model must have **both** a CP planner and a TP planner registered; with only one, hybrid is
@@ -255,37 +257,37 @@ Tier A:
 run U1_C0_Q0_NONE_a                                           # reference, run 1
 run U1_C0_Q0_NONE_b                                           # reference, run 2 (determinism, §2)
 run U1_C1_Q0_NONE            --compile
-run U1_C0_Q0_DB              --cache                          # read the effective _R from the tag
-run U1_C0_Q0_DB_HI           --cache --rdt 0.20               # distilled models need the raised one
-run U1_C1_Q0_DB_HI           --cache --rdt 0.20 --compile
-run U1_C1_FP8_NONE           --compile --quantize-type float8_per_row
-run U1_C1_W4A4_NONE          --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot
+run U1_C0_Q0_DB --cache-params 'type=DBCache' # read the effective _R from the tag
+run U1_C0_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' # distilled models need the raised one
+run U1_C1_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' --compile
+run U1_C1_FP8_NONE --compile --quantize-params quant_type=float8_per_row
+run U1_C1_W4A4_NONE --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run U1_C0_Q0_OFF             --layerwise-offload
 run U1_C0_Q0_OFFA            --layerwise-offload --layerwise-async-transfer
 run U1_C1_Q0_OFF             --layerwise-offload --compile
 run U1_C1_Q0_OFFA            --layerwise-offload --layerwise-async-transfer --compile
 # attention-dominated models only (§1 note):
-# run A1_C1_Q0_ATTN8         --compile --attn ffpa_fp8
+# run A1_C1_Q0_ATTN8         --compile --attn-params type=ffpa_fp8
 
 export CUDA_VISIBLE_DEVICES=4,5
 NPROC=2
-run TP2_C0_Q0_NONE           --parallel tp
-run TP2_C1_Q0_NONE           --parallel tp --compile
-run U2_C0_Q0_NONE            --parallel ulysses
-run U2_C1_Q0_NONE            --parallel ulysses --compile
-run U2_C1_FP8_NONE           --parallel ulysses --compile --quantize-type float8_per_row
-run U2_C1_W4A4_NONE          --parallel ulysses --compile --quantize-type svdq_nvfp4_r64_dq --svdq-smooth-strategy few_shot
-run TP2_C0_Q0_TEP            --parallel tp --parallel-text     # run-only
-run TP2_C0_Q0_VAEP           --parallel tp --parallel-vae      # run-only
+run TP2_C0_Q0_NONE --parallel-params 'tp=2'
+run TP2_C1_Q0_NONE --parallel-params 'tp=2' --compile
+run U2_C0_Q0_NONE --parallel-params 'ulysses=2'
+run U2_C1_Q0_NONE --parallel-params 'ulysses=2' --compile
+run U2_C1_FP8_NONE --parallel-params 'ulysses=2' --compile --quantize-params quant_type=float8_per_row
+run U2_C1_W4A4_NONE --parallel-params 'ulysses=2' --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
+run TP2_C0_Q0_TEP --parallel-params 'tp=2,text=true' # run-only
+run TP2_C0_Q0_VAEP --parallel-params 'tp=2,vae=true' # run-only
 ```
 
 Notes on the quantization flags:
 
-- `--svdq-smooth-strategy few_shot` matters on pixel-space / few-shot-calibrated models — the
+- `--svdq-params smooth_strategy=few_shot` matters on pixel-space / few-shot-calibrated models — the
   default `identity` can garble the image while PSNR still reads ~28 (SKILL.md pitfall #11).
 - **Check the gate layers first**: `svdq_*_r64_dq` aborts with `rank 64 exceeds the maximum
   supported rank 32` on a `Linear` whose `min(in, out) < rank`. DFR needs
-  `--quantize-exclude-layers to_gate_logits`; any model with a similar `heads`-sized gate needs its
+  `--quantize-params exclude_layers=to_gate_logits`; any model with a similar `heads`-sized gate needs its
   own exclusion list. This is per-model, so it cannot be baked into the template.
 - `fp8_per_row` only pays off together with `--compile`; measuring it eager is a wasted row.
 - sm_89 cards (L20/L40S) → `svdq_int4_r64_dq`; sm_120 (RTX PRO 5000) → `svdq_nvfp4_r64_dq`.
@@ -295,14 +297,14 @@ Tier B (4 GPUs):
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3     # use the block the user assigned
 NPROC=4
-run TP4_C0_Q0_NONE   --parallel tp
-run TP4_C1_Q0_NONE   --parallel tp --compile
-run U4_C0_Q0_NONE    --parallel ulysses
-run U4_C1_Q0_NONE    --parallel ulysses --compile
-run U4_C0_Q0_DB      --parallel ulysses --cache
-run U2T2_C0_Q0_NONE  --parallel ulysses_tp
-run U2T2_C1_Q0_NONE  --parallel ulysses_tp --compile
-run U2T2_C1_FP8_NONE --parallel ulysses_tp --compile --quantize-type float8_per_row
+run TP4_C0_Q0_NONE --parallel-params 'tp=4'
+run TP4_C1_Q0_NONE --parallel-params 'tp=4' --compile
+run U4_C0_Q0_NONE --parallel-params 'ulysses=4'
+run U4_C1_Q0_NONE --parallel-params 'ulysses=4' --compile
+run U4_C0_Q0_DB --parallel-params 'ulysses=4' --cache-params 'type=DBCache'
+run U2T2_C0_Q0_NONE --parallel-params 'ulysses=2,tp=2'
+run U2T2_C1_Q0_NONE --parallel-params 'ulysses=2,tp=2' --compile
+run U2T2_C1_FP8_NONE --parallel-params 'ulysses=2,tp=2' --compile --quantize-params quant_type=float8_per_row
 ```
 
 Tier C (8 GPUs):
@@ -310,17 +312,17 @@ Tier C (8 GPUs):
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 NPROC=8
-run TP8_C0_Q0_NONE    --parallel tp
-run TP8_C1_Q0_NONE    --parallel tp --compile
-run U8_C0_Q0_NONE     --parallel ulysses
-run U8_C1_Q0_NONE     --parallel ulysses --compile
-run U8_C0_Q0_DB       --parallel ulysses --cache
-run U4T2_C0_Q0_NONE   --parallel ulysses_tp      # TP2 + CP4, Ulysses first
-run U4T2_C1_Q0_NONE   --parallel ulysses_tp --compile
-run T4U2_C0_Q0_NONE   --parallel tp_ulysses      # TP4 + CP2, TP first
-run T4U2_C1_Q0_NONE   --parallel tp_ulysses --compile
-run U4T2_C1_FP8_NONE  --parallel ulysses_tp --compile --quantize-type float8_per_row
-run U2R2T2_C0_Q0_NONE --parallel usp_tp          # optional
+run TP8_C0_Q0_NONE --parallel-params 'tp=8'
+run TP8_C1_Q0_NONE --parallel-params 'tp=8' --compile
+run U8_C0_Q0_NONE --parallel-params 'ulysses=8'
+run U8_C1_Q0_NONE --parallel-params 'ulysses=8' --compile
+run U8_C0_Q0_DB --parallel-params 'ulysses=8' --cache-params 'type=DBCache'
+run U4T2_C0_Q0_NONE --parallel-params 'ulysses=4,tp=2' # TP2 + CP4
+run U4T2_C1_Q0_NONE --parallel-params 'ulysses=4,tp=2' --compile
+run T4U2_C0_Q0_NONE --parallel-params 'tp=4,ulysses=2' # TP4 + CP2
+run T4U2_C1_Q0_NONE --parallel-params 'tp=4,ulysses=2' --compile
+run U4T2_C1_FP8_NONE --parallel-params 'ulysses=4,tp=2' --compile --quantize-params quant_type=float8_per_row
+run U2R2T2_C0_Q0_NONE --parallel-params 'ulysses=2,ring=2,tp=2' # optional
 ```
 
 ## 5. Table template
@@ -365,7 +367,7 @@ card count, and reusing them as "the expected level" is how wrong conclusions st
 a finished table must still carry:
 
 - the workload (resolution / frames / steps), the card count and the layout (`tp2`, `u2`, `u2t2`, ...);
-- the flags that changed behaviour: excluded quant layers, `--svdq-smooth-strategy`, `--ulysses-anything`,
+- the flags that changed behaviour: excluded quant layers, `--svdq-params smooth_strategy=`, `--parallel-params ulysses_anything=true`,
   effective cache threshold;
 - the determinism baseline (`inf` or `X dB`) — it sets the floor for every other row;
 - whether offload was a win or a loss **on this hardware**: on a card that already holds the weights
@@ -466,8 +468,8 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
 **Where the numbers in the caption come from**
 
 - Effective cache threshold: the `- Optimization:` line's tag carries `_R<threshold>`
-  (`DBCacheConfig.strify()`); `--rdt` left at its default is replaced by the model's own preset when
-  that model ships one, so never write "0.12" from memory.
+  (`DBCacheConfig.strify()`); `--cache-params rdt=...` left at its default is replaced by the
+  model's own preset when that model ships one, so never write "0.12" from memory.
 - Cache hits: `--summary` logs `Cache Steps and Residual Diffs Statistics: <cls>, Executed Steps: N`
   plus a `| Cache Steps | ... |` row; the tag also ends with `_S<hits>`.
 - Counts differ by mode: image mode prints `Num:` = **total pairs including** the ones skipped as
@@ -490,7 +492,7 @@ for tag in ["U2_C0_Q0_NONE", "U2_C1_FP8_NONE"]:
   offload + compile is *not* bit-exact, judge it against the compile tier. On a model whose reference
   row already runs under offload (§2), these rows stop being extras: the baseline *is* an offload row,
   so the caption must state that and the speedups are relative to it.
-- Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-smooth-strategy`,
+- Write the per-model pitfalls into the caption (excluded quant layers, required `--svdq-params smooth_strategy=`,
   UAA requirement, hybrid head divisibility). A number that needs a hidden flag is a trap for the
   next person.
 - End with a **recommended entry** and the reason: "at equal speed pick the higher quality"

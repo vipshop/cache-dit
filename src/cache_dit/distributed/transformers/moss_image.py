@@ -39,7 +39,7 @@ class MOSSImageContextParallelismPlanner(ContextParallelismPlanner):
     the split hook of `transformer_blocks[0]`, so the input split has to live on the first block.
   * `rope_split` output-splits the RoPE table with the same partition. The table is shared by every
     block (only block 0's argument could be hooked), and the shrink must follow the framework
-    sharder so `--ulysses-anything` stays consistent. It is applied after text refinement, which
+    sharder so `ulysses_anything=true` stays consistent. It is applied after text refinement, which
     consumes the full-length table.
   * `sequence_gather` gathers dim 1 back before the forward slices out the image tokens, so the
     velocity keeps the layout the pipeline expects.
@@ -49,7 +49,7 @@ class MOSSImageContextParallelismPlanner(ContextParallelismPlanner):
 
   Ring attention is rejected: it needs equally sized local chunks on every rank, while this joint
   length (`image + text` tokens) is usually not divisible by the CP size, and
-  `--ulysses-anything` only covers the Ulysses path. Use Ulysses.
+  `ulysses_anything=true` only covers the Ulysses path. Use Ulysses.
   """
 
   def _apply(
@@ -64,7 +64,7 @@ class MOSSImageContextParallelismPlanner(ContextParallelismPlanner):
       raise NotImplementedError(
         "MOSS-Image context parallelism does not support Ring attention: Ring needs equally sized "
         "local chunks, and the joint `image + text` length is usually not divisible by the CP size "
-        "(`--ulysses-anything` only covers Ulysses). Use `--parallel ulysses` instead.")
+        "(`ulysses_anything=true` only covers Ulysses). Use `--parallel-params ulysses=N` instead.")
 
     _cp_plan: _ContextParallelModelPlan = {
       "rope_split": {

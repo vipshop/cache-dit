@@ -216,6 +216,15 @@ _env_path_mapping = {
   "PIKA_H3_FLEX_DIR": "Pika-Labs/Pika-H3-Flex",
 }
 _path_env_mapping = {v: k for k, v in _env_path_mapping.items()}
+# Examples registered with LoRA / ControlNet / transformer weights rather than the base checkpoint,
+# whose factory does not thread `args` into the base checkpoint's `_path` call: name -> that base
+# checkpoint, so `--model-path` still moves it. A test runs every example to keep this exact.
+_MODEL_PATH_BASE_DEFAULTS = {
+  "flux_nunchaku": "black-forest-labs/FLUX.1-dev",
+  "qwen_image_controlnet": "Qwen/Qwen-Image",
+  "zimage_turbo_controlnet_2.0": "Tongyi-MAI/Z-Image-Turbo",
+  "zimage_turbo_controlnet_2.1": "Tongyi-MAI/Z-Image-Turbo",
+}
 FLUX2_SKIP_INPUT_IMAGE2 = os.environ.get("FLUX2_SKIP_INPUT_IMAGE2", "0").lower() == "1"
 CACHE_DIT_DIR = os.environ.get("CACHE_DIT_DIR", None)
 CACHE_DIT_FORCE_USE_LOCAL_DATA = os.environ.get("CACHE_DIT_FORCE_USE_LOCAL_DATA",
@@ -230,15 +239,24 @@ def _path(
   controlnet: bool = False,
   transformer: bool = False,
 ) -> str:
+  active = ExampleRegister.active_example()
+  if args is None and active is not None:
+    active_args, active_name = active
+    # Examples that don't thread `args` through still honor the model paths, but only for the
+    # model they are registered with (and their base checkpoint): auxiliary models and sibling
+    # variants keep their defaults.
+    if default == ExampleRegister.get_default(active_name) or \
+        default == _MODEL_PATH_BASE_DEFAULTS.get(active_name):
+      args = active_args
   # Prefer command line argument if provided
   if args is not None:
-    model_path_arg = args.model_path
+    model_path_arg = getattr(args, "model_path", None)
     if lora:
-      model_path_arg = args.lora_path
+      model_path_arg = getattr(args, "lora_path", None)
     if controlnet:
-      model_path_arg = args.controlnet_path
+      model_path_arg = getattr(args, "controlnet_path", None)
     if transformer:
-      model_path_arg = args.transformer_path
+      model_path_arg = getattr(args, "transformer_path", None)
     if model_path_arg is not None:
       return model_path_arg
   # Next, check environment variable
@@ -280,8 +298,8 @@ def flux_example(args: argparse.Namespace, **kwargs) -> Example:
       model_name_or_path=_path("black-forest-labs/FLUX.1-dev"),
       pipeline_class=FluxPipeline,
       transformer=transformer,  # maybe use Nunchaku Flux transformer
-      # `text_encoder_2` will be quantized when `--quantize-type`
-      # is set to `bnb_4bit`. Only hints for quantization.
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder=bnb_4bit`
+      # is set. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
     input_data=ExampleInputData(
@@ -311,8 +329,8 @@ def flux_fill_example(args: argparse.Namespace, **kwargs) -> Example:
       task_type=ExampleType.IE2I,  # Image Editing to Image
       model_name_or_path=_path("black-forest-labs/FLUX.1-Fill-dev"),
       pipeline_class=FluxFillPipeline,
-      # `text_encoder_2` will be quantized when `--quantize-type`
-      # is set to `bnb_4bit`. Only hints for quantization.
+      # `text_encoder_2` will be quantized when `--quantize-params text_encoder=bnb_4bit`
+      # is set. Only hints for quantization.
       bnb_4bit_components=["text_encoder_2"],
     ),
     input_data=ExampleInputData(
@@ -762,7 +780,8 @@ def qwen_image_example(args: argparse.Namespace, **kwargs) -> Example:
     args=args,
     init_config=ExampleInitConfig(
       task_type=ExampleType.T2I,  # Text to Image
-      model_name_or_path=_path("Qwen/Qwen-Image"),
+      model_name_or_path=_path("Qwen/Qwen-Image-2512" if "2512" in
+                               args.example.lower() else "Qwen/Qwen-Image"),
       pipeline_class=QwenImagePipeline,
       scheduler=scheduler,
       bnb_4bit_components=["text_encoder", "transformer"],
@@ -885,8 +904,9 @@ def _qwen_image_21_cache_config(
 
   if not args.cache:
     return None
-  # A model-provided cache config normally overrides the CLI knobs, so `--ws`/`--rdt` would be
-  # silently ignored. Honour an explicit value and fall back to the tuned default otherwise.
+  # A model-provided cache config normally overrides the CLI knobs, so the `ws`/`rdt` keys of
+  # --cache-params would be silently ignored. Honour an explicit value and fall back to the tuned
+  # default otherwise.
   warmup = args.max_warmup_steps if args.max_warmup_steps != 8 else min(4, max(1, steps // 4))
   threshold = (args.residual_diff_threshold if args.residual_diff_threshold != 0.12 else
                (0.24 if distilled else 0.12))
@@ -1903,7 +1923,7 @@ def _zimage_turbo_steps_mask(args: argparse.Namespace, ) -> Optional[List[int]]:
 
 @ExampleRegister.register("zimage", default="Tongyi-MAI/Z-Image")
 @ExampleRegister.register("zimage_turbo", default="Tongyi-MAI/Z-Image-Turbo")
-@ExampleRegister.register("zimage_turbo_nunchaku", default="nunchaku/nunchaku-z-image-turbo")
+@ExampleRegister.register("zimage_turbo_nunchaku", default="nunchaku-tech/nunchaku-z-image-turbo")
 def zimage_example(args: argparse.Namespace, **kwargs) -> Example:
   from diffusers import ZImagePipeline
 
@@ -3032,7 +3052,7 @@ def _minimax_h3_drop_lm_head(pipe) -> None:
     text_encoder.lm_head = None
 
 
-# The CLI default of `--residual-diff-threshold`; a value that differs from it is an explicit
+# The CLI default of the `rdt` key in --cache-params; a value that differs from it is an explicit
 # request and wins over the per-workflow preset below.
 _MINIMAX_H3_DEFAULT_THRESHOLD = DEFAULT_RESIDUAL_DIFF_THRESHOLD
 
@@ -3061,8 +3081,8 @@ def _minimax_h3_cache_config(
   Only the block stack is cached, so `Fn_compute_blocks` stays small and one block at the tail is
   recomputed as a scaler. Every block rebuilds its AdaLN modulation from the current timestep, so
   consecutive steps move further apart than in a fixed-modulation image model: only one
-  consecutive step is ever reused. The threshold comes from `--residual-diff-threshold` when the
-  user set it, and from `_MINIMAX_H3_CACHE_THRESHOLDS[workflow]` otherwise.
+  consecutive step is ever reused. The threshold comes from the `rdt` key of `--cache-params` when
+  the user set it, and from `_MINIMAX_H3_CACHE_THRESHOLDS[workflow]` otherwise.
 
   :param args: CLI arguments.
   :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
@@ -3102,7 +3122,7 @@ def minimax_h3_example(args: argparse.Namespace, **kwargs) -> Example:
   together with the model's activations. `--adaln-host-residency` is the tightest fit: it keeps the
   transformer resident minus its 24 GiB of AdaLN tables and streams the conditioner, which peaks at
   about 49 GiB. `--module-layerwise-cpu-offload` streams both components instead, and
-  `--parallel tp`/`ulysses` spreads the weights over several devices.
+  `--parallel-params tp=N` / `ulysses=N` spread the weights over several devices.
 
   :param args: CLI arguments.
   :returns: The MiniMax-H3 t2va example.
@@ -3743,8 +3763,8 @@ def hidream_o1_image_example(args: argparse.Namespace, **kwargs) -> Example:
   pass `--extra-input-kwargs "{'snap_resolution': False}"` to render an arbitrary multiple of 32.
 
   The model is pixel-space and embeds its own token ids, so there is no VAE and no text encoder to
-  shard: `--parallel-vae` / `--parallel-text` cannot work and are rejected here instead of being
-  silently ignored.
+  shard: `vae=true` / `text=true` in `--parallel-params` cannot work and are rejected here instead
+  of being silently ignored.
 
   :param args: Parsed CLI arguments.
   :param kwargs: Unused extra keyword arguments.
@@ -3754,10 +3774,10 @@ def hidream_o1_image_example(args: argparse.Namespace, **kwargs) -> Example:
 
   if getattr(args, "parallel_text_encoder", False):
     raise NotImplementedError("HiDream-O1-Image embeds its own token ids: it has no text encoder, "
-                              "so `--parallel-text` is not applicable.")
+                              "so `text=true` in `--parallel-params` is not applicable.")
   if getattr(args, "parallel_vae", False):
-    raise NotImplementedError("HiDream-O1-Image is pixel-space: it has no VAE, so `--parallel-vae` "
-                              "is not applicable.")
+    raise NotImplementedError("HiDream-O1-Image is pixel-space: it has no VAE, so `vae=true` in "
+                              "`--parallel-params` is not applicable.")
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -3904,7 +3924,7 @@ def kandinsky6_ti2va_example(args: argparse.Namespace, **kwargs) -> Example:
   """
   from diffusers import Kandinsky6TI2VAPipeline
 
-  steps = _KANDINSKY6_CACHE_STEPS if args.num_inference_steps is None else args.num_inference_steps
+  steps = _KANDINSKY6_DEFAULT_STEPS if args.num_inference_steps is None else args.num_inference_steps
   return Example(
     args=args,
     init_config=ExampleInitConfig(
@@ -3938,7 +3958,8 @@ def longcat_audio_dit_example(args: argparse.Namespace, **kwargs) -> Example:
   `audio_duration_s` goes through `extra_input_kwargs`: there is no dedicated input field for it.
   10 s is the reference load used for the acceptance numbers (117 latent frames, well under the
   30 s cap the pipeline hardcodes). Note that 117 is odd: context parallelism over two ranks needs
-  `--ulysses-anything`, or a duration whose frame count is even (5 s = 58, 6 s = 70).
+  `--parallel-params 'ulysses=2,ulysses_anything=true'`, or a duration whose frame count is even
+  (5 s = 58, 6 s = 70).
 
   :param args: CLI arguments.
   :returns: The LongCat-AudioDiT text-to-speech example.
@@ -3998,9 +4019,10 @@ def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
   `duration` goes through `extra_input_kwargs`: there is no dedicated input field for it. 10 s is
   the reference load used for the acceptance numbers (108 latent frames, i.e. `64 + 108 = 172`
   transformer tokens after the 64 memory tokens, divisible by 2 and 4 — context parallelism needs that
-  divisibility, or `--ulysses-anything`). Unlike Stable Audio 1/2 the distilled checkpoint default is
-  `guidance_scale=1.0` — CFG is baked into the weights, so every step runs a single velocity forward
-  and 8 steps is the shipped schedule. The non-distilled `-base` checkpoint needs ~100 steps and
+  divisibility, or `--parallel-params 'ulysses=2,ulysses_anything=true'`). Unlike Stable Audio 1/2
+  the distilled checkpoint default is `guidance_scale=1.0` — CFG is baked into the weights, so every
+  step runs a single velocity forward and 8 steps is the shipped schedule. The non-distilled
+  `-base` checkpoint needs ~100 steps and
   `guidance_scale > 1`; point `STABLE_AUDIO_3_DIR` at it and override `--steps` / `--guidance-scale`.
 
   :param args: CLI arguments.
@@ -4012,8 +4034,8 @@ def stable_audio_3_example(args: argparse.Namespace, **kwargs) -> Example:
   if getattr(args, "parallel_vae", False):
     raise NotImplementedError(
       "Stable Audio 3 has an audio VAE (`AutoencoderSAME`, a 1-D convolutional decoder) and no "
-      "registered VAE parallel planner; its decode is only ~8% of the run, so `--parallel-vae` "
-      "is not applicable.")
+      "registered VAE parallel planner; its decode is only ~8% of the run, so `vae=true` in "
+      "`--parallel-params` is not applicable.")
 
   model_name_or_path = _path("stabilityai/stable-audio-3-medium", args)
   _assert_stable_audio_3_layout(model_name_or_path)
@@ -4172,11 +4194,12 @@ def sana_video2_example(args: argparse.Namespace, **kwargs) -> Example:
 
   W4A4 note: `attn.beta_proj` is a `Linear(2560, 20)` gate, so a 64-rank SVDQ checkpoint cannot fit
   it and its 4-bit error lands straight in `sigmoid`. Quantize with
-  `--quantize-exclude-layers beta_proj attn_res` (the acceptance matrix uses exactly that).
+  `--quantize-params exclude_layers=beta_proj+attn_res` (the acceptance matrix uses exactly that).
 
   Caching note: the model aggregates depth representations every 8 layers, so a cached step reuses
-  the group residuals of the skipped groups. Keep `--Fn` on a multiple of 8: `--Fn 16 --rdt 0.20`
-  trades ~7% latency for SSIM 0.91, `--Fn 8 --rdt 0.10` trades 20% for SSIM 0.74.
+  the group residuals of the skipped groups. Keep `Fn` on a multiple of 8:
+  `--cache-params Fn=16,rdt=0.20` trades ~7% latency for SSIM 0.91, `--cache-params Fn=8,rdt=0.10`
+  trades 20% for SSIM 0.74.
 
   :param args: CLI arguments.
   :returns: The SANA-Video 2.0 text-to-video example.
@@ -4589,7 +4612,9 @@ def causvid_wan_example(args: argparse.Namespace, **kwargs) -> Example:
   width = 832 if args.width is None else args.width
   num_frames = 81 if args.num_frames is None else args.num_frames
   base_root = _path(_CAUSVID_WAN_BASE, args)
-  ckpt_root = _path("tianweiy/CausVid", args)
+  # The distilled student lives in its own repo; it follows the transformer slot so `--model-path`
+  # only moves the Wan2.1 base.
+  ckpt_root = _path("tianweiy/CausVid", args, transformer=True)
 
   return Example(
     args=args,
@@ -5282,12 +5307,12 @@ def _mova_cache_config(args: argparse.Namespace, steps: int) -> Optional[DBCache
     return None
   warmup_steps = args.max_warmup_steps
   if warmup_steps >= steps:
-    # `--max-warmup-steps` (not `--warmup`, which only pre-warms the timer) defaults to 8; a run
-    # with fewer steps than that would never leave the warmup phase and report a bit-identical,
+    # `ws` in `--cache-params` (not `--warmup`, which only pre-warms the timer) defaults to 8; a
+    # run with fewer steps than that would never leave the warmup phase and report a bit-identical,
     # zero-hit "cached" run.
     clamped = max(steps - 1, 1)
     logger.warning(
-      f"MOVA caches {steps} steps but `--max-warmup-steps={warmup_steps}` covers all of "
+      f"MOVA caches {steps} steps but `--cache-params ws={warmup_steps}` covers all of "
       f"them; clamping to {clamped} so at least one step can hit the cache.")
     warmup_steps = clamped
   return DBCacheConfig(
@@ -5312,7 +5337,7 @@ def _mova_post_init_hook(pipe: Any) -> None:
   pipe.fps = 24.0
 
 
-@ExampleRegister.register("mova_360p", default="openmoss/MOVA-360p")
+@ExampleRegister.register("mova_360p", default="OpenMOSS-Team/MOVA-360p")
 def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
   """MOVA 360p image+text to video with audio example.
 
@@ -5322,11 +5347,12 @@ def mova_360p_example(args: argparse.Namespace, **kwargs) -> Example:
 
   The released script (`scripts/inference_single.py`) defaults to **720x1280 / 193 frames / 50 steps
   / guidance 5.0**: the two video experts alone are ~52 GB in bf16, so it needs `--layerwise-offload`
-  or `--parallel tp` on two cards. Note that neither the 360p geometry the checkpoint name suggests
-  (640x360) nor any other odd-latent size is admissible: `check_inputs` requires both sides divisible
-  by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640** for a 360p-class run (an
-  8-pixel height crop, ~43k video tokens at 49 latent frames). The defaults below stay at the
-  development geometry; override with `--height/--width/--num-frames/--steps`.
+  or `--parallel-params tp=N` on two cards. Note that neither the 360p geometry the checkpoint
+  name suggests (640x360) nor any other odd-latent size is admissible: `check_inputs` requires
+  both sides divisible by 16 because the patch grid is 1x2x2 and 360 is not, so use **352x640**
+  for a 360p-class run (an 8-pixel height crop, ~43k video tokens at 49 latent frames). The
+  defaults below stay at the development geometry; override with
+  `--height/--width/--num-frames/--steps`.
 
   :param args: CLI arguments.
   :returns: The MOVA 360p t2va example.
@@ -5431,11 +5457,12 @@ def hy_nomas_example(args: argparse.Namespace, **kwargs) -> Example:
   if getattr(args, "parallel_vae", False):
     raise NotImplementedError(
       "HY-Nomas decodes with the vendored PixelUMM expert, which is not a diffusers autoencoder and "
-      "therefore has no VAE parallelism planner; `--parallel-vae` is not applicable.")
+      "therefore has no VAE parallelism planner; `vae=true` in `--parallel-params` is not "
+      "applicable.")
   if getattr(args, "attn", None) is not None:
     raise NotImplementedError(
       "HY-Nomas owns its attention plan (varlen log-sum-exp merge / FlexAttention block mask) and "
-      "bypasses cache-dit's dispatcher in exactly one place; `--attn` cannot be applied.")
+      "bypasses cache-dit's dispatcher in exactly one place; `--attn-params` cannot be applied.")
   height = 352 if args.height is None else args.height
   width = 640 if args.width is None else args.width
   steps = _HY_NOMAS_FORWARDS if args.num_inference_steps is None else args.num_inference_steps
@@ -5477,9 +5504,9 @@ _PIKA_H3_FLEX_ADAPTERS = {
 # `num_inference_steps` to choose.
 _PIKA_H3_FLEX_STEPS = 6
 
-# DBCache warmup is `--max-warmup-steps` / `--ws` (default 8), not `--warmup` (that one only warms the
-# perf timer). Five of the six forwards are skippable in the best case, so the preset spends one of
-# them on the warmup and leaves four.
+# DBCache warmup is the `ws` key of `--cache-params` (default 8), not `--warmup` (that one only
+# warms the perf timer). Five of the six forwards are skippable in the best case, so the preset
+# spends one of them on the warmup and leaves four.
 _PIKA_H3_FLEX_MAX_WARMUP = 1
 
 # Starting point of the residual threshold per workflow. Every step draws fresh Gaussian noise from
@@ -5532,7 +5559,7 @@ def _pika_h3_flex_init_hook(model_path: str, weight_name: str, workflow: str, fu
 
   Fusing here is not an optimization. With `peft.tuners.lora.Linear` still in place, every
   `ColwiseParallel` / `RowwiseParallel` shard of the six target linears misses its key, and
-  `--quantize-exclude-layers` substring matching sees the PEFT wrapper names instead of the diffusers
+  `--quantize-params exclude_layers` substring matching sees the PEFT wrapper names instead of the diffusers
   ones. Both fail without an exception, so the hook asserts the end state instead of trusting it.
 
   :param model_path: Checkpoint root the adapter lives under.
@@ -5647,15 +5674,16 @@ def _pika_h3_flex_cache_config(
 ) -> Optional[DBCacheConfig]:
   """DBCache config for the six-step re-noising ladder.
 
-  Six forwards per request bound the reachable speedup: with `--ws 1` and one consecutive cached step
-  allowed, the most optimistic ladder is `compute, cache, compute, cache, compute, cache` — three
-  forwards, i.e. 2x. Anything above four forwards (1.5x) already means the threshold is not being met.
-  The CLI default warmup (`--max-warmup-steps`, default 8) instead covers the whole ladder, leaves
-  nothing to skip and reports a PSNR of `inf` — a false green — so the preset clamps it to
+  Six forwards per request bound the reachable speedup: with `--cache-params ws=1` and one
+  consecutive cached step allowed, the most optimistic ladder is
+  `compute, cache, compute, cache, compute, cache` — three forwards, i.e. 2x. Anything above four
+  forwards (1.5x) already means the threshold is not being met. The CLI default warmup (the `ws`
+  key of `--cache-params`, default 8) instead covers the whole ladder, leaves nothing to skip and
+  reports a PSNR of `inf` — a false green — so the preset clamps it to
   `_PIKA_H3_FLEX_MAX_WARMUP`, warns when the caller asked for a warmer start, and never raises.
 
-  `--Fn` / `--Bn` pass through: they are real CLI knobs, and hardcoding them would make the preset
-  silently ignore the flag during a threshold sweep.
+  `Fn` / `Bn` pass through: they are real CLI keys, and hardcoding them would make the preset
+  silently ignore the value during a threshold sweep.
 
   :param args: CLI arguments.
   :param workflow: One of `t2va`, `fl2va`, `ref2va`; selects the default threshold.
@@ -5673,21 +5701,21 @@ def _pika_h3_flex_cache_config(
   max_warmup_steps = min(requested_warmup, _PIKA_H3_FLEX_MAX_WARMUP)
   if requested_warmup >= _PIKA_H3_FLEX_STEPS:
     logger.warning(
-      f"`--max-warmup-steps {requested_warmup}` covers all {_PIKA_H3_FLEX_STEPS} forwards of the Pika "
-      f"H3 Flex ladder, so DBCache would never skip a step and the accuracy delta would read as "
-      f"perfect by construction. Clamped to {max_warmup_steps}; pass `--ws {max_warmup_steps}` "
-      "explicitly to silence this.")
+      f"`--cache-params ws={requested_warmup}` covers all {_PIKA_H3_FLEX_STEPS} forwards of the "
+      f"Pika H3 Flex ladder, so DBCache would never skip a step and the accuracy delta would read "
+      f"as perfect by construction. Clamped to {max_warmup_steps}; pass "
+      f"`--cache-params ws={max_warmup_steps}` explicitly to silence this.")
   # Every step re-noises onto a new sigma with fresh Gaussian noise, so a step's blocks cannot be
   # reused back to back; cap the consecutive run at one even when the CLI default (3) allows more.
   max_continuous = min(args.max_continuous_cached_steps, 1)
   if max_continuous != args.max_continuous_cached_steps:
     logger.info(
-      f"Clamping `--max-continuous-cached-steps {args.max_continuous_cached_steps}` to "
+      f"Clamping `--cache-params mcc={args.max_continuous_cached_steps}` to "
       f"{max_continuous}: the re-noising update draws new noise every step, so consecutive cached "
       "steps accumulate error faster than a residual threshold can bound.")
   return DBCacheConfig(
-    # `--Fn` / `--Bn` are *not* owned by this preset: they pass straight through from the CLI, and the
-    # measured sweep only varies `--rdt`. A preset that pinned them would make `--Fn` a silent no-op,
+    # `Fn` / `Bn` are *not* owned by this preset: they pass straight through from the CLI, and the
+    # measured sweep only varies `rdt`. A preset that pinned them would make `Fn` a silent no-op,
     # which is worse than leaving them at the CLI defaults (Fn 1 / Bn 0).
     Fn_compute_blocks=args.Fn_compute_blocks,
     Bn_compute_blocks=args.Bn_compute_blocks,
@@ -6037,7 +6065,7 @@ def _minimax_h3_image_quantize_exclusions(args: argparse.Namespace) -> None:
   """Install the MiniMax-H3-Image default quantization exclusions on ``args``.
 
   `token_refiner` is deliberately kept: it only sees the text stream and is a small share of the
-  weights. Pass `--quantize-exclude-layers` with `token_refiner` appended to trade speed for
+  weights. Pass `--quantize-params exclude_layers` with `token_refiner` appended to trade speed for
   accuracy if a checkpoint turns out to be sensitive there.
 
   :param args: CLI arguments, updated in place when the user did not pass the flag.
@@ -6062,13 +6090,13 @@ def _minimax_h3_image_quantize_exclusions(args: argparse.Namespace) -> None:
 def _minimax_h3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
   """Resolve the fixed 6-step computation mask of a MiniMax-H3-Image run.
 
-  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :param args: CLI arguments with `steps_mask` / `scm` in `--cache-params`.
   :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
   """
   if not args.cache:
     return None
   if args.mask_policy is not None:
-    # `--mask-policy` asserts on a step count (`--num-inference-steps`), which this pipeline does
+    # `scm` asserts on a step count (`--num-inference-steps`), which this pipeline does
     # not take: the schedule is the checkpoint. Fill it in so the CLI's mask bookkeeping passes;
     # `use_num_inference_steps=False` keeps it out of the pipeline call.
     if args.num_inference_steps is None:
@@ -6097,9 +6125,9 @@ def _minimax_h3_image_cache_config(
   steps to the widest sigma jumps of the grid (0.75 -> 0.53 -> 0.23 -> 0), which are exactly the
   ones that have to be recomputed.
 
-  A `--steps-mask` / `--mask-policy` run switches to `steps_computation_policy="static"`, and the
-  static policy caches every masked step unconditionally, so `max_cached_steps` and
-  `max_continuous_cached_steps` do not apply to it.
+  A `--cache-params steps_mask=true,scm=...` run switches to
+  `steps_computation_policy="static"`, and the static policy caches every masked step
+  unconditionally, so `mc` and `mcc` do not apply to it.
 
   :param args: CLI arguments.
   :param workflow: `text2image` or `image_conditioned`; selects the default threshold.
@@ -6211,11 +6239,11 @@ def _minimax_h3_image_init_config(
 
   The 62 GiB transformer and the 63 GiB Qwen3-VL conditioner do not fit on one 72 GiB device
   together, so every single-GPU run needs one of cache-dit's streaming switches, or
-  `--parallel tp` / `ulysses` across several devices. `--adaln-online` is the one to use: the AdaLN
-  tables are a pure function of the fixed 6-step grid, so they are memoized once (a few MiB) and the
-  24 GiB of projections are parked on the host instead of being streamed on every step — that
-  removes ~3 s per step and is bit-exact. `--adaln-host-residency` streams the same tables and is the
-  fallback when the sampling grid is not a fixed one.
+  `--parallel-params tp=N` / `ulysses=N` across several devices. `--adaln-online` is the one to
+  use: the AdaLN tables are a pure function of the fixed 6-step grid, so they are memoized once (a
+  few MiB) and the 24 GiB of projections are parked on the host instead of being streamed on every
+  step — that removes ~3 s per step and is bit-exact. `--adaln-host-residency` streams the same
+  tables and is the fallback when the sampling grid is not a fixed one.
 
   :param args: CLI arguments.
   :param task_type: Task the example drives.
@@ -6355,8 +6383,9 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
 
   The pipeline ships a Qwen3.5 prompt upsampler as one of its six top-level blocks. Benchmarking
   pops it: the upsampler rewrites the prompt (a different input distribution), dominates the measured
-  latency and cannot be parallelised (`--parallel-text` only covers `text_encoder`). Production keeps
-  it, and `upsampler_dir` then names the repository (or a directory with `prompt_upsampler/` and
+  latency and cannot be parallelised (`text=true` in `--parallel-params` only covers
+  `text_encoder`). Production keeps it, and `upsampler_dir` then names the repository (or a
+  directory with `prompt_upsampler/` and
   `prompt_upsampler_processor/` subfolders) its weights come from.
 
   The step is only ever removed when no enhancer directory is given: `update_components` swaps
@@ -6379,7 +6408,7 @@ def _ph3_image_post_init(upsampler_dir: Optional[str], model_path: str):
     raise ValueError(
       "--prompt-enhancer keeps an 18.8 GiB upsampler resident, and an example is built before the "
       "process group exists, so under torchrun every rank would load its own copy and no "
-      "`--parallel*` option covers it. Expand the prompt on one GPU first (or run single-card), "
+      "`--parallel-params` option covers it. Expand the prompt on one GPU first (or run single-card), "
       "pass the result as `--prompt`, and drop the flag.")
 
   same_dir = (upsampler_dir is not None
@@ -6451,13 +6480,13 @@ def _ph3_image_bounded(value: int, bound: int, name: str) -> int:
 def _ph3_image_steps_mask(args: argparse.Namespace) -> Optional[List[int]]:
   """Resolve the computation mask of an eight-step P-H3-Image run.
 
-  :param args: CLI arguments with `--steps-mask` / `--mask-policy`.
+  :param args: CLI arguments with `steps_mask` / `scm` in `--cache-params`.
   :returns: One flag per step (`1` compute, `0` reuse), or None for threshold-driven caching.
   """
   if not args.cache:
     return None
   if args.mask_policy is not None:
-    # `--mask-policy` asserts on a step count, which this pipeline takes from the checkpoint.
+    # `scm` asserts on a step count, which this pipeline takes from the checkpoint.
     if args.num_inference_steps is None:
       args.num_inference_steps = _PH3_IMAGE_STEPS
     return steps_mask(mask_policy=args.mask_policy, total_steps=_PH3_IMAGE_STEPS)

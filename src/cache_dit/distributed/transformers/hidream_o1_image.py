@@ -39,7 +39,7 @@ class HiDreamO1ImageContextParallelismPlanner(ContextParallelismPlanner):
     of `layers[0]`, so the input split has to live on the first block.
   * `rope_split` output-splits the packed mRoPE table `[B, S, 2 * head_dim]` with the same
     partition. The table is built on the full `position_ids` (which is therefore not split), and the
-    shrink follows the framework sharder so `--ulysses-anything` stays consistent.
+    shrink follows the framework sharder so `ulysses_anything=true` stays consistent.
   * `sequence_gather` gathers dim 1 back before `norm` / `final_layer2`, so the pipeline can slice
     the image rows out of the full-length prediction.
 
@@ -52,7 +52,7 @@ class HiDreamO1ImageContextParallelismPlanner(ContextParallelismPlanner):
   Ring attention is rejected: every ring step holds only a local K/V chunk and requests LSE, which
   the native backend refuses together with `attn_mask`, and the global mask would have to be rolled
   per step. Ring also needs equally sized chunks, while the joint length is rarely divisible by the
-  CP size (`--ulysses-anything` only covers Ulysses).
+  CP size (`ulysses_anything=true` only covers Ulysses).
   """
 
   def _apply(
@@ -69,8 +69,8 @@ class HiDreamO1ImageContextParallelismPlanner(ContextParallelismPlanner):
         "HiDream-O1-Image context parallelism does not support Ring attention: the mixed "
         "causal/full attention mask is a dense [B, 1, S, S] tensor that a ring step cannot consume, "
         "and Ring needs equally sized chunks while the joint length is rarely divisible by the CP "
-        "size. Use `--parallel ulysses` (add `--ulysses-anything` when the length is not divisible)."
-      )
+        "size. Use `--parallel-params ulysses=N` (add `ulysses_anything=true` when the length is not "
+        "divisible).")
 
     _cp_plan: _ContextParallelModelPlan = {
       "rope_split": {

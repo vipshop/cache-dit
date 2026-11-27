@@ -64,7 +64,7 @@ class WanS2VContextParallelismPlanner(ContextParallelismPlanner):
   ) -> _ContextParallelModelPlan:
     if getattr(parallelism_config, "ulysses_anything", False):
       raise NotImplementedError(
-        "Wan2.2-S2V does not support `--ulysses-anything`: the audio injector all-gathers an equal "
+        "Wan2.2-S2V does not support `ulysses_anything=true`: the audio injector all-gathers an equal "
         "`local_len` from every rank and then rebuilds frames from the unpadded offsets, so padded "
         "splits hand it lengths it cannot reconcile. Use a CP degree that divides the sequence.")
 

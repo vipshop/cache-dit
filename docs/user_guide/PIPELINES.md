@@ -54,7 +54,7 @@ output = pipe(  # Then call the pipeline as normal.
 output.images[0].save("moss.png")
 ```
 
-Every argument is optional: `cache_dit.enable_cache(pipe)` alone turns on DBCache with defaults. `layerwise_offload`, `set_compile_configs` and `--parallel` (via `torchrun`) are separate entry points and apply to built-in pipelines unchanged.
+Every argument is optional: `cache_dit.enable_cache(pipe)` alone turns on DBCache with defaults. `layerwise_offload`, `set_compile_configs` and `--parallel-params` (torchrun is optional; the CLI can start the workers itself) are separate entry points and apply to built-in pipelines unchanged.
 
 ## Available Pipelines
 
@@ -88,15 +88,15 @@ from cache_dit.models.pipelines.qwen_image21 import _QwenImage21Pipeline
 from cache_dit.models.pipelines.flux3_klein.transformer_flux3_klein import upgrade_transformer
 ```
 
-Each of them is a normal pipeline object: `from_pretrained(...)`, `enable_cache(...)`, then call it with the model's own arguments. Cache, parallelism, quantization, offload and compile are supported for all of them — see the [supported matrix](../supported_matrix/NVIDIA_GPU.md) for per-model coverage, and `docs/EXAMPLES.md` for the model-specific cache presets.
+Each of them is a normal pipeline object: `from_pretrained(...)`, `enable_cache(...)`, then call it with the model's own arguments. Cache, parallelism, quantization, offload and compile are supported for all of them — see the [supported matrix](../supported_matrix/NVIDIA_GPU.md) for per-model coverage, and [`docs/EXAMPLES.md`](../EXAMPLES.md) for the minimal single- and multi-GPU commands.
 
 `python3 -m cache_dit.generate list` prints the CLI example name and default checkpoint of every supported model, e.g.
 
 ```bash
-python3 -m cache_dit.generate moss_image_sft --cache --rdt 0.20
-python3 -m cache_dit.generate sana_video2 --cache
-python3 -m cache_dit.generate qwen_image_21_turbo_fused --cache
-torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel ulysses --cache
+python3 -m cache_dit.generate moss_image_sft --cache-params 'type=DBCache,rdt=0.20'
+python3 -m cache_dit.generate sana_video2 --cache-params 'type=DBCache'
+python3 -m cache_dit.generate qwen_image_21_turbo_fused --cache-params 'type=DBCache'
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate lingbot_video --parallel-params 'ulysses=2' --cache-params 'type=DBCache'
 ```
 
 ## Notes
@@ -105,7 +105,7 @@ torchrun --nproc_per_node=2 -m cache_dit.generate lingbot_video --parallel ulyss
 - **Return values.** Image models return `.images`. Video models return `.frames` (SANA-Video 2.0 adds `.fps`; MOVA and MAGI-2 Preview add `.audio` and `.sampling_rate`; MAGI-2 returns a plain `dict`). LongCat-Video Avatar returns a bare `np.ndarray`. The two modular pipelines (Fast-H3, Pika H3 Flex) return the whole `PipelineState` unless you pass `output=` — `output="videos"` or `output=["videos", "audio", "sampling_rate"]`.
 - **CFG bookkeeping.** Caching assumes a fixed number of transformer forwards per step. Pipelines that run one forward per CFG branch need `guidance_scale > 1` (MOSS-Image, Boogu-Image, HiDream-O1-Image, LingBot-Video, MOVA, Wan2.2-S2V); distilled ones need exactly `1.0` (LongLive 2.0, HY-Nomas, CausVid-Wan). The adapter is inferred from the pipeline class, so do not set `enable_separate_cfg` by hand — a mismatch raises instead of silently halving the step count.
 - **Fused variants.** `_Flux2KleinPipeline` / `_QwenImage21Pipeline` upgrade the transformer inside `from_pretrained`. FLUX.3-Klein is a diffusers modular pipeline with no cache-dit subclass: load `Flux3DistilledModularPipeline` and call `upgrade_transformer(pipe.transformer)` **before** `enable_cache` / compile / offload. `CACHE_DIT_FUSED_OPS` (see [Environment Variables](./ENV.md)) decides whether the fused operators are installed.
-- **VAE parallelism.** `--parallel-vae` only takes `pipe.vae`, so for the models that ship a separate audio decoder (Pika H3 Flex, MiniMax-H3, FastH3) the audio VAE always decodes serially regardless of the flag.
+- **VAE parallelism.** `--parallel-params vae=true` only takes `pipe.vae`, so for the models that ship a separate audio decoder (Pika H3 Flex, MiniMax-H3, FastH3) the audio VAE always decodes serially regardless of the flag.
 - **Extra assembly.** A few models need one preparation step before `from_pretrained`: CausVid-Wan takes a `transformer=` built by `build_causvid_transformer(...)`, LongLive 2.0 wants its `model_bf16.pt` converted with `python -m cache_dit.models.pipelines.longlive2.convert`, Pika H3 Flex needs `load_components(workflow=...)` plus the released adapter fused into the transformer (and unloaded again, so the offloader never serves pre-merge weights), and MAGI-2 Preview only supports text conditioning (`image=` raises `NotImplementedError`). The CLI example of each model is the working recipe.
 
 `enable_cache` matches a built-in pipeline by class-name prefix, and all of the classes above are pre-registered, so no custom `BlockAdapter` is needed. See [Unified Cache APIs](./CACHE_API.md), [Context Parallelism](./CONTEXT_PARALLEL.md), [Tensor Parallelism](./TENSOR_PARALLEL.md) and [Low-Bits Quantization](./QUANTIZATION.md) for the optimization knobs themselves.

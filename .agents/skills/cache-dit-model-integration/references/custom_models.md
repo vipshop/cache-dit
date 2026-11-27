@@ -116,7 +116,7 @@ of them before declaring the migration done:
 | `BlockAdapter.maybe_skip_checks()` (`caching/block_adapters/block_adapters.py`) | `check_forward_pattern` auto-True | auto-**False** (logs "NOT from diffusers") | pass `check_forward_pattern=True` explicitly in the adapter |
 | `_relaxed_assert()` (`caching/block_adapters/adapters.py`) | strict `isinstance` check | skipped with a warning | keep the call for documentation, or assert the stack/class directly |
 | `PatchFunctor.apply()` / `is_from_diffusers()` (`caching/patch_functors/functor_base.py`) | functor runs | **functor is skipped** (one warning line) | fold the patch into the owned `forward()` and delete the functor — this is the point of migrating |
-| `check_text_encoder()` / `check_auto_encoder()` (`utils.py`, used by `distributed/dispatch.py`) | matches `transformers` / `diffusers.models.autoencoder` module paths | a locally copied TE/VAE no longer matches, so `--parallel-text` / `--parallel-vae` are skipped | do **not** move the text encoder or VAE (§3.2) |
+| `check_text_encoder()` / `check_auto_encoder()` (`utils.py`, used by `distributed/dispatch.py`) | matches `transformers` / `diffusers.models.autoencoder` module paths | a locally copied TE/VAE no longer matches, so `--parallel-params text=true` / `--parallel-params vae=true` are skipped | do **not** move the text encoder or VAE (§3.2) |
 | CP/TP planner registry (`get_planner`) | keyed by class name | unchanged | keep the class name identical (§3.3) |
 | Adapter registry (`BlockAdapterRegister`) | keyed by class-name prefix | unchanged | keep the class name identical (§3.3) |
 | Ray worker importability (`ray/engine.py`) | `diffusers` is a well-known prefix | `cache_dit` is in `_well_known` too | none |
@@ -133,7 +133,7 @@ pattern check — always set the flag explicitly.
 | Transformer + its block classes | **Yes** — this is the point | the optimized kernels live here |
 | Pipeline `__call__` | Only when the loop itself is the target (per-step state, conditioned traversal, changed VAE/CFG bookkeeping) | otherwise keep the diffusers pipeline and let the adapter point at your transformer |
 | Scheduler | Keep the diffusers class and subclass it if only `set_timesteps` / `step` differ (MOSS: `MOSSImageScheduler(FlowMatchEulerDiscreteScheduler)`) | a subclass keeps `scheduler/` loading and config keys working |
-| VAE / text encoder | **No**, unless you also add their planners | `_is_auto_encoder()` / `_is_text_encoder()` gate the VAE-P / TE-P dispatch on module path (§3.1). A copied VAE silently disables `--parallel-vae` |
+| VAE / text encoder | **No**, unless you also add their planners | `_is_auto_encoder()` / `_is_text_encoder()` gate the VAE-P / TE-P dispatch on module path (§3.1). A copied VAE silently disables `--parallel-params vae=true` |
 | ControlNet | No | `_is_controlnet()` matches `diffusers.models.controlnet` |
 
 ### 3.3 Naming and checkpoint compatibility
@@ -203,7 +203,7 @@ when broken. They apply to both entry points.
 |---|---|---|
 | `PipelineCls(DiffusionPipeline)` | `is_pipeline()` must return True, and `CachedAdapter.apply` patches `pipe.__class__.__call__` to reset the cache context once per inference | `utils.is_pipeline`, `CachedAdapter.apply` |
 | `TransformerCls(ModelMixin, ConfigMixin)` | `from_pretrained` / `config` / `register_to_config` are used by TP, quantization and `summary` | `ModelMixin` assertions in the adapters |
-| `vae` is a **diffusers** autoencoder (`AutoencoderKL*`) | `_is_auto_encoder()` matches on `module.__class__.__module__.startswith("diffusers.models.autoencoder")`; a local copy makes `--parallel-vae` silently do nothing | `utils._is_auto_encoder` |
+| `vae` is a **diffusers** autoencoder (`AutoencoderKL*`) | `_is_auto_encoder()` matches on `module.__class__.__module__.startswith("diffusers.models.autoencoder")`; a local copy makes `--parallel-params vae=true` silently do nothing | `utils._is_auto_encoder` |
 | `text_encoder` is a **transformers** module | same rule for TE-P (`startswith("transformers")`) | `utils._is_text_encoder` |
 | Denoising stack is a **top-level `nn.ModuleList` attribute** | `mock_transformer` replaces it with `setattr(transformer, blocks_name, ModuleList([...]))`; a nested list/dict cannot be named | `CachedAdapter.mock_transformer` |
 | The block loop calls **one block per iteration and nothing else** | the wrapper replays the block call; anything else in the loop body is skipped | §6.1 |
@@ -343,7 +343,7 @@ if getattr(self.transformer, "_is_cached", False):
 ```
 
 The CLI example must then default to the guarded mode (`guidance_scale > 1`,
-`num_images_per_prompt=1`, no SLG), otherwise the first `--cache` run fails on the user.
+`num_images_per_prompt=1`, no SLG), otherwise the first `--cache-params` run fails on the user.
 
 ## 7. Context parallelism
 
@@ -369,7 +369,7 @@ _cp_plan = {
 Rules that are easy to get wrong:
 
 * **Split the RoPE table through the framework sharder** (`split_output=True`, no manual
-  `torch.chunk`), or `--ulysses-anything` and plain Ulysses will disagree on the per-rank offsets.
+  `torch.chunk`), or `--parallel-params ulysses_anything=true` and plain Ulysses will disagree on the per-rank offsets.
   Split it *after* the stage that consumes the full-length table (MOSS: text refinement).
 * **Gather before the local slice.** If `forward` slices image tokens out of the joint sequence,
   gather first, otherwise the velocity silently loses tokens on every rank but one.
@@ -416,7 +416,7 @@ Both dispatch by **module path / class name**, so an owned copy silently disable
 * Text encoders must be `transformers.*`. A family new to cache-dit needs its own planner under
   `distributed/text_encoders/<family>.py`; prefix matching means `Qwen3_5Model` does **not** match a
   `Qwen3` registration — register it explicitly.
-* `--parallel-vae` needs a real distributed group: it must be combined with `--parallel tp/ulysses`,
+* `--parallel-params vae=true` needs a real distributed group: it must be combined with `--parallel-params 'tp=2'` / `'ulysses=2'`,
   otherwise both ranks land on GPU 0. See [`./vaep.md`](./vaep.md) for the tile-size trap.
 
 ## 10. CLI registration
@@ -464,7 +464,7 @@ tests (no weights, no GPU) — they are the only fast guard against a silent reg
 | `tests/api/test_<model>_adapter.py` | adapter wiring (`layers` + `Pattern_3` + `has_separate_cfg`), `skip_layers` semantics under the cached wrapper, per-branch cache bookkeeping |
 | `tests/api/test_<model>_pipeline.py` | `__call__` against a hand-written denoise loop built from the same components (forward count, fp32 combination, cache guards) |
 | `tests/parallelism/test_<model>_cp_plan.py` | CP plan strings (`rope_split` / `layers.0` / `sequence_gather`), TP layer plan, fused-weight rearrangement |
-| `tests/parallelism/test_<model>_cp_tp_tiny.py` | 2-rank tiny parity against a cp-free reference, plus a case with indivisible length for `--ulysses-anything` |
+| `tests/parallelism/test_<model>_cp_tp_tiny.py` | 2-rank tiny parity against a cp-free reference, plus a case with indivisible length for `--parallel-params ulysses_anything=true` |
 | `tests/utils/test_<model>_example.py` | CLI example registration, env mapping, default steps/guidance |
 
 Prove the vendored copy equals the release **bit-exactly** before benchmarking: import the upstream
@@ -515,9 +515,9 @@ doubles as the §3.6 "did the copy change anything?" gate.
 - [ ] `from_pretrained` handles torch_dtype / quantization_config / device_map / trust_remote_code
       / pre-built components explicitly (§5)
 - [ ] bit-exact vs the upstream source (transformer output and per-step latents)
-- [ ] baseline CLI run renders, then `--cache` run: PSNR > 30 dB **and** SSIM > 0.90
+- [ ] baseline CLI run renders, then `--cache-params` run: PSNR > 30 dB **and** SSIM > 0.90
 - [ ] cache guard fires for the unsupported modes (`guidance_scale == 1`, SLG enabled)
-- [ ] CP: `--parallel ulysses` on 2 GPUs, plus a non-divisible length with `--ulysses-anything`
+- [ ] CP: `--parallel-params ulysses=2` on 2 GPUs, plus a non-divisible length with `--parallel-params ulysses_anything=true`
       (or a documented Ring rejection)
 - [ ] TP: 2 GPUs, fused FFN rearranged and heads divided
 - [ ] TE-P / VAE-P: either verified or explicitly declared unsupported
@@ -549,7 +549,7 @@ the tiny fp32 parity test (rel ≈ 5e-8) is what proves the sharding is correct.
 Notes for the next custom model:
 
 * 512² + 25 text tokens gives a joint length of **1049** — odd, so plain Ulysses cannot split it and
-  every CP run needs `--ulysses-anything`. Check divisibility before promising Ring.
+  every CP run needs `--parallel-params ulysses_anything=true`. Check divisibility before promising Ring.
 * VAE-P needs a latent larger than the VAE tile threshold (1536² here), otherwise the patch is a
   no-op that still reports success.
 * `--compile` goes block-level ("Compiling repeated blocks"), warmup 162 s, 12 steps in 1.69 s.
@@ -617,7 +617,7 @@ Prefix registries match with `cls_name.startswith(name)` and take the **first** 
 | same file | pick the fused `PatchFunctor` when `pipe.__class__.__name__.startswith("_")` | cache path installs the stock forward and drops the fusion |
 | CP planner | `ContextParallelismPlannerRegister.register("_<Model>")`, plus a `patch_functor()` hook so CP installs the *fused* functor | CP splits/gathers never installed, or installed over the fused forward |
 | TP planner | `TensorParallelismPlannerRegister.register("_<Model>Transformer2DModel")` | TP falls back to a generic plan |
-| `cli/utils.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
+| `cli/compile.py` `_class_maybe_force_compile_dynamic` | `"_<Model>"` | `dynamic` differs from stock, so the TP+compile arm is not comparable |
 | `cli/examples.py` | `<model>_fused` (+ turbo variant) examples | no CLI path to the optimized pipeline |
 | `kernels/models/__init__.py`, `kernels/__init__.py` | new `__all__` entries | `test_public_api_matches_all` fails |
 | `setup.py` `_required_models_sources()` | every new `.cu` / `.cpp` | the file is **never compiled** (the list is explicit, not a glob) |

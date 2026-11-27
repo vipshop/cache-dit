@@ -15,8 +15,8 @@ Note:
   * The block loop must call one block per iteration and nothing else, so the cached-block wrapper
     reproduces the exact computation.
   * There is no VAE and no text encoder: the model embeds its own token ids and predicts raw RGB
-    patches. `--parallel-vae` and `--parallel-text` are therefore rejected by the CLI example
-    instead of being silently skipped.
+    patches. `vae=true` / `text=true` in `--parallel-params` are therefore rejected by the CLI
+    example instead of being silently skipped.
 """
 from __future__ import annotations
 
@@ -503,7 +503,7 @@ class HiDreamO1ImagePipeline(DiffusionPipeline):
       raise ValueError(f"HiDream-O1-Image only supports bfloat16, got {resolved_dtype}.")
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize HiDream-O1-Image through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if device_map is not None:
       raise NotImplementedError(
         "HiDream-O1-Image does not support `--device-map-balance`: the CLI skips `pipe.to(device)` "

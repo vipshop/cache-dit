@@ -10,7 +10,7 @@ covered by the acceptance run):
    popping that copy leaves the step in place and the "prompt rendered as given" contract silently
    breaks; the components also have to be unloaded, or the ~2 GiB conditioner stays resident.
 3. **The cache budget matches the checkpoint's schedule.** Eight steps leave room for at most a
-   two-step warmup, and a `--steps-mask` run has to switch to the static policy.
+   two-step warmup, and a `--cache-params steps_mask=true` run has to switch to the static policy.
 """
 
 import argparse
@@ -193,7 +193,7 @@ def test_post_init_hook_keeps_the_step_on_a_real_pipeline_for_a_foreign_director
 
 
 def test_post_init_hook_refuses_the_enhancer_under_torchrun(monkeypatch):
-  """Every rank would load its own 18.8 GiB copy and no `--parallel*` option covers it."""
+  """Every rank would load its own 18.8 GiB copy and no `--parallel-params` option covers it."""
   monkeypatch.setenv("WORLD_SIZE", "2")
   try:
     _ph3_image_post_init("/models/p-h3-image", "/models/other-checkpoint")

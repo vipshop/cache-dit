@@ -101,7 +101,7 @@ for step in range(world_size):
 
 ### 4.3 USP（`usp.py`）
 
-Ulysses 的 all-to-all 收 Q/K/V → 调 `RingAttention` → all-to-all 把输出换回来。LSE 同样走 a2a（`send_lse`），`lse` 形状 `[B,S,H,1]`。是 `--parallel usp` / `usp_tp` 的实现。
+Ulysses 的 all-to-all 收 Q/K/V → 调 `RingAttention` → all-to-all 把输出换回来。LSE 同样走 a2a（`send_lse`），`lse` 形状 `[B,S,H,1]`。是 `--parallel-params 'ulysses=2,ring=2'` 的实现。
 
 ## 5. 通信原语（`communicate/primitives.py`）
 
@@ -155,10 +155,10 @@ ParallelismConfig(
 
 | 症状 | 先查 |
 |---|---|
-| `Context parallelism requires a cache-dit registered attention backend` | `--attn` 是不是 diffusers-only 名字（`_native_cudnn`）；换成 `native`/`flash`/`sage`/`ffpa*` |
+| `Context parallelism requires a cache-dit registered attention backend` | `--attn-params type=X` 是不是 diffusers-only 名字（`_native_cudnn`）；换成 `native`/`flash`/`sage`/`ffpa*` |
 | `... which does not support context parallelism` | 该 backend 的 `supports_context_parallel=False`（如 `_flash_3` 之外的假想 backend、或未注册的 proxy） |
 | 形状对但数值错 | 双切/双 gather；processor 自己做了 a2a 又传了 `parallel_config` |
-| `Tensor size along dimension to be sharded must be divisible by mesh size` | 非 UAA 下序列/head 不整除；改 `--uaa` 或换 mesh |
+| `Tensor size along dimension to be sharded must be divisible by mesh size` | 非 UAA 下序列/head 不整除；在该 CP 命令里追加 `ulysses_anything=true`（如 `--parallel-params 'ulysses=2,ulysses_anything=true'`）或换 mesh |
 | `Cannot create a submesh from a submesh` | torch < 2.10 的 hybrid mesh |
 | `_All2AllComm metadata is not initialized` | 直接调了 `send_o` 而没有先 `send_q/k/v` 或 `init_meta` |
 | Ring 报 `return_lse is not supported` | backend 无 LSE，或 `cp_gqa_strategy` 用了 group-aligned |

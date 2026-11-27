@@ -10,18 +10,12 @@ from diffusers import WanPipeline, AutoencoderKLWan, WanTransformer3DModel
 from diffusers.utils import export_to_video
 from diffusers.schedulers.scheduling_unipc_multistep import (
   UniPCMultistepScheduler, )
-from utils import get_args, GiB, strify, MemoryTracker
+from cache_dit.cli.utils import GiB, MemoryTracker, get_args, maybe_postprocess_args, strify
 import cache_dit
 from cache_dit.platforms import current_platform
 
 parser = get_args(parse=False)
-parser.add_argument(
-  "--summary",
-  action="store_true",
-  default=False,
-  help="Print summary of the model after each inference",
-)
-args = parser.parse_args()
+args = maybe_postprocess_args(parser.parse_args())
 print(args)
 
 height, width = 480, 832
@@ -84,12 +78,12 @@ if args.cache:
       has_separate_cfg=True,
     ),
     cache_config=DBCacheConfig(
-      Fn_compute_blocks=args.Fn,
-      Bn_compute_blocks=args.Bn,
+      Fn_compute_blocks=args.Fn_compute_blocks,
+      Bn_compute_blocks=args.Bn_compute_blocks,
       max_warmup_steps=args.max_warmup_steps,
       max_cached_steps=args.max_cached_steps,
       max_continuous_cached_steps=args.max_continuous_cached_steps,
-      residual_diff_threshold=args.rdt,
+      residual_diff_threshold=args.residual_diff_threshold,
       # NOTE: num_inference_steps can be None here, we will
       # set it properly during cache refreshing.
       num_inference_steps=None,
@@ -210,7 +204,7 @@ for i in range(len(steps)):
   save_path = f"wan2.2.steps{steps[i]}.{strify(args, pipe.transformer)}.mp4"
   export_to_video(video, save_path, fps=16)
 
-  if args.summary:
+  if args.cache_summary:
     cache_dit.summary(pipe, details=True)
     print(f"Time cost: {time_cost:.2f}s")
     print(f"Saving video to {save_path}")

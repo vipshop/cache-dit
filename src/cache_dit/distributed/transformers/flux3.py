@@ -61,9 +61,10 @@ class Flux3ContextParallelismPlanner(ContextParallelismPlanner):
     **kwargs,
   ) -> "_ContextParallelModelPlan":
     if getattr(parallelism_config, "ulysses_async", False):
-      raise ValueError("Async Ulysses (`--ulysses-async`) is not supported for "
-                       "Flux3Transformer2DModel yet: the async registry has no patch for its "
-                       "attention processor. Drop the flag or use another model.")
+      raise ValueError(
+        "Async Ulysses (`ulysses_async=true` in `--parallel-params`) is not supported for "
+        "Flux3Transformer2DModel yet: the async registry has no patch for its "
+        "attention processor. Drop the flag or use another model.")
     _cp_plan = {
       "": {
         "hidden_states": _ContextParallelInput(split_dim=1, expected_dims=3),

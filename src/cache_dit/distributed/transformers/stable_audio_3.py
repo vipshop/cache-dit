@@ -208,7 +208,7 @@ class StableAudio3ContextParallelismPlanner(ContextParallelismPlanner):
       # Ulysses is required until a ring row is measured.
       raise NotImplementedError(
         f"Stable Audio 3 context parallelism only supports Ulysses (got ring_size={ring_size}, "
-        f"ulysses_size={ulysses_size}). Use `--parallel ulysses`.")
+        f"ulysses_size={ulysses_size}). Use `--parallel-params ulysses=N`.")
 
     cp_size = _cp_size(parallelism_config)
     tp_size = max(1, int(parallelism_config.tp_size or 1))

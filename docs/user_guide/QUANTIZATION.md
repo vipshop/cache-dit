@@ -29,6 +29,23 @@ Quantization is a powerful technique to reduce the memory footprint and computat
 |<span style="color:#c77dff;">svdq_w{1\|2\|3}a4_r{rank}[_dq]</span>|<span style="color:green;">SVDQuant packed W1A4/W2A4/W3A4</span>: E2M1 activations with 1/2/3-bit residual-weight storage and W4A4 compute. W1/W2 accept ranks 0/32/64/128/256/512 and default to the three-stage per-4 codec because their two-stage codebooks are not accurate enough; W3's 3-bit codebook is inherently more accurate, so W3 keeps ranks 0/32/64/128 and defaults to the standard two-stage NVFP4 codec, with an optional per-8 one-bit table selector. W2 targets minimum persistent weight memory, W3 trades memory for accuracy, and W1 is an experimental sign-only tier. Supports DQ/PTQ/checkpoint and compile.|<span style="color:#c77dff;">>=sm120</span>, Blackwell or newer|
 
 
+### Command Line
+
+The `cache_dit.generate` CLI takes two `key=value` lists; any `--quantize-params` key other than `text_encoder` turns on transformer quantization:
+
+| Option | Meaning |
+|:---|:---|
+| `--quantize-params "k=v,k=v"` | Generic options: `quant_type` (without it the type is `float8_per_row`), `backend` (`torchao`\|`cache_dit`, omitted = `AUTO`), `regional_quantize`, `per_tensor_fallback`, `exclude_layers` (`+`-separated), `text_encoder` (a text encoder type, or `true` to reuse `quant_type`; quantizes only the text encoder when it is the only key), `verbose`, `fp8_fused_mlp`, `fp4_fused_mlp`, `mxfp4_quantize_device`. |
+| `--svdq-params "k=v,k=v"` | SVDQuant options for an `svdq_*` type; the keys are the `svdq_kwargs` fields (`smooth_strategy`, `calibrate_precision`, `runtime_kernel`, `lora_layout`, `few_shot_*`, `packed_a4_*`, ...). The layerwise keys inherit `--layerwise-*` when omitted. |
+
+```bash
+python3 -m cache_dit.generate flux --quantize-params quant_type=float8_per_row --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r64_dq \
+  --svdq-params smooth_strategy=few_shot --compile
+python3 -m cache_dit.generate flux \
+  --quantize-params quant_type=float8_per_row,backend=cache_dit,exclude_layers=adaln_proj+norm_out
+```
+
 ## Quantization Backends
 
 The three online FP8 types can run on two independent backends:
@@ -38,7 +55,7 @@ The three online FP8 types can run on two independent backends:
 
 For the cache-dit FP8 backend, `fp8_gemm` uses the native CUTLASS collective by default for all three modes. `use_native=False` selects the `torch._scaled_mm` reference path for per-row and per-tensor; per-block always uses the native blockwise path. Unsupported Linear shapes are handled through automatic padding and output slicing, so users do not need to align layer dimensions manually.
 
-`QuantizeConfig(backend=...)` defaults to `AUTO`. AUTO keeps the existing routing: `svdq*` uses the cache-dit SVDQuant path and every other type uses TorchAO. Passing `backend="cache_dit"` with `float8_per_row`, `float8_per_tensor`, or `float8_per_block` selects the native FP8 path; unsupported combinations raise instead of silently falling back. The CLI equivalent is `--quantize-backend torchao|cache_dit`.
+`QuantizeConfig(backend=...)` defaults to `AUTO`. AUTO keeps the existing routing: `svdq*` uses the cache-dit SVDQuant path and every other type uses TorchAO. Passing `backend="cache_dit"` with `float8_per_row`, `float8_per_tensor`, or `float8_per_block` selects the native FP8 path; unsupported combinations raise instead of silently falling back. The CLI equivalent is `--quantize-params backend=torchao|cache_dit`.
 
 ```python
 import cache_dit
@@ -52,14 +69,14 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize-type float8_per_row --quantize-backend cache_dit --compile
+  --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
 ```
 
 The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts `use_native`; leave it enabled for the default CUTLASS path, or disable it to compare per-row/per-tensor against `torch._scaled_mm`.
 
 ### Native FP8 Fused MLP
 
-The cache-dit FP8 backend can fuse supported FeedForward structures after online module replacement. Set `QuantizeConfig(fp8_fused_mlp=True)` or pass `--fp8-fused-mlp` together with `--quantize-backend cache_dit`. The option is disabled by default and is rejected for TorchAO, SVDQ, and native NVFP4 configurations.
+The cache-dit FP8 backend can fuse supported FeedForward structures after online module replacement. Set `QuantizeConfig(fp8_fused_mlp=True)` or pass `--quantize-params fp8_fused_mlp=true` together with `backend=cache_dit`. The option is disabled by default and is rejected for TorchAO, SVDQ, and native NVFP4 configurations.
 
 ```python
 config = QuantizeConfig(
@@ -72,7 +89,7 @@ cache_dit.quantize(pipe.transformer, config)
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --float8 --quantize-backend cache_dit --fp8-fused-mlp
+  --quantize-params backend=cache_dit,fp8_fused_mlp=true
 ```
 
 Three structural passes are supported: standard diffusers `FeedForward` blocks with exact or tanh GELU, single-stream `proj_mlp -> GELU -> concat` blocks such as FLUX, and SwiGLU blocks with either separate value/gate projections or one half-split projection. The logs report the number of targets for each pass; enabling the option on a module with no supported target raises an error.
@@ -199,7 +216,7 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --nvfp4 --quantize-backend cache_dit --compile
+  --quantize-params quant_type=nvfp4,backend=cache_dit --compile
 ```
 
 The cache-dit path provides online NVFP4 W4A4 inference: each weight is
@@ -226,8 +243,8 @@ Requirements and limits:
 
 ### Native NVFP4 Fused MLP
 
-Set `QuantizeConfig(fp4_fused_mlp=True)` or pass `--fp4-fused-mlp` with
-`--quantize-backend cache_dit` to enable structural GELU and SwiGLU fusion after
+Set `QuantizeConfig(fp4_fused_mlp=True)` or pass `--quantize-params fp4_fused_mlp=true` with
+`backend=cache_dit` to enable structural GELU and SwiGLU fusion after
 online NVFP4 module replacement. The option is disabled by default and is
 rejected for TorchAO, SVDQ, and native FP8 configurations.
 
@@ -242,7 +259,7 @@ cache_dit.quantize(pipe.transformer, config)
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --nvfp4 --quantize-backend cache_dit --fp4-fused-mlp --compile
+  --quantize-params quant_type=nvfp4,backend=cache_dit,fp4_fused_mlp=true --compile
 ```
 
 The supported structures match native FP8: standard diffusers FeedForward with
@@ -284,7 +301,7 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --mxfp4 --compile
+  --quantize-params quant_type=mxfp4_weight_only --compile
 ```
 
 Requirements and limits:
@@ -297,11 +314,11 @@ Requirements and limits:
   spec-compliant value). Layers that do not qualify are skipped; a run that packs
   no layer raises instead of returning an unquantized module.
 - Weight-only: activations are not quantized, so `mxfp4_weight_only` is the only
-  public MXFP4 type (there is no W4A4 `mxfp4` entry, unlike `nvfp4`). `--mxfp4`
-  is an alias of `--mxfp4-weight-only`.
+  public MXFP4 type (there is no W4A4 `mxfp4` entry, unlike `nvfp4`); select it with
+  `--quantize-params quant_type=mxfp4_weight_only`.
 - Online-only: `calibrate_fn`, `serialize_to`, `precision_plan`, TP/DTensor
   weights and MXFP4 checkpoint loading/serialization are not supported.
-- `mxfp4_quantize_device` (`auto`/`cpu`/`cuda`, or `--mxfp4-quantize-device`)
+- `mxfp4_quantize_device` (`auto`/`cpu`/`cuda`, or `--quantize-params mxfp4_quantize_device=...`)
   selects where the one-time packing math runs. `auto` packs on the current
   accelerator when one is available and falls back to the weight's device; the
   packed buffers always return to the weight's own device, so quantization never
@@ -391,9 +408,9 @@ For examples, without fp8 per-tensor fallback, the cache-dit will auto skip the 
 
 ```bash
 # w/o fp8 per-tensor fallback, quantize 88 layers, skip 56 layers, performance downgrade.
-torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
-   --parallel tp --compile --float8-per-row --q-verbose \
-   --disable-per-tensor-fallback
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux2_klein_9b_kv_edit \
+ --parallel-params 'tp=2' --compile --quantize-params \
+ quant_type=float8_per_row,verbose=true,per_tensor_fallback=false
 ```
 
 ```bash
@@ -417,8 +434,8 @@ With fp8 per-tensor fallback enabled, those layers that do not support float8 pe
 
 ```bash
 # w/ fp8 per-tensor fallback enabled, quantize 144 layers, skip 0 layer, better performance.
-torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
-   --parallel tp --compile --float8-per-row --q-verbose  
+CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate flux2_klein_9b_kv_edit \
+ --parallel-params 'tp=2' --compile --quantize-params quant_type=float8_per_row,verbose=true
 ```
 ```bash
 # Default, enabled fp8 per-tensor fallback
@@ -587,12 +604,12 @@ cache_dit.enable_cache(
 )
 ```
 
-The current implementation requires Blackwell or newer GPUs (SM100+) and skips Linear layers whose two weight dimensions are not divisible by 16 or whose output dimensions are too small for the NVFP4 kernel. The supported CLI shortcut is:
+The current implementation requires Blackwell or newer GPUs (SM100+) and skips Linear layers whose two weight dimensions are not divisible by 16 or whose output dimensions are too small for the NVFP4 kernel. The supported CLI options are:
 
 ```bash
-python3 -m cache_dit.generate flux --nvfp4
-python3 -m cache_dit.generate flux --nvfp4 --compile
-python3 -m cache_dit.generate flux --nvfp4-weight-only
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4 --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4_weight_only
 ```
 
 The model must use bfloat16 Linear weights. The Triton activation kernel can fall back internally when a runtime shape does not satisfy its kernel constraints.
@@ -816,7 +833,7 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The generate CLI accepts <span style="color:#c77dff;">--quantize-type svdq_fp8_r{32|64|128}_dq</span> and the corresponding <span style="color:#c77dff;">--svdq-fp8-r{32|64|128}-dq</span> shortcuts.
+The generate CLI accepts <span style="color:#c77dff;">--quantize-params quant_type=svdq_fp8_r{32|64|128}_dq</span>.
 
 The DQ-only <span style="color:#c77dff;">weight</span> and <span style="color:#c77dff;">weight_inv</span> strategies are optional zero-calibration heuristics, not defaults. They derive a per-input-channel scale from weight spans and can change which directions the low-rank SVD retains, but they do not use real activation outliers and are not a substitute for PTQ calibration. Measure the target model before opting in; `weight` is not accepted by the PTQ workflow.
 
@@ -870,7 +887,7 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The generate CLI accepts the corresponding <span style="color:#c77dff;">--svdq-w4a8-r{32|64|128}-dq</span> shortcuts, and the converter accepts <span style="color:#c77dff;">--quant-type svdq-w4a8-r64-dq</span> with BF16 source weights.
+The generate CLI accepts the corresponding <span style="color:#c77dff;">--quantize-params quant_type=svdq_w4a8_r{32|64|128}_dq</span> types, and the converter accepts <span style="color:#c77dff;">--quant-type svdq-w4a8-r64-dq</span> with BF16 source weights.
 
 PTQ uses the type without `_dq`, for example <span style="color:#c77dff;">svdq_w4a8_r64</span>, plus the same <span style="color:#c77dff;">calibrate_fn</span> and activation-derived smoothing described in the SVDQ-FP8 PTQ section. Unobserved layers are skipped.
 
@@ -889,7 +906,7 @@ cache_dit.enable_cache(
 )
 ```
 
-The generate CLI accepts <span style="color:#c77dff;">--svdq-fp6-r{32|64|128}-dq</span>; the manifest precision is `fp6`, so the packed layout stays separate from the W4A4/W8A8/W4A8 loaders. Requirements and limits are the same as W4A8: sm120+, BF16 source weights, and no DTensor/TP, fused MLP, or layerwise offload.
+The generate CLI accepts <span style="color:#c77dff;">--quantize-params quant_type=svdq_fp6_r{32|64|128}_dq</span>; the manifest precision is `fp6`, so the packed layout stays separate from the W4A4/W8A8/W4A8 loaders. Requirements and limits are the same as W4A8: sm120+, BF16 source weights, and no DTensor/TP, fused MLP, or layerwise offload.
 
 Packing is the OCP MXFP6 layout: four codes per three bytes, little-endian within each 24-bit group, so K must be a multiple of 128 (96 bytes per 128 elements). The activation producer derives each block exponent from the group amax of the smoothed activation, which means the quantized activation carries its own `[M, K/32]` scale row instead of a per-token vector.
 
@@ -992,24 +1009,24 @@ Intuitively, <span style="color:green;">weight_inv</span> does the opposite trad
 
 ```bash
 # default: identity smooth strategy
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy identity --svdq-calibrate-precision low
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params smooth_strategy=identity,calibrate_precision=low
 
 # experimental: weight-only heuristic
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy weight --svdq-calibrate-precision low
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params smooth_strategy=weight,calibrate_precision=low
 
 # experimental: bias the trade-off toward easier activation quantization
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy weight_inv --svdq-calibrate-precision low
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params smooth_strategy=weight_inv,calibrate_precision=low
 
 # high-rank are recommended for better precision while using SVDQ DQ, e.g, 256.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
-  --svdq-smooth-strategy identity --svdq-calibrate-precision low
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r256_dq \
+  --svdq-params smooth_strategy=identity,calibrate_precision=low
 
 # higher SVD decomposition precision may be helpful for better DQ accuracy.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r256_dq \
-  --svdq-smooth-strategy identity --svdq-calibrate-precision medium
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r256_dq \
+  --svdq-params smooth_strategy=identity,calibrate_precision=medium
 ```
 
 Here are some preliminary results on the impact of identity, weight-only, and weight_inv heuristics DQ smooth strategies for a SVDQ DQ sweep on FLUX.2-klein-4B. 
@@ -1129,50 +1146,38 @@ When <span style="color:#c77dff;">few_shot_auto_compile</span> is enabled, helpe
 
 If no owner-level deferred compile callback is registered, Cache-DiT falls back to compiling the quantized root module in-place with <span style="color:#c77dff;">nn.Module.compile()</span>. When the root module is a diffusers transformer that exposes <span style="color:#c77dff;">compile_repeated_blocks()</span>, that regional compile path is still preferred.
 
-The same workflow is available from the generate CLI through <span style="color:#c77dff;">--quantize-type</span> or shortcut flags:
+The same workflow is available from the generate CLI through <span style="color:#c77dff;">--quantize-params quant_type=...</span> and <span style="color:#c77dff;">--svdq-params</span>:
 
 ```bash  
 # few-shot activation-derived DQ: sample one runtime forward, then quantize.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
-  --svdq-few-shot-relax-strategy auto
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,smooth_strategy=few_shot
 
 # few-shot fixed: keep the observed activation span unchanged, then recompute smooth scale.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-strategy fixed
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_strategy=fixed,smooth_strategy=few_shot
 
 # few-shot auto relax: larger activation spans receive larger relax factors, capped at 1.5.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
-  --svdq-few-shot-relax-strategy auto
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=auto,smooth_strategy=few_shot
 
 # few-shot stable_auto relax: keep the same auto trend, but bucketize it for better stability.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
-  --svdq-few-shot-relax-strategy stable_auto
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=stable_auto,smooth_strategy=few_shot
 
 # few-shot power relax: focus the extra amplification on the largest channels.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
-  --svdq-few-shot-relax-strategy power
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=power,smooth_strategy=few_shot
 
 # few-shot rank relax: assign relax factors from channel rank percentiles.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-relax-factor 1.5 --svdq-few-shot-relax-top-ratio 0.25 \
-  --svdq-few-shot-relax-strategy rank
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=rank,smooth_strategy=few_shot
 
 # few-shot + deferred compile after runtime quantization completes.
-python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
-  --svdq-smooth-strategy few_shot --svdq-few-shot-steps 1 \
-  --svdq-few-shot-compile
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
+  --svdq-params few_shot_steps=1,few_shot_auto_compile=true,smooth_strategy=few_shot
 
-# Tip: increase `--svdq-few-shot-steps` from 1 to a larger number if you want to collect more
+# Tip: increase `few_shot_steps` from 1 to a larger number if you want to collect more
 # transformer/module forwards before few-shot materialization. The counter is cumulative on the
 # same armed module, so two runs of the same 50-step pipeline already contribute about 100
 # forwards in total. Larger values can improve few-shot DQ accuracy, but they also increase the
@@ -1181,9 +1186,9 @@ python -m cache_dit.generate flux2_klein_4b --quantize-type svdq_int4_r128_dq \
 
 Unlike the PTQ workflow, SVDQ dynamic quantization is <span style="color:green;">in-memory only</span>. It does not require <span style="color:#c77dff;">calibrate_fn</span> or <span style="color:#c77dff;">serialize_to</span>, and it does not support <span style="color:#c77dff;">load()</span> from a serialized checkpoint. The few-shot mode also keeps this in-memory-only contract: it delays materialization to runtime, but still does not emit a serialized checkpoint.
 
-At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default, experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics, and the runtime-activated <span style="color:#c77dff;">few_shot</span> mode as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-smooth-strategy</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
+At the backend-config level, this means DQ currently supports <span style="color:#c77dff;">identity</span> by default, experimental <span style="color:#c77dff;">weight</span> / <span style="color:#c77dff;">weight_inv</span> heuristics, and the runtime-activated <span style="color:#c77dff;">few_shot</span> mode as explicit opt-ins. In the CLI, this is controlled by <span style="color:#c77dff;">--svdq-params smooth_strategy=...</span>, whose default value is <span style="color:#c77dff;">identity</span>. PTQ keeps the activation-derived strategy and serialized checkpoint workflow. We will support more smooth strategies in the future, and this separation makes it easier to add those as opt-in extensions without redefining the meaning of existing `_dq` quant types.
 
-The CLI also exposes <span style="color:#c77dff;">--svdq-calibrate-precision</span> (alias <span style="color:#c77dff;">--svdq-calib</span>) for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The few-shot CLI also exposes <span style="color:#c77dff;">--svdq-few-shot-steps</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-factor</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-top-ratio</span>, <span style="color:#c77dff;">--svdq-few-shot-relax-strategy</span>, and <span style="color:#c77dff;">--svdq-few-shot-compile</span>. In the shared helper flow, top-level <span style="color:#c77dff;">--compile</span> is treated as a compatibility alias for few-shot runs, while <span style="color:#c77dff;">--svdq-few-shot-compile</span> is the precise switch that means "compile only after runtime quantization completes". The parser also accepts <span style="color:#c77dff;">top_q4</span> as an alias of <span style="color:#c77dff;">top</span>, but <span style="color:#c77dff;">fixed</span>, <span style="color:#c77dff;">top</span>, <span style="color:#c77dff;">auto</span>, <span style="color:#c77dff;">stable_auto</span>, <span style="color:#c77dff;">power</span>, <span style="color:#c77dff;">log</span>, and <span style="color:#c77dff;">rank</span> are the canonical strategy names.
+The CLI also exposes <span style="color:#c77dff;">--svdq-params calibrate_precision=...</span> for the SVDQ decomposition math. For DQ, the default remains <span style="color:#c77dff;">low</span> to preserve the shipped fast path, but users can now explicitly select <span style="color:#c77dff;">medium</span> or <span style="color:#c77dff;">high</span> when they want a different accuracy / quantization-time trade-off. The few-shot CLI also exposes the <span style="color:#c77dff;">few_shot_steps</span>, <span style="color:#c77dff;">few_shot_relax_factor</span>, <span style="color:#c77dff;">few_shot_relax_top_ratio</span>, <span style="color:#c77dff;">few_shot_relax_strategy</span>, and <span style="color:#c77dff;">few_shot_auto_compile</span> keys of <span style="color:#c77dff;">--svdq-params</span>. In the shared helper flow, top-level <span style="color:#c77dff;">--compile</span> is treated as a compatibility alias for few-shot runs, while <span style="color:#c77dff;">few_shot_auto_compile=true</span> is the precise switch that means "compile only after runtime quantization completes". The parser also accepts <span style="color:#c77dff;">top_q4</span> as an alias of <span style="color:#c77dff;">top</span>, but <span style="color:#c77dff;">fixed</span>, <span style="color:#c77dff;">top</span>, <span style="color:#c77dff;">auto</span>, <span style="color:#c77dff;">stable_auto</span>, <span style="color:#c77dff;">power</span>, <span style="color:#c77dff;">log</span>, and <span style="color:#c77dff;">rank</span> are the canonical strategy names.
 
 ## SVDQuant packed W1A4 / W2A4 / W3A4
 
@@ -1290,7 +1295,7 @@ pipe.transformer = cache_dit.quantize(
 )
 ```
 
-The generate CLI accepts `--svdq-w1a4-r{32|64|128|256|512}-dq`, `--svdq-w2a4-r{32|64|128|256|512}-dq`, and `--svdq-w3a4-r{32|64|128}-dq`. `--svdq-packed-a4-stages 2` explicitly selects the legacy two-stage codec; `--svdq-packed-a4-stages 3` enables W3's optional per-8 selector (W1/W2 already default to 3); `--svdq-packed-a4-inner-group 2` selects the W1/W2 per-2 exponent layout while the default stays per-4. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
+The generate CLI accepts `--quantize-params quant_type=svdq_w1a4_r{32|64|128|256|512}_dq`, `quant_type=svdq_w2a4_r{32|64|128|256|512}_dq`, and `quant_type=svdq_w3a4_r{32|64|128}_dq`. `--svdq-params packed_a4_stages=2` explicitly selects the legacy two-stage codec; `packed_a4_stages=3` enables W3's optional per-8 selector (W1/W2 already default to 3); `packed_a4_inner_group=2` selects the W1/W2 per-2 exponent layout while the default stays per-4. The converter accepts the same hyphenated quant types with BF16 source weights. PTQ omits `_dq` and uses the same `calibrate_fn` and activation-derived smoothing as SVDQ-FP8/W4A8. DQ and PTQ support `serialize_to` and `cache_dit.load`; the manifest precision is `w1a4`, `w2a4`, or `w3a4`.
 
 Rank 512 is a quality-rescue option for W1/W2, not a free memory win. On FLUX.1-dev, the 494 quantized block linears contain 11.83B weights; rank 512 costs 2.75B LoRA parameters (23.2% of the block weights), rank 128 costs 5.8%, rank 64 costs 2.9%, and rank 32 costs 1.45%. With three stages enabled, the tested W2 ranks 32/64 already produce complete structure and readable text while retaining only about 4.46/4.78 GiB of persistent weights; W2 r512 reaches about 9.27 GiB on the same padded geometry. Rank 512 is therefore not the first choice for W2 unless additional prompts show a specific need for it. W3A4 r32 is 5.15 GiB and W4A4 r32 is 6.53 GiB.
 
@@ -1302,7 +1307,7 @@ The per-2 option doubles the exponent bytes. W2A4 r32 per-2 uses about 5.15 GiB 
 
 ### Optional W3 stage 3
 
-W3A4 defaults to the two-stage 3.5-bit codec because its 3-bit codebook already has eight signed levels and is accurate enough. Passing `svdq_kwargs={"packed_a4_stages": 3}` or `--svdq-packed-a4-stages 3` opts into a lighter selector: one bit per eight K elements selects one of two legal-E2M1 magnitude tables, while the 3-bit W3 code still carries sign plus a two-bit magnitude index. The two tables are `{0.5,2,4,6}` and `{0.5,1.5,3,6}`.
+W3A4 defaults to the two-stage 3.5-bit codec because its 3-bit codebook already has eight signed levels and is accurate enough. Passing `svdq_kwargs={"packed_a4_stages": 3}` or `--svdq-params packed_a4_stages=3` opts into a lighter selector: one bit per eight K elements selects one of two legal-E2M1 magnitude tables, while the 3-bit W3 code still carries sign plus a two-bit magnitude index. The two tables are `{0.5,2,4,6}` and `{0.5,1.5,3,6}`.
 
 - Extra storage: `+0.125 bit/weight`; FLUX W3 r32/r64 go from 5.15/5.47 GiB to about 5.32/5.64 GiB.
 - Runtime: the selector adds one byte load and one table lookup per 32 weights; the E2M1 workspace and GEMM are unchanged.
@@ -1394,12 +1399,10 @@ python3 -m cache_dit.quantization.converter \
 | :--- | :---: | :---: | :--- |
 | `--model-path` | yes | — | Path to the pretrained diffusion model directory (e.g. `/path/to/FLUX.1-dev`). |
 | `--save-dir` | yes | — | Directory where the quantized checkpoint (`{quant_type}.safetensors`) and `quant_config.json` are saved. |
-| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen and underscore forms, including `svdq-int4-r128-dq`, `svdq-nvfp4-r128-dq`, and `svdq-fp8-r128-dq`. Currently only `_dq` types are supported. |
+| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen and underscore forms, including `svdq-int4-r128-dq`, `svdq-nvfp4-r128-dq`, `svdq-fp8-r128-dq`, and `svdq-w4a8-r128-dq`. Currently only `_dq` types are supported. |
 | `--torch-dtype` | no | `bfloat16` | Torch dtype used when loading the float pipeline. One of: `float16`, `bfloat16`, `float32`. |
 | `--device` | no | `cuda` | Device to run quantization on. |
-| `--svdq-smooth-strategy` | no | `identity` | SVDQ DQ smooth strategy. One of: `identity`, `weight`, `weight_inv`, `few_shot`. See the [SVDQuant DQ section](#svdquant-w4a4-dq) for details. |
-| `--svdq-calibrate-precision` | no | `low` | Precision plan for SVDQ decomposition math. One of: `low`, `medium`, `high`. |
-| `--svdq-runtime-kernel` | no | `None` | SVDQ GEMM family: `native`, `cute`, `flashinfer`, `flashinfer+cute-dsl`, or `flashinfer+cutlass-sm120`. Default is automatic: `native` for both INT4 and NVFP4. The flashinfer runtimes are comparison paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel)); bare `flashinfer` maps to `flashinfer+cutlass-sm120`. |
+| `--svdq-params` | no | — | SVDQ options as `k=v,k=v`. `smooth_strategy` (default `identity`) is one of `identity`, `weight`, `weight_inv`, `few_shot` (see the [SVDQuant DQ section](#svdquant-w4a4-dq)); `calibrate_precision` (default `low`) is one of `low`, `medium`, `high`; `runtime_kernel` (default automatic: `native` for both INT4 and NVFP4) is one of `native`, `cute`, `flashinfer`, `flashinfer+cute-dsl`, or `flashinfer+cutlass-sm120`. The flashinfer runtimes are comparison paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel)); bare `flashinfer` maps to `flashinfer+cutlass-sm120`. |
 | `--verbose` | no | `false` | Print detailed quantization information including per-layer skip reasons. |
 
 ### Usage examples
@@ -1418,13 +1421,14 @@ Output:
 ```
 Loading pipeline from black-forest-labs/FLUX.2-klein-4B ...
 Pipeline loaded: Flux2KleinPipeline
-Transformer memory before quantize: 7.22 GiB
-Quantizing transformer (svdq_int4_r128_dq) and saving to ./FLUX.2-klein-4B-svdq ...
+Transformer 'transformer' memory before quantize: 7.22 GiB
+Quantizing transformer 'transformer' (svdq_int4_r128_dq) and saving to ./FLUX.2-klein-4B-svdq ...
 Transformer memory after quantize: 2.28 GiB (3.2x reduction)
 Quantized checkpoint saved to ./FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors
 Quant config saved to ./FLUX.2-klein-4B-svdq/quant_config.json
 Conversion complete. Load the quantized model with:
-  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq/')
+  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq')
+  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors')
 ```
 
 **Experimental weight-only smooth strategy:**
@@ -1435,16 +1439,14 @@ cache-dit-convert \
   --model-path black-forest-labs/FLUX.2-klein-4B \
   --save-dir ./FLUX.2-klein-4B-svdq \
   --quant-type svdq-int4-r256-dq \
-  --svdq-smooth-strategy weight \
-  --svdq-calibrate-precision medium
+  --svdq-params smooth_strategy=weight,calibrate_precision=medium
 
 # SVDQ NVFP4
 cache-dit-convert \
   --model-path black-forest-labs/FLUX.2-klein-4B \
   --save-dir ./FLUX.2-klein-4B-svdq-nvfp4 \
   --quant-type svdq-nvfp4-r256-dq \
-  --svdq-smooth-strategy weight \
-  --svdq-calibrate-precision medium 
+  --svdq-params smooth_strategy=weight,calibrate_precision=medium
 ```
 
 **With explicit native runtime and verbose logging:**
@@ -1455,7 +1457,7 @@ cache-dit-convert \
   --model-path /path/to/FLUX.1-dev \
   --save-dir ./FLUX.1-dev-svdq \
   --quant-type svdq-int4-r64-dq \
-  --svdq-runtime-kernel native \
+  --svdq-params runtime_kernel=native \
   --verbose
 ```
 
@@ -1509,20 +1511,26 @@ quant_config = QuantizeConfig(
 )
 ```
 
-The generate CLI exposes both selectors: <span style="color:#c77dff;">--svdq-runtime</span> for the backend family and <span style="color:#c77dff;">--svdq-lora-layout</span> for the `D` contract (omitting `--svdq-runtime` keeps the same native default):
+The generate CLI exposes both selectors through <span style="color:#c77dff;">--svdq-params</span>: <span style="color:#c77dff;">runtime_kernel=...</span> for the backend family and <span style="color:#c77dff;">lora_layout=...</span> for the `D` contract (omitting `runtime_kernel` keeps the same native default):
 
 ```bash
-python3 -m cache_dit.generate flux --svdq-int4-r64-dq --svdq-runtime native --compile
-python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute \
-  --svdq-lora-layout row_major --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_int4_r64_dq \
+  --svdq-params runtime_kernel=native --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=cute,lora_layout=row_major --compile
 # FlashInfer comparison runtimes (optional dependency, never the default).
 # Bare `flashinfer` == `flashinfer+cutlass-sm120` (ranks 32/64, SM120 only).
-python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer
-python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime flashinfer+cute-dsl
-python3 -m cache_dit.generate flux --svdq-nvfp4-r128-dq --svdq-runtime flashinfer+cute-dsl
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=flashinfer
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=flashinfer+cute-dsl
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r128_dq \
+  --svdq-params runtime_kernel=flashinfer+cute-dsl
 # Fused MLP: works on both runtimes and both D layouts.
-python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-fused-mlp
-python3 -m cache_dit.generate flux --svdq-nvfp4-r32-dq --svdq-runtime cute --svdq-fused-mlp
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params fused_mlp=true
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=cute,fused_mlp=true
 ```
 
 When loading a serialized checkpoint with a `QuantizeConfig`, an explicitly requested `runtime_kernel` / `lora_layout` overrides the value recorded in the checkpoint, since both are pure runtime dispatch choices that do not change the serialized tensors.
@@ -1599,8 +1607,9 @@ The feature is controlled by ``svdq_kwargs["fused_mlp"]`` and works automaticall
 **Quick start (CLI)**
 
 ```bash
-# Add --svdq-fused-mlp to any SVDQ generate command:
-python -m cache_dit.generate longcat_image_edit --svdq-int4-r128-dq --svdq-fused-mlp
+# Add --svdq-params fused_mlp=true to any SVDQ generate command:
+python -m cache_dit.generate longcat_image_edit \
+  --quantize-params quant_type=svdq_int4_r128_dq --svdq-params fused_mlp=true
 
 [06-09 02:56:25] [Cache-DiT] No caching or parallelism is applied.
 [06-09 02:56:25] [Cache-DiT] Quantizing transformer module: LongCatImageTransformer2DModel to svdq_int4_r128_dq ...
@@ -1680,6 +1689,6 @@ The gate is fused into the activation producer of ``down`` instead of the GEMM e
 
 ```bash
 # Qwen-Image-2.1 style gated MLP on the CuTe GEMM with its default row-major D contract.
-python3 -m cache_dit.generate qwen_image_21_turbo --svdq-nvfp4-r32-dq \
-  --svdq-runtime cute --svdq-fused-mlp
+python3 -m cache_dit.generate qwen_image_21_turbo --quantize-params quant_type=svdq_nvfp4_r32_dq \
+  --svdq-params runtime_kernel=cute,fused_mlp=true
 ```

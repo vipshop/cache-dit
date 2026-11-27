@@ -22,7 +22,7 @@ Note:
   * The DiT is called once per CFG branch with batch size 1, so the block adapter declares
     `has_separate_cfg=True`; caching is only valid while `guidance_scale > 1`.
   * The text encoder stays a `transformers` model and the VAE stays `diffusers.AutoencoderKLWan` so
-    `--parallel-text` / `--parallel-vae` keep working.
+    `--parallel-params text=true` / `vae=true` keep working.
 """
 
 from dataclasses import dataclass
@@ -267,7 +267,7 @@ class LingBotVideoPipeline(DiffusionPipeline):
     inference_dtype, vae_dtype = _resolve_dtypes(torch_dtype if torch_dtype is not None else dtype)
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize LingBot-Video through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if device_map is not None:
       raise NotImplementedError(
         "LingBot-Video does not support `--device-map-balance`: the CLI skips `pipe.to(device)` for "

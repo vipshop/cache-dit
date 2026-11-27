@@ -2015,7 +2015,7 @@ def anyflow_adapter(pipe, **kwargs) -> BlockAdapter:
   DBCache itself is NOT supported on FAR — the chunk-wise autoregressive loop
   (per-chunk scheduler reset + mandatory full cache-prefill passes) is
   incompatible with cache-dit's single-trajectory step tracking; enabling
-  ``--cache`` on FAR will produce corrupted output.
+  ``--cache-params`` on FAR will produce corrupted output.
   """
   from diffusers import AnyFlowTransformer3DModel
   try:

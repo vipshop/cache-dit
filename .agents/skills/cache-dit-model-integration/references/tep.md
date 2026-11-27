@@ -6,7 +6,7 @@ When to read this: read this file when a model uses a text encoder not already s
 
 ### 4.1 Concept
 
-TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-text` (or `--parallel-text-encoder`).
+TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-params text=true`.
 
 ### 4.2 When to implement
 

@@ -143,11 +143,11 @@ class MingImageContextParallelismPlanner(ZImageContextParallelismPlanner):
     if zero_masked and getattr(parallelism_config, "ring_size", None) not in (None, 1):
       raise NotImplementedError(
         "Ming-Image Design uses zero-masked alignment, which emits a full-sequence attention "
-        "mask; Ring rotates K/V at every step but reuses that full mask. Use `--parallel ulysses` "
-        "or a learned-padding variant instead.")
+        "mask; Ring rotates K/V at every step but reuses that full mask. "
+        "Use `--parallel-params ulysses=N` or a learned-padding variant instead.")
     if zero_masked and getattr(parallelism_config, "ulysses_anything", False):
       raise NotImplementedError(
-        "Ming-Image Design zero-masked padding is not compatible with `--ulysses-anything`: "
+        "Ming-Image Design zero-masked padding is not compatible with `ulysses_anything=true`: "
         "uneven partitions require reordering the full padding mask. Use the default Ulysses "
         "partition or a learned-padding variant.")
     return super()._apply(

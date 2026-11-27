@@ -11,7 +11,7 @@ Adapted from ``vllm-omni @ 7f217a1`` ``vllm_omni/diffusion/models/magi2/parallel
 
 MAGI-2 runs two parallel views over the packed token sequence: Ulysses context parallelism shards
 tokens and gathers attention heads, while the multi-head MoE shards the MoE *head* axis (never the
-expert axis). With ``--parallel tp`` the MoE head axis rides the TP group; otherwise it overlaps
+expert axis). With ``--parallel-params tp=N`` the MoE head axis rides the TP group; otherwise it overlaps
 with Ulysses, matching the released layout.
 """
 

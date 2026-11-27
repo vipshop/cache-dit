@@ -14,7 +14,7 @@ quietly different model:
 3. the LoRA mixin still routes both checkpoint partitions;
 4. TE-P still resolves `Qwen3VLForConditionalGeneration`, and VAE-P resolves the video autoencoder
    (`AutoencoderKLMiniMaxH3`, 34% of a single-GPU run) but not the audio one — the audio VAE is never
-   offered to `--parallel-vae`, so that half stays a documented limitation.
+   offered to `vae=true` in `--parallel-params`, so that half stays a documented limitation.
 """
 import inspect
 import sys
@@ -217,14 +217,14 @@ def test_te_parallelism_resolves_the_qwen3vl_conditioner():
   planner = TextEncoderTensorParallelismPlannerRegister.get_planner(
     "Qwen3VLForConditionalGeneration")
   assert planner is not None
-  # `--parallel-vae` really is uncovered, not merely unimported.
+  # `vae=true` in `--parallel-params` really is uncovered, not merely unimported.
   assert len(AutoEncoderDataParallelismPlannerRegister.supported_planners()[1]) > 0
 
 
 def test_vae_parallelism_covers_the_video_autoencoder_but_not_the_audio_one():
   # Pika decodes 124 frames through the video VAE, so VAE-P has to resolve it. The audio VAE is never
-  # offered to `--parallel-vae` (`utils.py` only appends `pipe.vae`), so it stays uncovered — that half
-  # is a limitation worth pinning, while the video half is a capability.
+  # offered to `vae=true` in `--parallel-params` (`utils.py` only appends `pipe.vae`), so it stays
+  # uncovered — that half is a limitation worth pinning, while the video half is a capability.
   _activate_auto_encoder_dp_planners()
   assert len(AutoEncoderDataParallelismPlannerRegister.supported_planners()[1]) > 0
   assert AutoEncoderDataParallelismPlannerRegister.get_planner("AutoencoderKLMiniMaxH3") is not None

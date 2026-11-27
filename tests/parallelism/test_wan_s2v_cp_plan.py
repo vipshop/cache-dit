@@ -102,7 +102,7 @@ def test_rope_is_sharded_in_the_forward_not_by_a_hook():
 
 
 def test_cp_plan_rejects_ulysses_anything():
-  with pytest.raises(NotImplementedError, match="ulysses-anything"):
+  with pytest.raises(NotImplementedError, match="ulysses_anything=true"):
     WanS2VContextParallelismPlanner()._apply(
       transformer=_tiny_transformer(),
       parallelism_config=ParallelismConfig(ulysses_size=2, ulysses_anything=True),

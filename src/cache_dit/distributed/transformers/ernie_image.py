@@ -64,7 +64,7 @@ def _patch_transformer_forward_for_cp(transformer: ErnieImageTransformer2DModel,
   mask invalid text tokens.  The cache-dit Ring attention backend does not
   support ``attn_mask`` — it raises ``ValueError: attn_mask is not yet
   supported for native flash attention with lse.``  This is a backend
-  limitation, not a CP-plan issue.  Only Ulysses (``--parallel ulysses``)
+  limitation, not a CP-plan issue.  Only Ulysses (``--parallel-params ulysses=N``)
   works for models that require attention masks.  Per the cache-dit
   parallelism guide: *"Always prefer Ulysses over Ring — it is more mature,
   better tested."*

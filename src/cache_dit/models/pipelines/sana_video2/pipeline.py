@@ -19,8 +19,8 @@ Note:
 
   * :class:`SanaVideo2Pipeline` must inherit `DiffusionPipeline` and the transformer must be a
     `ModelMixin` + `ConfigMixin`; `vae` must stay a diffusers `AutoencoderKLLTX2Video` and
-    `text_encoder` a `transformers` module, otherwise `--parallel-vae` / `--parallel-text`
-    silently do nothing.
+    `text_encoder` a `transformers` module, otherwise `--parallel-params vae=true` /
+    `--parallel-params text=true` silently do nothing.
   * Caching assumes exactly one ``transformer.forward()`` per denoising step. CFG is folded into
     the batch axis, so ``guidance_scale`` must stay above 1 while caching; the guard below
     enforces it instead of silently halving the effective step count.
@@ -191,7 +191,7 @@ class SanaVideo2Pipeline(DiffusionPipeline):
         "for that flag, which would leave the whole pipeline on CPU.")
     if quantization_config is not None:
       logger.warning("Ignoring quantization_config: quantize SANA-Video 2.0 through cache-dit's "
-                     "`--quantize-type` flags so the DiT blocks are discovered.")
+                     "`--quantize-params` so the DiT blocks are discovered.")
     if trust_remote_code:
       logger.debug("trust_remote_code is not needed: the SANA-Video 2.0 code is built into "
                    "cache-dit.")

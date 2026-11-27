@@ -175,7 +175,7 @@ CUDA_VISIBLE_DEVICES=7 HF_HUB_OFFLINE=1 \
   /workspace/dev/miniconda3/envs/cdit-fp4/bin/python -m cache_dit.generate flux \
   --model-path /workspace/dev/vipdev/hf_models/FLUX.1-dev \
   --height 1024 --width 1024 --steps 28 --seed 42 --warmup 1 --repeat 3 \
-  --nvfp4 --quantize-backend cache_dit --compile
+  --quantize-params quant_type=nvfp4,backend=cache_dit --compile
 ```
 
 ## Current compile gap after the `_scaled_mm` switch

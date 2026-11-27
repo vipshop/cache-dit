@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from torch import nn
 
+from cache_dit.cli import quantize as quantize_mod
 from cache_dit.cli import utils as cli_utils
 from cache_dit.kernels import cuda_ext_is_available
 from cache_dit.quantization.backend import QuantizeBackend
@@ -14,14 +15,14 @@ requires_native_fp4 = pytest.mark.skipif(not cuda_ext_is_available(),
 
 
 def test_fp4_fused_mlp_cli_defaults_off() -> None:
-  args = cli_utils.get_args(parse=False).parse_args([])
-  assert args.fp4_fused_mlp is False
+  args = cli_utils.maybe_postprocess_args(cli_utils.get_args(parse=False).parse_args([]))
+  assert args.quantize_fields == {}
 
 
 @requires_native_fp4
 def test_fp4_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
   captured = []
-  monkeypatch.setattr(cli_utils, "quantize",
+  monkeypatch.setattr(quantize_mod, "quantize",
                       lambda module, quantize_config: captured.append(quantize_config) or module)
 
   class _Toy(nn.Module):
@@ -33,10 +34,8 @@ def test_fp4_fused_mlp_cli_is_passed_to_transformer(monkeypatch) -> None:
 
   args = cli_utils.maybe_postprocess_args(
     cli_utils.get_args(parse=False).parse_args([
-      "--nvfp4",
-      "--quantize-backend",
-      "cache_dit",
-      "--fp4-fused-mlp",
+      "--quantize-params",
+      "quant_type=nvfp4,backend=cache_dit,fp4_fused_mlp=true",
       "--steps",
       "1",
     ]))
