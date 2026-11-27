@@ -50,6 +50,24 @@ python3 -m cache_dit.generate /path/to/FLUX.1-dev --task T2I --save-path flux.ba
 
 常用输出参数：`--steps/--num_inference_steps`、`--height`、`--width`、`--num-frames`、`--seed`、`--save-path`、`--repeat`、`--warmup`。
 
+### 2.1 模型文件查找顺序（本机开发）
+
+在本工作区开发时，按以下顺序查找模型权重，找到即停止：
+
+1. `/workspace/dev/vipdev/hf_models/`
+2. 当前工作区下的 `hf_models/` 目录
+3. `$HF_MODELS` 指向的目录
+4. `$HF_MODEL` 指向的目录
+
+本地模型目录名通常与 Hugging Face repo 名一致，例如：
+
+```bash
+export FLUX_DIR=/workspace/dev/vipdev/hf_models/FLUX.1-dev
+python3 -m cache_dit.generate flux --steps 2 --height 64 --width 64
+```
+
+不是所有模型都在本地；上述位置都没有目标模型时，先确认是否已下载，或改用 `--model-path` 指向实际目录，不要用不存在的路径硬跑。
+
 ## 3. 参数家族速查
 
 | 目标 | flag / 别名 | 主要键 |
