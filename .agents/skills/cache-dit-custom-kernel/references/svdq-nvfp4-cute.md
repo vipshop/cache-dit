@@ -629,8 +629,8 @@ class 重构后按“scale 融合 -> 地址复用”顺序验证，均保持 94 
 
 ```bash
 export FLUX_DIR="<flux-dir>"
-python -m cache_dit.generate flux --compile --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq --save-path native.png
-python -m cache_dit.generate flux --compile --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python -m cache_dit.generate flux --compile --quantize-params quant_type=svdq_nvfp4_r32_dq --save-path native.png
+python -m cache_dit.generate flux --compile --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=cute --save-path cute.png
 python -m cache_dit.generate flux --save-path base.png
 ```

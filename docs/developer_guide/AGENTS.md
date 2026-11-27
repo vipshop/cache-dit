@@ -67,6 +67,6 @@ The skills live with the code. If your change alters a workflow a skill describe
 
 - [Support New Model](./SUPPORT_NEW_MODEL.md) — the manual version of the model-integration skill.
 - [Attention Backend](../user_guide/ATTENTION.md) — the user-facing backend list, hardware scope and per-backend limitations the attention skill keeps in sync.
-- [Context Parallelism](../user_guide/CONTEXT_PARALLEL.md) — the user-facing `--parallel` combinations, UAA / async / low-precision communication and Ring / USP notes the distributed skill keeps in sync.
+- [Context Parallelism](../user_guide/CONTEXT_PARALLEL.md) — the user-facing `--parallel-params` combinations, UAA / async / low-precision communication and Ring / USP notes the distributed skill keeps in sync.
 - [Prepare before commit](./PRE_COMMIT.md) — pre-commit setup, which every skill assumes.
 - [Quick Examples](../EXAMPLES.md) — the commands and checkpoints the skills drive.

@@ -54,7 +54,7 @@ output = pipe(  # Then call the pipeline as normal.
 output.images[0].save("moss.png")
 ```
 
-Every argument is optional: `cache_dit.enable_cache(pipe)` alone turns on DBCache with defaults. `layerwise_offload`, `set_compile_configs` and `--parallel` (via `torchrun`) are separate entry points and apply to built-in pipelines unchanged.
+Every argument is optional: `cache_dit.enable_cache(pipe)` alone turns on DBCache with defaults. `layerwise_offload`, `set_compile_configs` and `--parallel-params` (torchrun is optional; the CLI can start the workers itself) are separate entry points and apply to built-in pipelines unchanged.
 
 ## Available Pipelines
 

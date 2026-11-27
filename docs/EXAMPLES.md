@@ -188,8 +188,8 @@ python3 -m cache_dit.generate zimage_turbo
 python3 -m cache_dit.generate zimage_turbo_nunchaku 
 python3 -m cache_dit.generate zimage_turbo_controlnet_2.1 
 python3 -m cache_dit.generate firered_image_edit_1.0
-python3 -m cache_dit.generate generate longcat_image
-python3 -m cache_dit.generate generate longcat_image_edit
+python3 -m cache_dit.generate longcat_image
+python3 -m cache_dit.generate longcat_image_edit
 # w/ cache acceleration
 python3 -m cache_dit.generate flux --cache-params 'type=DBCache'
 python3 -m cache_dit.generate flux --cache-params 'type=SeaCache,seacache_feature_shape=64x64'
@@ -461,9 +461,9 @@ torchrun --nproc_per_node=4 -m cache_dit.generate flux --parallel-params 'ulysse
 # Case: Hybrid Acceleration for Qwen-Image-Edit-Lightning, tracking memory usage.
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
  --parallel-params 'ulysses=4,text=true,ulysses_anything=true' \
- --quantize --quantize-params quant_type=float8_weight_only --steps 4 --track-memory --compile
+ --quantize-params quant_type=float8_weight_only --steps 4 --track-memory --compile
 torchrun --nproc_per_node=4 -m cache_dit.generate qwen_image_edit_lightning \
- --parallel-params 'tp=4,text=true' --quantize --quantize-params quant_type=float8_weight_only \
+ --parallel-params 'tp=4,text=true' --quantize-params quant_type=float8_weight_only \
  --steps 4 --track-memory --compile
 # Case: Hybrid Acceleration + Context Parallelism + ControlNet Parallelism, e.g, Z-Image-ControlNet
 torchrun --nproc_per_node=4 -m cache_dit.generate zimage_turbo_controlnet_2.1 --parallel-params 'ulysses=4,controlnet=true' \
@@ -597,7 +597,7 @@ options:
                         weights come from and what else changes. Off by
                         default: the expanded caption is a different input
                         distribution, and the enhancer is 18-19 GiB that no
-                        `--parallel*` option covers.
+                        `--parallel-params` option covers.
   --mask-image-path MASK_IMAGE_PATH
                         Override mask image path if provided
   --last-image-path LAST_IMAGE_PATH
@@ -808,10 +808,10 @@ options:
                         cuts both the resident footprint and the per-step
                         host-to-device traffic. While the AdaLN tables are
                         actually streamed (i.e. without transformer
-                        quantization or `--parallel tp`) each per-block copy
-                        is a graph break, so `--compile` still works but pays
-                        a smaller speedup; `--compile-full-graph` and `--cuda-
-                        graph` are rejected in that case.
+                        quantization or `--parallel-params tp=...`) each per-
+                        block copy is a graph break, so `--compile` still
+                        works but pays a smaller speedup; `--compile-full-
+                        graph` and `--cuda-graph` are rejected in that case.
   --adaln-online        Precompute the AdaLN modulation tables of a MiniMax-H3
                         transformer for the checkpoint's fixed sampling grid,
                         keep the small results on the device and park the 24

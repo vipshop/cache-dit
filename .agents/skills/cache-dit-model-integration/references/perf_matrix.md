@@ -25,20 +25,19 @@ Run order (do not reorder):
 
 | Tier | GPUs | When | Distribution |
 |---|---|---|---|
-| **A** | 1 and 2 | **Default, always.** Every model-support task ends with a Tier A table. | single card, `--parallel-params tp=1`, `--parallel-params ulysses=1` |
-| **B** | 4 | Only when the user asks to extend to 4 cards. | `tp4`, `ulysses4`, hybrid TP2+CP2 (`--parallel-params 'tp=2'`) |
-| **C** | 8 | Only when the user asks to extend to 8 cards. | `tp8`, `ulysses8`, hybrid TP2+CP4 (`ulysses_tp`) / TP4+CP2 (`tp_ulysses`), optional `usp_tp` |
+| **A** | 1 and 2 | **Default, always.** Every model-support task ends with a Tier A table. | single card (no `--parallel-params`), `--parallel-params tp=2`, `--parallel-params ulysses=2` |
+| **B** | 4 | Only when the user asks to extend to 4 cards. | `tp=4`, `ulysses=4`, hybrid TP2+CP2 (`--parallel-params 'tp=2,ulysses=2'`) |
+| **C** | 8 | Only when the user asks to extend to 8 cards. | `tp=8`, `ulysses=8`, hybrid TP2+CP4 (`--parallel-params 'tp=2,ulysses=4'`) / TP4+CP2 (`'tp=4,ulysses=2'`), optional USP+TP (`'ulysses=2,ring=2,tp=2'`) |
 
 Rules:
 
 - **Never open Tier B/C on your own.** An 8-card video row costs hours; the user decides.
 - A machine with a single card still produces a valid Tier A table: drop the 2-GPU rows and say so
   in the caption.
-- 4 cards **cannot** run TP2+CP4 (that needs 8 processes). On 4 cards `CP4` is pure `--parallel
-  ulysses`, and the only hybrid layout is TP2+CP2.
-- On 4 cards `--parallel-params ulysses=2,tp=2` and `--parallel-params tp=2,ulysses=2` resolve to the **same** layout
-  (U2×T2) — run one of them, not both. The 8-card tier is the only place where "Ulysses first" and
-  "TP first" differ, which is exactly why Tier C keeps both.
+- 4 cards **cannot** run TP2+CP4 (that needs 8 processes). On 4 cards `CP4` is pure Ulysses
+  (`--parallel-params 'ulysses=4'`), and the only hybrid layout is TP2+CP2.
+- On 4 cards `--parallel-params ulysses=2,tp=2` and `--parallel-params tp=2,ulysses=2` are the
+  **same** layout (U2×T2) — run one of them, not both; the degree of each axis is all that matters.
 - Card assignment: 1–2 GPU rows use the cache-dit cards assigned by the user (this workspace: 4 and
   5); Tier B/C need more cards, so use the block the user assigns. **Within one table, every row
   must run on the same physical cards** — cross-tier comparison inherits clock/temperature noise.
@@ -49,11 +48,11 @@ Rules:
 |---|---|---|---|---|
 | [ ] | single-GPU bf16 reference | `U1_C0_Q0_NONE_a` / `_b` | – | the reference itself; run it **twice** for the determinism baseline (§2) |
 | [ ] | single-GPU + compile | `U1_C1_Q0_NONE` | `--compile` | ≈30 dB (bf16 is not bit-exact under compile) |
-| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache-params` | hits > 0 on a 30+ step model; record the real `_R` value |
+| [ ] | cache, default threshold | `U1_C0_Q0_DB` | `--cache-params 'type=DBCache'` | hits > 0 on a 30+ step model; record the real `_R` value |
 | [ ] | cache, raised threshold | `U1_C0_Q0_DB_HI` | `--cache-params rdt=<hi>` | required when the default caches 0 steps (distilled models) |
 | [ ] | cache raised + compile | `U1_C1_Q0_DB_HI` | `--cache-params rdt=<hi> --compile` | fastest cache entry |
-| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize --quantize-params quant_type=float8_per_row` | ~26 dB |
-| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-params exclude_layers=` if a gate layer has `min(in, out) < rank` |
+| [ ] | single-GPU fp8 + compile | `U1_C1_FP8_NONE` | `--compile --quantize-params quant_type=float8_per_row` | ~26 dB |
+| [ ] | single-GPU W4A4 + compile | `U1_C1_W4A4_NONE` | `--compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` (sm_89 → `svdq_int4_r64_dq`) | ~23 dB; add `--quantize-params exclude_layers=` if a gate layer has `min(in, out) < rank` |
 | [ ] | layerwise offload (sync) | `U1_C0_Q0_OFF` | `--layerwise-offload` | **PSNR inf** (bit-exact) |
 | [ ] | layerwise offload + async | `U1_C0_Q0_OFFA` | `--layerwise-offload --layerwise-async-transfer` | inf, and faster than the sync row |
 | [ ] | offload + compile | `U1_C1_Q0_OFF` | `--layerwise-offload --compile` | compile-tier drift (≈32 dB), **not** inf |
@@ -62,8 +61,8 @@ Rules:
 | [ ] | TP2 + compile | `TP2_C1_Q0_NONE` | `--parallel-params 'tp=2' --compile` | |
 | [ ] | CP2 | `U2_C0_Q0_NONE` | `--parallel-params 'ulysses=2'` | ≈30 dB; the real latency lever |
 | [ ] | CP2 + compile | `U2_C1_Q0_NONE` | `--parallel-params 'ulysses=2' --compile` | |
-| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel-params 'ulysses=2' --compile --quantize --quantize-params quant_type=float8_per_row` | |
-| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel-params 'ulysses=2' --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` | |
+| [ ] | CP2 + fp8 + compile | `U2_C1_FP8_NONE` | `--parallel-params 'ulysses=2' --compile --quantize-params quant_type=float8_per_row` | |
+| [ ] | CP2 + W4A4 + compile | `U2_C1_W4A4_NONE` | `--parallel-params 'ulysses=2' --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot` | |
 | [ ] | TE-P (run-only) | `TP2_C0_Q0_TEP` | `--parallel-params 'tp=2,text=true' ` | runs, ≈30 dB |
 | [ ] | VAE-P (run-only) | `TP2_C0_Q0_VAEP` | `--parallel-params 'tp=2,vae=true' ` | runs, ≈30 dB |
 
@@ -85,10 +84,10 @@ Rules:
 | [ ] | TP4 + compile | `TP4_C1_Q0_NONE` | `--parallel-params 'tp=4' --compile` |
 | [ ] | CP4 | `U4_C0_Q0_NONE` | `--parallel-params 'ulysses=4'` |
 | [ ] | CP4 + compile | `U4_C1_Q0_NONE` | `--parallel-params 'ulysses=4' --compile` |
-| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel-params 'ulysses=4' --cache-params` |
+| [ ] | CP4 + cache | `U4_C0_Q0_DB` | `--parallel-params 'ulysses=4' --cache-params 'type=DBCache'` |
 | [ ] | **TP2 + CP2 (Ulysses)** | `U2T2_C0_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2'` |
 | [ ] | TP2 + CP2 + compile | `U2T2_C1_Q0_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile` |
-| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row` |
+| [ ] | TP2 + CP2 + fp8 + compile | `U2T2_C1_FP8_NONE` | `--parallel-params 'ulysses=2,tp=2' --compile --quantize-params quant_type=float8_per_row` |
 
 ### Tier C checklist (8 GPUs, on request)
 
@@ -98,12 +97,12 @@ Rules:
 | [ ] | TP8 + compile | `TP8_C1_Q0_NONE` | `--parallel-params 'tp=8' --compile` |
 | [ ] | CP8 | `U8_C0_Q0_NONE` | `--parallel-params 'ulysses=8'` |
 | [ ] | CP8 + compile | `U8_C1_Q0_NONE` | `--parallel-params 'ulysses=8' --compile` |
-| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel-params 'ulysses=8' --cache-params` |
-| [ ] | **TP2 + CP4 (Ulysses first)** | `U4T2_C0_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2'` |
+| [ ] | CP8 + cache | `U8_C0_Q0_DB` | `--parallel-params 'ulysses=8' --cache-params 'type=DBCache'` |
+| [ ] | **TP2 + CP4** | `U4T2_C0_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2'` |
 | [ ] | TP2 + CP4 + compile | `U4T2_C1_Q0_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile` |
-| [ ] | **TP4 + CP2 (TP first)** | `T4U2_C0_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2'` |
+| [ ] | **TP4 + CP2** | `T4U2_C0_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2'` |
 | [ ] | TP4 + CP2 + compile | `T4U2_C1_Q0_NONE` | `--parallel-params 'tp=4,ulysses=2' --compile` |
-| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row` |
+| [ ] | TP2 + CP4 + fp8 + compile | `U4T2_C1_FP8_NONE` | `--parallel-params 'ulysses=4,tp=2' --compile --quantize-params quant_type=float8_per_row` |
 | [ ] | optional: USP+TP | `U2R2T2_C0_Q0_NONE` | `--parallel-params 'ulysses=2,ring=2,tp=2'` (8 ranks only) |
 
 ## 2. Fixed conditions — every row must share them
@@ -164,20 +163,23 @@ transformers, joint video+audio where the AdaLN tables alone can be a third of t
 
 ## 3. Distributed size mapping and preflight
 
-`--parallel` is resolved into (ulysses, ring, tp) sizes by
-`cli/optimize.py::_prepare_distributed_size()`; the mapping is fixed, not free-form:
+`--parallel-params` takes the real degree of each axis (`ulysses`, `ring`, `tp`; default 1) and
+`cli/optimize.py::_prepare_distributed_size()` passes them to the mesh; their product must equal the
+process count. There is no `--parallel` type table:
 
-| `--parallel` | ws=2 | ws=4 | ws=8 | notes |
+| axes | ws=2 | ws=4 | ws=8 | notes |
 |---|---|---|---|---|
-| `tp` | T2 | T4 | T8 | shards weights; all-gather in every block |
-| `ulysses` | U2 | U4 | U8 | CP; the latency lever |
-| `ring` | R2 | R4 | R8 | CP; rotates KV, fp32 by default |
-| `usp` | U1×R2 (= pure Ring2) | U2×R2 | U4×R2 | Ulysses + Ring |
-| `ulysses_tp` | U1×T2 (= **pure TP2**) | U2×T2 | U4×T2 | Ulysses first |
-| `tp_ulysses` | T1×U2 (= **pure CP2**) | T2×U2 | T4×U2 | TP first; same as `ulysses_tp` at ws=4 |
-| `ring_tp` | R1×T2 (= pure TP2) | R2×T2 | R4×T2 | Ring first |
-| `tp_ring` | T1×R2 (= pure CP2) | T2×R2 | T4×R2 | TP first |
-| `usp_tp` | assert | assert | U2×R2×T2 | asserts `world_size == 8` (plain `assert`, skipped under `python -O`) |
+| `tp=T` | T2 | T4 | T8 | shards weights; all-gather in every block |
+| `ulysses=U` | U2 | U4 | U8 | CP; the latency lever |
+| `ring=R` | R2 | R4 | R8 | CP; rotates KV, fp32 by default |
+| `ulysses=U,ring=R` | U1×R2 | U2×R2 | U4×R2 | USP (Ulysses + Ring) |
+| `ulysses=U,tp=T` | U1×T2 | U2×T2 | U4×T2 | order is irrelevant, only the degrees matter |
+| `ring=R,tp=T` | R1×T2 | R2×T2 | R4×T2 | |
+| `ulysses=2,ring=2,tp=2` | — | — | U2×R2×T2 | product must equal 8 |
+
+An axis whose degree is 1 is not built (inactive axes stay `None`). A lone degree of 1
+(`--parallel-params tp=1`) still initializes a process group, so only use it under
+`torchrun --nproc_per_node=1`; a plain single-card run passes no parallel flag at all.
 
 Preflight before blaming a crash on the integration:
 
@@ -258,8 +260,8 @@ run U1_C1_Q0_NONE            --compile
 run U1_C0_Q0_DB --cache-params 'type=DBCache' # read the effective _R from the tag
 run U1_C0_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' # distilled models need the raised one
 run U1_C1_Q0_DB_HI --cache-params 'type=DBCache,rdt=0.20' --compile
-run U1_C1_FP8_NONE           --compile --quantize --quantize-params quant_type=float8_per_row
-run U1_C1_W4A4_NONE          --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
+run U1_C1_FP8_NONE --compile --quantize-params quant_type=float8_per_row
+run U1_C1_W4A4_NONE --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run U1_C0_Q0_OFF             --layerwise-offload
 run U1_C0_Q0_OFFA            --layerwise-offload --layerwise-async-transfer
 run U1_C1_Q0_OFF             --layerwise-offload --compile
@@ -273,8 +275,8 @@ run TP2_C0_Q0_NONE --parallel-params 'tp=2'
 run TP2_C1_Q0_NONE --parallel-params 'tp=2' --compile
 run U2_C0_Q0_NONE --parallel-params 'ulysses=2'
 run U2_C1_Q0_NONE --parallel-params 'ulysses=2' --compile
-run U2_C1_FP8_NONE --parallel-params 'ulysses=2' --compile --quantize --quantize-params quant_type=float8_per_row
-run U2_C1_W4A4_NONE --parallel-params 'ulysses=2' --compile --quantize --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
+run U2_C1_FP8_NONE --parallel-params 'ulysses=2' --compile --quantize-params quant_type=float8_per_row
+run U2_C1_W4A4_NONE --parallel-params 'ulysses=2' --compile --quantize-params quant_type=svdq_nvfp4_r64_dq --svdq-params smooth_strategy=few_shot
 run TP2_C0_Q0_TEP --parallel-params 'tp=2,text=true' # run-only
 run TP2_C0_Q0_VAEP --parallel-params 'tp=2,vae=true' # run-only
 ```
@@ -302,7 +304,7 @@ run U4_C1_Q0_NONE --parallel-params 'ulysses=4' --compile
 run U4_C0_Q0_DB --parallel-params 'ulysses=4' --cache-params 'type=DBCache'
 run U2T2_C0_Q0_NONE --parallel-params 'ulysses=2,tp=2'
 run U2T2_C1_Q0_NONE --parallel-params 'ulysses=2,tp=2' --compile
-run U2T2_C1_FP8_NONE --parallel-params 'ulysses=2,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row
+run U2T2_C1_FP8_NONE --parallel-params 'ulysses=2,tp=2' --compile --quantize-params quant_type=float8_per_row
 ```
 
 Tier C (8 GPUs):
@@ -315,11 +317,11 @@ run TP8_C1_Q0_NONE --parallel-params 'tp=8' --compile
 run U8_C0_Q0_NONE --parallel-params 'ulysses=8'
 run U8_C1_Q0_NONE --parallel-params 'ulysses=8' --compile
 run U8_C0_Q0_DB --parallel-params 'ulysses=8' --cache-params 'type=DBCache'
-run U4T2_C0_Q0_NONE --parallel-params 'ulysses=4,tp=2' # TP2 + CP4, Ulysses first
+run U4T2_C0_Q0_NONE --parallel-params 'ulysses=4,tp=2' # TP2 + CP4
 run U4T2_C1_Q0_NONE --parallel-params 'ulysses=4,tp=2' --compile
-run T4U2_C0_Q0_NONE --parallel-params 'tp=4,ulysses=2' # TP4 + CP2, TP first
+run T4U2_C0_Q0_NONE --parallel-params 'tp=4,ulysses=2' # TP4 + CP2
 run T4U2_C1_Q0_NONE --parallel-params 'tp=4,ulysses=2' --compile
-run U4T2_C1_FP8_NONE --parallel-params 'ulysses=4,tp=2' --compile --quantize --quantize-params quant_type=float8_per_row
+run U4T2_C1_FP8_NONE --parallel-params 'ulysses=4,tp=2' --compile --quantize-params quant_type=float8_per_row
 run U2R2T2_C0_Q0_NONE --parallel-params 'ulysses=2,ring=2,tp=2' # optional
 ```
 

@@ -57,7 +57,7 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
           "such a step expand the prompt with it instead of rendering the prompt as given; the "
           "per-example docstring says where the weights come from and what else changes. Off by "
           "default: the expanded caption is a different input distribution, and the enhancer is "
-          "18-19 GiB that no `--parallel*` option covers."),
+          "18-19 GiB that no `--parallel-params` option covers."),
   )
   parser.add_argument(
     "--mask-image-path",
@@ -397,8 +397,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
       "Intended for joint video + audio models whose AdaLN tables are a large share of the "
       "transformer weights (e.g. MiniMax-H3: 24 GiB of 62 GiB), where it cuts both the "
       "resident footprint and the per-step host-to-device traffic. While the AdaLN tables are "
-      "actually streamed (i.e. without transformer quantization or `--parallel tp`) each per-block "
-      "copy is a graph break, so `--compile` still works but pays a smaller speedup; "
+      "actually streamed (i.e. without transformer quantization or `--parallel-params tp=...`) each "
+      "per-block copy is a graph break, so `--compile` still works but pays a smaller speedup; "
       "`--compile-full-graph` and `--cuda-graph` are rejected in that case."),
   )
   offload_group.add_argument(

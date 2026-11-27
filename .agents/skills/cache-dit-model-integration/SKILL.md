@@ -191,7 +191,7 @@ flowchart TD
     SM --> UA
     HY --> UA
     UA{"num_kv_heads or sequence length not divisible by cp_size?"}
-    UA -->|"Yes"| UAA["Enable UAA: --parallel-params ulysses_anything=true - cp.md"]
+    UA -->|"Yes"| UAA["Enable UAA: add ulysses_anything=true to the CP --parallel-params value - cp.md"]
     UA -->|"No"| VF
     UAA --> VF["Verify: top-left corner clean, PSNR > 35, SSIM > 0.90"]
 ```
@@ -524,7 +524,7 @@ For a detailed walkthrough, see the official PyTorch tutorial: https://docs.pyto
 
 ### 4.1 Concept
 
-TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-text` (or `--parallel-params text=true`).
+TE-P shards the text encoder (e.g., T5, CLIP) across GPUs using the same TP mechanism. It is independent of transformer TP — you can use TE-P with or without transformer TP. Activate via `--parallel-params text=true`.
 
 > Detailed support checks, HuggingFace `base_model_tp_plan` guidance, planner templates, and registration live in [`./references/tep.md`](./references/tep.md).
 
@@ -658,6 +658,6 @@ Read these only when the current phase needs them:
 | Checkpoint loader | [`./references/loader.md`](./references/loader.md) | Adding a `BaseLoader` subclass to convert FP8/fused/renamed checkpoints inside the patched `from_pretrained`; Ideogram 4 is the reference case. |
 | Install | [`./references/install.md`](./references/install.md) | Preparing the `cdit` environment, installing editable cache-dit, or deciding whether SVDQuant/CUDA rebuilds are needed. |
 | Testing | [`./references/testing.md`](./references/testing.md) | Running baseline, Cache, CP, TP, TE-P, VAE-P, final metrics, and debugging checks; §7.6 holds the acceptance gates of the full matrix. |
-| Performance matrix | [`./references/perf_matrix.md`](./references/perf_matrix.md) | Benchmarking an already-supported model: row checklist (Tier A 1/2 GPUs default, Tier B 4 GPUs / Tier C 8 GPUs on request), `--parallel` × world-size mapping and hybrid preflight, command templates, mean/min measurement, audio metrics (`-a1/-a2`, `mel_ssim`/`si_sdr`, the `inf` = bit-identical reading), table conventions, and the modality-agnostic latency\|quality chart template (§8). |
+| Performance matrix | [`./references/perf_matrix.md`](./references/perf_matrix.md) | Benchmarking an already-supported model: row checklist (Tier A 1/2 GPUs default, Tier B 4 GPUs / Tier C 8 GPUs on request), `--parallel-params` degree × world-size mapping and hybrid preflight, command templates, mean/min measurement, audio metrics (`-a1/-a2`, `mel_ssim`/`si_sdr`, the `inf` = bit-identical reading), table conventions, and the modality-agnostic latency\|quality chart template (§8). |
 | Model download | [`./references/model_download.md`](./references/model_download.md) | Fetching model weights to `/workspace/dev/vipdev/hf_models/` — ModelScope first (`modelscope-hub` CLI), HF fallback. |
 | Pending models RFC | [`./references/rfc_pending_models.md`](./references/rfc_pending_models.md) | Models not yet supported by cache-dit, ordered by integration difficulty, with per-model notes, exclusions, and status tracking: diffusers v0.38+ (R.2) plus community-hot models without a diffusers implementation (R.6). |

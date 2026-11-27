@@ -6,9 +6,15 @@ sys.path.append("..")
 import time
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel
-from utils import get_args, strify, MemoryTracker
+from cache_dit.cli.utils import (
+  DEFAULT_RESIDUAL_DIFF_THRESHOLD,
+  MemoryTracker,
+  build_calibrator_config,
+  get_args,
+  maybe_postprocess_args,
+  strify,
+)
 import cache_dit
-from cache_dit.cli.utils import build_calibrator_config, resolve_calibrator_params
 from cache_dit.platforms import current_platform
 
 parser = get_args(parse=False)
@@ -24,11 +30,7 @@ parser.add_argument(
   default="dynamic",
   choices=["dynamic", "static"],
 )
-args = parser.parse_args()
-if args.calibrator is None and args.calibrator_params:
-  parser.error("--calibrator-params requires --calibrator.")
-args.calibrator_fields = (resolve_calibrator_params(args.calibrator, args.calibrator_params)
-                          if args.calibrator is not None else None)
+args = maybe_postprocess_args(parser.parse_args())
 print(args)
 
 step_mask_aliases = {
@@ -47,8 +49,8 @@ step_computation_dynamic_policy_rdt = {
   "ultra": 0.34,
 }
 
-if args.rdt == 0.08:  # default
-  args.rdt = step_computation_dynamic_policy_rdt[args.step_mask]
+if args.residual_diff_threshold == DEFAULT_RESIDUAL_DIFF_THRESHOLD:
+  args.residual_diff_threshold = step_computation_dynamic_policy_rdt[args.step_mask]
 
 pipe = FluxPipeline.from_pretrained(
   (args.model_path if args.model_path is not None else os.environ.get(
@@ -66,19 +68,19 @@ if args.cache:
     pipe,
     cache_config=DBCacheConfig(
       # Basic DBCache configs
-      Fn_compute_blocks=args.Fn,
-      Bn_compute_blocks=args.Bn,
+      Fn_compute_blocks=args.Fn_compute_blocks,
+      Bn_compute_blocks=args.Bn_compute_blocks,
       max_warmup_steps=args.max_warmup_steps,
       warmup_interval=args.warmup_interval,
       max_cached_steps=args.max_cached_steps,
       max_continuous_cached_steps=args.max_continuous_cached_steps,
-      residual_diff_threshold=args.rdt,
+      residual_diff_threshold=args.residual_diff_threshold,
       # LeMiCa or EasyCache style Mask for 28 steps, e.g,
       # slow: 11111111 0 111 00 111 00 11 00 1 000 1,
       # 1: full compute steps, 0: dynamic/static cache.
       steps_computation_mask=cache_dit.steps_mask(
         mask_policy=args.step_mask,  # slow, medium, fast, ultra.
-        total_steps=28 if args.steps is None else args.steps,
+        total_steps=28 if args.num_inference_steps is None else args.num_inference_steps,
       ),
       # The policy for cache steps can be 'dynamic' or 'static'
       steps_computation_policy=args.step_policy,
@@ -127,7 +129,7 @@ def run_pipe():
     prompt,
     height=1024 if args.height is None else args.height,
     width=1024 if args.width is None else args.width,
-    num_inference_steps=28 if args.steps is None else args.steps,
+    num_inference_steps=28 if args.num_inference_steps is None else args.num_inference_steps,
     generator=torch.Generator("cpu").manual_seed(0),
   ).images[0]
   return image
@@ -156,12 +158,12 @@ print(f"Time cost: {time_cost:.2f}s")
 print(f"Saving image to {save_path}")
 image.save(save_path)
 
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy static
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask s --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask m --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask f --step-policy dynamic --calibrator taylorseer --calibrator-params order=1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --calibrator taylorseer --calibrator-params order=1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --calibrator taylorseer --calibrator-params order=1
-# python3 run_steps_mask.py --cache --Fn 1 --step-mask u --step-policy dynamic --compile --calibrator taylorseer --calibrator-params order=1 --quantize --quantize-type float8 --attn sage
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask s --step-policy static
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask s --step-policy dynamic
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask m --step-policy dynamic
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask f --step-policy dynamic
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask f --step-policy dynamic --calibrator-params 'taylorseer,order=1'
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask u --step-policy dynamic
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask u --step-policy dynamic --calibrator-params 'taylorseer,order=1'
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask u --step-policy dynamic --compile --calibrator-params 'taylorseer,order=1'
+# python3 run_steps_mask.py --cache-params 'type=DBCache,Fn=1' --step-mask u --step-policy dynamic --compile --calibrator-params 'taylorseer,order=1' --quantize-params quant_type=float8_per_row --attn-params type=sage

@@ -20,8 +20,8 @@ Quick start for Cache-DiT example CLI: NVIDIA L20 x 1, FLUX.1-dev, 28 steps, 102
 ```bash
 python3 -m cache_dit.generate flux --compile --no-regional-compile 
 python3 -m cache_dit.generate flux --compile --cuda-graph --no-regional-compile 
-python3 -m cache_dit.generate flux --compile --no-regional-compile --quantize --quantize-params quant_type=float8_per_tensor 
-python3 -m cache_dit.generate flux --compile --no-regional-compile --quantize --quantize-params quant_type=float8_per_tensor --cuda-graph 
+python3 -m cache_dit.generate flux --compile --no-regional-compile --quantize-params quant_type=float8_per_tensor
+python3 -m cache_dit.generate flux --compile --no-regional-compile --quantize-params quant_type=float8_per_tensor --cuda-graph
 ```
 
 First-run includes compile, warmup (2 times) and repeat (2 times); steady-state is after warmup. For FLUX.1-dev, we see a modest speedup in steady-state runs after enabling CUDA Graphs, which suggests that GPU execution is already efficient and CUDA Graphs are effectively reducing CPU launch overhead.
@@ -43,13 +43,13 @@ Command line options in Cache-DiT example CLI:
 nsys profile --stats=true -t cuda,nvtx,osrt --cuda-graph-trace=graph \
   --force-overwrite=true --delay 100 -o flux_cuda_graph \
   python3 -m cache_dit.generate flux --compile \
-  --no-regional-compile --steps 28 --quantize --quantize-params quant_type=float8_per_tensor \
+  --no-regional-compile --steps 28 --quantize-params quant_type=float8_per_tensor \
   --cuda-graph
 # Nsys profiling without CUDA Graphs
 nsys profile --stats=true -t cuda,nvtx,osrt --force-overwrite=true \
   --delay 100 -o flux_no_cuda_graph \
   python3 -m cache_dit.generate flux --compile \
-  --no-regional-compile --steps 28 --quantize --quantize-params quant_type=float8_per_tensor
+  --no-regional-compile --steps 28 --quantize-params quant_type=float8_per_tensor
 ```
 
 ## FP8 Rowwise and CUDA Graphs

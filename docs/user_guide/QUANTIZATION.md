@@ -69,7 +69,7 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
+  --quantize-params quant_type=float8_per_row,backend=cache_dit --compile
 ```
 
 The native backend keeps the exact TorchAO granularity semantics: `float8_per_row` means per-token activations and per-output-channel weights (per-col of the mathematical `B`), `float8_per_tensor` uses one scale for the whole tensor, and `float8_per_block` uses activation blocks of `(1, 128)` and weight blocks of `(128, 128)` with a rescale after every 128 K elements. The low-level `fp8_gemm` accepts `use_native`; leave it enabled for the default CUTLASS path, or disable it to compare per-row/per-tensor against `torch._scaled_mm`.
@@ -89,7 +89,7 @@ cache_dit.quantize(pipe.transformer, config)
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize --quantize-params backend=cache_dit,fp8_fused_mlp=true
+  --quantize-params backend=cache_dit,fp8_fused_mlp=true
 ```
 
 Three structural passes are supported: standard diffusers `FeedForward` blocks with exact or tanh GELU, single-stream `proj_mlp -> GELU -> concat` blocks such as FLUX, and SwiGLU blocks with either separate value/gate projections or one half-split projection. The logs report the number of targets for each pass; enabling the option on a module with no supported target raises an error.
@@ -216,7 +216,7 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize --quantize-params quant_type=nvfp4,backend=cache_dit --compile
+  --quantize-params quant_type=nvfp4,backend=cache_dit --compile
 ```
 
 The cache-dit path provides online NVFP4 W4A4 inference: each weight is
@@ -259,7 +259,7 @@ cache_dit.quantize(pipe.transformer, config)
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize --quantize-params quant_type=nvfp4,backend=cache_dit,fp4_fused_mlp=true --compile
+  --quantize-params quant_type=nvfp4,backend=cache_dit,fp4_fused_mlp=true --compile
 ```
 
 The supported structures match native FP8: standard diffusers FeedForward with
@@ -301,7 +301,7 @@ cache_dit.quantize(
 
 ```bash
 python3 -m cache_dit.generate flux --model-path /PATH/TO/FLUX.1-dev \
-  --quantize --quantize-params quant_type=mxfp4_weight_only --compile
+  --quantize-params quant_type=mxfp4_weight_only --compile
 ```
 
 Requirements and limits:
@@ -409,7 +409,7 @@ For examples, without fp8 per-tensor fallback, the cache-dit will auto skip the 
 ```bash
 # w/o fp8 per-tensor fallback, quantize 88 layers, skip 56 layers, performance downgrade.
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
- --parallel-params 'tp=2' --compile --quantize --quantize-params \
+ --parallel-params 'tp=2' --compile --quantize-params \
  quant_type=float8_per_row,verbose=true,per_tensor_fallback=false
 ```
 
@@ -435,7 +435,7 @@ With fp8 per-tensor fallback enabled, those layers that do not support float8 pe
 ```bash
 # w/ fp8 per-tensor fallback enabled, quantize 144 layers, skip 0 layer, better performance.
 torchrun --nproc_per_node=2 -m cache_dit.generate flux2_klein_9b_kv_edit \
- --parallel-params 'tp=2' --compile --quantize --quantize-params quant_type=float8_per_row,verbose=true 
+ --parallel-params 'tp=2' --compile --quantize-params quant_type=float8_per_row,verbose=true
 ```
 ```bash
 # Default, enabled fp8 per-tensor fallback
@@ -607,9 +607,9 @@ cache_dit.enable_cache(
 The current implementation requires Blackwell or newer GPUs (SM100+) and skips Linear layers whose two weight dimensions are not divisible by 16 or whose output dimensions are too small for the NVFP4 kernel. The supported CLI options are:
 
 ```bash
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=nvfp4
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=nvfp4 --compile
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=nvfp4_weight_only
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4 --compile
+python3 -m cache_dit.generate flux --quantize-params quant_type=nvfp4_weight_only
 ```
 
 The model must use bfloat16 Linear weights. The Triton activation kernel can fall back internally when a runtime shape does not satisfy its kernel constraints.
@@ -1009,23 +1009,23 @@ Intuitively, <span style="color:green;">weight_inv</span> does the opposite trad
 
 ```bash
 # default: identity smooth strategy
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params smooth_strategy=identity,calibrate_precision=low
 
 # experimental: weight-only heuristic
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params smooth_strategy=weight,calibrate_precision=low
 
 # experimental: bias the trade-off toward easier activation quantization
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params smooth_strategy=weight_inv,calibrate_precision=low
 
 # high-rank are recommended for better precision while using SVDQ DQ, e.g, 256.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r256_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r256_dq \
   --svdq-params smooth_strategy=identity,calibrate_precision=low
 
 # higher SVD decomposition precision may be helpful for better DQ accuracy.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r256_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r256_dq \
   --svdq-params smooth_strategy=identity,calibrate_precision=medium
 ```
 
@@ -1150,31 +1150,31 @@ The same workflow is available from the generate CLI through <span style="color:
 
 ```bash  
 # few-shot activation-derived DQ: sample one runtime forward, then quantize.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,smooth_strategy=few_shot
 
 # few-shot fixed: keep the observed activation span unchanged, then recompute smooth scale.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_strategy=fixed,smooth_strategy=few_shot
 
 # few-shot auto relax: larger activation spans receive larger relax factors, capped at 1.5.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=auto,smooth_strategy=few_shot
 
 # few-shot stable_auto relax: keep the same auto trend, but bucketize it for better stability.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=stable_auto,smooth_strategy=few_shot
 
 # few-shot power relax: focus the extra amplification on the largest channels.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=power,smooth_strategy=few_shot
 
 # few-shot rank relax: assign relax factors from channel rank percentiles.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_relax_factor=1.5,few_shot_relax_top_ratio=0.25,few_shot_relax_strategy=rank,smooth_strategy=few_shot
 
 # few-shot + deferred compile after runtime quantization completes.
-python -m cache_dit.generate flux2_klein_4b --quantize --quantize-params quant_type=svdq_int4_r128_dq \
+python -m cache_dit.generate flux2_klein_4b --quantize-params quant_type=svdq_int4_r128_dq \
   --svdq-params few_shot_steps=1,few_shot_auto_compile=true,smooth_strategy=few_shot
 
 # Tip: increase `few_shot_steps` from 1 to a larger number if you want to collect more
@@ -1399,7 +1399,7 @@ python3 -m cache_dit.quantization.converter \
 | :--- | :---: | :---: | :--- |
 | `--model-path` | yes | — | Path to the pretrained diffusion model directory (e.g. `/path/to/FLUX.1-dev`). |
 | `--save-dir` | yes | — | Directory where the quantized checkpoint (`{quant_type}.safetensors`) and `quant_config.json` are saved. |
-| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen and underscore forms, including `svdq-int4-r128-dq`, `svdq-nvfp4-r128-dq`, and `svdq-fp8-r128-dq`. Currently only `_dq` types are supported. |
+| `--quant-type` | yes | — | SVDQ quant type, accepting both hyphen and underscore forms, including `svdq-int4-r128-dq`, `svdq-nvfp4-r128-dq`, `svdq-fp8-r128-dq`, and `svdq-w4a8-r128-dq`. Currently only `_dq` types are supported. |
 | `--torch-dtype` | no | `bfloat16` | Torch dtype used when loading the float pipeline. One of: `float16`, `bfloat16`, `float32`. |
 | `--device` | no | `cuda` | Device to run quantization on. |
 | `--svdq-params` | no | — | SVDQ options as `k=v,k=v`. `smooth_strategy` (default `identity`) is one of `identity`, `weight`, `weight_inv`, `few_shot` (see the [SVDQuant DQ section](#svdquant-w4a4-dq)); `calibrate_precision` (default `low`) is one of `low`, `medium`, `high`; `runtime_kernel` (default automatic: `native` for both INT4 and NVFP4) is one of `native`, `cute`, `flashinfer`, `flashinfer+cute-dsl`, or `flashinfer+cutlass-sm120`. The flashinfer runtimes are comparison paths (see [SVDQ Runtime Kernel](#svdq-runtime-kernel)); bare `flashinfer` maps to `flashinfer+cutlass-sm120`. |
@@ -1421,13 +1421,14 @@ Output:
 ```
 Loading pipeline from black-forest-labs/FLUX.2-klein-4B ...
 Pipeline loaded: Flux2KleinPipeline
-Transformer memory before quantize: 7.22 GiB
-Quantizing transformer (svdq_int4_r128_dq) and saving to ./FLUX.2-klein-4B-svdq ...
+Transformer 'transformer' memory before quantize: 7.22 GiB
+Quantizing transformer 'transformer' (svdq_int4_r128_dq) and saving to ./FLUX.2-klein-4B-svdq ...
 Transformer memory after quantize: 2.28 GiB (3.2x reduction)
 Quantized checkpoint saved to ./FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors
 Quant config saved to ./FLUX.2-klein-4B-svdq/quant_config.json
 Conversion complete. Load the quantized model with:
-  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq/')
+  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq')
+  cache_dit.load(transformer, './FLUX.2-klein-4B-svdq/svdq_int4_r128_dq.safetensors')
 ```
 
 **Experimental weight-only smooth strategy:**
@@ -1513,22 +1514,22 @@ quant_config = QuantizeConfig(
 The generate CLI exposes both selectors through <span style="color:#c77dff;">--svdq-params</span>: <span style="color:#c77dff;">runtime_kernel=...</span> for the backend family and <span style="color:#c77dff;">lora_layout=...</span> for the `D` contract (omitting `runtime_kernel` keeps the same native default):
 
 ```bash
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_int4_r64_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_int4_r64_dq \
   --svdq-params runtime_kernel=native --compile
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=cute,lora_layout=row_major --compile
 # FlashInfer comparison runtimes (optional dependency, never the default).
 # Bare `flashinfer` == `flashinfer+cutlass-sm120` (ranks 32/64, SM120 only).
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=flashinfer
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=flashinfer+cute-dsl
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r128_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r128_dq \
   --svdq-params runtime_kernel=flashinfer+cute-dsl
 # Fused MLP: works on both runtimes and both D layouts.
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params fused_mlp=true
-python3 -m cache_dit.generate flux --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate flux --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=cute,fused_mlp=true
 ```
 
@@ -1688,6 +1689,6 @@ The gate is fused into the activation producer of ``down`` instead of the GEMM e
 
 ```bash
 # Qwen-Image-2.1 style gated MLP on the CuTe GEMM with its default row-major D contract.
-python3 -m cache_dit.generate qwen_image_21_turbo --quantize --quantize-params quant_type=svdq_nvfp4_r32_dq \
+python3 -m cache_dit.generate qwen_image_21_turbo --quantize-params quant_type=svdq_nvfp4_r32_dq \
   --svdq-params runtime_kernel=cute,fused_mlp=true
 ```

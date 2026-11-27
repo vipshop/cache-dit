@@ -1,6 +1,6 @@
 ---
 name: cache-dit-distributed
-description: "Understand, extend or debug cache-dit's distributed module (src/cache_dit/distributed/): ParallelismConfig and ParallelismBackend selection, the CP plan DSL and split/gather hooks, Ring / Ulysses / USP attention and the all-to-all + P2P primitives (incl. FP4/FP6/FP8 Ulysses communication and async Ulysses), tensor parallelism planners and the CP+TP hybrid 3D mesh, and the text-encoder / VAE / ControlNet parallelism paths. Use when a --parallel / parallelism_config run fails or produces wrong output, when adding a CP or TP planner for a model, when choosing ulysses vs ring vs usp vs tp, when a cache plan and a CP plan interact (Bn_compute_blocks), when VAE-P tiles desync, or when reviewing such a PR. 触发词：distributed 模块、并行推理、CP/TP/USP 报错、UAA、ulysses、ring、TP planner、CP plan、VAE 并行、text encoder 并行、mesh 建错、all2all 通信。"
+description: "Understand, extend or debug cache-dit's distributed module (src/cache_dit/distributed/): ParallelismConfig and ParallelismBackend selection, the CP plan DSL and split/gather hooks, Ring / Ulysses / USP attention and the all-to-all + P2P primitives (incl. FP4/FP6/FP8 Ulysses communication and async Ulysses), tensor parallelism planners and the CP+TP hybrid 3D mesh, and the text-encoder / VAE / ControlNet parallelism paths. Use when a --parallel-params / parallelism_config run fails or produces wrong output, when adding a CP or TP planner for a model, when choosing ulysses vs ring vs usp vs tp, when a cache plan and a CP plan interact (Bn_compute_blocks), when VAE-P tiles desync, or when reviewing such a PR. 触发词：distributed 模块、并行推理、CP/TP/USP 报错、UAA、ulysses、ring、TP planner、CP plan、VAE 并行、text encoder 并行、mesh 建错、all2all 通信。"
 user-invocable: true
 ---
 
@@ -112,7 +112,7 @@ enable_cache(pipe, parallelism_config=...)
 
 | 文件 | 改什么 |
 |---|---|
-| `docs/user_guide/CONTEXT_PARALLEL.md` | 用户可见的 `--parallel` 组合、UAA / async / FP4-8 通信、Ring / USP 说明 |
+| `docs/user_guide/CONTEXT_PARALLEL.md` | 用户可见的 `--parallel-params` 组合、UAA / async / FP4-8 通信、Ring / USP 说明 |
 | `docs/user_guide/API_DOCS.md` | `ParallelismConfig` 字段语义 |
 | `docs/developer_guide/AGENTS.md` | 只有新增/删除 skill 时才动 |
 | `docs/EXAMPLES.md` | 代表性多卡命令 |

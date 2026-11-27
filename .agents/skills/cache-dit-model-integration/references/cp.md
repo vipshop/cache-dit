@@ -382,7 +382,9 @@ MyModelContextParallelismPlanner = _safe_import(
 1. **Head count not divisible by `cp_size`** — e.g., `num_kv_heads=7` with `cp_size=2`.
 2. **Sequence length not divisible by `cp_size`** — uneven sequence splits.
 
-UAA is enabled via the `--parallel-params ulysses_anything=true` CLI flag:
+UAA is enabled by adding `ulysses_anything=true` to the same `--parallel-params` value that sets the
+CP degree — e.g. `--parallel-params 'ulysses=2,ulysses_anything=true'`. A value with only
+`ulysses_anything` builds no parallel config and is a silent no-op:
 
 ```bash
 # task: task name for logging and output organization
