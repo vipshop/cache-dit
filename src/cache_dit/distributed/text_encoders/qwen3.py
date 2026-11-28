@@ -10,16 +10,47 @@ from torch.distributed.tensor.parallel import (
   parallelize_module,
 )
 
-from ...logger import init_logger
 from ...utils import maybe_empty_cache
 from ..config import ParallelismConfig
+from ..linear_sharding import shard_linear_weights, validate_local_weight_shards
 
 from .register import (
   TextEncoderTensorParallelismPlanner,
   TextEncoderTensorParallelismPlannerRegister,
 )
 
-logger = init_logger(__name__)
+_QWEN3_LAYER_STYLES = {
+  "self_attn.q_proj": ColwiseParallel,
+  "self_attn.k_proj": ColwiseParallel,
+  "self_attn.v_proj": ColwiseParallel,
+  "self_attn.o_proj": RowwiseParallel,
+  "mlp.gate_proj": ColwiseParallel,
+  "mlp.up_proj": ColwiseParallel,
+  "mlp.down_proj": RowwiseParallel,
+}
+
+
+def _parallelize_layers(
+  layers: torch.nn.ModuleList,
+  tp_mesh: DeviceMesh,
+  decoder_layer_type: type[torch.nn.Module],
+  *,
+  local_weight_shards: bool = False,
+) -> List[Dict[str, ParallelStyle]]:
+  layer_plan = {path: make_style() for path, make_style in _QWEN3_LAYER_STYLES.items()}
+  layer_plans = []
+  # Visit shared decoder blocks once in the same order as preflight.
+  for _, block in layers.named_children():
+    if local_weight_shards:
+      for path, style in layer_plan.items():
+        shard_linear_weights(block.get_submodule(path), tp_mesh, style)
+    else:
+      assert isinstance(block, decoder_layer_type)
+    parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
+    layer_plans.append(layer_plan)
+
+  maybe_empty_cache()
+  return layer_plans
 
 
 # Text Encoder for Z-Image, Ovis-Image
@@ -38,12 +69,10 @@ class Qwen3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
       (Qwen3Model, Qwen3ForCausalLM
        )), "Qwen3TensorParallelismPlanner can only be applied to Qwen3 Language Models."
     tp_mesh = self.mesh(parallelism_config=parallelism_config)
-    text_encoder, layer_plans = self.parallelize_text_encoder(
+    return self.parallelize_text_encoder(
       text_encoder=text_encoder,
       tp_mesh=tp_mesh,
     )
-
-    return text_encoder, layer_plans
 
   def parallelize_text_encoder(
     self,
@@ -52,77 +81,58 @@ class Qwen3TensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     from transformers.models.qwen3.modeling_qwen3 import Qwen3DecoderLayer
 
-    if isinstance(text_encoder, Qwen3ForCausalLM):
-      model = text_encoder.model
-    else:
-      model = text_encoder
-
+    model = text_encoder.model if isinstance(text_encoder, Qwen3ForCausalLM) else text_encoder
     assert isinstance(model, Qwen3Model), "model must be an instance of Qwen3Model."
-    layer_plans = []
-    for _, block in model.layers.named_children():
-      assert isinstance(block, Qwen3DecoderLayer)
-      layer_plan = {
-        "self_attn.q_proj": ColwiseParallel(),
-        "self_attn.k_proj": ColwiseParallel(),
-        "self_attn.v_proj": ColwiseParallel(),
-        "self_attn.o_proj": RowwiseParallel(),
-        "mlp.gate_proj": ColwiseParallel(),
-        "mlp.up_proj": ColwiseParallel(),
-        "mlp.down_proj": RowwiseParallel(),
-      }
-
-      parallelize_module(
-        module=block,
-        device_mesh=tp_mesh,
-        parallelize_plan=layer_plan,
-      )
-      layer_plans.append(layer_plan)
-
-    if isinstance(text_encoder, Qwen3ForCausalLM):
-      text_encoder.model = model
-    else:
-      text_encoder = model
-
-    maybe_empty_cache()
-
-    return text_encoder, layer_plans
+    return text_encoder, _parallelize_layers(model.layers, tp_mesh, Qwen3DecoderLayer)
 
 
-@TextEncoderTensorParallelismPlannerRegister.register("Qwen3VLForConditionalGeneration")
+@TextEncoderTensorParallelismPlannerRegister.register("Qwen3VLForConditionalGeneration",
+                                                      local_weight_shards=True)
 class Qwen3VLTextEncoderTensorParallelismPlanner(TextEncoderTensorParallelismPlanner):
+
+  def _preflight_local_weight_shards(
+    self,
+    text_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+  ) -> DeviceMesh:
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextDecoderLayer
+
+    tp_mesh = self.mesh(parallelism_config)
+    tp_size = tp_mesh.size()
+
+    def projections():
+      model = text_encoder.model.language_model
+      for attr in ("num_attention_heads", "num_key_value_heads", "intermediate_size"):
+        if getattr(model.config, attr) % tp_size != 0:
+          raise ValueError(f"{attr} must be divisible by the text encoder TP size {tp_size}.")
+      for name, block in model.layers.named_children():
+        block_path = f"model.language_model.layers.{name}"
+        if not isinstance(block, Qwen3VLTextDecoderLayer):
+          raise ValueError(f"{block_path} must be a Qwen3VLTextDecoderLayer, "
+                           f"got {type(block).__name__}.")
+        for path in _QWEN3_LAYER_STYLES:
+          yield f"{block_path}.{path}", True
+
+    validate_local_weight_shards(text_encoder, projections(), tp_mesh)
+    return tp_mesh
 
   def _apply(
     self,
     text_encoder: torch.nn.Module,
     parallelism_config: ParallelismConfig,
+    *,
+    local_shard_mesh: DeviceMesh | None = None,
     **kwargs,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextDecoderLayer
 
-    tp_mesh = self.mesh(parallelism_config=parallelism_config)
-
-    model = text_encoder.model.language_model
-    layer_plans = []
-    for _, block in model.layers.named_children():
-      assert isinstance(block, Qwen3VLTextDecoderLayer)
-      layer_plan = {
-        "self_attn.q_proj": ColwiseParallel(),
-        "self_attn.k_proj": ColwiseParallel(),
-        "self_attn.v_proj": ColwiseParallel(),
-        "self_attn.o_proj": RowwiseParallel(),
-        "mlp.gate_proj": ColwiseParallel(),
-        "mlp.up_proj": ColwiseParallel(),
-        "mlp.down_proj": RowwiseParallel(),
-      }
-
-      parallelize_module(
-        module=block,
-        device_mesh=tp_mesh,
-        parallelize_plan=layer_plan,
-      )
-      layer_plans.append(layer_plan)
-
-    maybe_empty_cache()
+    tp_mesh = self.mesh(parallelism_config) if local_shard_mesh is None else local_shard_mesh
+    layer_plans = _parallelize_layers(
+      text_encoder.model.language_model.layers,
+      tp_mesh,
+      Qwen3VLTextDecoderLayer,
+      local_weight_shards=local_shard_mesh is not None,
+    )
     return text_encoder, layer_plans
 
 
@@ -144,30 +154,8 @@ class Qwen3VLTextModelTensorParallelismPlanner(TextEncoderTensorParallelismPlann
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextDecoderLayer
 
-    tp_mesh = self.mesh(parallelism_config=parallelism_config)
-
-    model = text_encoder
-    layer_plans = []
-    for _, block in model.layers.named_children():
-      assert isinstance(block, Qwen3VLTextDecoderLayer)
-      layer_plan = {
-        "self_attn.q_proj": ColwiseParallel(),
-        "self_attn.k_proj": ColwiseParallel(),
-        "self_attn.v_proj": ColwiseParallel(),
-        "self_attn.o_proj": RowwiseParallel(),
-        "mlp.gate_proj": ColwiseParallel(),
-        "mlp.up_proj": ColwiseParallel(),
-        "mlp.down_proj": RowwiseParallel(),
-      }
-
-      parallelize_module(
-        module=block,
-        device_mesh=tp_mesh,
-        parallelize_plan=layer_plan,
-      )
-      layer_plans.append(layer_plan)
-
-    maybe_empty_cache()
+    tp_mesh = self.mesh(parallelism_config)
+    layer_plans = _parallelize_layers(text_encoder.layers, tp_mesh, Qwen3VLTextDecoderLayer)
     return text_encoder, layer_plans
 
 

@@ -10,7 +10,7 @@ from .cache_contexts import DBCacheConfig
 from .cache_contexts import CalibratorConfig
 from .params_modifier import ParamsModifier
 from ..distributed import ParallelismConfig
-from ..distributed import enable_parallelism
+from ..distributed.dispatch import _enable_parallelism
 from ..quantization import QuantizeConfig
 from ..quantization import quantize
 from ..utils import check_controlnet
@@ -453,13 +453,11 @@ def _enable_cache_impl(
       parallelism_config._has_controlnet = check_controlnet(pipe)
 
     # Parse extra parallel modules from names to actual modules
-    extra_parallel_module = parallelism_config.extra_parallel_modules
-    if extra_parallel_module is not None and pipe is not None:
-      parallelism_config.extra_parallel_modules = parse_extra_modules(pipe, extra_parallel_module)
+    extra_parallel_modules = parallelism_config.extra_parallel_modules
+    if extra_parallel_modules is not None and pipe is not None:
+      extra_parallel_modules = parse_extra_modules(pipe, extra_parallel_modules)
 
-    for i, transformer in enumerate(transformers):
-      # Enable parallelism for the transformer inplace
-      transformers[i] = enable_parallelism(transformer, parallelism_config)
+    transformers = _enable_parallelism(transformers, parallelism_config, extra_parallel_modules)
 
     # A parallelism planner may require a minimum number of tail blocks. A context-parallel plan
     # that gathers a module output on the last block (Kandinsky 6.0) needs `Bn_compute_blocks >= 1`,

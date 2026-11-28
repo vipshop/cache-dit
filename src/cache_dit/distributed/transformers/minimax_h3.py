@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple
 import torch
 from torch.distributed import DeviceMesh
 from torch.distributed._tensor import Replicate
+from torch.distributed.tensor import Shard
 from torch.distributed.tensor.parallel import (
   ColwiseParallel,
   ParallelStyle,
@@ -29,6 +30,12 @@ from torch.distributed.tensor.parallel import (
 
 from ...logger import init_logger
 from ..config import ParallelismConfig
+from ..linear_sharding import (
+  local_parameter,
+  local_shard,
+  shard_linear_weights,
+  validate_local_weight_shards,
+)
 from ..parallel import (
   _ContextParallelInput,
   _ContextParallelOutput,
@@ -132,7 +139,7 @@ class MiniMaxH3ContextParallelismPlanner(ContextParallelismPlanner):
     }
 
 
-@TensorParallelismPlannerRegister.register("MiniMaxH3Transformer3DModel")
+@TensorParallelismPlannerRegister.register("MiniMaxH3Transformer3DModel", local_weight_shards=True)
 class MiniMaxH3TensorParallelismPlanner(TensorParallelismPlanner):
   r"""Tensor parallelism planner for `MiniMaxH3Transformer3DModel`.
 
@@ -154,116 +161,164 @@ class MiniMaxH3TensorParallelismPlanner(TensorParallelismPlanner):
     self,
     transformer: torch.nn.Module,
     parallelism_config: ParallelismConfig,
+    *,
+    local_shard_mesh: DeviceMesh | None = None,
     **kwargs,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
-    tp_mesh = self.mesh(parallelism_config=parallelism_config)
-    transformer, layer_plans = self.parallelize_transformer(
-      transformer=transformer,
-      tp_mesh=tp_mesh,
-    )
-    return transformer, layer_plans
+    if local_shard_mesh is None:
+      return self.parallelize_transformer(transformer, self.mesh(parallelism_config))
+    return self.parallelize_transformer(transformer, local_shard_mesh, local_weight_shards=True)
+
+  @staticmethod
+  def _block_plan() -> Dict[str, ParallelStyle]:
+    return {
+      "attn.to_q": ColwiseParallel(),
+      "attn.to_k": ColwiseParallel(),
+      "attn.to_v": ColwiseParallel(),
+      "attn.to_out.0": RowwiseParallel(),
+      "ff.net.0.proj": ColwiseParallel(),
+      "ff.net.2": RowwiseParallel(),
+      "adaln_proj.linear": ColwiseParallel(output_layouts=Replicate()),
+    }
+
+  @staticmethod
+  def _initialize_locally(path: str) -> bool:
+    # Native distribution keeps the FFN output projection's measured peak lower.
+    return path != "ff.net.2"
+
+  def _preflight_local_weight_shards(
+    self,
+    transformer: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+  ) -> DeviceMesh:
+    tp_mesh = self.mesh(parallelism_config)
+    replica_mesh = parallelism_config._flat_mesh if parallelism_config.hybrid_enabled() else tp_mesh
+    tp_size = tp_mesh.size()
+    head_dim = transformer.config.attention_head_dim
+    paths = self._block_plan()
+
+    def projections():
+      for i, block in enumerate(transformer.transformer_blocks):
+        self._check_attention(block)
+        self._check_swiglu(block.ff.net[0].proj, tp_size)
+        heads = block.attn.heads
+        if heads % tp_size != 0:
+          raise ValueError(
+            f"transformer_blocks.{i}.attn.heads must be divisible by tp_size={tp_size}.")
+        rows = block.attn.to_q.weight.shape[0]
+        if rows != heads * head_dim:
+          raise ValueError(f"transformer_blocks.{i}.attn.to_q has {rows} rows, "
+                           f"expected {heads * head_dim}.")
+        for path in paths:
+          yield f"transformer_blocks.{i}.{path}", self._initialize_locally(path)
+      yield "norm_out.linear", True
+
+    validate_local_weight_shards(transformer, projections(), replica_mesh)
+    return tp_mesh
+
+  @staticmethod
+  def _check_attention(block: torch.nn.Module) -> None:
+    if block.attn.fused_projections:
+      raise ValueError(
+        "MiniMaxH3Transformer3DModel has `attn.fused_projections` set (by "
+        "`fuse_qkv_projections()`), which this plan does not shard: the block runs one `to_qkv` "
+        "projection and would reshape Q/K/V with the already-sharded `heads`. Keep the "
+        "projections separate.")
+
+  @staticmethod
+  def _check_swiglu(proj: torch.nn.Linear, tp_size: int) -> None:
+    if getattr(proj, "_cache_dit_swiglu_rearranged", False):
+      raise RuntimeError("The fused SwiGLU projection of this block was already rearranged for "
+                         "tensor parallelism.")
+    if proj.weight.shape[0] % (2 * tp_size) != 0:
+      raise ValueError(
+        f"Cannot split the fused SwiGLU projection of shape {tuple(proj.weight.shape)} "
+        f"into {tp_size} equal (up, gate) chunks.")
 
   def rearrange_ffn_weight(self, block: torch.nn.Module, tp_size: int) -> None:
     r"""Interleave the fused SwiGLU projection into one `(up, gate)` pair per TP chunk.
 
-    `block.ff` is a diffusers `FeedForward(..., activation_fn="swiglu")`, whose `SwiGLU.proj` is a
-    `Linear(dim, 2 * inner_dim)` followed by `hidden_states, gate = chunk(2, dim=-1)` — the
-    **first** half is the up projection and the **second** half is the gate. A plain
-    `ColwiseParallel` would hand one contiguous chunk to each rank, i.e. the up rows to one rank and
-    the gate rows to another, and each local SwiGLU would then multiply the gate half with itself:
-    the shapes stay valid and the output is silently wrong.
-
-    Reordering to `[up_0, gate_0, up_1, gate_1, ...]` makes every rank's contiguous shard hold both
-    halves of its own `inner_dim / tp_size` channels, so its local `chunk(2)` yields
-    `(up_i, gate_i)`. `ff.net[2]` (`RowwiseParallel`) shards its input columns in the same chunk
-    order, which keeps the two aligned.
+    Diffusers' `SwiGLU.proj` stores all up rows followed by all gate rows. Reordering them to
+    `[up_0, gate_0, up_1, gate_1, ...]` gives each rank both halves of its own channels for the
+    local `chunk(2)`. The rowwise `ff.net[2]` takes the matching input columns.
 
     :param block: Transformer block whose `ff.net[0].proj` is rearranged in place.
     :param tp_size: TP world size.
     """
     proj = block.ff.net[0].proj
-    if getattr(proj, "_cache_dit_swiglu_rearranged", False):
-      # The interleave is an involution: applying it twice restores `[up*, gate*]` and every rank
-      # would then mix gate with gate, without any shape error.
-      raise RuntimeError("The fused SwiGLU projection of this block was already rearranged for "
-                         "tensor parallelism.")
-    weight = proj.weight.data
-    if weight.shape[0] % (2 * tp_size) != 0:
-      raise ValueError(f"Cannot split the fused SwiGLU projection of shape {tuple(weight.shape)} "
-                       f"into {tp_size} equal (up, gate) chunks.")
-    up, gate = weight.chunk(2, dim=0)
-    # Set the guard before the first mutation: the interleave is an involution, so a half-applied
-    # rearrangement is worse than a failed one.
+    self._check_swiglu(proj, tp_size)
+    # Mark before the first mutation so a partially rearranged projection cannot be reused.
     proj._cache_dit_swiglu_rearranged = True
-    proj.weight.data = torch.cat(
-      [
-        torch.cat([u, g], dim=0)
-        for u, g in zip(up.chunk(tp_size, dim=0), gate.chunk(tp_size, dim=0))
-      ],
-      dim=0,
-    ).contiguous()
+    for param in proj.parameters(recurse=False):
+      up, gate = param.data.chunk(2, dim=0)
+      shards = []
+      for up_shard, gate_shard in zip(up.chunk(tp_size, dim=0), gate.chunk(tp_size, dim=0)):
+        shards.extend((up_shard, gate_shard))
+      param.data = torch.cat(shards, dim=0)
 
-    if proj.bias is not None:
-      up, gate = proj.bias.data.chunk(2, dim=0)
-      proj.bias.data = torch.cat(
-        [
-          torch.cat([u, g], dim=0)
-          for u, g in zip(up.chunk(tp_size, dim=0), gate.chunk(tp_size, dim=0))
-        ],
-        dim=0,
-      ).contiguous()
+  @staticmethod
+  def _shard_swiglu(proj: torch.nn.Linear, tp_mesh: DeviceMesh) -> None:
+    proj._cache_dit_swiglu_rearranged = True
+    for name, param in proj.named_parameters(recurse=False):
+      up, gate = param.detach().chunk(2, dim=0)
+      up = local_shard(up, tp_mesh, dim=0)
+      gate = local_shard(gate, tp_mesh, dim=0)
+      rows = up.size(0)
+      local = torch.empty((2 * rows, *up.shape[1:]), dtype=param.dtype, device=tp_mesh.device_type)
+      local[:rows].copy_(up)
+      local[rows:].copy_(gate)
+      proj.register_parameter(name, local_parameter(param, local, tp_mesh, Shard(0)))
 
   def parallelize_transformer(
     self,
     transformer: torch.nn.Module,
     tp_mesh: DeviceMesh,
+    *,
+    local_weight_shards: bool = False,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     """Shard the block stack and the output modulation of the transformer.
 
     :param transformer: MiniMax-H3 transformer.
     :param tp_mesh: TP device mesh.
+    :param local_weight_shards: Initialize weights from preflighted CPU projections.
     :returns: The sharded transformer and the applied layer plans.
     """
     tp_size = tp_mesh.size()
-    heads = transformer.config.num_attention_heads
-    head_dim = transformer.config.attention_head_dim
-    layer_plans = []
-
-    for block in transformer.transformer_blocks:
-      if getattr(block.attn, "fused_projections", False):
-        raise ValueError(
-          "MiniMaxH3Transformer3DModel has `attn.fused_projections` set (by "
-          "`fuse_qkv_projections()`), which this plan does not shard: the block runs one `to_qkv` "
-          "projection and would reshape Q/K/V with the already-sharded `heads`. Keep the "
-          "projections separate.")
-      self.rearrange_ffn_weight(block, tp_size)
-      # The attention processor reshapes Q/K/V with `attn.heads` and `attn.head_dim`, so `heads`
-      # has to follow the sharded projection (56 -> 28 for tp_size=2).
-      shard_div_attr(block.attn, "heads", tp_size)
-      layer_plan = {
-        "attn.to_q": ColwiseParallel(),
-        "attn.to_k": ColwiseParallel(),
-        "attn.to_v": ColwiseParallel(),
-        "attn.to_out.0": RowwiseParallel(),
-        "ff.net.0.proj": ColwiseParallel(),
-        "ff.net.2": RowwiseParallel(),
-        "adaln_proj.linear": ColwiseParallel(output_layouts=Replicate()),
-      }
-      parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
-      layer_plans.append(layer_plan)
-
-    # The shared output norm projects the timestep embedding to `(shift, scale)` and every row
-    # picks from it, so its output has to stay complete as well.
+    blocks = transformer.transformer_blocks
+    layer_plan = self._block_plan()
+    # The output norm needs the full shift and scale table.
     norm_out_plan = {"linear": ColwiseParallel(output_layouts=Replicate())}
+
+    # The attention processor reshapes Q/K/V using the local head count.
+    for block in blocks:
+      if not local_weight_shards:
+        self._check_attention(block)
+        self.rearrange_ffn_weight(block, tp_size)
+        shard_div_attr(block.attn, "heads", tp_size)
+        parallelize_module(module=block, device_mesh=tp_mesh, parallelize_plan=layer_plan)
+        continue
+
+      shard_div_attr(block.attn, "heads", tp_size)
+      # Distribute the native FFN output before placing the AdaLN shard.
+      for path, style in layer_plan.items():
+        linear = block.get_submodule(path)
+        if path == "ff.net.0.proj":
+          self._shard_swiglu(linear, tp_mesh)
+        elif self._initialize_locally(path):
+          shard_linear_weights(linear, tp_mesh, style)
+        parallelize_module(linear, tp_mesh, style)
+
+    if local_weight_shards:
+      shard_linear_weights(transformer.norm_out.linear, tp_mesh, norm_out_plan["linear"])
     parallelize_module(module=transformer.norm_out,
                        device_mesh=tp_mesh,
                        parallelize_plan=norm_out_plan)
-    layer_plans.append(norm_out_plan)
 
-    # Guard against a later edit that shards Q/K/V without updating `heads`. `DTensor.shape` is the
-    # global shape, so the check has to read the local shard.
-    local_q_rows = transformer.transformer_blocks[0].attn.to_q.weight.to_local().shape[0]
-    if local_q_rows != (heads // tp_size) * head_dim:
-      raise ValueError(f"Sharded Q projection has {local_q_rows} rows per rank, expected "
-                       f"{heads // tp_size} heads x {head_dim} channels.")
-    return transformer, layer_plans
+    if not local_weight_shards:
+      heads = transformer.config.num_attention_heads
+      head_dim = transformer.config.attention_head_dim
+      local_q_rows = blocks[0].attn.to_q.weight.to_local().shape[0]
+      if local_q_rows != (heads // tp_size) * head_dim:
+        raise ValueError(f"Sharded Q projection has {local_q_rows} rows per rank, expected "
+                         f"{heads // tp_size} heads x {head_dim} channels.")
+    return transformer, [layer_plan] * len(blocks) + [norm_out_plan]

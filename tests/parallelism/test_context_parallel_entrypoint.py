@@ -57,6 +57,11 @@ def test_parallelism_config_auto_selects_cache_dit_for_context_parallelism():
   assert parallelism_config.backend == ParallelismBackend.CACHE_DIT
 
 
+def test_local_weight_shards_rejects_core_ray():
+  with pytest.raises(ValueError, match="local_weight_shards requires CPU weights"):
+    ParallelismConfig(tp_size=2, local_weight_shards=True, use_ray=True)
+
+
 def test_parallelize_transformer_context_uses_custom_cp_plan(monkeypatch):
   transformer = torch.nn.Linear(4, 4)
   cp_plan = {"": {"hidden_states": object()}}
@@ -125,8 +130,9 @@ def test_enable_parallelism_defaults_native_backend_only_for_diffusers_cp_or_hyb
   expected_backends,
 ):
   monkeypatch.setattr("cache_dit.attention._maybe_register_custom_attn_backends", lambda: None)
-  monkeypatch.setattr(transformer_entrypoints, "parallelize_transformer",
-                      lambda transformer, parallelism_config: transformer)
+  monkeypatch.setattr(transformer_entrypoints,
+                      "parallelize_transformer",
+                      lambda transformer, parallelism_config, *, tp_apply=None: transformer)
   monkeypatch.setattr(distributed_dispatch, "maybe_empty_cache", lambda: None)
 
   module = _DummyBackendAwareModule()
@@ -134,6 +140,7 @@ def test_enable_parallelism_defaults_native_backend_only_for_diffusers_cp_or_hyb
     backend=backend,
     attention_backend=None,
     extra_parallel_modules=None,
+    local_weight_shards=False,
   )
 
   result = distributed_dispatch.enable_parallelism(module, parallelism_config)
@@ -144,8 +151,9 @@ def test_enable_parallelism_defaults_native_backend_only_for_diffusers_cp_or_hyb
 
 def test_enable_parallelism_applies_attention_backend_to_parallelized_controlnet(monkeypatch):
   monkeypatch.setattr("cache_dit.attention._maybe_register_custom_attn_backends", lambda: None)
-  monkeypatch.setattr(transformer_entrypoints, "parallelize_transformer",
-                      lambda transformer, parallelism_config: transformer)
+  monkeypatch.setattr(transformer_entrypoints,
+                      "parallelize_transformer",
+                      lambda transformer, parallelism_config, *, tp_apply=None: transformer)
   monkeypatch.setattr(controlnet_entrypoints, "parallelize_controlnet",
                       lambda controlnet, parallelism_config: controlnet)
   monkeypatch.setattr(distributed_dispatch, "check_text_encoder", lambda _module: False)
@@ -160,6 +168,7 @@ def test_enable_parallelism_applies_attention_backend_to_parallelized_controlnet
     backend=ParallelismBackend.NATIVE_DIFFUSER,
     attention_backend=None,
     extra_parallel_modules=[controlnet],
+    local_weight_shards=False,
   )
 
   result = distributed_dispatch.enable_parallelism(transformer, parallelism_config)

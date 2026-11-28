@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from functools import partial
 from typing import Optional
 
 try:
@@ -95,34 +97,41 @@ def _parallelize_transformer_context(
   return transformer
 
 
+def _prepare_transformer_tp(
+  transformer: torch.nn.Module,
+  parallelism_config: ParallelismConfig,
+) -> tuple[Callable[..., torch.nn.Module], bool]:
+  _ensure_tp_planners_activated()
+  planner_cls = TensorParallelismPlannerRegister.get_planner(transformer)
+  planner = planner_cls()
+  if parallelism_config.local_weight_shards and planner_cls._supports_local_weight_shards:
+    mesh = planner._preflight_local_weight_shards(transformer, parallelism_config)
+    return partial(planner.apply, local_shard_mesh=mesh), True
+  return planner.apply, False
+
+
 def _parallelize_transformer_tensor(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig],
+  *,
+  tp_apply: Callable[..., torch.nn.Module] | None = None,
 ) -> torch.nn.Module:
   """Enable tensor parallelism for one transformer instance.
 
-  :param transformer: Transformer module or diffusers model to patch.
+  :param transformer: Diffusers model to patch.
   :param parallelism_config: Parallelism configuration describing TP settings.
+  :param tp_apply: Planner apply method prepared before installing parallelism.
   :returns: The patched transformer.
   """
-  assert isinstance(
-    transformer,
-    (torch.nn.Module,
-     ModelMixin)), ("transformer must be an instance of torch.nn.Module or ModelMixin, "
-                    f"but got {type(transformer)}")
   assert isinstance(transformer,
                     ModelMixin), ("transformer must be an instance of diffusers' ModelMixin, "
                                   f"but got {type(transformer)}")
-  if parallelism_config is None:
-    return transformer
-  if not parallelism_config.tp_enabled():
+  if parallelism_config is None or not parallelism_config.tp_enabled():
     return transformer
 
-  _ensure_tp_planners_activated()
-  return TensorParallelismPlannerRegister.get_planner(transformer)().apply(
-    transformer=transformer,
-    parallelism_config=parallelism_config,
-  )
+  if tp_apply is None:
+    tp_apply, _ = _prepare_transformer_tp(transformer, parallelism_config)
+  return tp_apply(transformer=transformer, parallelism_config=parallelism_config)
 
 
 def _maybe_patch_parallel_config(
@@ -202,11 +211,14 @@ def _maybe_patch_parallel_config(
 def parallelize_transformer(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: Optional[ParallelismConfig],
+  *,
+  tp_apply: Callable[..., torch.nn.Module] | None = None,
 ) -> torch.nn.Module:
   """Dispatch transformer parallelization by configured backend.
 
   :param transformer: Transformer module or diffusers model to parallelize.
   :param parallelism_config: Parallelism configuration selecting the backend and layout.
+  :param tp_apply: Planner apply method prepared before installing parallelism.
   :returns: The transformer after backend-specific parallelization.
   """
   assert isinstance(
@@ -218,43 +230,32 @@ def parallelize_transformer(
   if parallelism_config is None:
     return transformer
 
-  backend = ParallelismBackend.canonicalize(parallelism_config.backend)
+  assert isinstance(
+    parallelism_config,
+    ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
+                         f" but got {type(parallelism_config)}")
 
-  # Currently, we can dispatch the parallelism based on the backend type.
+  backend = ParallelismBackend.canonicalize(parallelism_config.backend)
   if backend == ParallelismBackend.NATIVE_HYBRID:
-    return _parallelize_transformer_hybrid(
+    transformer = _parallelize_transformer_hybrid(
       transformer=transformer,
       parallelism_config=parallelism_config,
+      tp_apply=tp_apply,
     )
   elif backend == ParallelismBackend.CACHE_DIT:
-    return _parallelize_transformer_cp(
+    transformer = _parallelize_transformer_cp(
       transformer=transformer,
       parallelism_config=parallelism_config,
     )
   elif backend == ParallelismBackend.NATIVE_PYTORCH:
-    return _parallelize_transformer_tp(
+    transformer = _parallelize_transformer_tp(
       transformer=transformer,
       parallelism_config=parallelism_config,
+      tp_apply=tp_apply,
     )
   else:
     raise ValueError(f"{parallelism_config.backend} backend is not supported yet")
 
-
-def _parallelize_transformer_hybrid(
-  transformer: torch.nn.Module | ModelMixin,
-  parallelism_config: ParallelismConfig,
-):
-  assert parallelism_config.hybrid_enabled(), "hybrid_enabled() must be True for HYBRID backend."
-  # 0. First enable context parallelism
-  transformer = _parallelize_transformer_cp(
-    transformer=transformer,
-    parallelism_config=parallelism_config,
-  )
-  # 1. Then enable tensor parallelism
-  transformer = _parallelize_transformer_tp(
-    transformer=transformer,
-    parallelism_config=parallelism_config,
-  )
   transformer._is_parallelized = True  # type: ignore[attr-defined]
   # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
   transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
@@ -263,85 +264,36 @@ def _parallelize_transformer_hybrid(
   return transformer
 
 
+def _parallelize_transformer_hybrid(
+  transformer: torch.nn.Module | ModelMixin,
+  parallelism_config: ParallelismConfig,
+  *,
+  tp_apply: Callable[..., torch.nn.Module] | None = None,
+) -> torch.nn.Module:
+  assert parallelism_config.hybrid_enabled(), "hybrid_enabled() must be True for HYBRID backend."
+  if tp_apply is None and parallelism_config.local_weight_shards:
+    tp_apply, _ = _prepare_transformer_tp(transformer, parallelism_config)
+  transformer = _parallelize_transformer_cp(transformer, parallelism_config)
+  return _parallelize_transformer_tp(transformer, parallelism_config, tp_apply=tp_apply)
+
+
 def _parallelize_transformer_cp(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
 ) -> torch.nn.Module:
-  assert isinstance(
-    transformer,
-    (torch.nn.Module,
-     ModelMixin)), ("transformer must be an instance of torch.nn.Module or ModelMixin, "
-                    f"but got {type(transformer)}")
-
-  if parallelism_config is None:
-    return transformer
-
-  assert isinstance(
-    parallelism_config,
-    ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
-                         f" but got {type(parallelism_config)}")
-
-  # Ensure the backend is correct, CACHE_DIT or HYBRID
-  assert parallelism_config.backend in (
-    ParallelismBackend.CACHE_DIT,
-    ParallelismBackend.NATIVE_HYBRID,
-  ), ("parallelism_config.backend must be ParallelismBackend.CACHE_DIT "
-      f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}")
-
-  if parallelism_config.cp_enabled() or parallelism_config.hybrid_enabled():
-    transformer = _parallelize_transformer_context(
-      transformer,
-      parallelism_config,
-    )
-    if not parallelism_config.hybrid_enabled():
-      transformer._is_parallelized = True  # type: ignore[attr-defined]
-      # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-      transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-      logger.info(f"Parallelize Transformer: {transformer.__class__.__name__}, "
-                  f"id:{id(transformer)}, {parallelism_config.strify(True)}")
-  else:
+  if not parallelism_config.cp_enabled():
     raise ValueError("CACHE_DIT backend only support context parallelism now. "
                      "Please set ulysses_size or ring_size in parallelism_config.")
-  return transformer
+  return _parallelize_transformer_context(transformer, parallelism_config)
 
 
 def _parallelize_transformer_tp(
   transformer: torch.nn.Module | ModelMixin,
   parallelism_config: ParallelismConfig,
+  *,
+  tp_apply: Callable[..., torch.nn.Module] | None = None,
 ) -> torch.nn.Module:
-  assert isinstance(
-    transformer,
-    (torch.nn.Module,
-     ModelMixin)), ("transformer must be an instance of torch.nn.Module or ModelMixin, "
-                    f"but got {type(transformer)}")
-
-  if parallelism_config is None:
-    return transformer
-
-  # Ensure the backend is correct, NATIVE_PYTORCH or HYBRID
-  assert parallelism_config.backend in (
-    ParallelismBackend.NATIVE_PYTORCH,
-    ParallelismBackend.NATIVE_HYBRID,
-  ), ("parallelism_config.backend must be ParallelismBackend.NATIVE_PYTORCH "
-      f"or ParallelismBackend.NATIVE_HYBRID but got {parallelism_config.backend}")
-
-  assert isinstance(
-    parallelism_config,
-    ParallelismConfig), ("parallelism_config must be an instance of ParallelismConfig"
-                         f" but got {type(parallelism_config)}")
-
-  if parallelism_config.tp_enabled() or parallelism_config.hybrid_enabled():
-    transformer = _parallelize_transformer_tensor(
-      transformer=transformer,
-      parallelism_config=parallelism_config,
-    )
-    if not parallelism_config.hybrid_enabled():
-      transformer._is_parallelized = True  # type: ignore[attr-defined]
-      # Use `parallelism` not `parallel` to avoid name conflict with diffusers.
-      transformer._parallelism_config = parallelism_config  # type: ignore[attr-defined]
-      logger.info(f"Parallelize Transformer: {transformer.__class__.__name__}, "
-                  f"id:{id(transformer)}, {parallelism_config.strify(True)}")
-  else:
+  if not parallelism_config.tp_enabled():
     raise ValueError("NATIVE_PYTORCH only supported tensor parallelism now. "
                      "Please set tp_size > 1 for tensor parallelism.")
-  return transformer
+  return _parallelize_transformer_tensor(transformer, parallelism_config, tp_apply=tp_apply)
