@@ -25,7 +25,7 @@ Cache-DiT is also compatible with torch.compile and fully integrates with [SGLan
   <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
 </div>
 
-## 🚀Quick Start: Simple CLI and Unified APIs.
+## 🚀Quick Start: CLI and Unified APIs.
 
 ```bash
 pip install -U "cache-dit[quantization]" # quantization: torchao/bitsandbytes, etc.
