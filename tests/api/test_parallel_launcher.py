@@ -1,6 +1,7 @@
 """CLI coverage for the non-torchrun parallel launcher."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -11,7 +12,7 @@ from cache_dit.cli.entrypoint import get_args
 parser = get_args(parse=False)
 
 
-def _args(ulysses=2, ring=1, tp=1, launcher="auto"):
+def _args(ulysses=2, ring=1, tp=1):
   return SimpleNamespace(
     parallel_type="ulysses" if ulysses > 1 else None,
     parallel_degrees={
@@ -19,7 +20,6 @@ def _args(ulysses=2, ring=1, tp=1, launcher="auto"):
       "ring": ring,
       "tp": tp,
     },
-    launcher=launcher,
   )
 
 
@@ -53,8 +53,8 @@ def test_no_launch_without_parallelism(monkeypatch):
 
 def test_no_launch_under_torchrun(monkeypatch):
   monkeypatch.setenv("WORLD_SIZE", "2")
-  monkeypatch.setattr(launcher, "_visible_devices", lambda: ["4", "5"])
-  assert launcher.maybe_launch_parallel(_args(ulysses=2), []) is False
+  monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+  assert launcher.maybe_launch_parallel(_args(), []) is False
 
 
 def test_degree_product_must_match_the_visible_gpus(monkeypatch):
@@ -64,35 +64,22 @@ def test_degree_product_must_match_the_visible_gpus(monkeypatch):
     launcher.maybe_launch_parallel(_args(ulysses=2), [])
 
 
-def test_local_launcher_receives_rank_count_and_argv(monkeypatch):
+@pytest.mark.parametrize("launcher_name", ["local", "ray"])
+def test_launcher_receives_rank_count_and_argv(launcher_name, monkeypatch):
   monkeypatch.delenv("WORLD_SIZE", raising=False)
-  monkeypatch.setattr(launcher, "_visible_devices", lambda: ["4", "5"])
+  monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5")
   monkeypatch.setattr(launcher, "_free_port", lambda: 29500)
-  calls = []
-  monkeypatch.setattr(launcher, "_run_local", lambda argv, world_size, port: calls.append(
-    (argv, world_size, port)))
-
-  assert launcher.maybe_launch_parallel(_args(ulysses=2, launcher="local"), ["flux"]) is True
-  assert calls == [(["flux"], 2, 29500)]
-
-
-def test_ray_launcher_is_selected(monkeypatch):
-  monkeypatch.delenv("WORLD_SIZE", raising=False)
-  monkeypatch.setattr(launcher, "_visible_devices", lambda: ["4", "5"])
-  monkeypatch.setattr(launcher, "_free_port", lambda: 29500)
-  calls = []
-  monkeypatch.setattr(launcher, "_run_ray", lambda argv, world_size, port: calls.append(
-    (argv, world_size, port)))
-
-  assert launcher.maybe_launch_parallel(_args(ulysses=2, launcher="ray"), ["flux"]) is True
-  assert calls == [(["flux"], 2, 29500)]
+  run = Mock()
+  monkeypatch.setattr(launcher, "_run_local", run.local)
+  monkeypatch.setattr(launcher, "_run_ray", run.ray)
+  argv = ["--parallel-params", "tp=2,local_weight_shards=true", "--launcher", launcher_name]
+  args = cli_utils.maybe_postprocess_args(parser.parse_args(argv))
+  assert launcher.maybe_launch_parallel(args, argv) is True
+  assert run.mock_calls == [getattr(call, launcher_name)(argv, 2, 29500)]
 
 
-@pytest.mark.parametrize("launcher_name", ["auto", "ray", "local"])
-def test_cli_accepts_the_launcher_choices(launcher_name):
-  args = cli_utils.maybe_postprocess_args(
-    parser.parse_args(["--parallel-params", "ulysses=2", "--launcher", launcher_name]))
-  assert args.launcher == launcher_name
+def test_cli_accepts_auto_launcher():
+  assert parser.parse_args(["--launcher", "auto"]).launcher == "auto"
 
 
 def test_cli_rejects_an_unknown_launcher():

@@ -323,7 +323,8 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     help="Enable parallelism; options as a comma separated key=value list. The degrees are "
     "'ulysses', 'ring' and 'tp' (each defaults to 1 and their product must equal the number of "
     "processes), e.g. 'ulysses=2' or 'ulysses=2,tp=2'. Components: 'vae=true', 'text=true' "
-    "(text encoder), 'controlnet=true'. Ulysses: 'ulysses_anything=true', "
+    "(text encoder), 'controlnet=true'. 'local_weight_shards=true' initializes supported TP "
+    "weights from CPU slices. Ulysses: 'ulysses_anything=true', "
     "'ulysses_async=true'. Ring: 'ring_rotate_method=allgather', 'ring_convert_to_fp32=false'.",
   )
   parser.add_argument(
