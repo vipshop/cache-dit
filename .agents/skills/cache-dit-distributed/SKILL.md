@@ -50,8 +50,9 @@ src/cache_dit/distributed/
 
 ```text
 enable_cache(pipe, parallelism_config=...)
-  → caching/cache_interface.py：解析 extra_parallel_modules（名字→模块）、check_min_bn_blocks
-  → distributed/dispatch.py::enable_parallelism(transformer)
+  → caching/cache_interface.py 解析 transformers 和 extra_parallel_modules
+  → distributed/dispatch.py::_enable_parallelism(transformers, ...)
+      ├─ opt-in 时先完成所有本地权重预检
       ├─ attention 后端注册 + set_attn_backend（默认 native）
       ├─ transformers/dispatch.py::parallelize_transformer → 按 backend 分派
       │    ├─ CACHE_DIT      → _parallelize_transformer_cp

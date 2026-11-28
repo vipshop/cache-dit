@@ -115,7 +115,7 @@ CP 的 split/gather 不是 `module.register_forward_hook`，而是**替换 `forw
 
 | 入口 | 行为 |
 |---|---|
-| `cache_dit.enable_cache(pipe, parallelism_config=...)` | 解析 extra modules → 对每个 transformer 调 `enable_parallelism` → `check_min_bn_blocks` → 可选量化 |
+| `cache_dit.enable_cache(pipe, parallelism_config=...)` | 解析组件 → `_enable_parallelism` 统一预检并安装 → `check_min_bn_blocks` → 可选量化 |
 | `cache_dit.enable_parallelism(transformer, config)` | 单 transformer 编排（Ray worker 也用它） |
 | `cache_dit.remove_parallelism_stats(module)` | 测试/多配置轮换时清理标记 |
 | `torchrun` / `dist.init_process_group` | 必须先于任何 `enable_parallelism`；否则 `_enable_context_parallelism` 抛 "torch.distributed must be available and initialized" |

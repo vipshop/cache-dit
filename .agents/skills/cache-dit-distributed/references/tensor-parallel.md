@@ -46,6 +46,12 @@ for _, block in transformer.transformer_blocks.named_children():
 4. **融合权重需要手工重排**：FLUX 的 `FluxSingleTransformerBlock.proj_out` 把 out 与 down 两个投影塞在一个矩阵里，必须先 `rearrange` 成 `(G D) C` 再 `copy_`，否则行切会把两种权重混在一起（`flux.py::rearrange_proj_out_weight`）。
 5. **纯复制的层**（embedding、`proj_out` 前的小线性、time embedding）不进 plan，由 PyTorch 保持 replicated。
 
+### CPU 权重本地分片
+
+`ParallelismConfig(local_weight_shards=True)` 由 MiniMax-H3 视频 TP 和 `Qwen3VLForConditionalGeneration` TE-P planner 消费。调用方在每个 rank 加载同一份完整 CPU 权重。`enable_cache()` 在首次安装 CP/TP 前完成全部本地分片组件的副本预检，修正预检错误后可重试同一 pipeline。安装时用对应 TP mesh 的本地 rank 取片，`distributed/linear_sharding.py` 构造 DTensor，原生 TP style 安装前向钩子。H3 planner 负责 SwiGLU 的本地 up/gate 布局，`ff.net.2` 由原生 TP 分发。
+
+扩展模型支持时，在对应的 TP 或 TE-P `register(..., local_weight_shards=True)` 中为具体 planner 声明能力。由 `_preflight_local_weight_shards()` 完成副本预检并返回 TP mesh，安装阶段由 `_apply(..., local_shard_mesh=...)` 使用该 mesh。多个注册名共享同一 planner 类的声明，派生 planner 独立声明。
+
 ## 3. 三个必须手工处理的算子
 
 | 情况 | 处理 |

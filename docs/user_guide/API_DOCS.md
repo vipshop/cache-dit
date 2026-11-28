@@ -129,6 +129,13 @@ This function seamlessly integrates with both standard diffusion pipelines and c
     - <span style="color:#c77dff;">tp_size</span>: (`int`, *optional*, defaults to None):  
         The size of tensor parallelism. If tp_size is not None, enable tensor parallelism.
     This setting is only valid when backend is `NATIVE_PYTORCH`.
+    - <span style="color:#c77dff;">local_weight_shards</span> (`bool`, *optional*, defaults to `False`).
+        Initialize eligible TP projections from CPU slices for MiniMax-H3 video DiT (`tp_size > 1`)
+        and `Qwen3VLForConditionalGeneration` in `extra_parallel_modules`, including with CP-only DiT.
+        Use the same config and identical, complete, contiguous CPU weights for these projections on
+        every rank. If preflight fails, all ranks in the replica raise before Core installs CP or
+        TP hooks. Fix the error and retry with the same pipeline and config.
+        Core requires `use_ray=False` for this option. The CLI supports `--launcher ray`.
 
 - **<span style="color:#c77dff;">attention_backend</span>** (`str`, *optional*, defaults to None):  
   Custom attention backend in cache-dit for non-parallelism case. If attention_backend is 
