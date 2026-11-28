@@ -176,7 +176,9 @@ SVDQ_PARAM_SPECS: Dict[str, Caster] = {
 }
 
 # `--attn-params` keys per attention backend. Every key maps onto one process-wide setter of its
-# backend: `set_sol_attn_config(**fields)` for sol_attn, `set_ffpa_<key>(value)` for ffpa*.
+# backend: `set_sol_attn_config(**fields)` for sol_attn, `set_ffpa_<key>(value)` for ffpa*. The
+# ffpa `bits` shorthand is a selector, not a key of these tables: it rewrites `type=ffpa` into one
+# of the concrete ffpa backends before the remaining keys are validated.
 _FFPA_HYBRID_KEYS = {
   "hybrid": _as_bool,
   "hybrid_n_early": int,
@@ -202,6 +204,17 @@ ATTN_PARAM_SPECS: Dict[str, Dict[str, Caster]] = {
   },
 }
 ATTN_PARAM_SPECS["ffpa_fp8_per_block"] = ATTN_PARAM_SPECS["ffpa_fp8"]
+
+# `--attn-params 'ffpa,bits=<n>'` picks the ffpa precision family instead of spelling out
+# `ffpa_fp8` / `ffpa_fp4`: 16 is the plain fp16/bf16 backend (the activation dtype decides which),
+# 8 the fp8 family and 4 the nvfp4 family. The fp8 per_block preset is a quantization granularity,
+# not a bit width, so it keeps its full name. Only the ffpa family has this shorthand; every other
+# backend keeps `type=`.
+FFPA_BITS_BACKENDS: Dict[str, str] = {
+  "16": "ffpa",
+  "8": "ffpa_fp8",
+  "4": "ffpa_fp4",
+}
 
 # Attention backends selectable with `--attn-params type=<backend>`. Those with options are the
 # keys of `ATTN_PARAM_SPECS`.
@@ -258,17 +271,32 @@ def resolve_param_pairs(
   return resolved
 
 
+def _cast_ffpa_bits(text: str) -> str:
+  """Map the ffpa `bits` shorthand onto the concrete attention backend.
+
+  :param text: Raw `bits` value: ``16`` (fp16/bf16), ``8`` (fp8) or ``4`` (nvfp4).
+  :returns: The backend name of that precision family.
+  """
+
+  value = text.strip().lower()
+  if value not in FFPA_BITS_BACKENDS:
+    raise ValueError(f"expects one of {list(FFPA_BITS_BACKENDS)} (16 = fp16/bf16, 8 = fp8, "
+                     f"4 = fp4), got '{text}'.")
+  return FFPA_BITS_BACKENDS[value]
+
+
 def parse_attn_params(value: str) -> Dict[str, str]:
   """Parse the CLI `--attn-params "type=<backend>,k=v,k=v"`.
 
-  The `type` key selects the attention backend, so it is required and validated here; the other
-  keys are resolved against that backend later in :func:`resolve_attn_params`.
+  The `type` key selects the attention backend, so it is required and validated here; a `bits` key
+  may refine `type=ffpa` into a precision family, and the other keys are resolved against the
+  resulting backend later in :func:`resolve_attn_params`.
 
   :param value: Raw argument value.
   :returns: The raw string mapping, including `type`.
   """
 
-  example = "'type=ffpa_fp8,fp8_hadamard=true'"
+  example = "'type=ffpa,bits=8,fp8_hadamard=true'"
   raw = parse_param_pairs(value, "--attn-params", example, allow_empty=False, head_key="type")
   if "type" not in raw:
     raise argparse.ArgumentTypeError(f"--attn-params needs a 'type' key, e.g. {example}.")
@@ -281,6 +309,10 @@ def parse_attn_params(value: str) -> Dict[str, str]:
 def resolve_attn_params(raw: Optional[Dict[str, str]]) -> Tuple[Optional[str], Dict[str, Any]]:
   """Split `--attn-params` into the attention backend and the options of that backend.
 
+  The ffpa `bits` shorthand selects the precision family, so it is applied before the early
+  return: ``'ffpa,bits=8'`` must resolve to ``ffpa_fp8`` even when no other key is given. The raw
+  mapping is never mutated, which keeps `maybe_postprocess_args` idempotent.
+
   :param raw: Raw mapping from the CLI, including the `type` selector; None when the flag was
     not passed.
   :returns: `(backend or None, coerced options)`.
@@ -289,7 +321,19 @@ def resolve_attn_params(raw: Optional[Dict[str, str]]) -> Tuple[Optional[str], D
   if not raw:
     return None, {}
   backend = raw["type"].lower()
-  options = {key: text for key, text in raw.items() if key != "type"}
+  options = {key: text for key, text in raw.items() if key not in ("type", "bits")}
+  if "bits" in raw:
+    if backend == "ffpa_fp8_per_block":
+      raise ValueError("--attn-params 'bits' has no per_block shorthand; use "
+                       "'type=ffpa_fp8_per_block' for the fp8 per-block preset, or "
+                       "'type=ffpa,bits=8' for the regular fp8 family.")
+    if backend != "ffpa":
+      raise ValueError(f"--attn-params 'bits' is a ffpa-family shorthand; use 'type={backend}' "
+                       f"alone, or 'type=ffpa,bits=<16|8|4>' to pick an ffpa precision family.")
+    try:
+      backend = _cast_ffpa_bits(raw["bits"])
+    except ValueError as error:
+      raise ValueError(f"Invalid --attn-params 'bits={raw['bits']}': {error}") from error
   if not options:
     return backend, {}
   specs = ATTN_PARAM_SPECS.get(backend)

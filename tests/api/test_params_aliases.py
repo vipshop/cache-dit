@@ -49,6 +49,7 @@ def test_calibrator_config_alias_and_bare_type():
   ("--cache-config", "SeaCache,seacache_mode=vp", "seacache_mode", "vp"),
   ("--quantize-config", "float8_per_row,backend=cache_dit", "quantize_type", "float8_per_row"),
   ("--attn-config", "ffpa_fp8,hybrid=true", "attn", "ffpa_fp8"),
+  ("--attn-config", "ffpa,bits=8", "attn", "ffpa_fp8"),
 ])
 def test_bare_first_entry_sets_the_type(flag, value, attribute, expected):
   assert getattr(_resolve([flag, value]), attribute) == expected

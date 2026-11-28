@@ -34,6 +34,10 @@ Common overrides: `--model-path`, `--prompt`, `--steps`, `--height`, `--width`, 
 `--save-path`. A model directory or repo id can stand in for the example name; add `--task T2I` when
 the checkpoint serves several tasks.
 
+Attention takes the same `k=v` form: `--attn-config 'ffpa,bits=8'` is the ffpa fp8 family
+(`ffpa_fp8`), `'ffpa,bits=4'` is `ffpa_fp4`, and later keys belong to the selected family, e.g.
+`'ffpa,bits=8,fp8_hadamard=true'`.
+
 ## Multi GPU
 
 The CLI starts the workers itself (`--launcher auto`), so no external `torchrun` is required. The
