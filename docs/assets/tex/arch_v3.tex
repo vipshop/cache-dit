@@ -44,44 +44,37 @@
 
 \begin{document}
 \begin{tikzpicture}[x=1cm, y=1cm]
-  \path[use as bounding box] (-0.02,-0.02) rectangle (19.42,7.37);
-  \fill[bg, rounded corners=0.30cm] (0,0) rectangle (19.40,7.35);
+  \path[use as bounding box] (-0.02,-0.02) rectangle (19.42,5.72);
+  \fill[bg, rounded corners=0.30cm] (0,0) rectangle (19.40,5.70);
 
-  \panel{0.30}{4.75}{10.55}{7.05}
-  \ptitle{5.425}{6.74}{Hybrid Cache Acceleration}
-  \pillrow{6.16}{0.44}{1.994}{bpill}{DBCache, DBPrune, TaylorSeer, FoCa, SCM}
-  \pillrow{5.48}{0.44}{1.994}{bpill}{SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache}
+  \panel{0.30}{3.10}{10.55}{5.40}
+  \ptitle{5.425}{5.09}{Hybrid Cache Acceleration}
+  \pillrow{4.51}{0.44}{1.994}{bpill}{DBCache, DBPrune, TaylorSeer, FoCa, SCM}
+  \pillrow{3.83}{0.44}{1.994}{bpill}{SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache}
 
-  \panel{10.85}{4.75}{19.10}{7.05}
-  \ptitle{14.975}{6.74}{Parallelism}
-  \pillrow{6.20}{10.99}{2.657}{spill}{Ulysses, Ring, USP}
-  \pillrow{5.68}{10.99}{2.657}{spill}{Ulysses-Anything, Async Ulysses, TP}
-  \pillrow{5.16}{10.99}{2.657}{spill}{TE-P \textperiodcentered\ VAE-P, 2D/3D-P, FP4--FP8 Comm}
+  \panel{10.85}{3.10}{19.10}{5.40}
+  \ptitle{14.975}{5.09}{Parallelism}
+  \pillrow{4.55}{10.99}{2.657}{spill}{Ulysses, Ring, USP}
+  \pillrow{4.03}{10.99}{2.657}{spill}{Ulysses-Anything, Async Ulysses, TP}
+  \pillrow{3.51}{10.99}{2.657}{spill}{TE-P \textperiodcentered\ VAE-P, 2D/3D-P, FP4--FP8 Comm}
 
-  \panel{0.30}{2.50}{7.30}{4.45}
-  \ptitle{3.80}{4.14}{Low-Bit Quantization}
-  \pillrow{3.70}{0.44}{3.36}{bpill}{FP8, FP4}
-  \pillrow{3.08}{0.44}{3.36}{bpill}{INT4, SVDQ W2--W8 \textperiodcentered\ A4--A8}
+  \panel{0.30}{0.85}{7.30}{2.80}
+  \ptitle{3.80}{2.49}{Low-Bit Quantization}
+  \pillrow{2.05}{0.44}{3.36}{bpill}{FP8, FP4}
+  \pillrow{1.43}{0.44}{3.36}{bpill}{INT4, SVDQ W2--W8 \textperiodcentered\ A4--A8}
 
-  \panel{7.60}{2.50}{12.80}{4.45}
-  \ptitle{10.20}{4.14}{Attention Backends}
-  \pillrow{3.70}{7.74}{1.64}{bpill}{FA-2, FA-3, Sage-2}
-  \pillrow{3.08}{7.74}{1.64}{bpill}{Sage-3, FFPA, Sol-Attn}
+  \panel{7.60}{0.85}{12.80}{2.80}
+  \ptitle{10.20}{2.49}{Attention Backends}
+  \pillrow{2.05}{7.74}{1.64}{bpill}{FA-2, FA-3, Sage-2}
+  \pillrow{1.43}{7.74}{1.64}{bpill}{Sage-3, FFPA, Sol-Attn}
 
-  \panel{13.10}{2.50}{19.10}{4.45}
-  \ptitle{16.10}{4.14}{Compile \& Offload}
-  \pillrow{3.70}{13.24}{2.86}{bpill}{torch.compile, CUDA Graphs}
-  \pillrow{3.08}{13.24}{2.86}{bpill}{CPU Offload, Layerwise Offload}
+  \panel{13.10}{0.85}{19.10}{2.80}
+  \ptitle{16.10}{2.49}{Compile \& Offload}
+  \pillrow{2.05}{13.24}{2.86}{bpill}{torch.compile, CUDA Graphs}
+  \pillrow{1.43}{13.24}{2.86}{bpill}{CPU Offload, Layerwise Offload}
 
-  \panel{0.30}{0.30}{12.80}{2.20}
-  \ptitle{6.55}{1.87}{Community Integration}
-  \pillrow{1.40}{0.44}{3.055}{gpill}{SGLang Diffusion, vLLM-Omni, TensorRT-LLM, xDiT}
-  \pillrow{0.78}{0.44}{3.055}{gpill}{Diffusers, ComfyUI, SD.Next, Nunchaku}
-
-  \panel{13.10}{0.30}{19.10}{2.20}
-  \ptitle{16.10}{1.87}{Platforms}
-  \pillrow{1.40}{13.24}{1.9067}{gpill}{NVIDIA GPU, Ascend NPU, AMD GPU}
-  \node[text=muted] at (16.10,0.74) {\fontsize{7}{8}\selectfont 60+ DiT pipelines \textperiodcentered\ 150+ variants};
+  \node[anchor=west, text=muted] at (0.30,0.37) {\fontsize{7.5}{9}\selectfont Runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs};
+  \node[anchor=east, text=muted] at (19.10,0.37) {\fontsize{7.5}{9}\selectfont 60+ DiT pipelines \textperiodcentered\ 150+ variants};
 
 \end{tikzpicture}
 \end{document}
