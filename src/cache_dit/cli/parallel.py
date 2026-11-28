@@ -39,18 +39,22 @@ def _resolve_cli_parallelism(args) -> None:
   args.ring_rotate_method = fields.get("ring_rotate_method", "p2p")
   args.ring_no_convert_to_fp32 = not fields.get("ring_convert_to_fp32", True)
   args.parallel_degrees = {axis: fields.get(axis, 1) for axis in ("ulysses", "ring", "tp")}
+  if "local_weight_shards" in fields and args.config_path is not None:
+    raise ValueError("Set local_weight_shards in the YAML parallelism_config when using --config.")
+  args.local_weight_shards = fields.get("local_weight_shards", False)
+  degrees = args.parallel_degrees
+  product = degrees["ulysses"] * degrees["ring"] * degrees["tp"]
+  if args.local_weight_shards and not (degrees["tp"] > 1 or
+                                       (args.parallel_text_encoder and product > 1)):
+    raise ValueError("local_weight_shards requires tp > 1 or text=true with a parallel degree > 1.")
   if args.parallel_type is not None:
     # torchrun exports WORLD_SIZE; fail here rather than after the model has been loaded. Without it
     # (plain `python`), the world size is checked where the groups are built.
     world_size = os.environ.get("WORLD_SIZE")
-    if world_size is not None:
-      product = args.parallel_degrees["ulysses"] * args.parallel_degrees[
-        "ring"] * args.parallel_degrees["tp"]
-      if product != int(world_size):
-        raise ValueError(
-          f"--parallel-params degrees (ulysses={args.parallel_degrees['ulysses']},"
-          f"ring={args.parallel_degrees['ring']},tp={args.parallel_degrees['tp']}) multiply to "
-          f"{product}, which must equal the world size {world_size}.")
+    if world_size is not None and product != int(world_size):
+      raise ValueError(f"--parallel-params degrees (ulysses={degrees['ulysses']},"
+                       f"ring={degrees['ring']},tp={degrees['tp']}) multiply to "
+                       f"{product}, which must equal the world size {world_size}.")
 
 
 def get_text_encoder_from_pipe(

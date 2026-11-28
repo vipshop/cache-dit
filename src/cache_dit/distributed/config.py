@@ -32,6 +32,8 @@ class ParallelismConfig:
   # tp_size (`int`, *optional*):
   #   The degree of tensor parallelism.
   tp_size: int = None
+  # Use identical full CPU weights on every rank to initialize supported TP projections.
+  local_weight_shards: bool = dataclasses.field(default=False, kw_only=True)
 
   # Ray wrapper config
   # use_ray (`bool`, *optional*):
@@ -177,6 +179,10 @@ class ParallelismConfig:
   def __post_init__(self):
     # For backward compatibility, will be removed in future versions.
     self._maybe_flatten_deprecated_parallel_kwargs()
+
+    if self.local_weight_shards and self.use_ray:
+      raise ValueError("local_weight_shards requires CPU weights at TP setup. Use the CLI Ray "
+                       "launcher or initialize parallelism in each rank directly.")
 
     self.quant_communicate_kwargs = normalize_quant_communicate_kwargs(
       self.quant_communicate_kwargs)

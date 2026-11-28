@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 from diffusers.models.modeling_utils import ModelMixin
-from torch.distributed import init_device_mesh
+from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import ColwiseParallel, ParallelStyle, RowwiseParallel
 
 from ...distributed.parallel import _ContextParallelModelPlan
@@ -105,6 +105,7 @@ class ContextParallelismPlannerRegister:
 
 
 class TensorParallelismPlanner:
+  _supports_local_weight_shards = False
 
   def __init__(self):
     # Record the planned parallelization for each layer, which can be used for
@@ -124,6 +125,14 @@ class TensorParallelismPlanner:
     **kwargs,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:
     raise NotImplementedError("_apply method must be implemented by subclasses")
+
+  def _preflight_local_weight_shards(
+    self,
+    transformer: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+  ) -> DeviceMesh:
+    """Validate local weight eligibility across the replica and return the TP mesh."""
+    raise NotImplementedError(f"{type(self).__name__} must implement local weight preflight.")
 
   def apply(
     self,
@@ -185,13 +194,16 @@ class TensorParallelismPlannerRegister:
   _tp_planner_registry: Dict[str, type[TensorParallelismPlanner]] = {}
 
   @classmethod
-  def register(cls, name: str):
+  def register(cls, name: str, *, local_weight_shards: bool = False):
 
     def decorator(planner_cls: type[TensorParallelismPlanner]):
       assert (name not in cls._tp_planner_registry
               ), f"TensorParallelismPlanner with name {name} is already registered."
       if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Registering TensorParallelismPlanner: {name}")
+      # Aliases share the class's opt-in. Subclasses opt in independently.
+      already_enabled = vars(planner_cls).get("_supports_local_weight_shards", False)
+      planner_cls._supports_local_weight_shards = already_enabled or local_weight_shards
       cls._tp_planner_registry[name] = planner_cls
       return planner_cls
 

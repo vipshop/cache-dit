@@ -363,6 +363,7 @@ PARALLEL_PARAM_SPECS: Dict[str, Caster] = {
   "vae": _as_bool,
   "text": _as_bool,
   "controlnet": _as_bool,
+  "local_weight_shards": _as_bool,
   "ulysses_anything": _as_bool,
   "ulysses_async": _as_bool,
   "ring_rotate_method": _one_of(("allgather", "p2p")),

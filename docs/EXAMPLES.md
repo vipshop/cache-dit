@@ -64,6 +64,10 @@ count.
 `--parallel-params` value as an active `ulysses` / `ring` / `tp` degree. A value with only a
 modifier is a no-op.
 
+For `minimax_h3`, enable CPU weight sharding with `--parallel-params 'tp=2,text=true,local_weight_shards=true'`.
+With `--config`, set `local_weight_shards: true` under `parallelism_config` in YAML and use
+`torchrun` when the degrees are only in YAML. [CPU weight requirements](user_guide/API_DOCS.md#parameter-description)
+
 ## Discover more
 
 ```bash

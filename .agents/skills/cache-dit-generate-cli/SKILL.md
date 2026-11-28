@@ -32,7 +32,7 @@ user-invocable: true
 7. `--quant-communicate-params` 需要 `ulysses > 1`，否则报 `requires Ulysses parallelism`。
 8. `--svdq-params` 只能配 `svdq_*` 类型的 `quant_type`；`lora_layout=row_major` 必须同时给 `runtime_kernel=cute`。
 9. 进度条只在 **stdout/stderr 都是真实终端且 rank 0** 时显示；管道、日志文件和 notebook 输出不会再有逐行 `\r` 刷屏。
-10. 多卡默认 `--launcher auto`：不需要手动 `torchrun`，CLI 会按度数拉起 worker；`CUDA_VISIBLE_DEVICES` 选卡。
+10. 未设置 `WORLD_SIZE` 时，CLI 根据 `--parallel-params` 或 `--parallel-config` 提供的多卡度数启动 worker，默认使用 `--launcher auto`。自启动要求可见 GPU 数等于度数乘积，可用 `CUDA_VISIBLE_DEVICES` 限定。多卡度数只写在 YAML 的 `parallelism_config` 中时，用 `torchrun` 等启动 worker。
 
 ## 2. 最小可用命令
 
@@ -191,6 +191,8 @@ python3 -m cache_dit.generate flux --parallel-params 'tp=2,controlnet=true'
 ```
 
 `vae/text/controlnet` 是组件修饰键，必须和 `tp`/`ulysses`/`ring` 中的一个 >1 轴写在同一个 `--parallel-params` 里。
+
+MiniMax-H3 冷启动可用 `local_weight_shards=true`。四卡 TP2×CP2 加 TE-P 的命令见 [多卡示例](../../../docs/EXAMPLES.md#multi-gpu)。
 
 ### 4.8 Offload / CUDA Graph / steps mask
 

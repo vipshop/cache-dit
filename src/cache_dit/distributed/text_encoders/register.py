@@ -2,7 +2,7 @@ import torch
 import logging
 from abc import abstractmethod
 from typing import Dict, List, Tuple
-from torch.distributed import init_device_mesh
+from torch.distributed import DeviceMesh, init_device_mesh
 from torch.distributed.tensor.parallel import (
   ParallelStyle,
   ColwiseParallel,
@@ -15,6 +15,7 @@ logger = init_logger(__name__)
 
 
 class TextEncoderTensorParallelismPlanner:
+  _supports_local_weight_shards = False
 
   def __init__(self):
     # Record the planned parallelization for each layer, which can be used for
@@ -34,6 +35,14 @@ class TextEncoderTensorParallelismPlanner:
     **kwargs,
   ) -> Tuple[torch.nn.Module, List[Dict[str, ParallelStyle]]]:  # text_encoder and layer plans
     raise NotImplementedError("apply method must be implemented by subclasses")
+
+  def _preflight_local_weight_shards(
+    self,
+    text_encoder: torch.nn.Module,
+    parallelism_config: ParallelismConfig,
+  ) -> DeviceMesh:
+    """Validate local weight eligibility across the replica and return the TP mesh."""
+    raise NotImplementedError(f"{type(self).__name__} must implement local weight preflight.")
 
   def mesh(self, parallelism_config: ParallelismConfig, **kwargs):
     text_encoder_world_size = parallelism_config.text_encoder_world_size
@@ -99,16 +108,19 @@ class TextEncoderTensorParallelismPlanner:
 
 
 class TextEncoderTensorParallelismPlannerRegister:
-  _text_encoder_tp_planner_registry: Dict[str, TextEncoderTensorParallelismPlanner] = {}
+  _text_encoder_tp_planner_registry: Dict[str, type[TextEncoderTensorParallelismPlanner]] = {}
 
   @classmethod
-  def register(cls, name: str):
+  def register(cls, name: str, *, local_weight_shards: bool = False):
 
     def decorator(planner_cls: type[TextEncoderTensorParallelismPlanner]):
       assert (name not in cls._text_encoder_tp_planner_registry
               ), f"TextEncoderTensorParallelismPlanner with name {name} is already registered."
       if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Registering TextEncoderTensorParallelismPlanner: {name}")
+      # Aliases share the class's opt-in. Subclasses opt in independently.
+      already_enabled = vars(planner_cls).get("_supports_local_weight_shards", False)
+      planner_cls._supports_local_weight_shards = already_enabled or local_weight_shards
       cls._text_encoder_tp_planner_registry[name] = planner_cls
       return planner_cls
 

@@ -130,6 +130,7 @@ def maybe_apply_optimization(
           ulysses_size=ulysses_size,
           ring_size=ring_size,
           tp_size=tp_size,
+          local_weight_shards=args.local_weight_shards,
           backend=ParallelismBackend.AUTO,
           attention_backend=("native" if not args.attn else args.attn),
           extra_parallel_modules=extra_parallel_modules,

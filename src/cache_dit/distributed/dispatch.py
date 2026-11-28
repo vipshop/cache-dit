@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import torch
 from diffusers.models.modeling_utils import ModelMixin
 from .backend import ParallelismBackend
@@ -23,6 +25,71 @@ def enable_parallelism(
   :returns: The parallelized transformer module.
   """
 
+  return _enable_parallelism([transformer], parallelism_config,
+                             parallelism_config.extra_parallel_modules)[0]
+
+
+def _prepare_tp_planners(
+  transformers: list[torch.nn.Module],
+  parallelism_config: ParallelismConfig,
+  extra_parallel_modules: list[torch.nn.Module],
+) -> dict[torch.nn.Module, Callable[..., torch.nn.Module]]:
+  pending_transformers = dict.fromkeys(
+    transformer for transformer in transformers if not check_parallelized(transformer))
+  if not pending_transformers:
+    return {}
+
+  from .text_encoders.dispatch import _prepare_text_encoder_tp
+  from .transformers.dispatch import _prepare_transformer_tp
+
+  tp_apply_by_module = {}
+  has_local_shards = False
+  if parallelism_config.tp_enabled():
+    for transformer in pending_transformers:
+      tp_apply_by_module[transformer], uses_local = _prepare_transformer_tp(
+        transformer, parallelism_config)
+      has_local_shards = has_local_shards or uses_local
+
+  for module in extra_parallel_modules:
+    if (check_text_encoder(module) and not check_parallelized(module)
+        and module not in tp_apply_by_module):
+      tp_apply_by_module[module], uses_local = _prepare_text_encoder_tp(module, parallelism_config)
+      has_local_shards = has_local_shards or uses_local
+
+  if not has_local_shards:
+    raise ValueError("local_weight_shards requires a selected TP planner with CPU weight sharding "
+                     "support.")
+  return tp_apply_by_module
+
+
+def _enable_parallelism(
+  transformers: list[torch.nn.Module],
+  parallelism_config: ParallelismConfig,
+  extra_parallel_modules: list[str | torch.nn.Module] | None,
+) -> list[torch.nn.Module]:
+  extra_modules = [] if extra_parallel_modules is None else extra_parallel_modules
+  assert isinstance(
+    extra_modules,
+    list), "extra_parallel_modules should be a list of module names or module instances."
+
+  tp_apply_by_module = {}
+  if parallelism_config.local_weight_shards:
+    # Finish every local weight check before the first CP or TP hook is installed.
+    tp_apply_by_module = _prepare_tp_planners(transformers, parallelism_config, extra_modules)
+
+  parallelism_config.extra_parallel_modules = extra_parallel_modules
+  return [
+    _apply_parallelism(transformer, parallelism_config, extra_modules, tp_apply_by_module)
+    for transformer in transformers
+  ]
+
+
+def _apply_parallelism(
+  transformer: torch.nn.Module | ModelMixin,
+  parallelism_config: ParallelismConfig,
+  extra_parallel_modules: list[torch.nn.Module],
+  tp_apply_by_module: dict[torch.nn.Module, Callable[..., torch.nn.Module]],
+) -> torch.nn.Module:
   assert isinstance(
     transformer,
     (torch.nn.Module,
@@ -54,46 +121,29 @@ def enable_parallelism(
   transformer = parallelize_transformer(
     transformer=transformer,
     parallelism_config=parallelism_config,
+    tp_apply=tp_apply_by_module.get(transformer),
   )
 
-  # Check text encoder and VAE for extra parallel modules
-  extra_parallel_modules: list[torch.nn.Module] = []
-  if parallelism_config.extra_parallel_modules is not None:
-    extra_parallel_modules = parallelism_config.extra_parallel_modules
-    assert isinstance(
-      extra_parallel_modules,
-      list), "extra_parallel_modules should be a list of module names or module instances."
+  for module in extra_parallel_modules:
+    if check_parallelized(module):
+      continue
+    if check_text_encoder(module):
+      from .text_encoders import parallelize_text_encoder
 
-  if extra_parallel_modules:
-    for module in extra_parallel_modules:
-      # Enable parallelism for text encoder
-      if check_text_encoder(module) and not check_parallelized(module):
-        from .text_encoders import (
-          parallelize_text_encoder, )
+      parallelize_text_encoder(
+        text_encoder=module,
+        parallelism_config=parallelism_config,
+        tp_apply=tp_apply_by_module.get(module),
+      )
+    elif check_controlnet(module):
+      from .controlnets import parallelize_controlnet
 
-        parallelize_text_encoder(
-          text_encoder=module,
-          parallelism_config=parallelism_config,
-        )
-      # Enable parallelism for ControlNet
-      elif check_controlnet(module) and not check_parallelized(module):
-        from .controlnets import (
-          parallelize_controlnet, )
+      parallelize_controlnet(controlnet=module, parallelism_config=parallelism_config)
+      _set_module_attn_backend(module)
+    elif check_auto_encoder(module):
+      from .autoencoders import parallelize_autoencoder
 
-        parallelize_controlnet(
-          controlnet=module,
-          parallelism_config=parallelism_config,
-        )
-        _set_module_attn_backend(module)
-      # Enable parallelism for VAE
-      elif check_auto_encoder(module) and not check_parallelized(module):
-        from .autoencoders import (
-          parallelize_autoencoder, )
-
-        parallelize_autoencoder(
-          auto_encoder=module,
-          parallelism_config=parallelism_config,
-        )
+      parallelize_autoencoder(auto_encoder=module, parallelism_config=parallelism_config)
 
   # Set attention backend for both context parallelism and tensor parallelism if the
   # transformer is from diffusers and supports setting attention backend.

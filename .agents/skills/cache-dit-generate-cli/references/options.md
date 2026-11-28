@@ -181,6 +181,7 @@ selected family (`'ffpa,bits=8,fp8_hadamard=true'`). `bits` is only valid with `
 | `vae` | False | Add the VAE to the parallel modules |
 | `text` | False | Add the text encoder (TE-P) |
 | `controlnet` | False | Add ControlNet |
+| `local_weight_shards` | False | Initialize supported MiniMax-H3 video TP and Qwen3-VL TE-P weights from CPU slices |
 | `ulysses_anything` | False | Uneven Ulysses split (UAA) |
 | `ulysses_async` | False | Async Ulysses |
 | `ring_rotate_method` | `p2p` | `p2p` or `allgather` |
@@ -189,8 +190,11 @@ selected family (`'ffpa,bits=8,fp8_hadamard=true'`). `bits` is only valid with `
 Component keys are modifiers: a value with only `vae=true`, `text=true`, `controlnet=true` or
 `ulysses_anything=true` builds no parallel config and is a silent no-op. Degree-1 axes are omitted.
 
-`--launcher` — `auto` (default; Ray if installed, else local processes), `ray`, `local`. No external
-`torchrun` is required when the CLI is asked to create more than one process.
+`--launcher` accepts `auto`, `ray`, and `local`. The default `auto` uses Ray if installed and local
+processes otherwise. CLI auto-launch reads degrees from `--parallel-params` or `--parallel-config`.
+Use external workers for YAML-only multi-GPU configuration and set `local_weight_shards` under
+`parallelism_config` when passing `--config`.
+[Multi-GPU examples](../../../../docs/EXAMPLES.md#multi-gpu)
 
 ## CPU offload
 
