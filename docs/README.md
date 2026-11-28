@@ -15,17 +15,16 @@
   </p>
 </div>
 
-**Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (FP8/FP4/INT4/SVDQ-W{**2,3,4,6,8**}-A{**4,6,8**}), [offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/), [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/USP/TE-P/VAE-P/2D-P/3D-P) and [attention acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/) (FA-2/3, sage-2/3, [⚡️ffpa-attn](https://github.com/vipshop/ffpa-attn), sol-attn, etc) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
+<p align="justify"><strong>Cache-DiT</strong> is fast, easy to use, and flexible for various DiTs. It is a PyTorch-native inference engine with <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/">cache</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/">quantization</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/">offload</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/">parallelism</a> and <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/">attention backends</a> (FA-2/3, <a href="https://github.com/vipshop/ffpa-attn">ffpa-attn</a>, Sage-2/3), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs.</p>
 
 <div align="center">
-  <i>Cache-DiT is fast, easy to use, and flexible for various DiTs.</i>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
+  <img src=assets/arch_v3.png >
 </div>
 
-Cache-DiT is also compatible with torch.compile and fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/models/visual-generation.html#cache-dit), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit). Cache-DiT now supports **60+🎉 DiT pipeline families (150+🎉 Variants)**, covering the vast majority of DiTs. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT is compatible with torch.compile and integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/models/visual-generation.html#cache-dit) and [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit). It covers **60+** DiT pipeline families (**150+** Variants); see 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/) for detailed usage.
 
 <div align="center">
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/speedup_v5.png width=800px>
+  <img src=assets/parallel_speedup_flux.png >
 </div>
 
 <div align="center">
