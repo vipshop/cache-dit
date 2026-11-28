@@ -35,7 +35,7 @@
     \pgfmathsetmacro{\cx}{#2+(\i-0.5)*#3}%
     \pgfmathsetmacro{\halfw}{#3*0.5-0.05}%
     \fill[#4, rounded corners=\pillr] ({\cx-\halfw},{#1-\pillh}) rectangle ({\cx+\halfw},{#1+\pillh});%
-    \node[text=#5, inner sep=0pt, font=\fontsize{8}{9}\selectfont] at (\cx,#1) {\it};%
+    \node[text=#5, inner sep=0pt, font=\fontsize{8}{9}\selectfont\bfseries] at (\cx,#1) {\it};%
   }%
 }
 
