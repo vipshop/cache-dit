@@ -7,7 +7,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, calc}
 
-\setsansfont{Inter}[UprightFont={*-Regular}, BoldFont={*-SemiBold}, Ligatures=TeX]
+\setsansfont{Inter}[UprightFont={*-Regular}, BoldFont={*-SemiBold}, ItalicFont={*-Italic}, Ligatures=TeX]
 \renewcommand{\familydefault}{\sfdefault}
 
 \definecolor{bg}{HTML}{E5EBD9}
@@ -43,8 +43,9 @@
 
 \begin{document}
 \begin{tikzpicture}[x=1cm, y=1cm]
-  \path[use as bounding box] (-0.02,-0.02) rectangle (19.42,5.72);
-  \fill[bg, rounded corners=0.30cm] (0,0) rectangle (19.40,5.70);
+  \path[use as bounding box] (-0.02,-0.02) rectangle (19.42,6.45);
+  \fill[bg, rounded corners=0.30cm] (0,0) rectangle (19.40,6.43);
+  \node[text=ink] at (9.70,5.95) {\fontsize{10}{12}\selectfont \textbf{Cache-DiT} is fast, easy to use, and flexible for various DiTs.};
 
   \panel{0.30}{3.10}{10.55}{5.40}
   \ptitle{5.425}{5.09}{Hybrid Cache Acceleration}
