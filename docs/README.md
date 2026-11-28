@@ -33,21 +33,21 @@ Cache-DiT is also compatible with torch.compile and fully integrates with [SGLan
 </div>
 
 ```bash
-pip install -U "cache-dit[quantization]" # quantization: torchao, etc.
-# +cu13 wheel: CUDA extensions (SVDQuant, FP8 Ulysses communication, etc).
+pip install -U "cache-dit[quantization]" # quantization: torchao/bitsandbytes, etc.
+# cu13 wheel: CUDA extensions (SVDQuant-W{2,3,4,6,8}-A{4,6,8}, FP8/FP6/FP4 communication, etc).
 pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.github.io/cache-dit/whl/cu13/
 ```
 
 ```bash
-# FLUX.1-dev on two GPUs: DBCache + TaylorSeer + FP8 Quantization + FP8 Ulysses + compile.
+# FP6 Ulysses (CP2) + Cache + FP8 GEMM + FP8 Attn + Compile (PRO 5000: 16.7s -> ⚡️2.4s)
 CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate \
   black-forest-labs/FLUX.1-dev \
   --parallel-config 'ulysses=2' \
-  --quant-communicate-config 'bits=8' \
-  --cache-config 'DBCache,rdt=0.12' \
+  --quant-communicate-config 'bits=6' \
+  --cache-config 'DBCache,rdt=0.15' \
   --calibrator-config 'taylorseer,order=1' \
   --quantize-config 'float8_per_row' \
-  --attn-config 'native' \
+  --attn-config 'FFPA,bits=8' \
   --compile
 ```
 
