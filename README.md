@@ -46,6 +46,10 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python3 -m cache_dit.generate black-forest-labs/FLU
   --compile
 ```
 
+<div align="center">
+  <img src=https://github.com/vipshop/cache-dit/raw/main/docs/assets/parallel_speedup_flux.png width=820px>
+</div>
+
 More commands: 📘[Quick Examples](https://cache-dit.readthedocs.io/en/latest/EXAMPLES/). Other
 platforms, the source build and the full install matrix:
 📘[Installation](https://cache-dit.readthedocs.io/en/latest/user_guide/INSTALL/).
