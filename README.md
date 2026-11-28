@@ -20,7 +20,7 @@
 
 
 
-Cache-DiT is also compatible with torch.compile and fully integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/models/visual-generation.html#cache-dit), [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit). Cache-DiT now supports **60+🎉 DiT pipeline families (150+🎉 Variants)**, covering the vast majority of DiTs. For full support matrix and detailed usage, please refer to our docs at 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/).
+Cache-DiT is compatible with torch.compile and integrates with [SGLang Diffusion](https://docs.sglang.io/diffusion/performance/cache/cache_dit.html), [vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/user_guide/diffusion/cache_acceleration/cache_dit/), [TensorRT-LLM](https://nvidia.github.io/TensorRT-LLM/models/visual-generation.html#cache-dit) and [xDiT](https://github.com/xdit-project/xDiT/tree/main/xfuser/model_executor/cache/adapters/cache_dit). It covers **60+🎉 DiT pipeline families (150+🎉 Variants)**; see 📘[cache-dit.io](https://cache-dit.readthedocs.io/en/latest/) for the full support matrix.
 
 <div align="center">
   <img src=docs/assets/parallel_speedup_flux.png width=800px>
