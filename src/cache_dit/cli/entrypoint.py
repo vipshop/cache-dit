@@ -347,8 +347,10 @@ def get_args(parse: bool = True, ) -> argparse.ArgumentParser | argparse.Namespa
     "options: sol_attn: tau, thresh_type (diag|exact), strict, sink_tokens; ffpa: hybrid, "
     "hybrid_n_early; ffpa_fp8 / ffpa_fp8_per_block: hybrid, hybrid_n_early, fp8_hadamard, "
     "fp8_smooth_v, e.g. 'type=ffpa_fp8,fp8_hadamard=true'; ffpa_fp4: hybrid, hybrid_n_early, "
-    "fp4_hadamard, fp4_pv_mm_type (fp4|fp8), fp4_smooth_v. The non-default options are reflected "
-    "in the saved filename.",
+    "fp4_hadamard, fp4_pv_mm_type (fp4|fp8), fp4_smooth_v. The ffpa family also takes the 'bits' "
+    "shorthand: 'ffpa,bits=8' is ffpa_fp8, 'ffpa,bits=4' is ffpa_fp4, 'ffpa,bits=16' is the plain "
+    "fp16/bf16 ffpa, and the remaining keys follow the selected family, e.g. "
+    "'ffpa,bits=8,fp8_hadamard=true'. The non-default options are reflected in the saved filename.",
   )
   # Ulysses context parallelism settings
   parser.add_argument(

@@ -6,9 +6,10 @@ from .params import resolve_attn_params
 def _apply_attn_params(args) -> None:
   """Resolve `--attn-params` and push the options into the process-wide backend configuration.
 
-  The `type` key selects the backend and is exposed as `args.attn`; the ffpa and sol_attn options
-  are module-level state, so they apply to both the direct and the context-parallel attention
-  paths.
+  The `type` key selects the backend and is exposed as `args.attn`; the ffpa `bits` shorthand is
+  already rewritten to a concrete backend by then, so `args.attn` is always a registered name. The
+  ffpa and sol_attn options are module-level state, so they apply to both the direct and the
+  context-parallel attention paths.
 
   :param args: Parsed CLI namespace; `attn` and `attn_fields` are set here.
   """

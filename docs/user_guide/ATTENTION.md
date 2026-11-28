@@ -125,6 +125,8 @@ cache_dit.enable_cache(
 )
 ```
 
+On the CLI the family has a `bits` shorthand: `--attn-config 'ffpa'` is the plain fp16/bf16 backend, `'ffpa,bits=8'` is `ffpa_fp8`, `'ffpa,bits=4'` is `ffpa_fp4`, and the remaining keys are validated against the selected family, e.g. `'ffpa,bits=8,fp8_hadamard=true'`. `ffpa_fp8_per_block` selects a quantization granularity rather than a bit width, so it keeps its full name.
+
 Hardware scope:
 
 |backend|precision|hardware|

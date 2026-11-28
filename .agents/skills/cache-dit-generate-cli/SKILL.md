@@ -76,7 +76,7 @@ python3 -m cache_dit.generate flux --height 1024 --width 1024
 | 校准器 | `--calibrator-params` / `--calibrator-config` | `type=taylorseer|dmd|foca|svd|hicache|brace|bezicast|residual_motion` + 各自键 |
 | 量化 | `--quantize-params` / `--quantize-config` | `quant_type`、`backend`、`exclude_layers`、`text_encoder`、`regional_quantize`、`per_tensor_fallback`、`verbose`、`fp8_fused_mlp`、`fp4_fused_mlp` |
 | SVDQuant | `--svdq-params` / `--svdq-config` | `runtime_kernel`、`lora_layout`、`smooth_strategy`、`few_shot_*`、`fused_mlp`、`layerwise_offload`、`packed_a4_*` |
-| 注意力 | `--attn-params` / `--attn-config` | `type=native|flash|flash_varlen|sage|sage3|ffpa*|sol_attn|...` + 后端专属键 |
+| 注意力 | `--attn-params` / `--attn-config` | `type=native|flash|flash_varlen|sage|sage3|ffpa[,bits=16|8|4]|sol_attn|...` + 后端专属键 |
 | 并行 | `--parallel-params` / `--parallel-config` | `ulysses`、`ring`、`tp`、`vae`、`text`、`controlnet`、`ulysses_anything`、`ulysses_async`、`ring_rotate_method`、`ring_convert_to_fp32` |
 | 通信量化 | `--quant-communicate-params` / `--quant-communicate-config` | `bits=8|6|4`、`quant_type=per_token|per_group_16|per_group_32`、`quantize_k` |
 | CPU offload | `--cpu-offload` / `--sequential-cpu-offload` / `--module-layerwise-cpu-offload`（`--layerwise-offload`）/ `--adaln-host-residency` / `--adaln-online` | 五者互斥 |
@@ -133,6 +133,8 @@ python3 -m cache_dit.generate flux \
   --compile \
   --save-path flux.unified.png
 ```
+
+ffpa 家族支持 `bits` 简写，替代完整 backend 名：`'ffpa,bits=8'` = `ffpa_fp8`、`'ffpa,bits=4'` = `ffpa_fp4`、`'ffpa,bits=16'` = 纯 fp16/bf16 的 `ffpa`；后面的键按所选精度族校验，例如 `'ffpa,bits=8,fp8_hadamard=true'`。`ffpa_fp8_per_block` 是量化粒度不是位宽，仍用全名；`bits` 只对 `type=ffpa` 有效，与具体 backend 同写会报错。
 
 ### 4.5 SVDQuant
 
@@ -217,6 +219,7 @@ python3 -m cache_dit.generate flux --cache-params 'DBCache,steps_mask=true,scm=f
 | `--compile-full-graph` + cache/offload | 跳过/流式逻辑会引入 graph break，不要组合；用默认 `--compile` |
 | `--adaln-host-residency` + `--cuda-graph`/`--compile-full-graph` | 未量化或未 TP 时被拒绝（AdaLN 每块拷贝是 graph break） |
 | `--attn-params type=...` 取值非法 | 报 `invalid choice` / 未知 backend；查 `references/options.md` |
+| `--attn-params 'ffpa,bits=...'` | `bits` 只配 `type=ffpa`；`bits` 值非法或与 `ffpa_fp8`/`ffpa_fp4`/`ffpa_fp8_per_block` 同写都会报错 |
 | 日志里没有进度条 | 非 TTY 环境（管道/日志/notebook）自动关闭；真实终端仍是一行刷新 |
 
 ## 6. 调试流程
