@@ -2,7 +2,7 @@
 % Source of docs/assets/arch_v3.png.
 % Build: xelatex arch_v3.tex
 %        pdftocairo -png -transp -r 300 -singlefile arch_v3.pdf arch_v3
-% Feature-overview card: tagline, panels of rounded pills, single-line footer.
+% Feature-overview card: panels of rounded pills on a transparent sage card.
 \usepackage{fontspec}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, calc}
@@ -41,10 +41,9 @@
 
 \begin{document}
 \begin{tikzpicture}[x=1cm, y=1cm]
-  \path[use as bounding box] (-0.02,-0.02) rectangle (19.62,6.65);
-  \fill[bg, rounded corners=0.30cm] (0,0) rectangle (19.60,6.63);
+  \path[use as bounding box] (-0.02,0.53) rectangle (19.62,6.02);
+  \fill[bg, rounded corners=0.30cm] (0,0.55) rectangle (19.60,6.00);
 
-  \node[text=ink] at (9.80,6.05) {\fontsize{10}{12}\selectfont \textbf{Cache-DiT} is fast, \textbf{easy to use}, and flexible for various DiTs.};
 
   \panel{0.40}{3.20}{10.65}{5.60}
   \ptitle{5.525}{5.29}{Hybrid Cache Acceleration}
@@ -73,7 +72,6 @@
   \pillrow{2.10}{13.34}{2.86}{pillblue}{bluetext}{torch.compile, CUDA Graphs}
   \pillrow{1.48}{13.34}{2.86}{pillblue}{bluetext}{CPU Offload, Layerwise Offload}
 
-  \node[text=muted] at (9.80,0.46) {\fontsize{7.5}{9}\selectfont Runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs \textperiodcentered\ 60+ DiT pipelines (150+ variants)};
 
 \end{tikzpicture}
 \end{document}

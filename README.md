@@ -15,6 +15,7 @@
 **Cache-DiT** is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/) (DBCache, TaylorSeers, FoCa, SCM, SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache, etc), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/) (FP8/FP4/INT4/SVDQ-W{**2,3,4,6,8**}-A{**4,6,8**}), [offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/), [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) (CP/TP/USP/TE-P/VAE-P/2D-P/3D-P) and [attention acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/) (FA-2/3, sage-2/3, [⚡️ffpa-attn](https://github.com/vipshop/ffpa-attn), sol-attn, etc) for various DiTs and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. 
 
 <div align="center">
+  <i>Cache-DiT is fast, easy to use, and flexible for various DiTs.</i>
   <img src=docs/assets/arch_v3.png width=815px>
 </div>
 
