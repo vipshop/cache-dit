@@ -148,12 +148,17 @@ quantization; omitting `quant_type` means `float8_per_row`.
 `sol_attn`, `ffpa`, `ffpa_fp8`, `ffpa_fp4`, `ffpa_fp8_per_block`, `_native_npu`, `_npu_fia`,
 `_mindiesd_laser`.
 
+The `ffpa` family also accepts `bits` in place of the concrete backend: `bits=16` → `ffpa`
+(fp16/bf16), `bits=8` → `ffpa_fp8`, `bits=4` → `ffpa_fp4`, and the keys after `bits` follow the
+selected family (`'ffpa,bits=8,fp8_hadamard=true'`). `bits` is only valid with `type=ffpa`;
+`ffpa_fp8_per_block` keeps its full name.
+
 | Backend | Extra keys |
 |---|---|
 | `sol_attn` | `tau`, `thresh_type=diag|exact`, `strict`, `sink_tokens` |
-| `ffpa` | `hybrid`, `hybrid_n_early` |
-| `ffpa_fp8`, `ffpa_fp8_per_block` | `hybrid`, `hybrid_n_early`, `fp8_hadamard`, `fp8_smooth_v` |
-| `ffpa_fp4` | `hybrid`, `hybrid_n_early`, `fp4_hadamard`, `fp4_pv_mm_type=fp4|fp8`, `fp4_smooth_v` |
+| `ffpa` (or `ffpa,bits=16`) | `hybrid`, `hybrid_n_early` |
+| `ffpa_fp8` (or `ffpa,bits=8`), `ffpa_fp8_per_block` | `hybrid`, `hybrid_n_early`, `fp8_hadamard`, `fp8_smooth_v` |
+| `ffpa_fp4` (or `ffpa,bits=4`) | `hybrid`, `hybrid_n_early`, `fp4_hadamard`, `fp4_pv_mm_type=fp4|fp8`, `fp4_smooth_v` |
 
 `--quant-communicate-params` (aliases `--quant-communicate-config`, `--quant-comm-params`,
 `--quant-comm-config`) — requires Ulysses `> 1`.
