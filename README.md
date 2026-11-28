@@ -16,7 +16,7 @@
 
 <div align="center">
   <i>Cache-DiT is fast, easy to use, and flexible for various DiTs.</i>
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v2.png width=815px>
+  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/arch_v3.png width=815px>
 </div>
 
 
