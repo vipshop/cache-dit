@@ -34,7 +34,7 @@ pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.githu
 ```
 
 ```bash
-# FP6 Ulysses + Cache + FP8 GEMM + FP8 Attn + Compile (PRO 5000: 16.7s -> ⚡️2.4s)
+# FP6 Ulysses (CP2) + Cache + FP8 GEMM + FP8 Attn + Compile (PRO 5000: 16.7s -> ⚡️2.4s)
 CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate \
   black-forest-labs/FLUX.1-dev \
   --parallel-config 'ulysses=2' \
