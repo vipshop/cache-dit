@@ -39,10 +39,10 @@ pip install -U "cache-dit[quantization]" --extra-index-url https://vipshop.githu
 ```
 
 ```bash
-# FP6 Ulysses (CP2) + Cache + FP8 GEMM + FP8 Attn + Compile (PRO 5000: 16.7s -> ⚡️2.4s)
-CUDA_VISIBLE_DEVICES=0,1 python3 -m cache_dit.generate black-forest-labs/FLUX.1-dev \
+# FP6 Ulysses (CP4) + Cache + FP8 GEMM + FP8 Attn + Compile (PRO 5000: 16.7s -> ⚡️1.57s)
+CUDA_VISIBLE_DEVICES=0,1,2,3 python3 -m cache_dit.generate black-forest-labs/FLUX.1-dev \
   --prompt "A cat holding a sign that says hello world" \
-  --parallel-config 'ulysses=2' \
+  --parallel-config 'ulysses=4' \
   --quant-communicate-config 'bits=6' \
   --cache-config 'DBCache,rdt=0.15' \
   --calibrator-config 'taylorseer,order=1' \
