@@ -2,7 +2,7 @@
 % Source of docs/assets/arch_v3.png.
 % Build: xelatex arch_v3.tex
 %        pdftocairo -png -transp -r 300 -singlefile arch_v3.pdf arch_v3
-% Feature-overview card: panels of pills, rounded sage card on a transparent background.
+% Feature-overview card: panels of rounded pills on a transparent sage card.
 \usepackage{fontspec}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, calc}
@@ -22,12 +22,8 @@
 \definecolor{pillgrey}{HTML}{DFE2D8}
 \definecolor{greytext}{HTML}{474D42}
 
-\tikzset{
-  pill/.style={rounded corners=0.05cm, minimum height=0.44cm, inner xsep=0.04cm, inner ysep=0pt, font=\fontsize{8}{9}\selectfont},
-  bpill/.style={pill, fill=pillblue, text=bluetext},
-  spill/.style={pill, fill=pillsage, text=sagetext},
-  gpill/.style={pill, fill=pillgrey, text=greytext},
-}
+\def\pillh{0.22}% half pill height, cm
+\def\pillr{0.10cm}% pill corner radius, cm
 
 \newcommand{\panel}[4]{%
   \fill[panelfill, rounded corners=0.10cm] (#1,#2) rectangle (#3,#4);%
@@ -36,9 +32,12 @@
 \newcommand{\ptitle}[3]{%
   \node[text=ink] at (#1,#2) {\fontsize{9.5}{11}\selectfont\bfseries #3};%
 }
-\newcommand{\pillrow}[5]{%
-  \foreach \it [count=\i] in {#5}{%
-    \node[pill, #4, minimum width=\dimexpr#3cm-0.10cm\relax] at ({#2+(\i-0.5)*#3},#1) {\it};%
+\newcommand{\pillrow}[6]{%
+  \foreach \it [count=\i] in {#6}{%
+    \pgfmathsetmacro{\cx}{#2+(\i-0.5)*#3}%
+    \pgfmathsetmacro{\halfw}{#3*0.5-0.05}%
+    \fill[#4, rounded corners=\pillr] ({\cx-\halfw},{#1-\pillh}) rectangle ({\cx+\halfw},{#1+\pillh});%
+    \node[text=#5, inner sep=0pt, font=\fontsize{8}{9}\selectfont] at (\cx,#1) {\it};%
   }%
 }
 
@@ -49,29 +48,29 @@
 
   \panel{0.30}{3.10}{10.55}{5.40}
   \ptitle{5.425}{5.09}{Hybrid Cache Acceleration}
-  \pillrow{4.51}{0.44}{1.994}{bpill}{DBCache, DBPrune, TaylorSeer, FoCa, SCM}
-  \pillrow{3.83}{0.44}{1.994}{bpill}{SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache}
+  \pillrow{4.51}{0.44}{1.994}{pillblue}{bluetext}{DBCache, DBPrune, TaylorSeer, FoCa, SCM}
+  \pillrow{3.83}{0.44}{1.994}{pillblue}{bluetext}{SVD-Cache, DMD-Cache, HiCache, BRACE, Sea-Cache}
 
   \panel{10.85}{3.10}{19.10}{5.40}
   \ptitle{14.975}{5.09}{Parallelism}
-  \pillrow{4.55}{10.99}{2.657}{spill}{Ulysses, Ring, USP}
-  \pillrow{4.03}{10.99}{2.657}{spill}{Ulysses-Anything, Async Ulysses, TP}
-  \pillrow{3.51}{10.99}{2.657}{spill}{TE-P \textperiodcentered\ VAE-P, 2D/3D-P, FP4--FP8 Comm}
+  \pillrow{4.55}{10.99}{2.657}{pillsage}{sagetext}{Ulysses, Ring, USP}
+  \pillrow{4.03}{10.99}{2.657}{pillsage}{sagetext}{Ulysses-Anything, Async Ulysses, TP}
+  \pillrow{3.51}{10.99}{2.657}{pillsage}{sagetext}{TE-P \textperiodcentered\ VAE-P, 2D/3D-P, FP4--FP8 Comm}
 
   \panel{0.30}{0.85}{7.30}{2.80}
   \ptitle{3.80}{2.49}{Low-Bit Quantization}
-  \pillrow{2.05}{0.44}{3.36}{bpill}{FP8, FP4}
-  \pillrow{1.43}{0.44}{3.36}{bpill}{INT4, SVDQ W2--W8 \textperiodcentered\ A4--A8}
+  \pillrow{2.05}{0.44}{3.36}{pillblue}{bluetext}{FP8, FP4}
+  \pillrow{1.43}{0.44}{3.36}{pillblue}{bluetext}{INT4, SVDQ W2--W8 \textperiodcentered\ A4--A8}
 
   \panel{7.60}{0.85}{12.80}{2.80}
   \ptitle{10.20}{2.49}{Attention Backends}
-  \pillrow{2.05}{7.74}{1.64}{bpill}{FA-2, FA-3, Sage-2}
-  \pillrow{1.43}{7.74}{1.64}{bpill}{Sage-3, FFPA, Sol-Attn}
+  \pillrow{2.05}{7.74}{1.64}{pillblue}{bluetext}{FA-2, FA-3, Sage-2}
+  \pillrow{1.43}{7.74}{1.64}{pillblue}{bluetext}{Sage-3, FFPA, Sol-Attn}
 
   \panel{13.10}{0.85}{19.10}{2.80}
   \ptitle{16.10}{2.49}{Compile \& Offload}
-  \pillrow{2.05}{13.24}{2.86}{bpill}{torch.compile, CUDA Graphs}
-  \pillrow{1.43}{13.24}{2.86}{bpill}{CPU Offload, Layerwise Offload}
+  \pillrow{2.05}{13.24}{2.86}{pillblue}{bluetext}{torch.compile, CUDA Graphs}
+  \pillrow{1.43}{13.24}{2.86}{pillblue}{bluetext}{CPU Offload, Layerwise Offload}
 
   \node[anchor=west, text=muted] at (0.30,0.37) {\fontsize{7.5}{9}\selectfont Runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs};
   \node[anchor=east, text=muted] at (19.10,0.37) {\fontsize{7.5}{9}\selectfont 60+ DiT pipelines \textperiodcentered\ 150+ variants};
