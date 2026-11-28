@@ -12,7 +12,7 @@
   </p>
 </div>
 
-<p align="justify"><strong>Cache-DiT</strong> is fast, easy to use, and flexible for various DiTs. It is a PyTorch-native inference engine with <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/">cache</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/">quantization</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/">offload</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/">parallelism</a> and <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/">attention backends</a> (FA-2/3, <a href="https://github.com/vipshop/ffpa-attn">ffpa-attn</a>, Sage-2/3), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. It covers **60+** DiT pipeline families (**150+** Variants). </p>
+<p align="justify"><strong>Cache-DiT</strong> is fast, easy to use, and flexible for various DiTs. It is a PyTorch-native inference engine with <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/">cache</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/">quantization</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/">offload</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/">parallelism</a> and <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/">attention backends</a> (FA-2/3, <a href="https://github.com/vipshop/ffpa-attn">ffpa-attn</a>, Sage-2/3), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs. It covers <b>60+</b> DiT pipeline families (<b>150+</b> Variants). </p>
 
 <div align="center">
   <img src=docs/assets/arch_v3.png >
