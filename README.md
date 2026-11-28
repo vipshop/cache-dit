@@ -12,7 +12,7 @@
   </p>
 </div>
 
-**Cache-DiT** is fast, easy to use, and flexible for various DiTs. It is a PyTorch-native inference engine with [cache acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/), [quantization](https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/), [offload](https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/), [parallelism](https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/) and [attention acceleration](https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/) (FA-2/3, [ffpa-attn](https://github.com/vipshop/ffpa-attn), Sage-2/3), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs.
+<p align="justify"><strong>Cache-DiT</strong> is fast, easy to use, and flexible for various DiTs. It is a PyTorch-native inference engine with <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CACHE_API/">cache</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/QUANTIZATION/">quantization</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/OFFLOAD/">offload</a>, <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/CONTEXT_PARALLEL/">parallelism</a> and <a href="https://cache-dit.readthedocs.io/en/latest/user_guide/ATTENTION/">attention backends</a> (FA-2/3, <a href="https://github.com/vipshop/ffpa-attn">ffpa-attn</a>, Sage-2/3), and runs natively on NVIDIA GPUs, Huawei Ascend NPUs and AMD GPUs.</p>
 
 <div align="center">
   <img src=docs/assets/arch_v3.png width=815px>
