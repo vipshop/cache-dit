@@ -1,0 +1,59 @@
+\documentclass[border=0pt]{standalone}
+% Source of docs/assets/parallel_speedup_flux.png.
+% Build: xelatex parallel_speedup_flux.tex
+%        pdftocairo -png -transp -r 300 -singlefile parallel_speedup_flux.pdf parallel_speedup_flux
+% 1 -> 2 -> 4 GPU speedup ladder, rounded sage card on a transparent background.
+\usepackage{fontspec}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, calc}
+
+\setsansfont{Inter}[UprightFont={*-Regular}, BoldFont={*-SemiBold}, Ligatures=TeX]
+\renewcommand{\familydefault}{\sfdefault}
+
+\definecolor{bg}{HTML}{E5EBD9}
+\definecolor{bargrey}{HTML}{AEB2A7}
+\definecolor{barblue}{HTML}{5069B2}
+\definecolor{axisline}{HTML}{8A9285}
+\definecolor{ink}{HTML}{1F241A}
+\definecolor{muted}{HTML}{6F7468}
+\definecolor{accent}{HTML}{34509E}
+
+\begin{document}
+\begin{tikzpicture}[x=1cm, y=1cm]
+  \path[use as bounding box] (-1.97,-0.02) rectangle (15.32,2.08);
+  \fill[bg, rounded corners=0.30cm] (-1.95,0) rectangle (15.30,2.06);
+
+  \draw[axisline, line width=0.6pt] (0,1.95) -- (0,0.24);
+
+  \fill[bargrey] (0,1.60) rectangle (14.080,1.90);
+  \fill[barblue] (0,0.94) rectangle (2.091,1.24);
+  \fill[barblue] (0,0.28) rectangle (1.324,0.58);
+
+  \node[anchor=east, text=ink] at (-0.32,1.75) {\fontsize{8.6}{9}\selectfont\bfseries 1 GPU};
+  \node[anchor=east, text=muted] at (-0.32,1.49) {\fontsize{6.2}{7}\selectfont Baseline};
+
+  \node[anchor=east, text=accent] at (-0.32,1.09) {\fontsize{8.6}{9}\selectfont\bfseries 2 GPUs};
+  \node[anchor=east, text=muted] at (-0.32,0.83) {\fontsize{6.2}{7}\selectfont Cache-DiT};
+
+  \node[anchor=east, text=accent] at (-0.32,0.43) {\fontsize{8.6}{9}\selectfont\bfseries 4 GPUs};
+  \node[anchor=east, text=muted] at (-0.32,0.17) {\fontsize{6.2}{7}\selectfont Cache-DiT};
+
+  \node[anchor=west, text=ink, inner sep=0pt] at (14.250,1.75) {\fontsize{9}{9}\selectfont\bfseries 16.7\,\textcolor{muted}{\mdseries\fontsize{6.2}{7}\selectfont s}};
+  \node[anchor=west, text=ink, inner sep=0pt] at (2.261,1.09) {\fontsize{9}{9}\selectfont\bfseries 2.48\,\textcolor{muted}{\mdseries\fontsize{6.2}{7}\selectfont s}};
+  \node[anchor=west, text=accent, inner sep=0pt] at (1.494,0.43) {\fontsize{9}{9}\selectfont\bfseries 1.57\,\textcolor{accent!70}{\mdseries\fontsize{6.2}{7}\selectfont s}};
+
+  \draw[ink, line width=0.55pt, -{Stealth[length=2.4mm, width=1.9mm]}]
+    (14.08,1.58) .. controls (13.62,1.17) and (9.20,0.98) .. (3.13,1.05);
+
+  \draw[ink, line width=0.55pt, -{Stealth[length=2.4mm, width=1.9mm]}]
+    (3.53,0.91) .. controls (4.00,0.70) and (3.72,0.50) .. (2.39,0.46);
+
+  \node[text=ink, inner sep=0pt] at (8.40,1.39) {\fontsize{7.2}{8}\selectfont 6.7× faster};
+  \node[text=ink, inner sep=0pt] at (4.62,0.70) {\fontsize{7.2}{8}\selectfont 1.6× faster};
+
+  \node[anchor=south east, text=accent, inner sep=0pt] at (15.02,0.47) {\fontsize{15}{15}\selectfont\bfseries 10.6×};
+  \node[anchor=east, text=muted, inner sep=0pt] at (15.02,0.17) {\fontsize{6.2}{7}\selectfont end-to-end vs.\ 1 GPU};
+
+  \node[text=muted, inner sep=0pt] at (6.675,0.17) {\fontsize{6.2}{7}\selectfont FLUX.1-dev \textperiodcentered\ 28 steps \textperiodcentered\ 1024² \textperiodcentered\ NVIDIA PRO 5000 (PCIe, no NVLink)};
+\end{tikzpicture}
+\end{document}

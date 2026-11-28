@@ -1,0 +1,77 @@
+\documentclass[border=0pt]{standalone}
+% Source of docs/assets/arch_v3.png.
+% Build: xelatex arch_v3.tex
+%        pdftocairo -png -transp -r 300 -singlefile arch_v3.pdf arch_v3
+% Feature-overview card: panels of rounded pills on a transparent sage card.
+\usepackage{fontspec}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, calc}
+
+\setsansfont{Inter}[UprightFont={*-Regular}, BoldFont={*-SemiBold}, ItalicFont={*-Italic}, Ligatures=TeX]
+\renewcommand{\familydefault}{\sfdefault}
+
+\definecolor{bg}{HTML}{E5EBD9}
+\definecolor{panelfill}{HTML}{F4F7EC}
+\definecolor{panelborder}{HTML}{C9D4BA}
+\definecolor{ink}{HTML}{1F241A}
+\definecolor{muted}{HTML}{5C6553}
+\definecolor{pillblue}{HTML}{D0DAEF}
+\definecolor{bluetext}{HTML}{27396F}
+\definecolor{pillsage}{HTML}{D7E2C4}
+\definecolor{sagetext}{HTML}{3B4F2A}
+
+\def\pillh{0.22}% half pill height, cm
+\def\pillr{0.10cm}% pill corner radius, cm
+
+\newcommand{\panel}[4]{%
+  \fill[panelfill, rounded corners=0.10cm] (#1,#2) rectangle (#3,#4);%
+  \draw[panelborder, line width=0.5pt, rounded corners=0.10cm] (#1,#2) rectangle (#3,#4);%
+}
+\newcommand{\ptitle}[3]{%
+  \node[text=ink] at (#1,#2) {\fontsize{9.5}{11}\selectfont\bfseries #3};%
+}
+\newcommand{\pillrow}[6]{%
+  \foreach \it [count=\i] in {#6}{%
+    \pgfmathsetmacro{\cx}{#2+(\i-0.5)*#3}%
+    \pgfmathsetmacro{\halfw}{#3*0.5-0.05}%
+    \fill[#4, rounded corners=\pillr] ({\cx-\halfw},{#1-\pillh}) rectangle ({\cx+\halfw},{#1+\pillh});%
+    \node[text=#5, inner sep=0pt, font=\fontsize{8}{9}\selectfont\bfseries] at (\cx,#1) {\it};%
+  }%
+}
+
+\begin{document}
+\begin{tikzpicture}[x=1cm, y=1cm]
+  \path[use as bounding box] (-0.02,0.53) rectangle (19.62,6.02);
+  \fill[bg, rounded corners=0.30cm] (0,0.55) rectangle (19.60,6.00);
+
+
+  \panel{0.40}{3.20}{10.65}{5.60}
+  \ptitle{5.525}{5.29}{Hybrid Cache Acceleration}
+  \pillrow{4.80}{0.54}{2.4925}{pillblue}{bluetext}{DBCache, SoftCache, Sea-Cache, TaylorSeer}
+  \pillrow{4.26}{0.54}{3.3233}{pillblue}{bluetext}{FoCa, SCM, SVD-Cache}
+  \pillrow{3.72}{0.54}{3.3233}{pillblue}{bluetext}{DMD-Cache, HiCache, BRACE}
+
+  \panel{10.95}{3.20}{19.20}{5.60}
+  \ptitle{15.075}{5.29}{Parallelism}
+  \pillrow{4.80}{11.09}{2.6567}{pillsage}{sagetext}{Ulysses, Ring, USP}
+  \pillrow{4.26}{11.09}{2.6567}{pillsage}{sagetext}{Ulysses-Anything, Async Ulysses, TP}
+  \pillrow{3.72}{11.09}{2.6567}{pillsage}{sagetext}{TE-P \textperiodcentered\ VAE-P, 2D/3D-P, FP4--FP8 Comm}
+
+  \panel{0.40}{0.95}{7.65}{2.90}
+  \ptitle{4.025}{2.59}{Low-Bit Quantization}
+  \pillrow{2.10}{0.54}{3.485}{pillblue}{bluetext}{FP8, FP4}
+  \pillrow{1.48}{0.54}{3.485}{pillblue}{bluetext}{INT4, SVDQ W2--W8 \textperiodcentered\ A4--A8}
+
+  \panel{7.95}{0.95}{12.90}{2.90}
+  \ptitle{10.425}{2.59}{Attention Backends}
+  \pillrow{2.10}{8.09}{1.5567}{pillblue}{bluetext}{FA-2, FA-3, Sage-2}
+  \pillrow{1.48}{8.09}{1.5567}{pillblue}{bluetext}{Sage-3, FFPA, Sol-Attn}
+
+  \panel{13.20}{0.95}{19.20}{2.90}
+  \ptitle{16.20}{2.59}{Compile \& Offload}
+  \pillrow{2.10}{13.34}{2.86}{pillblue}{bluetext}{torch.compile, CUDA Graphs}
+  \pillrow{1.48}{13.34}{2.86}{pillblue}{bluetext}{CPU Offload, Layerwise Offload}
+
+
+\end{tikzpicture}
+\end{document}
